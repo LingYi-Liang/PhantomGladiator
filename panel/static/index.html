@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>影之刃零 · 斗蛐蛐</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div class="brand"><span class="seal">斗</span><div><small>PHANTOM GLADIATOR</small><h1>斗蛐蛐控制台</h1></div></div><div class="connection" id="connection"><span class="dot"></span><span id="connection-text">正在连接本地服务</span></div></header>
+<main>
+<section class="workspace">
+  <div class="section-head"><div><div class="eyebrow" id="catalog-eyebrow">单位图鉴</div><h2 id="catalog-heading">选择你的参赛者</h2><p id="catalog-summary">读取真实游戏目录后，单位会出现在这里。</p></div><button class="secondary" id="refresh">↻ 扫描游戏目录</button></div>
+  <div class="notice" id="game-notice">正在读取游戏连接状态…</div>
+  <div class="spawn-help" id="spawn-help"><span id="spawn-help-text">正在读取召唤许可…</span><button class="text-button" id="show-spawnable">查看可召唤单位</button></div>
+  <div class="filters"><label class="search"><span>⌕</span><input id="search" placeholder="搜索角色、章节或地图" autocomplete="off"></label><select id="catalog-view" aria-label="图鉴范围"><option value="primary">主图鉴角色</option><option value="all">全部资产候选</option><option value="disk">磁盘单位（已解密）</option><option value="files">原始文件目录</option></select></div>
+  <section id="disk-panel" hidden>
+    <div class="disk-head"><div><h3>原始文件目录</h3><p class="hint" id="disk-summary">正在读取已验证目录…</p></div><select id="disk-kind" aria-label="磁盘文件类型"><option value="">全部文件</option><option value="package">资源包／地图</option><option value="script">脚本</option><option value="config">配置</option><option value="bulk">大块数据</option><option value="other">其它文件</option></select></div>
+    <p class="hint">这里包含纹理、动画、脚本等文件；查看单位请在上方选择“磁盘单位（已解密）”。</p>
+    <div id="disk-files" class="disk-files" aria-live="polite"></div><div class="catalog-footer"><span id="disk-count"></span><div><button id="disk-prev" class="text-button">上一页</button><button id="disk-next" class="text-button">下一页</button></div></div>
+  </section>
+  <div class="taxonomy-filters"><label>章节<select id="chapter" aria-label="章节筛选"><option value="">全部章节</option></select></label><label>图鉴地图<select id="map" aria-label="地图筛选"><option value="">全部地图</option></select></label><label>单位类型<select id="category" aria-label="单位分类"><option value="">全部类型</option></select></label></div>
+  <div class="filter-options"><label class="check"><input id="available-only" type="checkbox">仅可尝试召唤</label><label class="check"><input id="configured-only" type="checkbox">有刷怪配置证据</label><label class="check" id="special-option" hidden><input id="show-special" type="checkbox">包含特殊／测试候选</label></div>
+  <p class="hint" id="inventory-summary"></p>
+  <p class="hint taxonomy-note" id="taxonomy-note">默认只显示游戏图鉴直接列出的角色。地图是图鉴归属，不代表全部出现地点；普通敌人尚未细分小兵与精英。</p>
+  <p class="hint" id="unit-key-help">每张卡片默认不绑定快捷键；点击键框后按键，Esc 取消，× 清除。</p>
+  <div class="catalog" id="catalog" aria-live="polite"><div class="empty"><span class="empty-mark">◇</span><h3>正在加载单位图鉴…</h3><p>正在连接本地服务并读取已有图鉴，暂不需要扫描游戏目录。</p></div></div>
+  <div class="catalog-footer"><span id="shown-count">0 个单位</span><button id="more" class="text-button" hidden>显示更多</button><span>目录均可尝试；生成与战斗兼容性以实际读回为准</span></div>
+</section>
+<aside>
+  <section class="card selection"><div class="eyebrow">当前选择</div><div class="unit-icon" id="unit-icon">◇</div><h2 id="selected-name">尚未选择单位</h2><p id="selected-category">从左侧图鉴选择</p><p id="selected-location" class="hint"></p><p id="selected-configured" class="hint"></p><p id="selected-basis" class="hint"></p><details class="asset-details"><summary>资源路径与详细依据</summary><p class="muted" id="selected-internal"></p><code id="selected-path"></code><p class="muted" id="selected-reason"></p></details>
+    <div class="form-row"><label>加入队伍<select id="team"><option value="blue">蓝队</option><option value="red">红队</option><option value="neutral">暂不配队</option></select></label><label>数量<input id="count" type="number" min="1" max="8" value="1"></label></div>
+    <button id="spawn" class="primary" disabled>召唤所选单位</button><p class="hint" id="team-key-hint">切队快捷键默认未绑定，可在下方设置。</p>
+  </section>
+  <section class="card stat-match"><div class="eyebrow">公平对战 · 数值统一</div><button id="toggle-stat-match" class="secondary full" aria-pressed="mixed" disabled>数值统一（等待连接）</button><p id="stat-match-baseline" class="hint">开启后，第一只有效战斗单位作为基准。</p><p id="stat-match-values" class="hint"></p><p id="stat-match-state" class="hint"></p><p class="hint">仅影响之后由面板或快捷键召唤的单位。统一出生时的生命、杀气、攻击与攻防倍率；招式、体型和速度保留。关闭后场上单位不变，全部清理后重取基准。</p></section>
+  <section class="card battle"><div class="eyebrow">擂台 · 总量不限</div><div class="team-counts"><div><span class="blue">蓝队存活</span><strong id="blue-count">—</strong></div><div class="versus">VS</div><div><span class="red">红队存活</span><strong id="red-count">—</strong></div></div><p class="hint" id="arena-count-note">正在读取存活状态…</p><button id="start" class="primary" disabled>开始交战</button><button id="stop" class="danger" disabled>停止并清理全部召唤单位</button><button id="toggle-camera" class="secondary full" disabled>进入自由观战（无仇恨＋隐身＋无敌锁血）</button><button id="exit-camera" class="secondary full" disabled>退出自由观战并恢复</button><p class="hint">自由观战自动开启无仇恨、隐身和无敌（锁血），声音跟随镜头；退出后恢复进入前的状态。相机仍用 WASD 移动、Q/E 升降、Shift 加速、鼠标转向。</p><button id="toggle-spectator" class="secondary full" aria-pressed="mixed" disabled>单独无仇恨（状态未知）</button><p class="hint">单独无仇恨用于普通视角下观战；自由观战期间由观战保护自动保持。</p></section>
+  <section class="card neutral"><div class="neutral-heading"><span class="eyebrow">暂不配队 · 存活</span><strong id="neutral-count">—</strong></div><button id="clear-neutral" class="danger" disabled>仅清理未配队单位</button><p class="hint" id="neutral-note">只处理本 Mod 生成的未配队单位。</p></section>
+  <section class="card"><button id="toggle-keys" class="card-toggle" aria-expanded="false">快捷键设置 <span>＋</span></button><div id="keys-panel" hidden><p class="hint">全部功能默认未绑定。点击键框后按键，可组合 Ctrl / Alt / Shift；Esc 取消，× 清空。修改后点击保存，收到游戏确认才生效。</p><p class="hint">同一主键不能同时分配给多个功能或单位。游戏自身的移动、闪避等按键请避让。</p><div id="key-fields"></div><button id="save-keys" class="secondary full" disabled>保存快捷键</button><button id="clear-function-keys" class="secondary full" disabled>清空全部功能键（待保存）</button><p class="hint" id="keys-state" aria-live="polite"></p></div></section>
+</aside>
+<section class="activity"><div class="activity-head"><h2>操作记录</h2><span>收到游戏回执后才显示完成</span></div><ol id="jobs"><li class="empty-job">暂无操作</li></ol></section>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+<footer>本地运行 · 普通暴徒互斗已有实测，其它单位与长期稳定性仍待验证</footer>
+<script src="catalog_browser.js"></script><script src="disk_unit_index.js"></script><script src="disk_units.js"></script><script src="disk_browser.js"></script><script src="spawn_ui.js"></script><script src="unit_shortcuts.js"></script><script src="function_shortcuts.js"></script><script src="app.js"></script>
+</body></html>

@@ -1,0 +1,31 @@
+-- Derived from GlobalConfig_Mechanic Execution channel; combat-only scope, current game build 26266538.
+return {
+    ["Execution.Type.Combat"]={
+        executor_required={"CharacterState.Space.Ground"},
+        executor_ignored={"CharacterState.Dead"},
+        target_required={"CharacterState.Space.Ground"},
+        target_ignored={"CharacterState.Immortal.Generic","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","Driver.Driving","CharacterState.CanNotBeExecuted","CharacterState.Hitreact.State.Landing","CharacterState.Dead","CharacterState.Stand.Invulnerable","CharacterState.Unselectable"},
+        any_target={"CharacterState.CanWeakExecute.LowHealth","CharacterState.CanWeakExecute.Weak"},
+    },
+    ["Execution.Type.Custom.HorseCartCombat"]={
+        executor_required={},
+        executor_ignored={"CharacterState.Dead"},
+        target_required={"CharacterState.CanWeakExecute"},
+        target_ignored={"CharacterState.Stand.Invulnerable","CharacterState.Dead","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","CharacterState.Hitreact.State.Landing","CharacterState.Immortal.Generic"},
+        any_target={},
+    },
+    ["Execution.Type.CombatRider"]={
+        executor_required={},
+        executor_ignored={"CharacterState.Dead"},
+        target_required={"Driver.Driving","CharacterState.CanRiderExecute"},
+        target_ignored={"CharacterState.Stand.Invulnerable","CharacterState.Dead","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","CharacterState.Hitreact.State.Landing","CharacterState.Unselectable","CharacterState.Immortal.Generic","Ability.Executed.DropFromHorse"},
+        any_target={},
+    },
+    ["Execution.Type.Custom.JiangJun"]={
+        executor_required={},
+        executor_ignored={"CharacterState.Dead"},
+        target_required={"CharacterState.Stand.Break"},
+        target_ignored={"CharacterState.Stand.Invulnerable","CharacterState.Dead","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","CharacterState.Hitreact.State.Landing","CharacterState.Unselectable","CharacterState.Immortal.Generic","CharacterState.ZhuoBi.ExecutedInBreak"},
+        any_target={},
+    },
+}

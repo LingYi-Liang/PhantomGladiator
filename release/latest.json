@@ -1,0 +1,82 @@
+{
+  "version": "0.38.4",
+  "date": "2026-11-03T21:12:35+08:00",
+  "size": 20842073,
+  "sha256": "d2eafebb2ee0d1c333f0941ac62aeac46afa54d3855237dfbc33a6391f8b6b16",
+  "notes": {
+    "zh": [
+      "梦差：冷荼 能打完整场阶段战了：召唤时按她原地图的摆法放好召唤点和瞬移点，她会一轮轮放召唤物，最后亲自下场。藏着备用的人偶不再算存活，战斗不会卡住；她按设定不能被锁定时，对手先去打她的召唤物",
+      "另有 11 个 BOSS 的特殊招式要用原地图里摆好的标记点，召唤时一并放好，不会再朝世界原点瞬移、召唤物也不会刷在原点：玉瓒、独眼弓客、献祭之蛇、烟千岁、组织冥主：左殇（含银发）、龙体左殇、火流星、碧海大师残躯、荡秽、武轩",
+      "组织冥主：左殇 六成血的转阶段大招会拔起地上的兵器射向对手：召唤时按竹林古屋的位置埋好 42 把，平时看不见，被拔起时才显现",
+      "雷当：独臂虎 的跳劈落点和落石、冷荼的一招弹幕，原来以世界原点为准，现在以召唤的位置为准",
+      "蓝红两队召唤出来面对面站，不会再有一方背对对手、挨打一阵才还手",
+      "开着自由观战（无仇恨、隐身）时，BOSS 的招式不再锁定玩家，改为对准它的对手",
+      "召唤的冷荼不再改动你存档里断魂山那场冷荼的进度",
+      "这一版需要更新游戏内模组，请按助手提示操作"
+    ],
+    "en": [
+      "Lengtu now plays her whole staged fight: when she is summoned, the summon points and teleport spots of her own arena are placed around her, so her rounds of summons come out one after another and she finally steps in herself. Her hidden reserve puppets no longer count as alive, so the fight no longer gets stuck, and while she is out of reach by design her opponents fight her summons",
+      "11 more bosses have special moves that use markers placed in their own map; these are now placed when they are summoned, so the moves no longer warp toward the world origin and summons no longer appear there",
+      "Zuo Shang's phase move at 60% health pulls weapons out of the ground and fires them at his opponent: 42 are placed where they stand in his arena, unseen until the move picks them up",
+      "Lei Dang's leap and falling rocks, and one of Lengtu's bullet bursts, now use the spot they were summoned at instead of the world origin",
+      "Blue and red now spawn facing each other, so one side no longer stands with its back to the other and takes hits before fighting back",
+      "In free camera (no aggro, hidden), bosses' skills no longer lock onto the player; they aim at their opponent instead",
+      "A summoned Lengtu no longer changes the progress of her own fight in your save",
+      "This version updates the in-game mod; follow the prompt in the app"
+    ],
+    "ja": [
+      "冷荼が段階戦を最後まで戦うようになりました。召喚時に元のマップどおりの召喚位置と瞬間移動地点を周りに置くので、召喚物を一波ずつ出し、最後には自ら戦います。隠された予備の人形は生存数に数えなくなり、戦闘が止まらなくなりました。設定上ロックできない間は、相手はまず召喚物と戦います",
+      "ほかに11体のボスの特殊技が元のマップに置かれた目印を使います。召喚時に一緒に置くので、ワールド原点へ瞬間移動したり、召喚物が原点に出たりしなくなりました",
+      "左殇がHP6割で使う段階移行の大技は、地面の武器を引き抜いて相手に放ちます。元の戦場の位置に42本を置き、普段は見えず、引き抜かれた時に現れます",
+      "雷当（独臂虎）の跳び斬りの着地点と落石、冷荼の弾幕の一つは、ワールド原点ではなく召喚された位置を基準にするようになりました",
+      "青と赤は向かい合って召喚されるようになり、片方が相手に背を向けて、しばらく殴られてから反撃することがなくなりました",
+      "フリーカメラ（敵対なし・透明）中、ボスの技がプレイヤーをロックしなくなり、相手を狙います",
+      "召喚した冷荼が、セーブデータにある本来の冷荼戦の進行を変えなくなりました",
+      "このバージョンはゲーム内Modの更新が必要です。アプリの案内に従ってください"
+    ],
+    "fr": [
+      "Lengtu mène désormais tout son combat par phases : à son invocation, les points d'invocation et de téléportation de sa propre arène sont placés autour d'elle, ses vagues d'invocations arrivent l'une après l'autre et elle finit par combattre elle-même. Ses pantins de réserve cachés ne comptent plus comme vivants, le combat ne se bloque plus, et tant qu'elle est hors d'atteinte par conception, ses adversaires combattent ses invocations",
+      "11 autres boss ont des attaques spéciales qui utilisent des repères placés dans leur propre carte ; ils sont maintenant placés à l'invocation, les attaques ne se téléportent plus vers l'origine du monde et les invocations n'y apparaissent plus",
+      "L'attaque de changement de phase de Zuo Shang à 60 % de vie arrache des armes du sol et les lance sur son adversaire : 42 armes sont placées comme dans son arène, invisibles jusqu'à ce que l'attaque les prenne",
+      "Le saut et les chutes de pierres de Lei Dang, ainsi qu'une salve de Lengtu, partent maintenant du point d'invocation et non de l'origine du monde",
+      "Bleus et rouges apparaissent désormais face à face : un camp ne tourne plus le dos à l'autre pour encaisser des coups avant de riposter",
+      "En caméra libre (sans agressivité, caché), les techniques des boss ne verrouillent plus le joueur ; elles visent leur adversaire",
+      "Une Lengtu invoquée ne modifie plus la progression de son propre combat dans votre sauvegarde",
+      "Cette version met à jour le mod en jeu ; suivez l'invite de l'application"
+    ],
+    "de": [
+      "Lengtu kämpft jetzt ihren ganzen Phasenkampf: Bei der Beschwörung werden die Beschwörungs- und Teleportpunkte ihrer eigenen Arena um sie herum platziert, ihre Beschwörungswellen kommen nacheinander, und am Ende kämpft sie selbst. Ihre versteckten Reservepuppen zählen nicht mehr als lebend, der Kampf bleibt nicht mehr hängen, und solange sie planmäßig unerreichbar ist, kämpfen ihre Gegner gegen ihre Beschwörungen",
+      "11 weitere Bosse haben Spezialangriffe, die Markierungen aus ihrer eigenen Karte nutzen; diese werden jetzt bei der Beschwörung platziert, sodass die Angriffe nicht mehr zum Weltursprung teleportieren und Beschwörungen dort nicht mehr erscheinen",
+      "Zuo Shangs Phasenwechsel-Angriff bei 60 % Leben reißt Waffen aus dem Boden und schleudert sie auf seinen Gegner: 42 Waffen werden wie in seiner Arena platziert, unsichtbar, bis der Angriff sie aufnimmt",
+      "Lei Dangs Sprung und Steinschlag sowie eine Salve von Lengtu gehen jetzt vom Beschwörungsort aus statt vom Weltursprung",
+      "Blau und Rot erscheinen jetzt einander zugewandt; keine Seite steht mehr mit dem Rücken zur anderen und steckt erst Treffer ein, bevor sie zurückschlägt",
+      "In der freien Kamera (keine Aggro, versteckt) visieren die Fähigkeiten von Bossen nicht mehr den Spieler an, sondern ihren Gegner",
+      "Eine beschworene Lengtu ändert nicht mehr den Fortschritt ihres eigenen Kampfes in deinem Spielstand",
+      "Diese Version aktualisiert den Mod im Spiel; folge dem Hinweis in der App"
+    ],
+    "es": [
+      "Lengtu ahora libra todo su combate por fases: al invocarla se colocan a su alrededor los puntos de invocación y de teletransporte de su propia arena, sus oleadas de invocaciones salen una tras otra y al final pelea ella misma. Sus marionetas de reserva ocultas ya no cuentan como vivas, el combate ya no se atasca, y mientras está fuera de alcance por diseño sus rivales luchan contra sus invocaciones",
+      "Otros 11 jefes tienen ataques especiales que usan marcas colocadas en su propio mapa; ahora se colocan al invocarlos, así que los ataques ya no se teletransportan hacia el origen del mundo y las invocaciones ya no aparecen allí",
+      "El ataque de cambio de fase de Zuo Shang al 60 % de vida arranca armas del suelo y las lanza contra su rival: se colocan 42 donde están en su arena, invisibles hasta que el ataque las toma",
+      "El salto y la lluvia de piedras de Lei Dang, y una ráfaga de Lengtu, ahora parten del lugar de invocación y no del origen del mundo",
+      "Azules y rojos aparecen ahora frente a frente: ningún bando queda de espaldas al otro recibiendo golpes antes de responder",
+      "Con la cámara libre (sin agresividad, oculto), las habilidades de los jefes ya no fijan al jugador; apuntan a su rival",
+      "Una Lengtu invocada ya no cambia el progreso de su propio combate en tu partida",
+      "Esta versión actualiza el mod del juego; sigue el aviso de la aplicación"
+    ]
+  },
+  "downloads": [
+    {
+      "id": "cn1",
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+    },
+    {
+      "id": "cn2",
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+    },
+    {
+      "id": "github",
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+    }
+  ]
+}

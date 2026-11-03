@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),ui=require('./static/spawn_ui.js');
+const trial={class_path:'/Game/BP_Test.BP_Test_C',spawnable:true,validation_status:'controlled_test',browse_type:'BOSS'};
+const ready={spawn_trial_policy:'codex_primary_npc_v1',spawn_trial_count:175};
+assert(!ui.canAttempt(trial,{}),'old game policy must not appear unlocked');
+assert(ui.label(trial,{}).includes('重载'));
+assert(ui.canAttempt(trial,ready));assert(ui.label(trial,ready).includes('未实测'));
+assert(!ui.canAttempt({...trial,spawnable:false},ready));
+assert(!ui.canAttempt({...trial,browse_type:'特殊机制'},ready));
+const baseline={...trial,class_path:'/PBZCombatAsset/ActorData/Mobs/003_MaleThug/BP_Monster_MaleThug_Sword_Blue.BP_Monster_MaleThug_Sword_Blue_C'};
+assert(ui.canAttempt(baseline,{}));assert(ui.label(baseline,{}).includes('已实测互斗'));
+assert(!ui.canAttempt({...baseline,spawnable:false},ready),'observations do not override revoked permission');
+const spear={...trial,class_path:'/PBZCombatAsset/ActorData/Mobs/003_MaleThug/BP_Monster_MaleThug_Spear_Blue.BP_Monster_MaleThug_Spear_Blue_C'};
+assert(ui.label(spear,ready).includes('已实测生成'));assert(!ui.canAttempt(spear,{}));
+const open={...trial,validation_status:'experimental_spawn',browse_type:'特殊机制'};
+assert(!ui.canAttempt(open,ready));assert(ui.canAttempt(open,{spawn_mode:'all_catalog'}));
+assert.equal(ui.maxCount({...open,max_count:8},{spawn_mode:'all_catalog'}),8);
+console.log('spawn_ui: PASS (native policy readback gate, baseline, trial vs validation, revoked/special paths)');

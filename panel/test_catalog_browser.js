@@ -1,0 +1,32 @@
+const assert=require('node:assert/strict');
+const browser=require('./static/catalog_browser.js');
+const primary={id:'unit-A',name:'甲',display_name:'甲',codex_entry_kind:'primary',browse_type:'BOSS',
+ chapter_id:'Chapter_A',chapter_name:'章节原文',chapter_order:2,map_id:'Map_A',map_name:'地图原文',map_order:3,codex_order:5,
+ spawnable:false,is_special:false,searchText:'甲 章节原文 地图原文'};
+const alias={...primary,id:'unit-B',codex_entry_kind:'alias'};
+const candidate={id:'unit-C',name:'未知',codex_entry_kind:'candidate',browse_type:'模板／测试',is_special:true,searchText:'未知'};
+const base={view:'primary',query:'',type:'',chapter:'',map:'',only:false,showSpecial:false};
+assert(browser.matches(primary,base));assert(!browser.matches(alias,base));assert(!browser.matches(candidate,base));
+assert(browser.matches(alias,{...base,view:'all'}));
+assert(!browser.matches(candidate,{...base,view:'all'}));
+assert(browser.matches(candidate,{...base,view:'all',showSpecial:true}));
+assert(browser.matches(primary,{...base,chapter:'Chapter_A',map:'Map_A',type:'BOSS',query:'章节原文'}));
+assert(!browser.matches(primary,{...base,chapter:'Chapter_B'}));
+assert(!browser.matches(primary,{...base,map:'Map_B'}));
+assert(!browser.matches(primary,{...base,only:true}));
+assert(!browser.matches(primary,{...base,configured:true}));
+assert(browser.matches({...primary,configured_spawner_count:2},{...base,configured:true}));
+assert(!browser.matches(primary,{...base,chapter:browser.unknown}));
+assert(browser.matches(candidate,{...base,view:'all',showSpecial:true,chapter:browser.unknown,map:browser.unknown}));
+const prologue={...primary,id:'prologue',chapter_id:null,chapter_order:null,map_order:0};
+assert(browser.compare(prologue,primary)<0);
+assert(browser.affiliation(primary)==='章节原文 · 地图原文');
+assert(browser.affiliation(candidate)==='地图归属待查');
+assert(browser.groupKey(primary)===browser.groupKey(alias));
+assert(!browser.matches(primary,{...base,view:'disk'}));
+assert(browser.matches({...primary,disk_verified_unit:true},{...base,view:'disk',chapter:'Chapter_A',map:'Map_A',type:'BOSS'}));
+assert(!browser.matches({...primary,disk_verified_unit:true},{...base,view:'disk',map:'Map_B'}));
+assert.equal(browser.typeLabel('普通敌人'),'小怪');
+assert.equal(browser.typeLabel('BOSS'),'BOSS');
+assert.equal(browser.typeLabel('剧情／NPC候选'),'剧情／NPC候选');
+console.log('catalog_browser: PASS (primary vs variants, source-faithful chapter/map filtering, unknown locations, native ordering, permissions unchanged)');

@@ -1,0 +1,50 @@
+# 游戏资源与解包产物 — 绝不入库
+*.pak
+*.ucas
+*.utoc
+*.uasset
+*.uexp
+Dumps/
+Output/
+FModel/
+CXXHeaderDump/
+*.dmp
+Runtime/
+asset-key.bin
+*.decoded.bin
+decrypted-directory.tsv
+decrypted-directory-report.json
+directory-package-differences.json
+panel/static/disk_unit_index.js
+panel/static/disk_unit_index.js.tmp
+
+# UE4SS 运行产物
+UE4SS.log
+*.log
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+.vs/
+__pycache__/
+*.py[cod]
+
+# 打包产物
+dist/
+
+# 本机编辑器/助手配置
+.claude/
+
+# 游戏资源包目录解密工具与方法：只留本地，不公开
+tools/decrypt_asset_directory.py
+tools/test_decrypt_directory.py
+tools/publish_disk_unit_index.py
+docs/DISK_DIRECTORY.md
+
+# 内部开发记录与本机说明：只留本地，不公开（docs 里只公开数值说明和 README 截图）
+AGENTS.md
+CLAUDE.md
+docs/*
+!docs/STATS_GUIDE.md
+!docs/images/
+*.docx
