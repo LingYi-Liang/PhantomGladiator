@@ -18,7 +18,91 @@
           "id": "github",
           "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
         }
-      ]
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.000",
+            "size": 2097152,
+            "sha256": "8942a354e2d5fb6b08f96a7ef30b7884416f8e2bac07cb805fe2b11231f49ca1"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.001",
+            "size": 2097152,
+            "sha256": "9adcfca35964cf5a1ee2e8fb7b890124ededc88387de2154df78edde360129fb"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.002",
+            "size": 2097152,
+            "sha256": "fe26e2dc378722f333f981058338118d56df8f61d7c5e60e35d1d33b7961cd4f"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.003",
+            "size": 2097152,
+            "sha256": "3beea4fc3620d3bebb02a02f3c6be6f61a788eeccfd33be2d1fedd600af90592"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.004",
+            "size": 2097152,
+            "sha256": "228ecdd6887f53c52df446badbc24e71e1cf41ead575784f239fec3f01f29025"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.005",
+            "size": 2097152,
+            "sha256": "9afb8eb355ec855d1cae064d523ae228971659e08eca7a2dcc2b8a202a2558aa"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.006",
+            "size": 2097152,
+            "sha256": "fc7fb521c4abb033b0e42f3e69d694180041c7e02ac9d74f0286f2b55acdb76c"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.007",
+            "size": 2097152,
+            "sha256": "6d35e38b8293c98e5cf11cc3d019d901512acbad0fafaa60e4f413e676f61c19"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.008",
+            "size": 2097152,
+            "sha256": "820704296f173edcc3873eda6d99e712d03e15a02f1d4dc02de257b6293024d5"
+          },
+          {
+            "name": "PhantomGladiator-0.39.0-win64.zip.009",
+            "size": 2038659,
+            "sha256": "5ca3043a839241f163a9c976f0bd1f66b233f95341ff68c40b973cac54bc5ad6"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.0/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.0/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.0/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.0/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.0/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.0/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.0/"
+          }
+        ]
+      }
     },
     {
       "version": "0.38.4",
@@ -38,7 +122,91 @@
           "id": "github",
           "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
         }
-      ]
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.000",
+            "size": 2097152,
+            "sha256": "d7f065cd261aabcb35525c6d1d9e95bcb181e0594bcf360f28f82448928e496b"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.001",
+            "size": 2097152,
+            "sha256": "0f91cc1615ec83a5f43eb0b2ef04cc80fb678fe898ee48bdabc87eba19b77dc9"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.002",
+            "size": 2097152,
+            "sha256": "11776bc63332474407c4f3570e53aa30bd6dc8dddc980c98e25630a83a2130a7"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.003",
+            "size": 2097152,
+            "sha256": "c07eba1f30e5b2c5ea99ebeab547287678219595bad0ed8e8e90a0692948c4bb"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.004",
+            "size": 2097152,
+            "sha256": "126826e8d510740197efa146e74127f95a341f139be0a0d243445a5e0d6a5692"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.005",
+            "size": 2097152,
+            "sha256": "56e6084e42c746740a17d0a2cbd5d83d6d5b70e151c1dca6ff4521dd0af50d88"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.006",
+            "size": 2097152,
+            "sha256": "dcff260d15c61daa85795d7125ecddf5ca545864b2664b0a9c767588505a9d45"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.007",
+            "size": 2097152,
+            "sha256": "7b82654c8cc24ca9ce3bba232470473a3bbe095a76eab5fa109e923122770281"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.008",
+            "size": 2097152,
+            "sha256": "8319c7d79766bf0dd6fbeceaf3a7986a3313836d388a9ea45c46ca2f3a7b835c"
+          },
+          {
+            "name": "PhantomGladiator-0.38.4-win64.zip.009",
+            "size": 1967705,
+            "sha256": "388b90feaccbc7b43a15ba762560178090ab8613802870b13c8f4427fc0d148b"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.4/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.4/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.4/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.4/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.4/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.4/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.4/"
+          }
+        ]
+      }
     },
     {
       "version": "0.38.3",
@@ -58,7 +226,91 @@
           "id": "github",
           "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.3/PhantomGladiator-0.38.3-win64.zip"
         }
-      ]
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.000",
+            "size": 2097152,
+            "sha256": "77716010db6e827b7d268326542e64f5da7f38793dd18d902f0698f11f15c5a9"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.001",
+            "size": 2097152,
+            "sha256": "ac4eba74702b823ac893b38b8b71d0e4e8addacb3a98eacb0a4f91211842b461"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.002",
+            "size": 2097152,
+            "sha256": "38e11ad7805767975e0788a152d78e70664c276e91b29058e467196f10f26c5b"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.003",
+            "size": 2097152,
+            "sha256": "34143c3fec05ecb51a5a5eafd6cd947d69cafd57e063865071d63e14b9a0d2cd"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.004",
+            "size": 2097152,
+            "sha256": "6e8a19e35d5e1942fd05f3c1e559c3c8bf201f6877a7731254830d61b93360bc"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.005",
+            "size": 2097152,
+            "sha256": "a88297a84d2da8c9e9e754412ba2752a1e8b72411e9018730b7d3f758547a4c5"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.006",
+            "size": 2097152,
+            "sha256": "48627e2136069326ba769c7bae96f9019da88261a060daa3df2c4e3f7a546c93"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.007",
+            "size": 2097152,
+            "sha256": "eff67b86989f593dd7dad699719d5b56bd0bc2cc5fbf07f1a9f77c302e4e9a78"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.008",
+            "size": 2097152,
+            "sha256": "a50463909a9ea77fa7ea52a641317a3c2af1d9dd72603b70a62c4f4c35d134ec"
+          },
+          {
+            "name": "PhantomGladiator-0.38.3-win64.zip.009",
+            "size": 1949812,
+            "sha256": "507f01831428468818610ef8a5321f3f52539c09858aa9aa04717c0613511f5e"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.3/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.3/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.3/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.3/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.3/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.3/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.3/"
+          }
+        ]
+      }
     },
     {
       "version": "0.38.2",
@@ -78,7 +330,91 @@
           "id": "github",
           "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.2/PhantomGladiator-0.38.2-win64.zip"
         }
-      ]
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.000",
+            "size": 2097152,
+            "sha256": "de848584cf7d61eccce1465c2913741a74f723a04c3ef523d57604f3158b202b"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.001",
+            "size": 2097152,
+            "sha256": "c2947f797a1a8d5cbeb0778ac07066784b4bb7280cdbff743600944929551897"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.002",
+            "size": 2097152,
+            "sha256": "6ffcee53154d8a8beae26a98724c18b2a1e436a075932c8070371467cb6a9ec0"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.003",
+            "size": 2097152,
+            "sha256": "1f27d7e91461171d86bd4abf7a3f0d4de883ee2c6147cc718bae13dccd53ae96"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.004",
+            "size": 2097152,
+            "sha256": "62f5324ac5b538763345283312d72d8d65f099345650ff06227f6750c4025ff4"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.005",
+            "size": 2097152,
+            "sha256": "383438c67a9ffd02cb08acbf77e41fe8938fc9ffb17630ab24973e7160bccde5"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.006",
+            "size": 2097152,
+            "sha256": "306a962c254c117fab56c7e33fa6d33c88644e8fabe8202bce08c85100bdcb38"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.007",
+            "size": 2097152,
+            "sha256": "f3fadbf1e82eff4a61de5460f8a36fa2f06ab0d31a40cc3ceac849effa5bef31"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.008",
+            "size": 2097152,
+            "sha256": "801a4c52da7b47e9c20f88cb09795c4c73e79b5c5ff8926befa26a412fe8b5de"
+          },
+          {
+            "name": "PhantomGladiator-0.38.2-win64.zip.009",
+            "size": 1948129,
+            "sha256": "0eb01c200efd66c84214c9999eaf4080562f40bcf87dde1121164307729fb929"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.2/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.2/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.2/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.38.2/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.2/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.2/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.38.2/"
+          }
+        ]
+      }
     },
     {
       "version": "0.37.6",
@@ -98,7 +434,91 @@
           "id": "github",
           "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.6/PhantomGladiator-0.37.6-win64.zip"
         }
-      ]
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.000",
+            "size": 2097152,
+            "sha256": "caab973b641cb1eec5ebe9f11dce00417b74b376cbe2a2a6d16c08d038343ec0"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.001",
+            "size": 2097152,
+            "sha256": "e85a7b3f0bb73884e812292f77f26007b5446ceecd0e52089fa8baba8207da2a"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.002",
+            "size": 2097152,
+            "sha256": "704d9ecc3cf76584e55adfa98b6ba7098d10a0d85adb2c1f4627224ab1f6fc35"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.003",
+            "size": 2097152,
+            "sha256": "88d1eddafed72d7872a00ed29d6b5582bb0c81e8519c81eacdb281a340b76b5d"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.004",
+            "size": 2097152,
+            "sha256": "7b83b5590d070c9b1bca11b8a69ef1203ad1d815ae5499c64932ecb9b4eb28ce"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.005",
+            "size": 2097152,
+            "sha256": "f157b2f07f8145fee84f92e1be001d67abf9b7287d187d88901e85b37cc6e0f6"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.006",
+            "size": 2097152,
+            "sha256": "59728784c7cf8df6f5230ee66569a47f856801c243a01d14af0b85e28e551c21"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.007",
+            "size": 2097152,
+            "sha256": "3cf237931e9e57a3947b48515ceea77f3ec17881ce883b7cbcb89861ffb2186f"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.008",
+            "size": 2097152,
+            "sha256": "761da9841692f715789e0faa57894307c1ad65d8198f54cf02626e27d9f2b741"
+          },
+          {
+            "name": "PhantomGladiator-0.37.6-win64.zip.009",
+            "size": 1871030,
+            "sha256": "162d8d3474e7001c7ac81d4c67040f6b85d25c2c066deac57334e85f804b52b2"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.37.6/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.37.6/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.37.6/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.37.6/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.37.6/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.37.6/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.37.6/"
+          }
+        ]
+      }
     }
   ]
 }
