@@ -1,165 +1,164 @@
 {
-  "version": "0.40.0",
-  "date": "2026-11-05T03:15:49+08:00",
-  "size": 20966310,
-  "sha256": "72c2217e066dc8a0f11be7eea6ca200360dc6efb7ecda85ee29c6353a9622b27",
+  "version": "0.40.1",
+  "date": "2026-11-05T07:35:18+08:00",
+  "size": 20976632,
+  "sha256": "8cfb07d755d1ab129f8ba47e3e690a3eeaee10e0fda82fa24148c9a8295ce5f0",
   "notes": {
     "zh": [
-      "新功能「AI 行为」：可以直接改游戏 AI 自己读的 65 个参数，分攻击欲望、进攻距离、走位、防御和反应四组，每个参数旁边都有说明。留空就用每个单位原来的值，填了场上和之后召唤的单位马上生效。可以全部拉满，也可以按组拉满",
-      "新开关「BOSS 连携技」（默认关）：打开后，同队的少主护卫铁鬼和玉妖会放组合技；关掉就是两个单独的 BOSS。目前只有这一对",
-      "修复组织冥主：左殇放出的一大片飞剑打向玩家本体（隐身、无仇恨也一样）：这些飞剑读的是玩家的位置，现在跟着他的对手",
-      "龙体左殇的剑雨，以及救苦救难梦华圣母娘娘、梦差：冷荼、大师兄的绝望剑意、赤影骨刃：囚锋、影魅杀手的同类招式，现在也改打对手。这几招还没有在游戏里逐个确认；两招同时放时，只有后放的打得准",
-      "修复组织冥主：左殇的万剑归宗可能朝玩家飞：飞出去的武器要向招式取锁定目标，这个目标现在固定为他的对手。战斗中招式和子弹的目标落到玩家身上时，也都改成对手",
-      "修复召唤贴地一直没生效：地面检测读错了数据。现在会直接出生在地面上；出生点落在物件里时，会往玩家方向挪到能站的地方",
-      "更新记录里，以前写了修好但其实没修好的内容，现在用删除线划掉了",
+      "修复战斗中每隔几秒卡一下：模组在反复查找没加载的飞行武器，每次卡 100~200 毫秒。现在只有左殇一族在场才查，查不到时间隔会越拉越长",
+      "龙体左殇的剑雨，以及救苦救难梦华圣母娘娘、梦差：冷荼、大师兄的绝望剑意、赤影骨刃：囚锋、影魅杀手的同类招式，这次才真正改打对手：上一版的写入其实没生效，那条说明已划掉。两招同时放时，只有后放的打得准",
+      "剑雨的目标在 7 米内时会原地落下，这是招式本身的设计；目标跑出 7 米才会追过去",
+      "沐小葵：铁玉女王和龙体左殇的替身不再算参战单位：不计入存活人数和胜负，敌人也不会再去打这些无敌的替身",
+      "修复新单位可能沿用已离场单位的状态：游戏会重复使用内存地址，防坠落保护、处决判断、不倒下的重试次数之前可能串到新单位上",
+      "设置或恢复记录里有未知、损坏的内容时，模组不会再因此起不来或读错：未知内容会忽略，错误的值改用默认值",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "New AI behavior panel: change 65 parameters the game's own AI reads, in four groups: attack desire, attack distances, movement, defense and reactions, each with a tip. Blank keeps each unit's value; a filled one applies at once to units on the field and new ones. Max them all at once or group by group",
-      "New Boss team-up moves switch (off by default): when on, Tie Gui and Yu Yao on the same team use their combo attacks; off, they are two separate bosses. This pair is the only one so far",
-      "Fixed Zuo Shang's swarm of flying swords going for the player's body, even hidden and with no aggro: the swords read the player's position and now follow his opponent",
-      "The sword rain of dragon-form Zuo Shang and similar moves of Meng Hua, Lengtu, the Eldest Brother's Sword of Despair, Qiu Feng and the Ying Mei assassin now go for the opponent too. These have not each been confirmed in game; when two run at once, only the later one aims true",
-      "Fixed Zuo Shang's flying weapons possibly going for the player: the weapons ask the move for its lock target, and that target is now his opponent. In a fight, any move or bullet whose target lands on the player now goes to the opponent",
-      "Fixed spawning on the ground, which never really worked: the ground check read the wrong data. Units now start on the ground; a spawn point inside an object moves toward the player to somewhere they can stand",
-      "In the release history, things once listed as fixed that were not are now struck through",
+      "Fixed a hitch every few seconds in fights: the mod kept looking up flying weapons that were not loaded, costing 100-200 ms each time. It now looks only while Zuo Shang's family is on the field, and waits longer after each failed lookup",
+      "The sword rain of dragon-form Zuo Shang and similar moves of Meng Hua, Lengtu, the Eldest Brother's Sword of Despair, Qiu Feng and the Ying Mei assassin now really go for the opponent: the last version's write never took effect, and that note is struck through. When two run at once, only the later one aims true",
+      "The sword rain falls where it is when the target is within 7 m; that is how the move is built. It chases only a target beyond 7 m",
+      "The stands of Mu Xiaokui's second phase and dragon-form Zuo Shang no longer count as fighters: they don't count as alive or decide the result, and enemies no longer attack these invulnerable stands",
+      "Fixed new units possibly keeping the state of a unit that left: the game reuses memory addresses, so fall protection, execution checks and Undying retry counts could carry over",
+      "Unknown or damaged entries in settings or restore records no longer stop the mod from starting or get misread: unknown entries are ignored and bad values fall back to defaults",
       "This version needs the in-game mod updated; follow the prompt in the app"
     ],
     "ja": [
-      "新機能「AI の行動」：ゲームの AI が読む 65 個のパラメータを変更できます。攻撃意欲、攻撃距離、移動、防御と反応の 4 グループで、それぞれに説明があります。空欄なら各ユニット本来の値のまま、入力すると場のユニットと新しく召喚するユニットにすぐ反映されます。まとめて最大にも、グループごとに最大にもできます",
-      "新スイッチ「BOSS 連携技」（初期はオフ）：オンにすると同じチームの鉄鬼と玉妖がコンボ技を使います。オフなら別々の BOSS 2 体です。今のところこの組み合わせだけです",
-      "左殇が放つ大量の飛剣がプレイヤー本体（透明・敵対なしでも）へ向かう問題を修正：飛剣はプレイヤーの位置を読んでいましたが、今は相手を追います",
-      "龍体左殇の剣雨と、夢華、冷荼、大師兄の絶望剣意、囚鋒、影魅の同種の技も相手を狙うようになりました。これらはゲーム内で一つずつ確認できていません。2 つの技が同時に出ると、後に出した技だけが正しく狙えます",
-      "左殇の飛ぶ武器がプレイヤーへ向かうことがある問題を修正：武器は技にロック対象を尋ねますが、その対象を相手に固定しました。戦闘中に技や弾の対象がプレイヤーになった場合も相手に変わります",
-      "地面への召喚が実は機能していなかった問題を修正：地面判定が誤ったデータを読んでいました。今は地面の上に出現します。出現位置が物の中なら、プレイヤーの方へ立てる場所まで移動します",
-      "更新履歴で、修正済みと書いたものの直っていなかった内容に取り消し線を引きました",
+      "戦闘中に数秒おきに引っかかる問題を修正：読み込まれていない飛ぶ武器をモッドが探し続け、そのたびに 100〜200 ミリ秒止まっていました。今は左殇の一族がいるときだけ探し、見つからないと間隔を延ばします",
+      "龍体左殇の剣雨と、夢華、冷荼、大師兄の絶望剣意、囚鋒、影魅の同種の技が、今度こそ相手を狙います。前のバージョンの書き込みは実は効いておらず、その記載には取り消し線を引きました。2 つの技が同時に出ると、後に出した技だけが正しく狙えます",
+      "剣雨は対象が 7 m 以内だとその場に落ちます。これは技本来の仕様で、7 m より離れると追いかけます",
+      "沐小葵の第二段階と龍体左殇の替身を参戦ユニットとして扱わないようにしました。生存数や勝敗に数えず、敵も無敵の替身を攻撃しなくなります",
+      "新しいユニットが退場したユニットの状態を引き継ぐことがある問題を修正：ゲームはメモリアドレスを再利用するため、落下保護、処刑の判定、「倒れない」の再試行回数が引き継がれることがありました",
+      "設定や復元記録に未知の内容や壊れた内容があっても、モッドが起動できなくなったり誤って読んだりしません。未知の内容は無視し、不正な値は既定値を使います",
       "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
     ],
     "fr": [
-      "Nouveau panneau Comportement de l'IA : modifiez 65 paramètres lus par l'IA du jeu, en quatre groupes : envie d'attaquer, distances d'attaque, déplacement, défense et réactions, chacun avec une aide. Vide : chaque unité garde sa valeur ; rempli : s'applique tout de suite aux unités sur le terrain et aux nouvelles. Tout mettre au maximum ou groupe par groupe",
-      "Nouvel interrupteur Attaques combinées des boss (désactivé par défaut) : activé, Tie Gui et Yu Yao dans la même équipe utilisent leurs attaques combinées ; désactivé, ce sont deux boss séparés. Seule cette paire pour l'instant",
-      "Correction de la nuée d'épées volantes de Zuo Shang qui visait le corps du joueur, même caché et sans agressivité : les épées lisaient la position du joueur et suivent désormais son adversaire",
-      "La pluie d'épées de Zuo Shang en forme de dragon et les attaques semblables de Meng Hua, Lengtu, l'Épée du désespoir du Frère aîné, Qiu Feng et l'assassin Ying Mei visent aussi l'adversaire. Elles n'ont pas toutes été confirmées en jeu ; quand deux se déclenchent ensemble, seule la dernière vise juste",
-      "Correction des armes volantes de Zuo Shang qui pouvaient viser le joueur : les armes demandent leur cible de verrouillage à l'attaque, et cette cible est désormais son adversaire. En combat, toute attaque ou tout projectile dont la cible tombe sur le joueur va désormais vers l'adversaire",
-      "Correction de l'apparition au sol, qui n'avait jamais vraiment marché : la détection du sol lisait les mauvaises données. Les unités apparaissent désormais au sol ; un point d'apparition dans un objet se déplace vers le joueur jusqu'à un endroit où se tenir",
-      "Dans l'historique, ce qui était annoncé comme corrigé sans l'être est désormais barré",
+      "Correction d'un à-coup toutes les quelques secondes en combat : le mod cherchait sans cesse des armes volantes non chargées, ce qui coûtait 100 à 200 ms à chaque fois. Il ne cherche plus que si la famille de Zuo Shang est sur le terrain, et attend plus longtemps après chaque échec",
+      "La pluie d'épées de Zuo Shang en forme de dragon et les attaques semblables de Meng Hua, Lengtu, l'Épée du désespoir du Frère aîné, Qiu Feng et l'assassin Ying Mei visent enfin vraiment l'adversaire : l'écriture de la version précédente n'avait aucun effet, et cette note est barrée. Quand deux se déclenchent ensemble, seule la dernière vise juste",
+      "La pluie d'épées tombe sur place quand la cible est à moins de 7 m : l'attaque est conçue ainsi. Elle ne poursuit qu'une cible à plus de 7 m",
+      "Les doublures de Mu Xiaokui en deuxième phase et de Zuo Shang en forme de dragon ne comptent plus comme combattants : elles n'entrent plus dans le nombre de survivants ni dans le résultat, et les ennemis n'attaquent plus ces doublures invincibles",
+      "Correction des nouvelles unités qui pouvaient garder l'état d'une unité partie : le jeu réutilise les adresses mémoire, donc la protection contre les chutes, les vérifications d'exécution et les essais d'« Immortel » pouvaient se transmettre",
+      "Des contenus inconnus ou abîmés dans les réglages ou les données de restauration n'empêchent plus le mod de démarrer et ne sont plus mal lus : l'inconnu est ignoré et les valeurs incorrectes reprennent leur valeur par défaut",
       "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
     ],
     "de": [
-      "Neu: KI-Verhalten. Ändere 65 Parameter, die die KI des Spiels liest, in vier Gruppen: Angriffslust, Angriffsdistanzen, Bewegung, Verteidigung und Reaktionen, jeweils mit Hinweis. Leer behält den Wert jeder Einheit; ausgefüllt gilt sofort für Einheiten im Feld und neue. Alles auf einmal oder gruppenweise maximieren",
-      "Neuer Schalter Boss-Kombiangriffe (standardmäßig aus): Ist er an, setzen Tie Gui und Yu Yao im selben Team ihre Kombiangriffe ein; aus sind es zwei getrennte Bosse. Bisher nur dieses Paar",
-      "Behoben: Der Schwarm fliegender Schwerter von Zuo Shang zielte auf den Körper des Spielers, auch versteckt und ohne Aggro. Die Schwerter lasen die Position des Spielers und folgen jetzt seinem Gegner",
-      "Der Schwertregen von Zuo Shang in Drachenform und ähnliche Angriffe von Meng Hua, Lengtu, dem Schwert der Verzweiflung des Ältesten Bruders, Qiu Feng und dem Ying-Mei-Assassinen zielen jetzt ebenfalls auf den Gegner. Sie wurden nicht alle einzeln im Spiel bestätigt; laufen zwei gleichzeitig, zielt nur der spätere richtig",
-      "Behoben: Die fliegenden Waffen von Zuo Shang konnten auf den Spieler zielen. Die Waffen fragen den Angriff nach seinem Ziel, und dieses Ziel ist jetzt sein Gegner. Im Kampf geht jeder Angriff und jedes Geschoss, dessen Ziel auf dem Spieler landet, jetzt zum Gegner",
-      "Behoben: Das Spawnen auf dem Boden hat nie richtig funktioniert, weil die Bodenprüfung die falschen Daten las. Einheiten starten jetzt auf dem Boden; ein Spawnpunkt in einem Objekt rückt zum Spieler hin, bis dort Platz zum Stehen ist",
-      "Im Update-Verlauf sind Einträge, die als behoben galten, es aber nicht waren, jetzt durchgestrichen",
+      "Behoben: Im Kampf ruckelte es alle paar Sekunden. Der Mod suchte immer wieder nach nicht geladenen fliegenden Waffen, was jedes Mal 100 bis 200 ms kostete. Jetzt sucht er nur, solange Zuo Shangs Familie im Feld ist, und wartet nach jedem Fehlschlag länger",
+      "Der Schwertregen von Zuo Shang in Drachenform und ähnliche Angriffe von Meng Hua, Lengtu, dem Schwert der Verzweiflung des Ältesten Bruders, Qiu Feng und dem Ying-Mei-Assassinen zielen jetzt wirklich auf den Gegner: Der Schreibvorgang der letzten Version hatte keine Wirkung, der Eintrag ist durchgestrichen. Laufen zwei gleichzeitig, zielt nur der spätere richtig",
+      "Der Schwertregen fällt an Ort und Stelle, wenn das Ziel weniger als 7 m entfernt ist; so ist der Angriff gebaut. Nur ein Ziel jenseits von 7 m wird verfolgt",
+      "Die Doppelgänger von Mu Xiaokui in der zweiten Phase und von Zuo Shang in Drachenform zählen nicht mehr als Kämpfer: Sie zählen nicht als lebend, entscheiden nicht über das Ergebnis, und Gegner greifen diese unverwundbaren Doppelgänger nicht mehr an",
+      "Behoben: Neue Einheiten konnten den Zustand einer gegangenen Einheit behalten. Das Spiel verwendet Speicheradressen wieder, dadurch konnten Sturzschutz, Hinrichtungsprüfung und die Versuche von „Unsterblich“ übernommen werden",
+      "Unbekannte oder beschädigte Inhalte in Einstellungen oder Wiederherstellungsdaten verhindern den Start des Mods nicht mehr und werden nicht mehr falsch gelesen: Unbekanntes wird ignoriert, falsche Werte fallen auf den Standard zurück",
       "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
     ],
     "es": [
-      "Nuevo panel Comportamiento de la IA: cambia 65 parámetros que lee la IA del juego, en cuatro grupos: ganas de atacar, distancias de ataque, movimiento, defensa y reacciones, cada uno con una ayuda. En blanco, cada unidad conserva su valor; relleno, se aplica al momento a las unidades en campo y a las nuevas. Se puede poner todo al máximo o por grupos",
-      "Nuevo interruptor Ataques combinados de jefes (desactivado por defecto): activado, Tie Gui y Yu Yao en el mismo equipo usan sus ataques combinados; desactivado, son dos jefes separados. De momento solo esta pareja",
-      "Corregido: el enjambre de espadas voladoras de Zuo Shang iba al cuerpo del jugador, incluso oculto y sin agresividad. Las espadas leían la posición del jugador y ahora siguen a su rival",
-      "La lluvia de espadas de Zuo Shang en forma de dragón y ataques parecidos de Meng Hua, Lengtu, la Espada de la desesperación del Hermano mayor, Qiu Feng y el asesino Ying Mei ahora también van al rival. No se han confirmado una a una en el juego; si dos coinciden, solo la última apunta bien",
-      "Corregido: las armas voladoras de Zuo Shang podían ir a por el jugador. Las armas piden al ataque su objetivo fijado, y ese objetivo ahora es su rival. En combate, cualquier ataque o proyectil cuyo objetivo caiga en el jugador ahora va al rival",
-      "Corregida la aparición sobre el suelo, que nunca funcionó de verdad: la comprobación del suelo leía datos equivocados. Las unidades ahora aparecen en el suelo; un punto de aparición dentro de un objeto se mueve hacia el jugador hasta un sitio donde estar de pie",
-      "En el historial, lo que se anunció como corregido sin estarlo ahora aparece tachado",
+      "Corregido un tirón cada pocos segundos en combate: el mod buscaba una y otra vez armas voladoras sin cargar, lo que costaba de 100 a 200 ms cada vez. Ahora solo busca mientras la familia de Zuo Shang está en el campo, y espera más tras cada fallo",
+      "La lluvia de espadas de Zuo Shang en forma de dragón y ataques parecidos de Meng Hua, Lengtu, la Espada de la desesperación del Hermano mayor, Qiu Feng y el asesino Ying Mei ahora sí van al rival: la escritura de la versión anterior no tenía efecto, y esa nota está tachada. Si dos coinciden, solo la última apunta bien",
+      "La lluvia de espadas cae donde está si el objetivo está a menos de 7 m: el ataque está hecho así. Solo persigue a un objetivo a más de 7 m",
+      "Los dobles de Mu Xiaokui en su segunda fase y de Zuo Shang en forma de dragón ya no cuentan como combatientes: no cuentan como vivos ni deciden el resultado, y los enemigos ya no atacan a estos dobles invulnerables",
+      "Corregido: las unidades nuevas podían conservar el estado de una que se había ido. El juego reutiliza direcciones de memoria, así que la protección contra caídas, la comprobación de ejecución y los intentos de «Inmortal» podían pasar a la nueva",
+      "Los contenidos desconocidos o dañados en los ajustes o en los datos de restauración ya no impiden que el mod arranque ni se leen mal: lo desconocido se ignora y los valores incorrectos vuelven al valor por defecto",
       "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/PhantomGladiator-0.40.0-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.0/PhantomGladiator-0.40.0-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.0/PhantomGladiator-0.40.0-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.000",
+        "name": "PhantomGladiator-0.40.1-win64.zip.000",
         "size": 2097152,
-        "sha256": "5d28e5ea1bf05b19af1a75dc5a373780a8b4aee0a122bb52e2cf6c5a7d0ecab3"
+        "sha256": "2014e8744a33b535b56193a9a92f634d46c0d2245a167b82fc4518cf751882cd"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.001",
+        "name": "PhantomGladiator-0.40.1-win64.zip.001",
         "size": 2097152,
-        "sha256": "d93502d793e05ed1f83ca9ba1350c6342ee7cb9b5bad5676f7ec3ae182a5b11a"
+        "sha256": "b7125c48979778f8fd3f003631126337a2d7a710426c15d8095a45ded1215f27"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.002",
+        "name": "PhantomGladiator-0.40.1-win64.zip.002",
         "size": 2097152,
-        "sha256": "fbae053faad6ae7afd7686e6bad4a11de249af8146503a6a8a048f57d29ac7d9"
+        "sha256": "ae9fa47692e29eae8c721dd776dccb9af06ff90cbc87e4e44a6a112ac6e9796d"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.003",
+        "name": "PhantomGladiator-0.40.1-win64.zip.003",
         "size": 2097152,
-        "sha256": "23f45d0c580a4032e3cbb5371c2a3a8dabd6eeee0c4b035fbab54387f2778b52"
+        "sha256": "2003927e56bd97422ffabd5c184a4acd77e9ed8fc2c3f989854b4270013630bd"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.004",
+        "name": "PhantomGladiator-0.40.1-win64.zip.004",
         "size": 2097152,
-        "sha256": "ed91ab747edb05cee21eb49be8158da047b99cb24b511d31b03a8c3490f930f3"
+        "sha256": "68e449d82db755e2e657a53660bc599fcfe511207dd0293e17aefac0460a7b28"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.005",
+        "name": "PhantomGladiator-0.40.1-win64.zip.005",
         "size": 2097152,
-        "sha256": "986ff0f0aab887e0fef1c28ca6b15725969dbe609fd2cc7e95ab15691b0b6cb1"
+        "sha256": "9fceb9dc65d9c2a3fb94657ec23d897461b0567bd72b20d672c0f3b26bdcbfba"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.006",
+        "name": "PhantomGladiator-0.40.1-win64.zip.006",
         "size": 2097152,
-        "sha256": "05b78b9b1fc02da3c122628b03e414de1dbe5e5754324d588b3b0167b052adc7"
+        "sha256": "4617313567723e718cd974df16a363df7500a703c5d794875b156074a0e8c1b7"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.007",
+        "name": "PhantomGladiator-0.40.1-win64.zip.007",
         "size": 2097152,
-        "sha256": "0baca56824bad16bca8e6445f03eb22b615746649d599eb4595e95059ae4e927"
+        "sha256": "5cf2677c43546989b8e580aa3b080ca3f34d6a1256dd0fff796b3c021df0dd83"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.008",
+        "name": "PhantomGladiator-0.40.1-win64.zip.008",
         "size": 2097152,
-        "sha256": "fe635803e607feef104de05500c5b5f023ea2e7ee9f575ae97fe053944ff2576"
+        "sha256": "9e8165ae311575a00759bc53adc89ddb3ac07006c6423448fbc6f339dbf8203d"
       },
       {
-        "name": "PhantomGladiator-0.40.0-win64.zip.009",
-        "size": 2091942,
-        "sha256": "ea5807f6dbddacd5c98e4d8152193476215b3d11a7ab5bf67745c110d03151dc"
+        "name": "PhantomGladiator-0.40.1-win64.zip.009",
+        "size": 2097152,
+        "sha256": "dc5db1c88c2022d63677085cd2d26b3e7f1158c42121f7f04348361eda706d84"
+      },
+      {
+        "name": "PhantomGladiator-0.40.1-win64.zip.010",
+        "size": 5112,
+        "sha256": "b9b52509d7b66e938837cf1b22f5b7ec800d6f49bbe7948b508352a1dda35d57"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
       }
     ]
   }
