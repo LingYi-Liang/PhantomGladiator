@@ -1,4 +1,5 @@
-"""The app's update check (desktop/PhantomGladiator.cs UpdateClient.Check) against a local fake server.
+"""The app's update check and rollback pick (desktop/PhantomGladiator.cs UpdateClient.Check, SelectVersion) against a
+local fake server.
 
 Compiles the app source with tools/test_update_check.cs as the entry point using the .NET Framework's csc,
 serves manifests from 127.0.0.1 and runs it. Needs a folder with the WebView2 assemblies, by default the
@@ -65,6 +66,13 @@ def main():
     pages.update(old=manifest("0.36.0", "old"), new=manifest("0.37.1", "first"), new2=manifest("0.37.1", "second"),
                  slow=manifest("0.38.0", "slow"), slow2=manifest("0.38.0", "slow2"),
                  partial=manifest("0.39.0", "partial", downloads=False), bad="{not json")
+
+    def listed(date, *versions, downloads=True):
+        return json.dumps({"versions": [json.loads(manifest(v, date, downloads=downloads)) for v in versions]})
+
+    pages.update({"stale/versions": listed("stale", "0.37.1"), "full/versions": listed("full", "0.38.0", "0.37.1", "0.37.0"),
+                  "broken/versions": listed("broken", "0.37.1", downloads=False), "nojson/versions": "{not json",
+                  "notlisted/versions": json.dumps({"other": []})})
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     wv = webview2_folder()

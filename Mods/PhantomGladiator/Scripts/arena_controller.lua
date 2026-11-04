@@ -389,6 +389,8 @@ function Arena.new(options)
         local scan=not reengage.scanAt or now-reengage.scanAt>=REENGAGE_SECONDS
         if scan then reengage.scanAt=now end
         for _,unit in ipairs(active) do
+            -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
+            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget) end
             if unit.needsJoin then
                 local verified=true
                 for _,other in ipairs(active) do

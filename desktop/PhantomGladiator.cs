@@ -495,13 +495,45 @@ namespace PhantomGladiator
             if (manifest == null) throw new HostError("offline", "", sources.Select(parts => parts[0]).ToArray());
             var version = (string)manifest["version"];
             if (!Newer(version, build.AppVersion)) return new Dictionary<string, object> { { "latest", true }, { "version", build.AppVersion } };
+            return Describe(lang);
+        }
+
+        // Going back to an older version. release/versions.json, beside latest.json, lists every version a player can
+        // go back to with the fields latest.json has; once one is picked, the download, the SHA-256 check and the
+        // in-place install are the same as for an update. Its source that lists the version wins: a CDN's stale copy
+        // may not have the newest entries.
+        public Dictionary<string, object> SelectVersion(string version, string lang)
+        {
+            manifest = null;
+            downloaded = null;
+            var sources = build.Manifests.Select(entry => entry.Split(new[] { '|' }, 2)).ToList();
+            var fetching = sources.Select(parts => Task.Run(() => FetchListed(parts[1].Replace("latest.json", "versions.json"), version))).ToArray();
+            foreach (var task in fetching)
+            {
+                var found = task.Result;
+                if (found != null && manifest == null) manifest = found;
+            }
+            if (manifest == null) throw new HostError("offline", "", sources.Select(parts => parts[0]).ToArray());
+            if (!Newer(build.AppVersion, version))
+            {
+                manifest = null;
+                throw new HostError("notOlder", "只能回退到比当前旧的版本。");
+            }
+            var described = Describe(lang);
+            described["rollback"] = true;
+            return described;
+        }
+
+        // What the update dialog shows for the version in manifest.
+        Dictionary<string, object> Describe(string lang)
+        {
             var lines = new List<object>();
             foreach (Dictionary<string, object> d in (System.Collections.ArrayList)manifest["downloads"])
                 lines.Add(new Dictionary<string, object> { { "id", d["id"] }, { "ms", Latency((string)d["url"]) } });
             object notes = new string[0];
             var all = manifest.ContainsKey("notes") ? manifest["notes"] as Dictionary<string, object> : null;
             if (all != null) notes = all.ContainsKey(lang) ? all[lang] : (all.ContainsKey("en") ? all["en"] : notes);
-            return new Dictionary<string, object> { { "latest", false }, { "version", version }, { "date", manifest["date"] }, { "size", manifest["size"] }, { "notes", notes }, { "lines", lines } };
+            return new Dictionary<string, object> { { "latest", false }, { "version", manifest["version"] }, { "date", manifest.ContainsKey("date") ? manifest["date"] : "" }, { "size", manifest["size"] }, { "notes", notes }, { "lines", lines } };
         }
 
         // A manifest an update can be installed from (version, size, SHA-256 and download lines), or null.
@@ -510,11 +542,28 @@ namespace PhantomGladiator
             try
             {
                 var found = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Get(url, 6000));
-                if (found == null || !(found.ContainsKey("version") && found["version"] is string) || !(found.ContainsKey("sha256") && found["sha256"] is string)
-                    || !found.ContainsKey("size") || !(found.ContainsKey("downloads") && found["downloads"] is System.Collections.ArrayList)) return null;
-                return found;
+                return Installable(found) ? found : null;
             }
             catch (Exception) { return null; }
+        }
+
+        // The entry for one version in a versions.json, or null.
+        static Dictionary<string, object> FetchListed(string url, string version)
+        {
+            try
+            {
+                var list = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Get(url, 6000));
+                var versions = list != null && list.ContainsKey("versions") ? list["versions"] as System.Collections.ArrayList : null;
+                if (versions == null) return null;
+                return versions.OfType<Dictionary<string, object>>().FirstOrDefault(found => Installable(found) && (string)found["version"] == version);
+            }
+            catch (Exception) { return null; }
+        }
+
+        static bool Installable(Dictionary<string, object> found)
+        {
+            return found != null && found.ContainsKey("version") && found["version"] is string && found.ContainsKey("sha256") && found["sha256"] is string
+                && found.ContainsKey("size") && found.ContainsKey("downloads") && found["downloads"] is System.Collections.ArrayList;
         }
 
         static object Latency(string url)
@@ -838,6 +887,10 @@ namespace PhantomGladiator
                 case "checkUpdate":
                     if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
                     return await Task.Run(() => updates.Check(lang));
+                case "selectVersion":
+                    if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
+                    var wanted = p.ContainsKey("version") ? p["version"] as string : null;
+                    return await Task.Run(() => updates.SelectVersion(wanted, lang));
                 case "downloadUpdate":
                 {
                     var line = p.ContainsKey("line") ? p["line"] as string : "";

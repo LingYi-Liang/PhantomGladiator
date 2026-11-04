@@ -1,7 +1,10 @@
-"""Writes release/latest.json for a new version in the layout of the current one. Notes and date are the first
-entry of panel/prototype/changelog.js (the app's release history, written by changelog.py), so the update dialog
-and the history say the same thing. Downloads point at the GitHub release asset, directly and through the two
-mirrors reachable from mainland China.
+"""Writes release/latest.json for a new version in the layout of the current one, and adds the version to the top of
+release/versions.json, the list the app's rollback buttons read. Notes and date are the first entry of
+panel/prototype/changelog.js (the app's release history, written by changelog.py), so the update dialog and the
+history say the same thing. Downloads point at the GitHub release asset, directly and through the two mirrors
+reachable from mainland China.
+
+A release found to be bad comes off versions.json by hand, so nobody goes back to it.
 
 usage: python -I tools/release/manifest.py <repo> <version> <zip sha256> <zip size in bytes>
 """
@@ -32,6 +35,11 @@ def main():
            "downloads": [{"id": k, "url": prefix + asset} for k, prefix in MIRRORS.items()]}
     text = json.dumps(new, ensure_ascii=False, indent=2) + ("\n" if old_text.endswith("\n") else "")
     path.write_text(text, encoding="utf-8", newline="\n")
+    listed = root / "release/versions.json"
+    versions = json.loads(listed.read_text(encoding="utf-8"))
+    assert all(v["version"] != version for v in versions["versions"]), f"versions.json already lists {version}"
+    versions["versions"].insert(0, {k: new[k] for k in ("version", "date", "size", "sha256", "downloads")})
+    listed.write_text(json.dumps(versions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     print("written", version, entry["date"])
 
 

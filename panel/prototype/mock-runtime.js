@@ -436,6 +436,22 @@ const MockRuntime = (() => {
         ],
       };
     },
+    async selectVersion(version) {
+      await wait(600);
+      if (s.updateScenario === "offline") throw Object.assign(fail("offline"), { tried: ["github", "cdn", "mirror"] });
+      return {
+        latest: false,
+        rollback: true,
+        version,
+        date: (window.PG_CHANGELOG || []).find(r => r.version === version)?.date || "",
+        size: 20822497,
+        lines: [
+          { id: "cn1", ms: 42 },
+          { id: "cn2", ms: 128 },
+          { id: "github", ms: null },
+        ],
+      };
+    },
     download(lineId, size, onProgress) {
       const rate = lineId === "github" ? 420000 : lineId === "cn2" ? 1900000 : 3600000;
       let done = 0, timer = null, cancelled = false;

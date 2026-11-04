@@ -988,7 +988,7 @@ details.advanced[open] > summary { border-bottom: 1px solid var(--border); }
 .dialog {
   pointer-events: auto;
   width: min(560px, 100%);
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - max(24px, 11vh) - 24px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1116,6 +1116,7 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .release-list { max-height: 46vh; overflow: auto; padding: 2px 2px 4px; }
 .release-head { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: var(--text); }
 .release-head .muted { font-size: 12px; }
+.release-rollback { margin-left: auto; flex: none; }
 .release-item .notes { margin: 6px 0 8px; }
 .line-list { display: flex; flex-direction: column; gap: 6px; }
 .line { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border-strong); background: var(--surface); text-align: left; transition: all var(--t-fast); }

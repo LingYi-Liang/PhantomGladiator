@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.38.4-boss-stages"
+local BUILD = "v0.39.0-on-ground"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -139,6 +139,8 @@ local immortalTeams
 local clockHUD
 local combatLock
 local playerAim
+local fightWatch
+local onGround
 local arenaExecutions
 local executionCamera
 local mounts
@@ -553,6 +555,8 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         local leveled,levelError=pcall(function()spawnLevel:prepare(pawn,objectName(pawn),leader)end)
         if not leveled then log('[SpawnLevel] 出生前失败: '..tostring(levelError)) end
     end
+    -- A summon starts on the ground, not over it (on_ground.lua).
+    local placedOnGround=route=='npc' and onGround and onGround:place(pawn,t,world) or nil
     -- A rider's script puts its mount where the rider's spawner stands, and a few bosses aim a move at their spawner;
     -- a summon gets one where it is summoned (mounts.lua).
     if route=='npc' and mounts then
@@ -576,6 +580,7 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     end)
     local audited=spawnAudit:record("finish_spawn_return",objectName(pawn),"call="..tostring(ok2).." valid="..tostring(safeValid(pawn)))
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
+    if onGround then onGround:settle(pawn,placedOnGround) end
     return safeValid(pawn),nil
 end
 
@@ -1339,6 +1344,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
     holdTarget=HoldSensedTarget,
+    unstick=function(actor,target)return onGround~=nil and onGround:free(actor,target)end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
     spawnClass=SpawnViaAILib,
@@ -1543,29 +1549,43 @@ mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isD
     destroy=function(actor)checked(actor);actor:K2_DestroyActor()end}) or nil
 -- The ground under a spot: a visibility trace from 3 m over the summon height down 30 m; nil when it hits nothing.
 -- The first few misses are logged with what the trace returned.
-local groundMisses=0
-local function GroundZ(world,x,y,z)
+local groundMisses,groundRead=0,false
+-- up: how far over z the trace starts (a unit's own body would stop one started over it).
+local function GroundZ(world,x,y,z,up)
     local lib=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
     if not safeValid(lib) or not safeValid(world) then return nil end
     local out,none={},{R=0,G=0,B=0,A=0}
-    local ok,hit=pcall(function()return lib:LineTraceSingle(world,{X=x,Y=y,Z=z+300},{X=x,Y=y,Z=z-3000},0,false,{},0,out,true,none,none,0)end)
-    -- A hit came back with every OutHit field present, but ImpactPoint did not read as a table; read it directly.
-    local found
-    if ok then
-        local okZ,z=pcall(function()return out.OutHit.ImpactPoint.Z end)
-        if not okZ or type(z)~='number' then okZ,z=pcall(function()return out.OutHit.Location.Z end) end
-        found=okZ and type(z)=='number' and z or nil
+    local start,finish=z+(up or 300),z-3000
+    local ok,hit=pcall(function()return lib:LineTraceSingle(world,{X=x,Y=y,Z=start},{X=x,Y=y,Z=finish},0,false,{},0,out,true,none,none,0)end)
+    -- The table passed as OutHit comes back with the hit's own fields. The trace goes straight down, so its Distance
+    -- gives the height when the point does not read.
+    local found,how
+    if ok and hit==true and out.bStartPenetrating~=true then
+        local okZ,impact=pcall(function()return out.ImpactPoint.Z end)
+        if okZ and type(impact)=='number' then found,how=impact,'ImpactPoint'
+        elseif type(out.Distance)=='number' then found,how=start-out.Distance,'Distance'
+        elseif type(out.Time)=='number' then found,how=start+(finish-start)*out.Time,'Time' end
+        if found and (found>start+1 or found<finish-1) then found=nil end
     end
-    if ok and found and hit==true then return found end
+    if found then
+        if not groundRead then
+            groundRead=true
+            log(string.format('[Ground] 地面检测读回 来源=%s Z=%.1f 起点Z=%.1f 距离=%s',how,found,start,tostring(out.Distance)))
+        end
+        return found
+    end
+    if ok and hit~=true then return nil end
     groundMisses=groundMisses+1
     if groundMisses<=3 then
         local keys={}
         for key in pairs(type(out)=='table' and out or {})do keys[#keys+1]=tostring(key) end
-        log(string.format('[BossStage] 地面检测没结果：调用=%s 返回=%s 输出字段=[%s] 命中点Z=%s%s',tostring(ok),tostring(hit),table.concat(keys,','),
+        log(string.format('[Ground] 地面检测没结果：调用=%s 返回=%s 输出字段=[%s] 命中点Z=%s%s',tostring(ok),tostring(hit),table.concat(keys,','),
             tostring(found),ok and '' or ' 错误='..tostring(hit)))
     end
     return nil
 end
+onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,label=objectName,player=GetPlayerPawn,world=function()return UEHelpers.GetWorld()end,
+    name=function(text)return FName(text)end})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
     findClass=function(path)return StaticFindObject(path)end,loadClass=function(path)return LoadAsset(path)end,
@@ -1633,6 +1653,25 @@ combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 -- 招式锁玩家（二）: while a fight runs, a skill of a blue or red unit that asks GameplayStatics for the player gets the
 -- unit's opponent instead; executions keep the player (player_aim.lua).
+fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=GetLocation,hp=GetHP,
+    camera=function()
+        local lib,world=GetGameplayStatics(),UEHelpers.GetWorld()
+        if not safeValid(lib) or not safeValid(world) then return nil end
+        local ok,manager=pcall(function()return lib:GetPlayerCameraManager(world,0)end)
+        if not ok or not safeValid(manager) then return nil end
+        local okLocation,location=pcall(function()return manager:GetCameraLocation()end)
+        return okLocation and location or nil
+    end,
+    read=function(actor)
+        local ai=GetAIComp(actor)
+        local state
+        if ai then pcall(function()state=FNameToString(ai.CurrentStateTag.TagName)end) end
+        return {mode=(onGround:mode(actor)),hidden=UEObserve.field(actor,'bHidden')==true,state=state,blocked=onGround:blocked(actor)}
+    end,
+    scripts=function(actor)
+        local ai=GetAIComp(actor)
+        return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
+    end})
 playerAim=PlayerAim.new({log=log,members=ArenaMembers,statics=GetGameplayStatics,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
     paused=function()return arenaExecutions and arenaExecutions:status().active==true or false end,
@@ -1677,6 +1716,7 @@ local function supportSteps(self)
     step('grabs',function()arenaGrabs:sync(Config.EnableNPCGrabs and tickMembers or {},tickStatus.battle_active)end)
     step('combatLock',function()combatLock:tick()end)
     step('playerAim',function()playerAim:tick()end)
+    step('fightWatch',function()fightWatch:tick()end)
     step('reinforce',function()arena:tickReinforcements()end)
     if arenaExecutions then step('executions',function()arenaExecutions:tick()end) end
     step('executionCamera',function()executionCamera:sweep()end)

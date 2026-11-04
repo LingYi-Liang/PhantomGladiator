@@ -618,6 +618,19 @@ do
     assert(r.arena:stop().ok and not r.arena:reengage(tostring(b1)),'no fight, no send-back')
 end
 
+-- A unit the game's fall safety froze in the air is looked at once a second, in or out of combat, with its target.
+do
+    local t,looked=300,{}
+    local r=fixture({now=function()return t end,inCombat=function()return true,'AI.State.Combat' end,engage=function()return true,'AI.State.Combat' end,
+        unstick=function(actor,target)looked[#looked+1]={actor,target};return false end})
+    assert(r.arena:spawn(nil,'blue',1).ok and r.arena:spawn(nil,'red',1).ok and r.arena:start().ok)
+    r.arena:tickReinforcements()
+    assert(#looked==2 and looked[1][1]==r.actors[1] and looked[1][2]==r.actors[2] and looked[2][1]==r.actors[2] and looked[2][2]==r.actors[1],'each with its opponent')
+    t=300.5;r.arena:tickReinforcements();assert(#looked==2,'once a second')
+    t=301;r.arena:tickReinforcements();assert(#looked==4)
+    assert(r.arena:stop().ok)
+end
+
 -- Battle clock in game seconds: runs once both sides stand after the start, stops when one side has
 -- nobody alive or unreadable, starts over when the beaten side gets new units, and stop clears it.
 local now=100

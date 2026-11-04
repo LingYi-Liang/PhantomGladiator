@@ -1,0 +1,84 @@
+{
+  "versions": [
+    {
+      "version": "0.38.4",
+      "date": "2026-11-03T21:12:35+08:00",
+      "size": 20842073,
+      "sha256": "d2eafebb2ee0d1c333f0941ac62aeac46afa54d3855237dfbc33a6391f8b6b16",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+        }
+      ]
+    },
+    {
+      "version": "0.38.3",
+      "date": "2026-11-03T17:51:39+08:00",
+      "size": 20824180,
+      "sha256": "cc80f95f6681b23bf8f0d7f9b70f2a8cca5446f879a3729f0b44cd6a6d9e0425",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.3/PhantomGladiator-0.38.3-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.3/PhantomGladiator-0.38.3-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.3/PhantomGladiator-0.38.3-win64.zip"
+        }
+      ]
+    },
+    {
+      "version": "0.38.2",
+      "date": "2026-11-03T14:36:33+08:00",
+      "size": 20822497,
+      "sha256": "d238ab8d31191c9a0b8738f2e7f061fa89fd0d61bf4c0f1fcd1b19808d99cee1",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.2/PhantomGladiator-0.38.2-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.2/PhantomGladiator-0.38.2-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.2/PhantomGladiator-0.38.2-win64.zip"
+        }
+      ]
+    },
+    {
+      "version": "0.37.6",
+      "date": "2026-11-02T16:51:37+08:00",
+      "size": 20745398,
+      "sha256": "ad09f154f0d668d68d838b3b7f809cc222a1ff9fb40798a045bbf9bc47e508c2",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.6/PhantomGladiator-0.37.6-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.6/PhantomGladiator-0.37.6-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.6/PhantomGladiator-0.37.6-win64.zip"
+        }
+      ]
+    }
+  ]
+}

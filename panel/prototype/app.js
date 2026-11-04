@@ -329,7 +329,7 @@
     $("#btn-theme").innerHTML = icon(toDark ? "moon" : "sun");
     $("#btn-theme").setAttribute("aria-label", t(toDark ? "header.themeDark" : "header.themeLight"));
     $("#btn-theme").title = t(toDark ? "header.themeDark" : "header.themeLight");
-    $("#update-dot").hidden = !(ui.update.info && !ui.update.info.latest && ui.update.phase !== "done");
+    $("#update-dot").hidden = !(ui.update.info && !ui.update.info.latest && !ui.update.info.rollback && ui.update.phase !== "done");
     const failures = RT.jobs.filter(j => j.status === "failed" || j.status === "uncertain").length - ui.seenFailures;
     $("#history-badge").hidden = failures <= 0 || ui.historyOpen;
     $("#history-badge").textContent = failures;
@@ -1582,18 +1582,25 @@
     for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
     return 0;
   };
+  // The oldest version a player can go back to: from here on the app installs an update in place and the new exe waits
+  // for the old one (desktop/AppUpdate.cs), so the old copy starts properly and can update forward again later.
+  const ROLLBACK_FROM = "0.37.6";
+  const releaseNotes = r => r?.notes?.[I18N.lang] || r?.notes?.en || r?.notes?.zh || [];
   // Every released version this copy of the app has received (changelog.js), newest first, in the app's language.
   function releaseHistoryHTML() {
     const list = (window.PG_CHANGELOG || []).filter(r => compareVersions(r.version, S.appVersion) <= 0);
     if (!list.length) return "";
     const items = list.map(r => {
-      const notes = r.notes?.[I18N.lang] || r.notes?.en || r.notes?.zh || [];
+      const notes = releaseNotes(r);
       const current = compareVersions(r.version, S.appVersion) === 0 ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
-      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}</div><ul class="notes">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`;
+      const back = compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
+        ? `<button class="btn btn-secondary btn-sm release-rollback" type="button" data-action="update-rollback" data-value="${esc(r.version)}">${esc(t("update.rollback"))}</button>` : "";
+      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}${back}</div><ul class="notes">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`;
     }).join("");
     return `<details class="release-history"><summary>${icon("history", "icon-sm")}<span>${esc(t("update.history"))}</span><span class="muted">${esc(t("update.history.count", { n: list.length }))}</span>${icon("chevron-down", "icon-sm release-chevron")}</summary><div class="release-list">${items}</div></details>`;
   }
-  function lineFor(info, id) { return id === "auto" ? [...info.lines].filter(l => l.ms !== null).sort((a, b) => a.ms - b.ms)[0] : info.lines.find(l => l.id === id); }
+  // When no line answers the speed test the first one is still tried: the short test can time out where a download works.
+  function lineFor(info, id) { return id === "auto" ? [...info.lines].filter(l => l.ms !== null).sort((a, b) => a.ms - b.ms)[0] || info.lines[0] : info.lines.find(l => l.id === id); }
   function updateHTML() {
     const u = ui.update, info = u.info;
     const head = title => `<div class="dialog-head"><h2 id="dlg-title">${esc(title)}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>`;
@@ -1614,6 +1621,17 @@
           const sub = id === "auto" ? t("update.line.autoDesc", { line: t("update.line." + best.id) }) : t("update.line." + id + ".desc");
           return `<button class="line" type="button" role="radio" aria-checked="${u.line === id}" data-action="update-line" data-value="${id}" ${l && l.ms === null ? "disabled" : ""}><span class="radio"></span><span class="line-main"><strong>${esc(t("update.line." + id))}</strong><small>${esc(sub)}</small></span>${lat}</button>`;
         }).join("");
+        if (info.rollback) {
+          const notes = releaseNotes((window.PG_CHANGELOG || []).find(r => r.version === info.version));
+          return head(t("update.title")) + `<div class="dialog-body">
+            <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
+            <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t("update.rollback.body"))}</span></div></div>
+            ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+            <div class="section-label">${esc(t("update.line"))}</div>
+            <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>
+          </div>
+          <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="update-check">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t("update.rollback.confirm"))}</button></div>`;
+        }
         return head(t("update.title")) + `<div class="dialog-body">
             <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t("update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
             <div class="section-label">${esc(t("update.notes"))}</div>
@@ -1653,6 +1671,7 @@
   async function checkUpdate({ silent = false } = {}) {
     const u = ui.update;
     if (u.phase === "checking" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "installing") return;
+    if (silent && (u.info?.rollback || dlg?.kind === "update")) return;
     u.phase = "checking";
     if (dlg?.kind === "update") setDialog(updateHTML());
     if (ui.page === "about") renderPage();
@@ -1673,9 +1692,28 @@
     if (ui.page === "about") renderPage();
     renderTopbar();
   }
+  // Asks for the older version's download lines; the dialog then confirms it and goes on like an update.
+  async function rollbackTo(version) {
+    const u = ui.update;
+    if (u.phase === "checking" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "installing") return;
+    u.phase = "checking";
+    setDialog(updateHTML());
+    try {
+      const info = await RT.update.selectVersion(version);
+      u.info = { ...info, rollback: true };
+      u.phase = "available";
+      u.line = "auto";
+    } catch (error) {
+      u.info = null;
+      u.phase = "error";
+      u.error = { tried: error.tried || [] };
+    }
+    if (dlg?.kind === "update") setDialog(updateHTML());
+    renderTopbar();
+  }
   function openUpdate() {
     const u = ui.update;
-    if (["idle", "latest", "error", "done"].includes(u.phase) || !u.info) {
+    if (["idle", "latest", "error", "done"].includes(u.phase) || !u.info || (u.phase === "available" && u.info.rollback)) {
       openDialog("update", "");
       checkUpdate();
     } else openDialog("update", updateHTML());
@@ -2129,6 +2167,7 @@
     },
     "copy-uid": () => copyText("10010098"),
     "update-check": () => checkUpdate(),
+    "update-rollback": el => rollbackTo(el.dataset.value),
     "update-line": el => { ui.update.line = el.dataset.value; setDialog(updateHTML()); $(`.line[data-value="${el.dataset.value}"]`)?.focus(); },
     "update-download": () => downloadUpdate(),
     "update-cancel": () => { ui.update.dl?.cancel(); },

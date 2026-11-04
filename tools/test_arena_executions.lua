@@ -280,6 +280,22 @@ do
     assert(not exec:status().active and h.all():find('结束（播完，目标已倒下）',1,true) and exec:status().kills==0,h.all())
     assert(not h.has('apply GE_Kill_C level=0.0 context=table') and h.all():find('目标已倒下或失效',1,true))
 end
+-- 彭猛's finisher kills whatever his health, so only his lock starts it: broken or marked executable at half health
+-- he fights on, and the same marks do nothing on his way down to the lock.
+do
+    local h=harness()
+    h.found['/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/Abilities/CA/GA_Hun_BEx_Common_PengMeng_V2.GA_Hun_BEx_Common_PengMeng_V2_C']=PENG_EXEC
+    h.found['/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/Abilities/CA/GA_Hun_BEd_Common_PengMeng.GA_Hun_BEd_Common_PengMeng_C']=PENG_EXECUTED
+    local boss=h.boss('BP_Monster_PengMeng_Axe',9000,1,{pairs={},locks={class('GE_PengMeng_LockHealth_C')},rank='NormalBoss'})
+    local enemy=h.enemy({X=0,Y=200,Z=0})
+    h.members={{actor=boss,team='blue'},{actor=enemy,team='red'}}
+    h.tags[boss]={['CharacterState.Stand.Break']=1,['CharacterState.CanWeakExecute.Weak']=1,['CharacterState.CanWeakExecute.LowHealth']=1}
+    local exec=h.new()
+    h.run(exec,3)
+    assert(exec:status().started==0,h.all())
+    h.attrs[boss].Health=1;h.run(exec,1.5)
+    assert(exec:status().started==1 and h.all():find('开始（卡在锁血线）',1,true),h.all())
+end
 
 -- Any unit with a pair: executed when the game marks it executable (CharacterState.CanWeakExecute.*), by the nearest
 -- humanoid enemy within 6 m; an animal is passed over. A minion still standing after it is ended, as the player's
@@ -553,6 +569,26 @@ do
     assert(h.all():find('小怪处决完还站着，判死（Elite）：去锁血[GE_LockHealth_C=true] 读回底线=0.0；GE_Kill=true',1,true),h.all())
     h.run(exec,5)
     assert(exec:status().started==1 and h.attrs[phase].Health==150 and h.attrs[stuck].Health==1,'the phase floor and the pairless one are left alone')
+    -- Still on its death lock after 20 s with nothing to end it: the lock comes off and GE_Kill ends it. The phase floor stays.
+    h.run(exec,20)
+    assert(h.all():find('卡在锁血线 20 秒，没有处决动作，按倒下收尾（GreatBoss）BP_Monster_LengTu',1,true),h.all())
+    assert(h.attrs[phase].Health==150,'a floor over 1% of its health is a phase')
+    local kills=exec:status().kills
+    h.run(exec,25);assert(exec:status().kills==kills,'once')
+end
+-- Out of reach by design, a minion, or off the lock again: not ended.
+do
+    local h=harness()
+    local reach=h.boss('BP_Monster_LengTu',1,1,{locks={},pairs={},rank='UltimateBoss'})
+    local minion=h.boss('BP_Monster_Vessel_Child',1,1,{locks={},pairs={},rank='Standard'})
+    local back=h.boss('BP_Monster_LeiDang',1,1,{locks={},pairs={},rank='GreatBoss'})
+    for _,b in ipairs({reach,minion,back}) do h.attrs[b].Health_Max=300 end
+    h.members={{actor=reach,team='red',untargetable=true},{actor=minion,team='red'},{actor=back,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    local exec=h.new()
+    h.run(exec,10);h.attrs[back].Health=100;h.run(exec,5);h.attrs[back].Health=1;h.run(exec,15)
+    assert(exec:status().kills==0 and not h.all():find('按倒下收尾',1,true),h.all())
+    h.run(exec,10)
+    assert(h.all():find('按倒下收尾（GreatBoss）BP_Monster_LeiDang',1,true) and exec:status().kills==1,h.all())
 end
 
 -- Off, or no fight running: nothing.

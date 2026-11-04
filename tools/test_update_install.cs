@@ -1,6 +1,6 @@
 // Entry point for tools/test_update_install.py, compiled together with desktop/PhantomGladiator.cs and
-// desktop/AppUpdate.cs: the real UpdateClient checks a local fake server, downloads and verifies the new package
-// and installs it over the folder this exe runs from. The package's exe is this same test exe: started with
+// desktop/AppUpdate.cs: the real UpdateClient checks a local fake server (or, with PG_TEST_ROLLBACK, picks that older
+// version), downloads and verifies the package and installs it over the folder this exe runs from. The package's exe is this same test exe: started with
 // --wait-for, it waits for the old process, cleans up the way the app does at start, and writes a report to
 // PG_TEST_REPORT. C# 5, like the app.
 using System;
@@ -39,7 +39,8 @@ namespace PhantomGladiator
             try
             {
                 var client = new UpdateClient(BuildInfo.Load());
-                var found = client.Check("zh");
+                var back = Environment.GetEnvironmentVariable("PG_TEST_ROLLBACK");
+                var found = string.IsNullOrEmpty(back) ? client.Check("zh") : client.SelectVersion(back, "zh");
                 if ((bool)found["latest"]) throw new Exception("no newer version found");
                 client.Download("github", (done, size, speed) => { });
                 client.Verify();

@@ -78,6 +78,10 @@ local REACH=600             -- cm: the executor is the nearest enemy within this
 local LOCK_REACH=2000       -- a locked boss waits for no one else, so its executor may come from further away
 local TAIL=0.3              -- the run ends this long after the executor's clip
 local AGAIN=15              -- seconds before a boss that survived an execution can be executed again
+-- 雷当, 献祭之蛇's second phase and 冷荼 lock at the end of their fight with no pair to be executed by: in their own fight
+-- a level script ends them, here nothing would and the fight could not finish. After this long on the death lock they are
+-- ended the way that script does it (SpawnerToDieNS: the lock off, GE_Kill), unless they are out of reach by design.
+local STUCK_SECONDS=20
 local GAP=0.5               -- seconds between the presses the mod makes in a QTE execution
 local PRESSES=30            -- presses before it stops waiting for the executed side's finale and plays it itself
 local THRESHOLDS={'FirstThreshold','SecondThreshold','ThirdThreshold'}
@@ -252,8 +256,9 @@ function Exec.new(options)
                 end
             end
         end
-        -- A pair the boss's skill starts on its lock is its finisher: that lock is its only trigger.
-        info.lockOnly=known~=nil and known.locks~=nil
+        -- A pair taken from the boss's own skill is its finisher (彭猛's last segment kills whatever its health): the
+        -- skill starts it on the lock, so that lock is its only trigger, not a break or a low-health mark.
+        info.lockOnly=known~=nil
         return info
     end
     -- Sitting on a health lock: a Health_Min floor, the unit's known lock or one low enough to be a death lock.
@@ -857,12 +862,27 @@ function Exec.new(options)
                         short(unit.pair.execution),short(unit.pair.executed),unit.pair.source)) end
                 end
                 local immortal=options.isImmortal and options.isImmortal(member.team)
-                if unit.state~='ready' and unit.state~='done' and not unit.stuck and not immortal then
+                if unit.state~='ready' and unit.state~='done' and not immortal then
                     local hp=read(target,'Health')
                     if hp and hp>0 and onLock(target,unit,hp) then
-                        unit.stuck=true
-                        say(string.format('卡在锁血线，但它没有能用的处决动作，不处决（也不按倒下算）：%s HP=%s 底线=%s',className(target),fmt(hp),
-                            fmt(read(target,'Health_Min'))))
+                        if not unit.stuck then
+                            unit.stuck=t
+                            say(string.format('卡在锁血线，但它没有能用的处决动作，不处决（也不按倒下算）：%s HP=%s 底线=%s',className(target),fmt(hp),
+                                fmt(read(target,'Health_Min'))))
+                        end
+                        local floor=read(target,'Health_Min') or 0
+                        if unit.boss and not member.untargetable and t-unit.stuck>=STUCK_SECONDS and floor<=DEATH_LOCK*(read(target,'Health_Max') or 0)+1 then
+                            local asc,removed,after=unlock(target,unit)
+                            local ge=object(GE_KILL)
+                            local applied,err=false,'没有 GE_Kill'
+                            if ge then applied,err=call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{}) end
+                            if applied then self.kills=self.kills+1 end
+                            unit.state='done'
+                            say(string.format('卡在锁血线 %d 秒，没有处决动作，按倒下收尾（%s）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',STUCK_SECONDS,unit.rank,className(target),
+                                table.concat(removed,' '),fmt(after),tostring(applied),applied and '' or '('..tostring(err)..')',fmt(read(target,'Health'))))
+                        end
+                    else
+                        unit.stuck=nil
                     end
                 end
                 if unit.state=='ready' and not (unit.again and t<unit.again) and not immortal then

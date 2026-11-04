@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -27,7 +28,7 @@ DEPS = {
     # UE4SS experimental build 3.0.1-1185 (dff435dd), the one GameConfig is verified with. UE4SS replaced that
     # experimental release with later builds (1195 at the time of writing), so the files are taken unchanged from this
     # app's v0.37.5 package, which unpacked the original zip (SHA-256 67b81fca…0d31) into app/payload/ue4ss.
-    "ue4ss": ("PhantomGladiator-0.37.5-win64.zip", "a4c5a511444830c1ae5fb0bf5631e730433ef29ab8ba0647e1c4e3214dddae3e",
+    "ue4ss": ("PhantomGladiator-0.37.5-win64.zip", "ec6e57bca09ffad7fdce500ab0a8179c7745465a05567781b186ff0387ebfffa",
               "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.5/PhantomGladiator-0.37.5-win64.zip"),
 }
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
@@ -215,6 +216,9 @@ def main() -> None:
         if not src.is_file():
             sys.exit(f"seed: {src} missing")
         shutil.copy2(src, seed / f)
+    # The inventory says the day it describes, not the moment it was exported.
+    report = seed / "inventory-report.json"
+    report.write_bytes(re.sub(rb'"created_utc": "(\d{4}-\d\d-\d\d)T[^"]*"', rb'"created_utc": "\1T00:00:00+00:00"', report.read_bytes()))
 
     # Backend and UI. The packaged page loads the real runtime instead of the prototype's mock.
     (app / "backend").mkdir()
@@ -257,10 +261,15 @@ def main() -> None:
     # The zip plus the manifest entry a release needs.
     archive = args.out / f"{name}-win64.zip"
     archive.unlink(missing_ok=True)
+    # Every entry carries the package's build time, not when each source file was last edited.
+    built = time.localtime()[:6]
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for path in sorted(out.rglob("*")):
             if path.is_file():
-                z.write(path, Path(name) / path.relative_to(out))
+                entry = zipfile.ZipInfo.from_file(path, Path(name) / path.relative_to(out))
+                entry.date_time = built
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                z.writestr(entry, path.read_bytes(), compresslevel=9)
     digest = sha256(archive)
     (args.out / f"{name}-win64.zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
     url = f"https://github.com/{REPO}/releases/download/v{args.version}/{archive.name}"
