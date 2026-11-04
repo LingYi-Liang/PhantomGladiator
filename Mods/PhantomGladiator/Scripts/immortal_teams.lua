@@ -75,10 +75,17 @@ function Immortal.new(options)
     local function restoreOrphans()
         local text=readFile(journal)
         if type(text)~='string' or text=='' then return end
-        local rows,count={},0
-        for key,original,target in text:gmatch('\n(%S+)\t([%-%d%.]+)\t([%-%d%.]+)')do
-            rows[key]={original=tonumber(original),target=tonumber(target)};count=count+1
+        local rows,count,rejected={},0,0
+        for line in text:gmatch('[^\r\n]+')do
+            if line~=JOURNAL then
+                local key,original,target=line:match('^(%S+)\t(%S+)\t(%S+)$')
+                original,target=tonumber(original),tonumber(target)
+                if key and Stats.finite(original) and Stats.finite(target) then
+                    rows[key]={original=original,target=target};count=count+1
+                else rejected=rejected+1 end
+            end
         end
+        if rejected>0 then say('读取恢复记录 跳过非法行='..rejected..' 有效记录读回='..count) end
         if count>0 then
             local restored=0
             for _,actor in ipairs(options.collect and options.collect() or {})do
@@ -192,6 +199,9 @@ function Immortal.new(options)
         end
         for key,record in pairs(locked)do
             if not seen[key] then locked[key]=nil;tries[key]=nil;changed=true;say('单位已离场，不再跟踪 unit='..record.name) end
+        end
+        for key in pairs(tries)do
+            if not seen[key] then tries[key]=nil;again('单位已离场，清除失败重试次数 读回=不在当前名单') end
         end
         if changed then saveJournal() end
     end

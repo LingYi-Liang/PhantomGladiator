@@ -13,6 +13,7 @@
 --   task would have given it: the blackboard's assign keys and the event CustomState carrying its tree. Other trees that use the
 --   same two task classes are left alone: they keep stopping or going on as the game set them.
 local U=require('ue_observe')
+local Retry=require('lookup_retry')
 local Combos={}
 local HEADER='BossCombosV1'
 local ASSIGN_CLASS='BTTask_AssignBehaviorTreesToGroupMember_C'
@@ -54,10 +55,6 @@ local function className(object)
     local ok,name=pcall(function()return object:GetClass():GetFName():ToString()end)
     return ok and type(name)=='string' and name or '?'
 end
-local function find(path)
-    local ok,object=pcall(StaticFindObject,path)
-    return ok and U.valid(object) and object or nil
-end
 
 function Combos.new(options)
     local log=options.log or function()end
@@ -65,6 +62,8 @@ function Combos.new(options)
     local links,members,hooks={},{},{}   -- pair key -> link; unit address -> {link,partner}; path -> hook ids
     local seenGate,lines,dispatched={},0,{}
     local function say(text)log('[Combos] '..text)end
+    local retry=Retry.new({clock=options.clock,log=say})
+    local function find(path)return retry:find(path)end
     local function sayOften(text)
         if lines<LINES then lines=lines+1;say(text) end
     end
@@ -259,30 +258,31 @@ function Combos.new(options)
         end
     end
 
-    -- A blueprint that is not loaded yet comes in with the unit's AI, so this runs again on every tick of a linked pair.
-    local missing,refused={},{}
+    local function needed(name)
+        return self.enabled and next(links)~=nil and not hooks[Combos.paths[name]]
+    end
+    local function register(name)
+        if not needed(name) then return end
+        local path=Combos.paths[name]
+        if not retry:ready(path) then return end
+        local okFind,fn=pcall(StaticFindObject,path)
+        retry:result(path,okFind and U.valid(fn))
+        if not okFind or not U.valid(fn) then return end
+        local handler=name=='assign' and self.onAssign or self.onGate
+        local ok,pre,post=pcall(RegisterHook,path,handler,function()end)
+        if ok and type(pre)=='number' and type(post)=='number' then
+            hooks[path]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post)
+        else retry:result(path..':register',false,tostring(pre)) end
+    end
     local function installHooks()
-        for name,path in pairs(Combos.paths)do
-            if not hooks[path] and not refused[path] then
-                if find(path) then
-                    missing[name]=nil
-                    local handler=name=='assign' and self.onAssign or self.onGate
-                    local ok,pre,post=pcall(RegisterHook,path,handler,function()end)
-                    if ok and type(pre)=='number' then hooks[path]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre)
-                    else refused[path]=true;say('挂钩注册失败 '..name..'：'..tostring(pre)) end
-                elseif not missing[name] then
-                    missing[name]=true
-                    say('还没找到函数，稍后再试 '..name)
-                end
-            end
-        end
+        for name in pairs(Combos.paths)do register(name) end
     end
     local function removeHooks()
         for path,hook in pairs(hooks)do pcall(UnregisterHook,path,hook.pre,hook.post);hooks[path]=nil end
-        missing,refused={},{}
     end
 
     local function link(pair,team,a,b,key)
+        retry:reset()
         links[key]={key=key,pair=pair,a=a,b=b,partnerSet={},trees={}}
         seenGate={}
         members[U.key(a)]={link=links[key],partner=b};members[U.key(b)]={link=links[key],partner=a}

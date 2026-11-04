@@ -13,7 +13,7 @@ local function object(name,fields)
 end
 FName=function(text)return text end
 local function harness()
-    local h={lines={},hooks={},members={},fighting=true,events={},board={},tasks={},waits={}}
+    local h={lines={},hooks={},members={},fighting=true,events={},board={},tasks={},waits={},now=0}
     h.aiLib=object('SGameAIFunctionLibrary',{
         SetValueAsVectorByTag=function(_,board,tag,value)h.board[tag.TagName]=value end,
         SetValueAsRotatorByTag=function(_,board,tag,value)h.board[tag.TagName]=value end,
@@ -47,7 +47,7 @@ local function harness()
         return actor
     end
     function h.new(enabled)
-        local c=Combos.new({log=function(s)h.lines[#h.lines+1]=s end,members=function()return h.members end,fighting=function()return h.fighting end})
+        local c=Combos.new({clock=function()return h.now end,log=function(s)h.lines[#h.lines+1]=s end,members=function()return h.members end,fighting=function()return h.fighting end})
         c.enabled=enabled
         return c
     end
@@ -64,10 +64,10 @@ test('a hook whose blueprint is not loaded yet comes in on a later tick, and is 
     h.unit('BP_Monster_TieGui_C','blue');h.unit('BP_Monster_Yuu_C','blue')
     c:tick();c:tick()
     assert(h.hooks[Combos.paths.gateYuu]==nil and h.hooks[Combos.paths.gateTieGui]~=nil)
-    local _,said=h.all():gsub('还没找到函数，稍后再试 gateYuu','')
+    local _,said=h.all():gsub('读回=未找到，退避重试','')
     assert(said==1,h.all())
     StaticFindObject=realFind
-    c:tick()
+    h.now=1;c:tick()
     assert(h.hooks[Combos.paths.gateYuu]~=nil,h.all())
 end)
 
@@ -217,7 +217,8 @@ test('switch off or fight over: hooks go; on again links anew',function()
     c:tick();assert(next(h.hooks)~=nil)
     assert(c:set(false).ok)
     assert(next(h.hooks)==nil and h.all():find('解除连携 铁鬼+玉妖（开关已关）',1,true),h.all())
-    c:set(true);assert(next(h.hooks)~=nil and c:status().links==2)
+    c:set(true);assert(c:status().links==2)
+    h.now=1;c:tick();assert(next(h.hooks)~=nil,'re-enabled hooks return on the next due retry')
     h.fighting=false;c:tick()
     assert(next(h.hooks)==nil and h.all():find('解除连携 铁鬼+玉妖（战斗结束或单位离场）',1,true))
 end)

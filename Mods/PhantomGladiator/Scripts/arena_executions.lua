@@ -128,7 +128,7 @@ function Exec.new(options)
         health=function(actor)local value=stats:read(actor,'Health');return value and value.current end})
     local self={enabled=options.enabled~=false,started=0,finished=0,failures=0,kills=0,message=''}
     local units={}      -- actor key -> {state='none'|'nopair'|'nodata'|'ready'|'done', pair, locks, timing, since, waited}
-    local humanoid={}   -- actor key -> whether its mesh has the player's core bones (a pelvis)
+    local humanoidLines=0
     local tagRead=nil   -- how the executable tags read back the first time, logged once
     local active=nil
     local finish
@@ -281,12 +281,13 @@ function Exec.new(options)
         end
     end
     local function isHumanoid(actor)
-        local key=U.key(actor)
-        if key and humanoid[key]~=nil then return humanoid[key] end
         local ok,bone=call(U.field(actor,'Mesh'),'GetBoneIndex',name('pelvis'))
         bone=ok and U.unwrap(bone) or nil
         local yes=type(bone)=='number' and bone>=0
-        if key then humanoid[key]=yes end
+        if humanoidLines<6 then
+            humanoidLines=humanoidLines+1
+            say('检查当前身体 '..className(actor)..' pelvis读回='..tostring(bone)..' 人形='..tostring(yes))
+        end
         return yes
     end
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
@@ -841,6 +842,13 @@ function Exec.new(options)
             and (not executor or not active or U.key(active.executor)==U.key(executor))end,data=animationData,adopt=adoptNative})
 
     function self:tick()
+        local members=options.members() or {}
+        local present={}
+        for _,member in ipairs(members)do
+            local key=U.key(member.actor)
+            if key then present[key]=true end
+        end
+        for key in pairs(units)do if not present[key] then units[key]=nil;say('单位已离场，清除处决判断 读回=不在当前名单') end end
         if not self.enabled then return end
         chain:auditExisting()
         opportunities:tick()
@@ -849,7 +857,7 @@ function Exec.new(options)
         if active then watch();return end
         if options.fighting and not options.fighting() then return end
         local t=now()
-        for _,member in ipairs(options.members() or {}) do
+        for _,member in ipairs(members) do
             local target=member.actor
             local key=U.key(target)
             if key and (member.team=='blue' or member.team=='red') then

@@ -140,12 +140,44 @@ function Arena.new(options)
         local ok,hidden=invoke('dormant',unit.actor)
         return ok and hidden==true
     end
+    -- Stands are invulnerable skill participants, not independent combatants. Their type survives a fade.
+    local function stand(unit)
+        if unit.stand then return true end
+        if not unit.summoner or not options.isStand then return false end
+        -- Asked from hot paths (opponentOf answers the player hooks). A summon that is not one gets its tags with its AI,
+        -- so it is asked again now and then rather than on every call.
+        local clock=os.clock()
+        if unit.standAskedAt and clock-unit.standAskedAt<1 then return false end
+        unit.standAskedAt=clock
+        local ok,result,proof=invoke('isStand',unit.actor,unit.class_path)
+        if ok and result==true then
+            unit.stand=true;unit.dormant=false;unit.assignedTarget,unit.assignedKey=nil,nil;unit.needsJoin=true
+            log('替身身份读回 actor='..actor_name(unit.actor)..' 依据='..tostring(proof)..'；保留阵营关系和清理，不计存活、不迎敌、不作为对手')
+            return true
+        end
+        return false
+    end
     -- Out of reach by its own design for now (冷荼 until she comes down to fight herself, boss_stages.lua):
     -- it still fights, but nobody is sent at it.
     local function untargetable(unit)
         if not options.untargetable then return false end
         local ok,result=invoke('untargetable',unit.actor)
         return ok and result==true
+    end
+    -- In the fight as a body: what a skill asking for "the player" may be given, out of reach or not.
+    local function fighting(unit)
+        return unit and not stand(unit) and unit.dormant~=true and alive_readback(unit)==true
+    end
+    -- And what a unit may be sent at.
+    local function targetable(unit)
+        return fighting(unit) and not untargetable(unit)
+    end
+    local function unit_by_key(key)
+        if not key then return nil end
+        for _,unit in ipairs(units)do
+            unit.key=unit.key or actor_key(unit.actor)
+            if unit.key==key then return unit end
+        end
     end
 
     local function notify_units()
@@ -255,7 +287,7 @@ function Arena.new(options)
         local copy={}
         for _,unit in ipairs(units) do
             copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,summoner=unit.summoner,
-                reserve=unit.dormant==true,untargetable=unit.untargetable==true}
+                stand=stand(unit),reserve=unit.dormant==true or stand(unit),untargetable=unit.untargetable==true}
         end
         return copy
     end
@@ -306,7 +338,7 @@ function Arena.new(options)
         if not battleActive or busy or not key then return false end
         for _,unit in ipairs(units) do
             if unit.key==key and (unit.team=='blue' or unit.team=='red') then
-                if alive_readback(unit)~=true or not unit.assignedTarget or alive_readback({actor=unit.assignedTarget})~=true then return false end
+                if stand(unit) or dormant(unit) or alive_readback(unit)~=true or not targetable(unit_by_key(unit.assignedKey)) then return false end
                 local called,engaged,after,detail=invoke('engage',unit.actor,unit.assignedTarget)
                 instant.total=instant.total+1
                 if instant.lines<REENGAGE_LINES then
@@ -326,19 +358,13 @@ function Arena.new(options)
     -- unit's fallback is the player it goes to the unit's opponent, or is cleared with no opponent in reach; any other
     -- value is left alone (options.holdTarget).
     local function hold_target(unit,why)
-        if not options.holdTarget then return end
+        if not options.holdTarget or stand(unit) or dormant(unit) then return end
         local target=unit.assignedTarget
-        if target and alive_readback({actor=target})~=true then target=nil end
+        if target and not targetable(unit_by_key(unit.assignedKey)) then target=nil end
         invoke('holdTarget',unit.actor,target,why)
     end
     -- The unit a fighting unit acts against when one of its skills asks for "the player" (player_aim.lua): its
     -- assigned opponent while alive, else the nearest living, shown unit of the other side; nil when none.
-    local function unit_by_key(key)
-        for _,unit in ipairs(units)do
-            unit.key=unit.key or actor_key(unit.actor)
-            if unit.key==key then return unit end
-        end
-    end
     function instance:actorOf(key)
         local unit=key and unit_by_key(key)
         return unit and unit.actor or nil
@@ -346,12 +372,16 @@ function Arena.new(options)
     function instance:opponentOf(key)
         local me=key and unit_by_key(key)
         if not me or (me.team~='blue' and me.team~='red') then return nil end
-        if me.assignedTarget and alive_readback({actor=me.assignedTarget})==true then return me.assignedTarget end
+        if stand(me) then
+            me=unit_by_key(actor_key(me.summoner))
+            if not me or stand(me) or alive_readback(me)~=true then return nil end
+        end
+        if me.assignedTarget and fighting(unit_by_key(me.assignedKey)) then return me.assignedTarget end
         local okHere,here=invoke('getLocation',me.actor)
         here=okHere and vector(here) or nil
         local best,bestDistance
         for _,other in ipairs(units)do
-            if (other.team=='blue' or other.team=='red') and other.team~=me.team and not other.dormant and alive_readback(other)==true then
+            if (other.team=='blue' or other.team=='red') and other.team~=me.team and fighting(other) then
                 local okThere,there=invoke('getLocation',other.actor)
                 there=okThere and vector(there) or nil
                 local d=here and there and ((here.X-there.X)^2+(here.Y-there.Y)^2) or math.huge
@@ -365,7 +395,7 @@ function Arena.new(options)
     function instance:holdSensed(key)
         if not battleActive or busy or not key then return false end
         for _,unit in ipairs(units)do
-            if unit.key==key and (unit.team=='blue' or unit.team=='red') and alive_readback(unit)==true then
+            if unit.key==key and (unit.team=='blue' or unit.team=='red') and not stand(unit) and not dormant(unit) and alive_readback(unit)==true then
                 hold_target(unit,'感知更新后');return true
             end
         end
@@ -375,12 +405,16 @@ function Arena.new(options)
     function instance:tickReinforcements()
         if not battleActive or busy or state=='cleanup_pending' or state=='restore_pending' or spawn_block() then return end
         prune()
-        local active={}
+        local active,participants={},{}
         for _,unit in ipairs(units) do
-            if (unit.team=='blue' or unit.team=='red') and alive_readback(unit)==true and not dormant(unit) then
-                local ok,ready=invoke('combatReady',unit.actor)
-                if ok and ready==true then
-                    unit.key=unit.key or actor_key(unit.actor);unit.untargetable=untargetable(unit);active[#active+1]=unit
+            if (unit.team=='blue' or unit.team=='red') and alive_readback(unit)==true then
+                local isStand=stand(unit)
+                if isStand or not dormant(unit) then
+                    local ok,ready=invoke('combatReady',unit.actor)
+                    if isStand or (ok and ready==true) then
+                        unit.key=unit.key or actor_key(unit.actor);participants[#participants+1]=unit
+                        if not isStand then unit.untargetable=untargetable(unit);active[#active+1]=unit end
+                    end
                 end
             end
         end
@@ -388,12 +422,10 @@ function Arena.new(options)
         if not okNow or not finite(now) then now=os.clock() end
         local scan=not reengage.scanAt or now-reengage.scanAt>=REENGAGE_SECONDS
         if scan then reengage.scanAt=now end
-        for _,unit in ipairs(active) do
-            -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
-            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget) end
+        for _,unit in ipairs(participants) do
             if unit.needsJoin then
                 local verified=true
-                for _,other in ipairs(active) do
+                for _,other in ipairs(participants) do
                     if other~=unit then
                         local relation=unit.team==other.team and 0 or 2
                         local ok,readback=invoke('setRelation',unit.actor,other.actor,relation)
@@ -403,13 +435,15 @@ function Arena.new(options)
                 unit.needsJoin=not verified
                 log('增援关系读回 team='..unit.team..' actor='..actor_name(unit.actor)..' verified='..tostring(verified))
             end
+        end
+        for _,unit in ipairs(active) do
+            -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
+            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget) end
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.
-            local held
-            for _,other in ipairs(active) do
-                if unit.assignedKey and other.key==unit.assignedKey and other.untargetable then held=other end
-            end
-            if not unit.assignedTarget or alive_readback({actor=unit.assignedTarget})==false or held then
+            local held=unit_by_key(unit.assignedKey)
+            if held and not (fighting(held) and untargetable(held)) then held=nil end
+            if not unit.assignedTarget or not targetable(unit_by_key(unit.assignedKey)) then
                 local target=leastAttacked(unit,active)
                 if target then
                     local called,verified=invoke('forceAttack',unit.actor,target.actor)
@@ -644,11 +678,16 @@ function Arena.new(options)
             end
             local blue, red = {}, {}
             local reachable={blue={},red={}}
+            local relations={blue={},red={}}
             for _, unit in ipairs(units) do
               if unit.team=='blue' or unit.team=='red' then
                 local alive=alive_readback(unit)
                 if alive==nil then return response(false,'参赛者存活状态未读回，未下达交战指令') end
-                if alive == true and not dormant(unit) then
+                local isStand=stand(unit)
+                if alive==true and (isStand or not dormant(unit)) then
+                    local list=relations[unit.team];list[#list+1]=unit.actor
+                end
+                if alive == true and not isStand and not dormant(unit) then
                     if unit.team=="blue" or unit.team=="red" then
                         if options.canBattle then
                             local allowed,battleAllowed,reason=invoke('canBattle',unit.class_path)
@@ -679,8 +718,8 @@ function Arena.new(options)
             local failures, requests = 0, 0
             -- Player neutrality belongs exclusively to the F8 spectator switch.
             -- Starting a duel must not silently grant a separate no-aggro mode.
-            for _, a in ipairs(blue) do
-                for _, b in ipairs(red) do
+            for _, a in ipairs(relations.blue) do
+                for _, b in ipairs(relations.red) do
                     if live(a) == true and live(b) == true then
                         local ok, readback = invoke("setRelation", a, b, 2)
                         if not ok or readback ~= true then failures = failures + 1 end
@@ -782,19 +821,21 @@ function Arena.new(options)
     function instance:status()
         prune()
         local blue, red, neutral, unreadable, dead,neutralOwned,summons = 0, 0, 0, 0, 0,0,0
-        local companions,companionOwned,reserve=0,0,0
+        local companions,companionOwned,reserve,stands=0,0,0,0
         local unread={}
         for _, unit in ipairs(units) do
             if unit.summoner then summons=summons+1 end
             if unit.team=='neutral' then neutralOwned=neutralOwned+1 end
             if unit.team=='companion' then companionOwned=companionOwned+1 end
             local alive,proof=alive_readback(unit)
-            local hidden=alive==true and dormant(unit)
+            local isStand=stand(unit)
+            local hidden=not isStand and alive==true and dormant(unit)
             if hidden~=(unit.dormant==true) then
                 log((hidden and '备用召唤物（隐藏、AI 未启动），不计存活 team=' or '备用召唤物登场，计入存活 team=')..unit.team..' actor='..actor_name(unit.actor))
                 unit.dormant=hidden
             end
-            if hidden then reserve=reserve+1
+            if isStand then stands=stands+1
+            elseif hidden then reserve=reserve+1
             elseif alive==true then
                 if unit.team == "blue" then blue = blue + 1 elseif unit.team == "red" then red = red + 1
                 elseif unit.team == "companion" then companions = companions + 1 else neutral = neutral + 1 end
@@ -816,7 +857,7 @@ function Arena.new(options)
             fight.now=now
         end
         return { blue_count = blue, red_count = red, neutral_count = neutral, total = blue + red + neutral,
-            owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,battle_active=battleActive,current_unit = selected or "", current_team = team,
+            owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,stand_count=stands,battle_active=battleActive,current_unit = selected or "", current_team = team,
             current_count = count,team_revision=teamRevision, state = state, message = message, busy = busy,
             battle_clock=fight.started and (fight.ended and 'ended' or 'running') or '',
             battle_seconds=fight.started and math.max(0,(fight.ended or fight.now)-fight.started) or 0 }

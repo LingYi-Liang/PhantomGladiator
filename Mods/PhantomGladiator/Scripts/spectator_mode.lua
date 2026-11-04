@@ -78,13 +78,14 @@ function Spectator.new(options)
         local file=fs.open(journal,'r')
         if file then
             local text=file:read('*a');file:close()
-            if text:match('^SpectatorV1\n') then
+            if type(text)=='string' and text:match('^SpectatorV1\n') then
                 for line in text:gmatch('[^\r\n]+')do
                     if line~='SpectatorV1' then
                         local cells={};for value in (line..'\t'):gmatch('(.-)\t')do cells[#cells+1]=value end
                         if (cells[1]=='F' and #cells==6) or (cells[1]=='R' and #cells==8) then pendingJournal[#pendingJournal+1]=cells end
                     end
                 end
+            elseif type(text)~='string' then log('读取恢复记录失败 读回=无文本，保留默认状态')
             end
         end
     end

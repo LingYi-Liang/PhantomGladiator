@@ -65,7 +65,7 @@ test('no fight: no hooks; a fight hooks both getters once and checks the answer'
     aim:tick()
     assert(next(h.hooks)==nil and aim:status().state=='idle')
     h.fighting=true;aim:tick();aim:tick()
-    assert(h.ids==16 and aim:status().state=='running')
+    assert(h.ids==8 and aim:status().state=='running','no flying-weapon hooks without a ZuoShang caster')
     assert(h.all():find('自检（临时放行该单位的类）：以 BP_Monster_',1,true) and aim:status().redirected==0 and h.all():find('改写生效=true',1,true),h.all())
 end)
 
@@ -123,9 +123,9 @@ test('a unit in reserve, a unit without an opponent, and the end of the fight',f
     assert(h.ask('character',object('GA_C_C',{outer=red}))==h.player,'after the fight the player again at once')
     h.now=9;aim:tick();assert(#h.unhooked==0)
     h.now=16;aim:tick()
-    assert(#h.unhooked==16 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
-    h.fighting=true;aim:tick();assert(h.ids==32,'hooked again for the next fight')
-    aim:silence('test');assert(#h.unhooked==32)
+    assert(#h.unhooked==8 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
+    h.fighting=true;aim:tick();assert(h.ids==16,'hooked again for the next fight')
+    aim:silence('test');assert(#h.unhooked==16)
 end)
 
 test('a skill of a fighting unit is not forced onto the player; the first call per class logs what the game would say',function()
@@ -244,6 +244,7 @@ test('a flying weapon holding the player when it starts goes to the opponent; it
     FName=function(text)return {name=text} end
     local h=harness();local aim=h.new()
     local blue,red=h.unit('blue'),h.unit('red')
+    red.GetClass=object('BP_Monster_ZuoShang_C').GetClass
     h.targets[key(blue)]=red;h.targets[key(red)]=blue
     local spot=function(x)return function()return {X=x,Y=0,Z=0} end end
     blue.K2_GetActorLocation=spot(1000);red.K2_GetActorLocation=spot(0);h.player.K2_GetActorLocation=spot(5000)
@@ -272,8 +273,8 @@ test('a selector not loaded yet is hooked once it is there',function()
     local real=StaticFindObject
     StaticFindObject=function(path)if path==Aim.paths.bullet then return nil end;return real(path) end
     h.fighting=true;aim:tick()
-    assert(h.hooks[Aim.paths.bullet]==nil and h.all():find('还没找到函数，稍后再试',1,true),h.all())
-    local _,once=h.all():gsub('还没找到函数','');assert(once==1)
+    assert(h.hooks[Aim.paths.bullet]==nil and h.all():find('读回=未找到，退避重试',1,true),h.all())
+    local _,once=h.all():gsub('读回=未找到，退避重试','');assert(once==1)
     h.now=1;aim:tick()
     StaticFindObject=real
     h.now=2;aim:tick();assert(h.hooks[Aim.paths.bullet]==nil,'not before the wait')
@@ -330,6 +331,15 @@ test('an effect that reads the player position by itself follows the opponent wh
     assert(sets.UE_TestTargetPos.X==300,'follows the opponent')
     loop();loop()
     assert(scans==3,'looks only a few times')
+    local replacement=bullet(red,rain,2)
+    mine.BulletOwnerAvatar=red;mine.ParticleComponent=replacement.ParticleComponent
+    loop()
+    assert(mine.ParticleComponent.sets.UE_TestTargetPos and mine.ParticleComponent.sets.UE_TestTargetPos.X==1000,
+        'a reused bullet must follow its current owner opponent')
+    assert(sets.UE_UseTestTargetPos==false,'a replaced but still-valid component must be released')
+    local logStart=#h.lines
+    for i=1,100 do mine.BulletOwnerAvatar=i%2==0 and blue or red;loop()end
+    assert(#h.lines-logStart<=60,'reused effect objects must not reset the lifetime log budget')
     h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(sets.UE_TestTargetPos.X==300,'nothing while time stands still');h.paused=false
     mine.BulletStatus=3;loop()
     assert(sets.UE_UseTestTargetPos==false and cancelled==1 and loop==nil,'switch back off, loop gone once it is over')
@@ -351,14 +361,23 @@ test('a skill whose effect only reads the player position: the global value foll
     blue.K2_GetActorLocation=function()return {X=1000,Y=0,Z=0} end
     red.K2_GetActorLocation=function()return redAt end
     h.player.K2_GetActorLocation=function()return {X=5000,Y=0,Z=0} end
-    local value={X=5000,Y=0,Z=0}
+    -- As in the game: the Niagara variable is a colour taken from the material collection, so its vector calls find nothing.
+    local value={R=5000,G=0,B=0,A=0.5}
+    local copied={R=5000,G=0,B=0,A=0.5}
+    local vectorWrites=0
     local instance=object('NiagaraParameterCollectionInstance',{
-        SetVectorParameter=function(_,name,v)assert(name=='CharRootPos');value=v end,GetVectorParameter=function(_,name)assert(name=='CharRootPos');return value end})
+        SetVectorParameter=function()vectorWrites=vectorWrites+1 end,GetVectorParameter=function()return {X=0,Y=0,Z=0} end,
+        GetColorParameter=function(_,name)assert(name=='CharRootPos');return copied end})
+    local materialLib=object('KismetMaterialLibrary',{
+        SetVectorParameterValue=function(_,world,collection,name,v)assert(world and collection and name=='CharRootPos');value=v end,
+        GetVectorParameterValue=function(_,world,collection,name)assert(world and collection and name=='CharRootPos');return value end})
     local real=StaticFindObject
     local active=true
     StaticFindObject=function(path)
         if path:find('NiagaraFunctionLibrary') then return object('NiagaraFunctionLibrary',{GetNiagaraParameterCollection=function()return instance end}) end
         if path:find('NPC_CharInfo_001') then return object('NPC_CharInfo_001') end
+        if path:find('KismetMaterialLibrary') then return materialLib end
+        if path:find('MPC_CharInfo_001') then return object('MPC_CharInfo_001') end
         if path:find('AbilitySystemBlueprintLibrary') then return object('AbilitySystemBlueprintLibrary',{IsGameplayAbilityActive=function(_,ability)return active and not ability.over end}) end
         return real(path)
     end
@@ -376,15 +395,19 @@ test('a skill whose effect only reads the player position: the global value foll
     start(skill('GA_MengHua_CA_03_C',object('BP_Monster_MengHua_C')));assert(loop==nil,'not a fighting unit: as the game made it')
     start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
     loop()
-    assert(value.X==100,'the opponent, written through the same call the player class uses')
-    assert(h.all():find('全局角色位置改成对手 招式=GA_MengHua_CA_03_C 第1次 对手=BP_Monster_red_C 写入前距玩家=0.0m 距对手=49.0m 写入=true 读回距对手=0.0m',1,true),h.all())
-    redAt={X=300,Y=0,Z=0};value={X=5000,Y=0,Z=0};loop();assert(value.X==300,'follows it, and wins over what the player class wrote')
-    h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(value.X==300,'not while time stands still');h.paused=false
+    assert(value.R==100 and value.G==0 and value.B==0 and value.A==0.5,'the opponent, in the material collection, keeping the alpha')
+    assert(vectorWrites==0,'the Niagara vector call does nothing in the game')
+    assert(h.all():find('全局角色位置改成对手 招式=GA_MengHua_CA_03_C 第1次 对手=BP_Monster_red_C 材质集合写入前距玩家=0.0m 距对手=49.0m 写入=true 读回距对手=0.0m Niagara集合距玩家=0.0m 距对手=49.0m',1,true),h.all())
+    -- The world tick copied the value to the Niagara instance, and the player class then wrote its own to the material collection.
+    copied=value;redAt={X=300,Y=0,Z=0};value={R=5000,G=0,B=0,A=0.5};loop();assert(value.R==300,'follows it, and wins over what the player class wrote')
+    assert(h.all():find('第2次 对手=BP_Monster_red_C 材质集合写入前距玩家=0.0m 距对手=47.0m 写入=true 读回距对手=0.0m Niagara集合距玩家=49.0m 距对手=2.0m',1,true),h.all())
+    h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(value.R==300,'not while time stands still');h.paused=false
     active=false;h.now=h.now+1;loop();assert(loop~=nil,'the effect may outlive the skill')
-    h.now=h.now+7;loop();assert(loop==nil and cancelled==1 and h.all():find('全局角色位置还原 招式=GA_MengHua_CA_03_C',1,true),h.all())
+    value={R=5000,G=0,B=0,A=0.5}
+    h.now=h.now+7;loop();assert(loop==nil and cancelled==1 and h.all():find('全局角色位置还原 招式=GA_MengHua_CA_03_C 写入=3次（招式结束） 还原时读回距玩家=0.0m',1,true),h.all())
     -- A second skill while one runs takes over; the fight ending stops it.
-    active=true;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil);redAt={X=0,Y=0,Z=0};loop();assert(value.X==1000,'its own opponent')
-    start(skill('GA_ZuoShang_P2_Skill_17_C',blue));loop();assert(value.X==0)
+    active=true;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil);redAt={X=0,Y=0,Z=0};loop();assert(value.R==1000,'its own opponent')
+    start(skill('GA_ZuoShang_P2_Skill_17_C',blue));loop();assert(value.R==0)
     h.now=h.now+25;loop();assert(loop==nil,'capped')
     -- A subclass plays the same effect.
     local child=skill('GA_ZuoShang_P2_Skill_17_NoCD_C',blue)
@@ -393,13 +416,35 @@ test('a skill whose effect only reads the player position: the global value foll
     -- Two at once: the newest has the value; when it ends the older one gets it back, not the player.
     redAt={X=300,Y=0,Z=0}
     local first,second=skill('GA_MengHua_CA_03_C',blue),skill('GA_LengTu_CA_02_C',red)
-    start(first);start(second);loop();assert(value.X==1000,'the newer skill: its opponent')
+    start(first);start(second);loop();assert(value.R==1000,'the newer skill: its opponent')
     second.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop()
-    assert(loop~=nil and value.X==300,'the older skill again: its opponent')
+    assert(loop~=nil and value.R==300,'the older skill again: its opponent')
     assert(h.all():find('全局角色位置还原 招式=GA_LengTu_CA_02_C',1,true),h.all())
     first.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop();assert(loop==nil)
     start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
     h.fighting=false;aim:tick();h.now=h.now+20;aim:tick();assert(loop==nil and h.hooks[Aim.paths.skillStart]==nil)
     StaticFindObject=real;LoopInGameThreadWithDelay,CancelDelayedAction=nil,nil
+end)
+test('stands keep offensive aiming but are never accepted as bullet or lock targets',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new()
+    local blue,red,stand=h.unit('blue'),h.unit('red'),h.unit('blue')
+    stand.GetClass=object('BP_Monster_ZuoShang_P2_Stand_C').GetClass
+    h.members[3].stand=true
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue;h.targets[key(stand)]=red
+    for _,actor in ipairs({blue,red,stand})do actor.RootComponent=object('Capsule',{GetOwner=function()return actor end}) end
+    h.fighting=true;aim:tick()
+    local value={Component=stand.RootComponent}
+    local out={type=function()return 'RemoteUnrealParam' end,get=function()return value end,set=function(_,v)value=v end}
+    local skill=object('GA_Test_C',{GetAvatarActorFromActorInfo=function()return red end,['Lock Target']=value})
+    assert(h.hooks[Aim.paths.bullet](nil,red,nil,skill,nil,true,out)==true and value.Component==blue.RootComponent)
+    h.hooks[Aim.paths.lock](skill,nil,nil,out)
+    assert(skill['Lock Target'].Component==blue.RootComponent,'native locks on a stand are corrected')
+    h.members[3].reserve=true;aim:tick()
+    local ownSkill=object('GAA_ForceLockTarget_C',{GetAvatarActor=function()return stand end})
+    assert(h.ask('pawn',ownSkill)==red,'stand skills still aim at their summoner opponent, even on first reveal')
+    local sword=object('BP_Bullet_ZuoShang_FlyingSword_C',{BulletOwnerAvatar=red,CurrentTarget={Component=stand.RootComponent}})
+    h.hooks[Aim.paths.FlyingSwordStart](sword)
+    assert(sword.CurrentTarget.Component==blue.RootComponent)
 end)
 print('player_aim: all tests passed')

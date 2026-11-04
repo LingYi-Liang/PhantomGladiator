@@ -182,6 +182,42 @@ local function harness()
     return h
 end
 
+do
+    local failures={}
+    local function regression(name,fn)
+        local ok,err=pcall(fn)
+        print((ok and 'ok - ' or 'FAIL - ')..name..(ok and '' or ': '..tostring(err)))
+        if not ok then failures[#failures+1]=name end
+    end
+    regression('execution eligibility is discarded when a unit leaves and its address is reused',function()
+        local h=harness();local old=h.boss('BP_Same',100,0,{pairs={},locks={}})
+        local enemy=h.enemy({X=300,Y=0,Z=0})
+        h.members={{actor=old,team='red'},{actor=enemy,team='blue'}}
+        local exec=h.new();h.run(exec,0.5)
+        h.members={{actor=enemy,team='blue'}};h.run(exec,0.5)
+        local fresh=h.boss('BP_Same',100,0)
+        fresh.GetAddress=old.GetAddress
+        h.tags[fresh]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.members={{actor=fresh,team='red'},{actor=enemy,team='blue'}};h.run(exec,0.5)
+        assert(exec:status().started==1,'new unit inherited nopair')
+        exec:stop('regression')
+    end)
+    regression('a new humanoid can execute after an animal used the same address',function()
+        local h=harness();local boss=h.boss('BP_Target',100,0)
+        local old=h.enemy({X=300,Y=0,Z=0},{animal=true})
+        h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.members={{actor=boss,team='red'},{actor=old,team='blue'}}
+        local exec=h.new();h.run(exec,0.5);assert(exec:status().started==0)
+        h.members={{actor=boss,team='red'}};h.run(exec,0.5)
+        local fresh=h.enemy({X=300,Y=0,Z=0});fresh.GetAddress=old.GetAddress
+        old.IsValid=function()return false end
+        h.members={{actor=boss,team='red'},{actor=fresh,team='blue'}};h.run(exec,0.5)
+        assert(exec:status().started==1,'new mesh inherited animal classification')
+        exec:stop('regression')
+    end)
+    assert(#failures==0,table.concat(failures,'; '))
+end
+
 -- The native executor montage must keep updating while its rendered pose follows the borrowed skeleton.
 -- Model only UE's documented TickPose gate: a follower with false never advances its own montage/root motion.
 -- This reproduces the runtime evidence (native position stuck at 0 while the borrowed clip advances).

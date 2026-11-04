@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.0-game-26367565"
+local BUILD = "v0.40.1-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1335,6 +1335,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     spawnLimits=SpawnPolicy.limits,canBattle=SpawnPolicy.canBattle,
     spawnGuard=spawnGuard,
     combatReady=function(actor) return safeValid(actor) and spawnRoutes[actor]~='actor' and GetAIComp(actor)~=nil end,
+    isStand=require('arena_stands').isStand,
     -- Kept in reserve by its summoner: hidden in game with its AI not started (冷荼's stand-by dolls show ai_state=None).
     dormant=function(actor)
         if UEObserve.field(actor,'bHidden')~=true then return false end
@@ -1633,6 +1634,7 @@ function arenaSupport:discover()
         if not result.ok then log('[SummonLinks] 接管未确认：'..tostring(result.message)) end
     end
 end
+arenaSupport.stands=require('arena_stands').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
 companions=Companion.new({log=log,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
 -- Read-only: which of a companion's attacks may hit the player, and why (companion_hit_probe.lua).
@@ -1733,6 +1735,7 @@ local function supportSteps(self)
     if codexArt then step('codexArt',function()codexArt:tick()end) end
     if codexIcons then step('codexIcons',function()codexIcons:tick()end) end
     step('summonLinks',function()self:discover()end)
+    step('stands',function()self.stands:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.
@@ -1832,6 +1835,7 @@ if ModRef then
         immortalTeams:silence()
         clockHUD:silence()
         combatLock:silence('Mod卸载')
+        arenaSupport.stands:silence()
         playerAim:silence('Mod卸载')
         aiParams:silence()
         bossCombos:silence()

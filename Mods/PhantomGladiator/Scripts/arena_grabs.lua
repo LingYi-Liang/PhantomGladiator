@@ -52,11 +52,12 @@ function Grabs.new(options)
         local f=fs.open(filePath,'r')
         if f then
             local text=f:read('*a');f:close()
-            if text:match('^NPCGrabPolicyV1\n') then
+            if type(text)=='string' and text:match('^NPCGrabPolicyV1\n') then
                 for name,key in text:gmatch('\n([^\t\r\n]+)\t(%d+)')do
                     if family(name) and not name:find('[^%w_/%-%.:]') then self.records[name]={key=key} end
                 end
                 self.recovering=next(self.records)~=nil
+            elseif type(text)~='string' then log('[NPCGrab] 读取恢复记录失败 读回=无文本，保留默认状态')
             end
         end
     end

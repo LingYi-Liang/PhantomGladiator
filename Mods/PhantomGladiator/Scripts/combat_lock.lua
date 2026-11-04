@@ -153,9 +153,10 @@ function Lock.new(options)
         local ai,hatred,units,known,own={},{},{},{},{}
         if options.fighting() then
             for _,member in ipairs(options.members())do
-                -- A summon held in reserve is not in the fight yet; a unit out of reach by its own design
+                -- Stands keep their native AI/hatred answers. A summon held in reserve is not in the fight yet;
+                -- a unit out of reach by its own design
                 -- (member.untargetable, boss_stages.lua) still hates but keeps the game's answer as a target.
-                if (member.team=='blue' or member.team=='red') and not member.reserve then
+                if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
                     local key=U.key(member.actor)
                     if key then
                         local c=cache[key] or {ai=addr(options.aiOf(member.actor)),hatred=options.hatredOf and addr(options.hatredOf(member.actor))}

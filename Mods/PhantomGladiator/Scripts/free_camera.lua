@@ -67,9 +67,10 @@ function Camera.new(options)
         local file=fs.open(filePath,'r')
         if file then
             local text=file:read('*a');file:close()
-            if text:match('^FreeCameraV1\n') then
+            if type(text)=='string' and text:match('^FreeCameraV1\n') then
                 local record={};for k,v in text:gmatch('\n([^\t\r\n]+)\t([^\r\n]*)')do record[k]=v end
                 if record.controller and record.controller~='' then self.record=record end
+            elseif type(text)~='string' then log('[FreeCamera] 读取恢复记录失败 读回=无文本，保留默认状态')
             end
         end
     end
@@ -77,7 +78,7 @@ function Camera.new(options)
     local settingsPath=options.path..'/free-camera-settings.tsv'
     local function setting(name,value)
         local limit=Camera.LIMITS[name];value=tonumber(value)
-        if not value or value%1~=0 or value<limit[1] or value>limit[2] then return nil end
+        if not limit or not value or value%1~=0 or value<limit[1] or value>limit[2] then return nil end
         return value
     end
     self.tuning={speed=setting('speed',options.moveSpeed) or Camera.DEFAULTS.speed,
@@ -88,10 +89,19 @@ function Camera.new(options)
         if file then
             local text=file:read('*a');file:close()
             if type(text)=='string' and text:match('^FreeCameraSettingsV1\n') then
-                local saved={}
-                for name,value in text:gmatch('\n([%w_]+)\t([^\r\n]*)')do saved[name]=setting(name,value)end
-                if saved.speed and saved.turn and saved.smooth then self.tuning=saved
-                else log('[FreeCamera] 设置文件无效，用默认值') end
+                local invalid,ignored={},0
+                for line in text:gmatch('[^\r\n]+')do
+                    local name,raw=line:match('^([%w_]+)\t(.*)$')
+                    if Camera.LIMITS[name] then
+                        local value=setting(name,raw)
+                        self.tuning[name]=value or Camera.DEFAULTS[name]
+                        if not value then invalid[name]=true end
+                    elseif name then ignored=ignored+1 end
+                end
+                for _,name in ipairs({'speed','turn','smooth'})do
+                    if invalid[name] then log('[FreeCamera] 设置字段无效 '..name..' 回退默认值='..Camera.DEFAULTS[name]..' 最终读回='..self.tuning[name]) end
+                end
+                log(string.format('[FreeCamera] 读取设置 读回 speed=%d turn=%d smooth=%d 忽略未知字段=%d',self.tuning.speed,self.tuning.turn,self.tuning.smooth,ignored))
             end
         end
     end

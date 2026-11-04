@@ -23,7 +23,7 @@ local CAPS={place=12,miss=6,free=30,depth=6}
 function Ground.new(options)
     local log=options.log or function()end
     local self={freed=0,placed=0}
-    local lines,guarded={},{}
+    local lines={}
     local function say(kind,text)
         lines[kind]=(lines[kind] or 0)+1
         if lines[kind]<=(CAPS[kind] or 10) then log('[OnGround] '..text) end
@@ -65,13 +65,10 @@ function Ground.new(options)
     end
     function self:blocked(actor)return self:tagCount(actor,BLOCK) end
 
-    -- BP_NPC_Base's fall rule, once per unit: with DeadDepth out of reach no fall kills or costs health.
+    -- Read the property each time: an address can belong to a different actor after destruction.
     function self:keepFromFallDeath(actor)
-        local key=U.key(actor)
-        if not key or guarded[key] then return end
-        guarded[key]=true
         local before=U.field(actor,'DeadDepth')
-        if type(before)~='number' then return end
+        if type(before)~='number' or before==NO_FALL_DEATH then return end
         local written=pcall(function()actor.DeadDepth=NO_FALL_DEATH end)
         local after=U.field(actor,'DeadDepth')
         say('depth',string.format('%s 坠落致死深度 %.0f -> %s 写入=%s',options.label(actor),before,tostring(after),tostring(written)))

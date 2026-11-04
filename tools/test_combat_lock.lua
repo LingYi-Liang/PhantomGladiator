@@ -143,4 +143,16 @@ do
     assert(failed:status().state=='failed' and none.ids==0)
     assert(select(2,none.all():gsub('找不到函数 '..Lock.path,''))==1,none.all())
 end
-print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions)')
+do
+    local h=harness();local lock=h.new()
+    local stand,standAI,standHatred=h.unit('blue')
+    local enemy,enemyAI,enemyHatred=h.unit('red')
+    h.members[1].stand=true;h.fighting=true;lock:tick()
+    assert(h.call('exit',standAI)==nil and h.call('canHate',standHatred,enemy)==nil)
+    assert(h.call('canHate',enemyHatred,stand)==nil and h.call('canBeHated',enemyHatred,stand)==nil,
+        'the game keeps its unselectable stand answer even when the stand is shown')
+    h.call('transition',standAI,tag('AI.Transition.CombatToIdle'));h.call('sensed',standAI)
+    assert(#h.dropped==0 and #h.sensed==0)
+    assert(h.call('exit',enemyAI)==false,'ordinary combatants keep combat lock')
+end
+print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands)')

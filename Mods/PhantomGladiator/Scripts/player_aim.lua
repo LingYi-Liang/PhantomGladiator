@@ -25,11 +25,14 @@
 -- UE_UseTestTargetPos with UE_TestTargetPos, so while such a bullet of a fighting unit runs, the switch is on and the
 -- position follows the unit's opponent. The bullet's launcher (GAA_DelayDeflectProjectileBullet.Go go go) says when to look.
 -- 招式锁玩家（五）: other effects with their own hit traces read the same value and have no switch (see EFFECT_SKILLS). While
--- such a skill of a fighting unit runs, the world's NPC_CharInfo_001 instance gets the opponent's position each frame, the
--- same SetVectorParameter the player class uses. Collections push to the systems before actors tick, and this runs before
--- the world ticks, so the effects see this value instead of the one the player class wrote last frame. Everything else that
--- reads it (fish, flowers) follows along for those seconds. The player class writes its own again as soon as this stops.
+-- such a skill of a fighting unit runs, the world's MPC_CharInfo_001 instance gets the opponent's position each frame.
+-- NPC_CharInfo_001 takes its values from that material collection (the asset imports it and /Script/CoreUObject.LinearColor,
+-- no vector type), so CharRootPos there is a colour: SetVectorParameter on the Niagara instance looks for a Vec3 of that name
+-- and does nothing, and GetVectorParameter answers zero. Collections copy the value and push to the systems before actors
+-- tick, and this runs before the world ticks, so the effects see this value instead of the one the player class wrote last
+-- frame. Everything else that reads it (fish, flowers) follows along for those seconds.
 local U=require('ue_observe')
+local Retry=require('lookup_retry')
 local Aim={}
 local STATICS='/Script/Engine.GameplayStatics:'
 Aim.paths={character=STATICS..'GetPlayerCharacter',pawn=STATICS..'GetPlayerPawn',
@@ -42,6 +45,8 @@ local LABEL={character='取玩家角色',pawn='取玩家Pawn',force='强制锁�
 -- 左殇's flying weapons: the target the bullet actually holds once it starts (ABulletActorBase.CurrentTarget), and where it ends.
 local FLYING_DIR='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Weapon/'
 local FLYING={}
+local CASTERS={BP_Monster_ZuoShang_C=true,BP_Monster_ZuoShang_Ending_C=true,BP_Monster_ZuoShang_P2_C=true,
+    BP_Monster_ZuoShang_P2_Stand_C=true}
 for _,name in ipairs({'FlyingSword','FlyingSpear','FlyingHammer_Big','FlyingGun'})do
     local class='BP_Bullet_ZuoShang_'..name
     local start,finish=name..'Start',name..'End'
@@ -51,11 +56,10 @@ for _,name in ipairs({'FlyingSword','FlyingSpear','FlyingHammer_Big','FlyingGun'
     ORDER[#ORDER+1]=start;ORDER[#ORDER+1]=finish
     LABEL[start]=name..'起飞';LABEL[finish]=name..'结束'
 end
-local RETRY_SECONDS=5
 local UNHOOK_SECONDS,LINES,SUMMARY_SECONDS=10,12,10
-local CACHE_SECONDS,DEPTH=20,8
+local CACHE_SECONDS,DEPTH=1,8
 local STEPS={'Pawn','BulletOwnerAvatar','Owner','Instigator','Source Ability'}
-local LOCK_SECONDS,UNLISTED_LINES,BULLET_LINES,FLIGHT_LINES,FLIGHT_PER_KIND=5,40,60,240,3
+local UNLISTED_LINES,BULLET_LINES,FLIGHT_LINES,FLIGHT_PER_KIND=40,60,240,3
 -- Particle bullets that aim through their effect: bullet data -> the effect's user switch and position.
 local EFFECT_AIMS={BD_ZuoShang_Skill_19={use='UE_UseTestTargetPos',pos='UE_TestTargetPos'}}
 Aim.effectAims=EFFECT_AIMS
@@ -76,7 +80,9 @@ Aim.effectSkills=EFFECT_SKILLS
 Aim.paths.skillStart='/MagCombatAbilities/Abilities/BP_ActionAbilityBase_Simple.BP_ActionAbilityBase_Simple_C:K2_ActivateAbility'
 ORDER[#ORDER+1]='skillStart';LABEL.skillStart='全局位置'
 local CHAR_INFO='/PBZVFXPack/VFX/A_Niagara/CommonNPC/NPC_CharInfo_001.NPC_CharInfo_001'
+local CHAR_MATERIAL='/PBZVFXPack/VFX/A_Niagara/CommonNPC/MPC_CharInfo_001.MPC_CharInfo_001'
 local NIAGARA_LIB='/Script/Niagara.Default__NiagaraFunctionLibrary'
+local MATERIAL_LIB='/Script/Engine.Default__KismetMaterialLibrary'
 local ABILITY_LIB='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'
 local CHAR_ROOT,SPOOF_SECONDS,SPOOF_GRACE,SPOOF_CHECK='CharRootPos',20,6,0.25
 -- Attacks that aim at or lock onto the player (the call's world context is an object of the class or a subclass).
@@ -116,6 +122,7 @@ function Aim.new(options)
     self.counts.flying=0;self.window.flying=0
     local hooks={}
     local fighters={}     -- unit address -> true, for this mod's blue and red units in a fight
+    local roster={}    -- unit address -> whether its class can use flying weapons
     local cache,cacheAt={},nil   -- context address -> unit address or false
     local seenLines,lines={},0
     local quietSince,summaryAt,passedWindow=nil,nil,0
@@ -135,6 +142,25 @@ function Aim.new(options)
         return found
     end
     local function say(text)log('[PlayerAim] '..text)end
+    local retry=Retry.new({clock=clock,log=say})
+    local flyingWanted=false
+    local flyingClasses={}
+    local function flyingCaster(actor)
+        local leaf=className(actor)
+        if flyingClasses[leaf]~=nil then return flyingClasses[leaf] end
+        local ok,cls=pcall(function()return actor:GetClass()end)
+        if not ok or not U.valid(cls) then return false end
+        local found=false
+        for _=1,16 do
+            if not U.valid(cls) then break end
+            local named,name=pcall(function()return cls:GetFName():ToString()end)
+            if named and CASTERS[name] then found=true;break end
+            local got,parent=pcall(function()return cls:GetSuperStruct()end)
+            cls=got and parent or nil
+        end
+        flyingClasses[leaf]=found
+        return found
+    end
 
     -- One step from an object toward the unit it acts for: an action's or ability's own avatar first (an action may
     -- be a shared template whose outer is its class), then the fields, then the outer.
@@ -242,23 +268,20 @@ function Aim.new(options)
     -- and homes for its first 0.2 s. The ability keeps the first target it selects (Request Lock Target), which comes from
     -- the AI's targeting and can be the player when the blackboard is empty during the phase change. FlyUp hands the weapon
     -- the ability before any bullet is made, so there the ability's lock goes to the unit's opponent.
-    local lockedAt={}
+    local lockWrites=0
     function self:lockAbilityOf(actor)
         if not self.alive or not U.valid(actor) then return false end
         local ability=U.field(actor,'Source Ability')
         if not U.valid(ability) then return false end
-        local key=addr(ability)
-        local now=clock()
-        if key and lockedAt[key] and now-lockedAt[key]<LOCK_SECONDS then return true end
         local unit=unitOf(ability)
         if not unit then return false end
         local okTarget,target=pcall(options.opponentOf,unit)
         if not okTarget or not U.valid(target) then say('招式锁定没改：'..className(ability)..' 没有对手');return false end
         local root=U.field(target,'RootComponent')
         if not U.valid(root) then say('招式锁定没改：'..className(target)..' 没有根组件');return false end
-        if key then lockedAt[key]=now end
         local beforeLock=U.field(ability,'Lock Target')
         local before=beforeLock and U.struct(beforeLock,'Component')
+        if addr(before)==addr(root) and U.field(ability,'Lock Target Selected')==true then return true end
         local beforeOwner=U.valid(before) and (function()local ok,o=pcall(function()return before:GetOwner()end);return ok and U.valid(o) and className(o) or '?' end)() or '空'
         local okSet,err=pcall(function()
             ability['Lock Target']={Component=root,SocketName=FName('None')}
@@ -267,7 +290,10 @@ function Aim.new(options)
         local lock=U.field(ability,'Lock Target')
         local back=lock and U.struct(lock,'Component')
         local good=addr(back)==addr(root) and U.field(ability,'Lock Target Selected')==true
-        say(string.format('招式锁定 %s：原目标=%s -> %s 写入=%s%s 读回=%s',className(ability),beforeOwner,className(target),tostring(okSet),okSet and '' or '('..tostring(err)..')',good and '生效' or '没生效'))
+        if lockWrites<LINES then
+            lockWrites=lockWrites+1
+            say(string.format('招式锁定 %s：原目标=%s -> %s 写入=%s%s 读回=%s',className(ability),beforeOwner,className(target),tostring(okSet),okSet and '' or '('..tostring(err)..')',good and '生效' or '没生效'))
+        end
         return good
     end
 
@@ -288,7 +314,9 @@ function Aim.new(options)
         local comp=lock and U.struct(lock,'Component')
         if not U.valid(comp) then return nil end
         local okOwner,owner=pcall(function()return comp:GetOwner()end)
-        if not okOwner or not U.valid(owner) or not isPlayer(owner) then return nil end
+        if not okOwner or not U.valid(owner) then return nil end
+        local onStand=fighters[U.key(owner)]=='stand'
+        if not onStand and not isPlayer(owner) then return nil end
         local unit=unitOf(ability)
         if not unit or (options.paused and options.paused()) then return nil end
         local okTarget,target=pcall(options.opponentOf,unit)
@@ -303,7 +331,7 @@ function Aim.new(options)
         if (lockLines[where] or 0)<2 then
             lockLines[where]=(lockLines[where] or 0)+1
             local back=U.field(ability,'Lock Target')
-            say(string.format('招式的锁定落在玩家，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',where,className(target),tostring(okSet),tostring(okOut),
+            say(string.format('招式的锁定落在%s，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',onStand and '替身' or '玩家',where,className(target),tostring(okSet),tostring(okOut),
                 addr(back and U.struct(back,'Component'))==addr(root) and '生效' or '没生效',self.counts.lock))
         end
         return nil
@@ -331,7 +359,7 @@ function Aim.new(options)
             local okOwner,hit=pcall(function()return comp:GetOwner()end)
             if okOwner and U.valid(hit) then
                 had=className(hit)
-                if fighters[U.key(hit)] then
+                if fighters[U.key(hit)]==true then
                     local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
                     if not bulletSeen['ok'..where] and bulletLines<BULLET_LINES then
                         bulletSeen['ok'..where]=true;bulletLines=bulletLines+1
@@ -386,7 +414,7 @@ function Aim.new(options)
         target=okTarget and U.valid(target) and target or nil
         local _,hit=holderOf(bullet)
         local note=''
-        if kind=='start' and target and not (hit and fighters[U.key(hit)]) and not (options.paused and options.paused()) then
+        if kind=='start' and target and not (hit and fighters[U.key(hit)]==true) and not (options.paused and options.paused()) then
             local root=U.field(target,'RootComponent')
             if U.valid(root) then
                 local had=hit and className(hit) or '空'
@@ -462,12 +490,25 @@ function Aim.new(options)
             end
         end
     end
+    local effectLines=0
+    local function sayEffect(text)
+        if effectLines<BULLET_LINES then effectLines=effectLines+1;say(text) end
+    end
+    local releaseEffect
     local function aimEffect(item)
-        -- The bullet outlives its effect component now and then; the same bullet may also have a new one.
-        if not U.valid(item.comp) then
-            item.comp=U.field(item.bullet,'ParticleComponent')
-            if not U.valid(item.comp) then return end
-            item.switched=nil
+        local owner=U.field(item.bullet,'BulletOwnerAvatar')
+        local key=U.key(owner)
+        local data=U.field(item.bullet,'BulletData')
+        local dataName=U.valid(data) and nameOf(data) or nil
+        if not key or not fighters[key] or not EFFECT_AIMS[dataName] then return false end
+        local comp=U.field(item.bullet,'ParticleComponent')
+        if not U.valid(comp) then return end
+        -- Pooled bullets can change owner or component while their previous wrappers still look valid.
+        if item.owner~=key or item.data~=dataName or addr(item.comp)~=addr(comp) then
+            if addr(item.comp)~=addr(comp) then releaseEffect(item) end
+            item.owner,item.data,item.spec,item.comp=key,dataName,EFFECT_AIMS[dataName],comp
+            item.switched=nil;item.since=clock();item.writes=0
+            sayEffect('刷新特效归属 读回施法者='..key..' 组件='..tostring(addr(comp))..' 数据='..dataName)
         end
         local okTarget,target=pcall(options.opponentOf,item.owner)
         if not okTarget or not U.valid(target) then return end
@@ -486,15 +527,15 @@ function Aim.new(options)
             self.counts.launch=self.counts.launch+1;self.window.launch=self.window.launch+1
             local okPlayer,player=pcall(function()return options.player and options.player()end)
             local from=place(item.bullet)
-            say(string.format('特效目标改成对手 子弹=%s 招式=%s 对手=%s 开关=%s 写入=%s 坐标写入=%s/%s 发射点距对手=%s 距玩家=%s',item.data,
+            sayEffect(string.format('特效目标改成对手 子弹=%s 招式=%s 对手=%s 开关=%s 写入=%s 坐标写入=%s/%s 发射点距对手=%s 距玩家=%s',item.data,
                 U.valid(U.field(item.bullet,'BulletSourceAbility')) and className(U.field(item.bullet,'BulletSourceAbility')) or '?',
                 className(target),item.spec.use,tostring(okUse),tostring(okPosition),tostring(okVector),metres(from,at),
                 okPlayer and U.valid(player) and metres(from,place(player)) or '?'))
         end
     end
-    local function releaseEffect(item)
+    releaseEffect=function(item)
         local ok=U.valid(item.comp) and pcall(function()item.comp:SetVariableBool(FName(item.spec.use),false)end)
-        say(string.format('特效目标还原 子弹=%s 跟随对手写入=%d次 关开关=%s',item.data,item.writes,tostring(ok==true)))
+        sayEffect(string.format('特效目标还原 子弹=%s 跟随对手写入=%d次 关开关=%s',item.data,item.writes,tostring(ok==true)))
     end
     local function effectTick()
         if not self.alive then stopEffectLoop();return end
@@ -503,7 +544,7 @@ function Aim.new(options)
         for key,item in pairs(effects)do
             local status=statusOf(item.bullet)
             if (status==RUNNING or status==READY) and now-item.since<EFFECT_SECONDS then
-                if not (options.paused and options.paused()) then aimEffect(item) end
+                if not (options.paused and options.paused()) and aimEffect(item)==false then releaseEffect(item);effects[key]=nil end
             else
                 releaseEffect(item);effects[key]=nil
             end
@@ -528,26 +569,62 @@ function Aim.new(options)
     local effectSkillClass={}       -- class name -> whether it or a parent is in EFFECT_SKILLS
     -- There is one value and two effects may want it: the newest skill has it, and the one it took over from gets it back
     -- when that ends, instead of the player's position.
-    local function closeSpoof(reason)
-        say(string.format('全局角色位置还原 招式=%s 写入=%d次（%s）',spoof.name,spoof.writes,reason))
+    local charRootName
+    local function charMaterial()
+        local world=options.world and options.world()
+        if not U.valid(world) then return nil end
+        local lib,collection=retry:find(MATERIAL_LIB),retry:find(CHAR_MATERIAL)
+        if not lib or not collection then return nil end
+        charRootName=charRootName or FName(CHAR_ROOT)
+        return lib,collection,world
+    end
+    local function colorSpot(value)
+        value=value and U.unwrap(value) or nil
+        local ok,x,y,z,a=pcall(function()return value.R,value.G,value.B,value.A end)
+        return ok and type(x)=='number' and {X=x,Y=y,Z=z,A=a} or nil
+    end
+    local function charRootNow()
+        local lib,collection,world=charMaterial()
+        if not lib then return nil end
+        local ok,value=pcall(function()return lib:GetVectorParameterValue(world,collection,charRootName)end)
+        return ok and colorSpot(value) or nil
+    end
+    local function playerSpot()
+        local ok,player=pcall(function()return options.player and options.player()end)
+        return ok and U.valid(player) and place(player) or nil
+    end
+    local function closeSpoof(reason,check)
+        local readBack=''
+        if check then
+            local now,playerAt=charRootNow(),playerSpot()
+            readBack=' 还原时读回距玩家='..(now and playerAt and metres(now,playerAt) or '?')
+        end
+        say(string.format('全局角色位置还原 招式=%s 写入=%d次（%s）%s',spoof.name,spoof.writes,reason,readBack))
         spoof=spoof.previous
     end
     local function stopSpoof(reason)
         if spoofLoop then pcall(CancelDelayedAction,spoofLoop);spoofLoop=nil end
         while spoof do closeSpoof(reason) end
     end
+    local collectionWorld,collectionInstance
     local function charInfo()
-        local okLib,lib=pcall(StaticFindObject,NIAGARA_LIB)
-        local okNpc,npc=pcall(StaticFindObject,CHAR_INFO)
         local world=options.world and options.world()
-        if not okLib or not okNpc or not U.valid(lib) or not U.valid(npc) or not U.valid(world) then return nil end
+        if not U.valid(world) then return nil end
+        if U.valid(collectionWorld) and addr(collectionWorld)==addr(world) and U.valid(collectionInstance) then return collectionInstance end
+        local lib=retry:find(NIAGARA_LIB)
+        local npc=retry:find(CHAR_INFO)
+        if not U.valid(lib) or not U.valid(npc) or not U.valid(world) then return nil end
+        local key='CharInfoInstance:'..tostring(addr(world))
+        if not retry:ready(key) then return nil end
         local ok,instance=pcall(function()return lib:GetNiagaraParameterCollection(world,npc)end)
         instance=ok and U.unwrap(instance) or nil
+        retry:result(key,U.valid(instance))
+        if U.valid(instance) then collectionWorld,collectionInstance=world,instance end
         return U.valid(instance) and instance or nil
     end
     local function skillActive(ability)
-        local ok,lib=pcall(StaticFindObject,ABILITY_LIB)
-        if not ok or not U.valid(lib) or not U.valid(ability) then return false end
+        local lib=retry:find(ABILITY_LIB)
+        if not U.valid(lib) or not U.valid(ability) then return false end
         local okAsk,value=pcall(function()return lib:IsGameplayAbilityActive(ability)end)
         return okAsk and U.unwrap(value)==true
     end
@@ -565,11 +642,11 @@ function Aim.new(options)
     local function spoofTick()
         if not self.alive or not spoof then stopSpoof('已停止');return end
         local now=clock()
-        while spoof and now-spoof.since>=SPOOF_SECONDS do closeSpoof('到时') end
+        while spoof and now-spoof.since>=SPOOF_SECONDS do closeSpoof('到时',true) end
         if spoof and now>=spoof.checkAt then
             spoof.checkAt=now+SPOOF_CHECK
             if skillActive(spoof.ability) then spoof.endedAt=nil else spoof.endedAt=spoof.endedAt or now end
-            if spoof.endedAt and now-spoof.endedAt>=SPOOF_GRACE then closeSpoof('招式结束') end
+            if spoof.endedAt and now-spoof.endedAt>=SPOOF_GRACE then closeSpoof('招式结束',true) end
         end
         if not spoof then stopSpoof('已停止');return end
         if options.paused and options.paused() then return end
@@ -577,28 +654,31 @@ function Aim.new(options)
         if not okTarget or not U.valid(target) then return end
         local spot=rootOf(target)
         if not spot then return end
-        if not U.valid(spoof.instance) then
-            spoof.instance=charInfo()
-            if not spoof.instance then
-                if not spoof.noted then spoof.noted=true;say('全局角色位置改不了：取不到 NPC_CharInfo_001 招式='..spoof.name) end
-                return
-            end
+        local lib,collection,world=charMaterial()
+        if not lib then
+            if not spoof.noted then spoof.noted=true;say('全局角色位置改不了：取不到 MPC_CharInfo_001 招式='..spoof.name) end
+            return
         end
         local detail=spoof.writes<2
-        local playerAt=nil
+        local playerAt,before,copied=nil,nil,nil
         if detail then
-            local okPlayer,player=pcall(function()return options.player and options.player()end)
-            playerAt=okPlayer and U.valid(player) and place(player) or nil
+            playerAt=playerSpot()
+            before=charRootNow()
+            if before and type(before.A)=='number' then spoof.alpha=before.A end
+            -- What the Niagara instance copied from the material collection before last frame's actors ticked.
+            local instance=charInfo()
+            if instance then
+                local okRead,value=pcall(function()return instance:GetColorParameter(CHAR_ROOT)end)
+                copied=okRead and colorSpot(value) or nil
+            end
         end
-        local before=detail and select(2,pcall(function()return spoof.instance:GetVectorParameter(CHAR_ROOT)end)) or nil
-        before=before and U.unwrap(before) or nil
-        local okSet=pcall(function()spoof.instance:SetVectorParameter(CHAR_ROOT,spot)end)
+        local okSet=pcall(function()lib:SetVectorParameterValue(world,collection,charRootName,{R=spot.X,G=spot.Y,B=spot.Z,A=spoof.alpha or 1})end)
         spoof.writes=spoof.writes+1
         if detail then
-            local _,after=pcall(function()return spoof.instance:GetVectorParameter(CHAR_ROOT)end)
-            after=after and U.unwrap(after) or nil
-            say(string.format('全局角色位置改成对手 招式=%s 第%d次 对手=%s 写入前距玩家=%s 距对手=%s 写入=%s 读回距对手=%s',spoof.name,spoof.writes,className(target),
-                playerAt and before and metres(before,playerAt) or '?',before and metres(before,spot) or '?',tostring(okSet),after and metres(after,spot) or '?'))
+            local after=charRootNow()
+            say(string.format('全局角色位置改成对手 招式=%s 第%d次 对手=%s 材质集合写入前距玩家=%s 距对手=%s 写入=%s 读回距对手=%s Niagara集合距玩家=%s 距对手=%s',spoof.name,spoof.writes,className(target),
+                playerAt and before and metres(before,playerAt) or '?',before and metres(before,spot) or '?',tostring(okSet),after and metres(after,spot) or '?',
+                playerAt and copied and metres(copied,playerAt) or '?',copied and metres(copied,spot) or '?'))
         end
     end
     local function skillStarted(context)
@@ -625,7 +705,7 @@ function Aim.new(options)
         self.counts.skillStart=self.counts.skillStart+1;self.window.skillStart=self.window.skillStart+1
         local older=spoof
         if older and older.owner==unit then older=older.previous end
-        spoof={ability=ability,name=name,owner=unit,since=clock(),checkAt=clock()+SPOOF_CHECK,writes=0,instance=spoof and spoof.instance or nil,previous=older}
+        spoof={ability=ability,name=name,owner=unit,since=clock(),checkAt=clock()+SPOOF_CHECK,writes=0,previous=older}
         if not spoofLoop then
             local ok,handle=pcall(LoopInGameThreadWithDelay,1,spoofTick)
             if ok then spoofLoop=handle else say('全局角色位置循环启动失败：'..tostring(handle)) end
@@ -634,16 +714,18 @@ function Aim.new(options)
     end
 
     -- A blueprint that is not loaded yet (a selector comes in with the first bullet data) is tried again while the fight runs.
-    local missing,retryAt={},nil
+    local function needed(name)
+        return next(fighters)~=nil and not hooks[name] and (not FLYING[name] or flyingWanted)
+    end
     local function register(name)
+        if not needed(name) then return end
         local path=Aim.paths[name]
+        if not retry:ready(path) then return end
         local okFind,found=pcall(StaticFindObject,path)
+        retry:result(path,okFind and U.valid(found))
         if not okFind or not U.valid(found) then
-            if not missing[name] then say('还没找到函数，稍后再试 '..path) end
-            missing[name]=true
             return
         end
-        missing[name]=nil
         local handler=name=='force' and forced or name=='lock' and relock or (name=='bullet' or name=='bulletAbility') and retarget
             or name=='launch' and launched or name=='skillStart' and skillStarted
             or FLYING[name] and function(context)
@@ -653,7 +735,7 @@ function Aim.new(options)
         local ok,pre,post=pcall(RegisterHook,path,handler,function()end)
         if ok and type(pre)=='number' and type(post)=='number' then
             hooks[name]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post)
-        else say('挂钩注册失败 '..name..'：'..tostring(pre))end
+        else retry:result(path..':register',false,tostring(pre))end
     end
     local function install()
         for _,fn in ipairs({'StaticFindObject','RegisterHook','UnregisterHook'})do
@@ -680,32 +762,40 @@ function Aim.new(options)
         say('摘除挂钩（'..reason..'） 改写 '..table.concat(parts,' ')..' 其他调用照旧='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
         hooks=kept
         if not next(hooks) then self.state='idle';self.message='没有进行中的战斗' end
-        missing={}
     end
 
     function self:tick()
         if not self.alive then return end
         local now=clock()
-        local units={}
+        local units,current,added={},{},false
+        flyingWanted=false
         if options.fighting() then
             for _,member in ipairs(options.members())do
-                if (member.team=='blue' or member.team=='red') and not member.reserve then
+                if (member.team=='blue' or member.team=='red') and (not member.reserve or member.stand) then
                     local key=U.key(member.actor)
-                    if key then units[key]=true end
+                    -- A stand can cast a skill, but cannot be the opponent a skill aims at.
+                    if key then
+                        units[key]=member.stand and 'stand' or true
+                        local caster=roster[key]
+                        if caster==nil then caster=flyingCaster(member.actor);added=true end
+                        current[key]=caster
+                        if caster then flyingWanted=true end
+                    end
                 end
             end
         end
         local changed=false
         for key in pairs(units)do if not fighters[key] then changed=true end end
         for key in pairs(fighters)do if not units[key] then changed=true end end
+        roster=current
         fighters=units
         if changed then cache,cacheAt={},now end
+        if added then retry:reset() end
         if next(fighters) then
             quietSince=nil
             if not next(hooks) and self.state~='failed' then install()
-            elseif next(missing) and (not retryAt or now>=retryAt) then
-                retryAt=now+RETRY_SECONDS
-                for name in pairs(missing)do register(name) end
+            else
+                for _,name in ipairs(ORDER)do register(name) end
             end
         elseif next(hooks) then
             quietSince=quietSince or now

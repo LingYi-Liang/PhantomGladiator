@@ -1754,7 +1754,7 @@ I18N.add("en", {
   "ai.preset.movement": "Max movement",
   "ai.preset.defense": "Max defense and reactions",
   "ai.combo": "Boss team-up moves",
-  "ai.combo.desc": "Tie Gui and Yu Yao on the same team use their combo attacks. Off: two separate bosses.",
+  "ai.combo.desc": "Iron Fist and Jade Dancer on the same team use their combo attacks. Off: two separate bosses.",
   "ai.combo.on": "Boss team-up moves on",
   "ai.combo.off": "Boss team-up moves off",
   "ai.preset.tip": "Maxes all four groups below, each in its own direction. You can still change any value.",

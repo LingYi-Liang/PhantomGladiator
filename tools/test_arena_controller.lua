@@ -716,4 +716,110 @@ local bitten=escortFixture({activate=function(actor,path,team,escort)return not 
 local bittenResult=bitten.arena:spawn(TAMER,'red',2)
 assert(not bittenResult.ok and bittenResult.spawned_count==1 and bittenResult.escort_count==1)
 assert(bitten.arena:status().state=='cleanup_pending' and bitten.arena:status().red_count==2)
-print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts)")
+-- A stand is a skill participant even when shown; it keeps damage relations and cleanup ownership.
+do
+    local logs,engaged,held={},0,0
+    local f=fixture({isStand=function(actor)return actor.stand==true,'fixture tag' end,
+        dormant=function(actor)return actor.hidden==true end,now=function()return 10 end,
+        inCombat=function()return false,'None' end,
+        engage=function(actor)assert(not actor.stand);engaged=engaged+1;return true end,
+        holdTarget=function(actor,target)assert(not actor.stand and not (target and target.stand));held=held+1 end,
+        log=function(s)logs[#logs+1]=s end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok)
+    local owner,enemy=f.actors[1],f.actors[2]
+    local stand={alive=true,name='stand',hp=100,stand=true,hidden=true}
+    assert(f.arena:adoptSummon(stand,owner,'/Catalog/BP_Stand.BP_Stand_C','fixture').ok)
+    assert(f.arena:status().blue_count==1,'a stand is not a separate survivor')
+    assert(f.arena:start().ok)
+    stand.hidden=false
+    f.arena:tickReinforcements()
+    local s=f.arena:status()
+    assert(s.blue_count==1 and s.stand_count==1 and s.reserve_count==0,'shown stands remain skill participants')
+    local relation=false
+    for _,event in ipairs(f.trace)do
+        if type(event)=='table' and event[1]=='attack' then assert(event[2]~=stand and event[3]~=stand) end
+        if type(event)=='table' and event[1]=='relation' and (event[2]==stand or event[3]==stand) then relation=true end
+    end
+    assert(relation and engaged==2 and held==2,'damage relations survive without autonomous stand control')
+    assert(not f.arena:reengage(tostring(stand)) and not f.arena:holdSensed(tostring(stand)))
+    assert(f.arena:opponentOf(tostring(stand))==enemy,'stand skills use their summoner opponent')
+    local members=f.arena:members()
+    assert(members[3].stand==true and members[3].summoner==owner)
+    owner.hp=0
+    assert(f.arena:opponentOf(tostring(enemy))==nil,'neither assigned nor nearest fallback can pick a stand')
+    assert(f.arena:opponentOf(tostring(stand))==nil,'a dead summoner has no opponent')
+    assert(f.arena:status().battle_clock=='ended','an invulnerable stand cannot keep its side alive')
+    assert(table.concat(logs,'\n'):find('替身身份读回',1,true),'role change and evidence are logged')
+    assert(f.arena:stop().ok and not stand.alive,'stands remain owned for cleanup')
+end
+
+-- A skill asking for "the player" is never left with the real one because its only opponent is out of reach for now,
+-- nor because the caster itself has just gone down; only a stand's answer depends on its summoner being alive. A stand is
+-- reserve to the modules that pick who takes part (executions, combos), and a unit that never was a summon is not asked.
+do
+    local asked=0
+    local f=fixture({isStand=function(actor)asked=asked+1;return actor.stand==true end,
+        untargetable=function(actor)return actor.offstage==true end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    local blue,red=f.actors[1],f.actors[2]
+    f.arena:tickReinforcements()
+    f.arena:status()
+    f.arena:opponentOf(tostring(blue))
+    assert(asked==0,'not a summon: not asked')
+    red.offstage=true
+    assert(f.arena:opponentOf(tostring(blue))==red,'out of reach is still who it fights')
+    f.arena:tickReinforcements()
+    assert(f.arena:opponentOf(tostring(blue))==red,'also once it is no longer sent at her')
+    red.offstage=false
+    local stand={alive=true,name='stand',hp=100,stand=true}
+    assert(f.arena:adoptSummon(stand,blue,'/Catalog/BP_Stand.BP_Stand_C','fixture').ok)
+    local members=f.arena:members()
+    assert(members[3].stand==true and members[3].reserve==true,'stands stay out of what picks fighters')
+    blue.hp=0
+    assert(f.arena:opponentOf(tostring(blue))==red,'its bullets still in flight keep their target')
+    assert(f.arena:opponentOf(tostring(stand))==nil)
+end
+
+-- A summon that is an ordinary fighter is asked now and then, not on each answer to a hook.
+do
+    local asked=0
+    local f=fixture({isStand=function(actor)asked=asked+1;return actor.stand==true end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    local helper={alive=true,name='helper',hp=100}
+    assert(f.arena:adoptSummon(helper,f.actors[2],'/Catalog/BP_Helper.BP_Helper_C','fixture').ok)
+    f.arena:status()
+    asked=0
+    for _=1,50 do f.arena:opponentOf(tostring(helper)) end
+    assert(asked<=1,'asked '..asked..' times')
+end
+
+-- An assigned opponent that died is not "out of reach by design".
+do
+    local logs={}
+    local f=fixture({isStand=function()return false end,log=function(s)logs[#logs+1]=s end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    f.arena:tickReinforcements()
+    f.actors[2].hp=0
+    f.arena:tickReinforcements()
+    assert(not table.concat(logs,'\n'):find('暂不迎敌',1,true),table.concat(logs,'\n'))
+end
+
+do
+    local f=fixture({isStand=function(actor)return actor.stand==true end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    local stand={alive=true,name='late stand',hp=100,stand=true}
+    assert(f.arena:adoptSummon(stand,f.actors[1],'/Catalog/BP_Stand.BP_Stand_C','fixture').ok)
+    local before=stageCount(f,'attack')
+    f.arena:tickReinforcements()
+    assert(stageCount(f,'attack')==before,'a stand discovered mid-fight is not sent into autonomous combat')
+    assert(f.arena:spawn(nil,'red',1).ok)
+    local newcomer=f.actors[3]
+    f.arena:tickReinforcements()
+    local related=false
+    for _,event in ipairs(f.trace)do
+        if type(event)=='table' and event[1]=='relation' and event[2]==newcomer and event[3]==stand and event[4]==2 then related=true end
+        if type(event)=='table' and event[1]=='attack' then assert(event[2]~=stand and event[3]~=stand) end
+    end
+    assert(related,'new enemy reinforcements still receive stand damage relations')
+end
+print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands)")

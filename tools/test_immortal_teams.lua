@@ -35,6 +35,31 @@ local function harness(files)
     return h
 end
 
+do
+    local h=harness();local im=h.new();im:set('blue','ON')
+    local old=h.unit('Old',100);h.members={{actor=old,team='blue'}};h.stuck='Health_Min'
+    for _=1,4 do im:tick()end
+    assert(im:status().locked==0,'fixture must exhaust failed attempts')
+    h.members={};im:tick()
+    local fresh=h.unit('New',200);fresh.GetAddress=old.GetAddress
+    h.stuck=nil;h.members={{actor=fresh,team='blue'}};im:tick()
+    assert(h.attrs[fresh].Health_Min.current==200,'new unit inherited exhausted lock attempts')
+    print('ok - failed immortal attempts are pruned before an address is reused')
+end
+
+do
+    local h=harness()
+    local bad=h.unit('BadRow',100,100);local good=h.unit('GoodRow',200,200)
+    h.npcs={bad,good}
+    h.files['R/immortal-floors.tsv']='ImmortalFloorsV1\n'..bad.GetAddress()..'\t0\t..\n'
+        ..good.GetAddress()..'\t10\t200\nfuture\t-\t1\n'
+    local im=h.new();im:tick()
+    assert(h.attrs[bad].Health_Min.base==100,'invalid recovery rows must not write attributes')
+    assert(h.attrs[good].Health_Min.base==10,'valid rows must survive a malformed neighbour')
+    assert(#h.lines<8,'bad file diagnostics must stay bounded')
+    print('ok - malformed immortal recovery numbers are ignored without losing valid rows')
+end
+
 -- Settings: off by default, saved with readback, a failed save keeps the old value, bad input refused.
 do
     local h=harness()
