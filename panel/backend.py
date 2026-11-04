@@ -30,7 +30,7 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_stat_mode", "set_spawn_level"}
+ACTIONS = {"spawn", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_stat_mode", "set_spawn_level"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
@@ -136,6 +136,25 @@ STAT_FIELDS = (
     "Awakening_Max", "PowerScore", "XP", "Coin", "Corrosion",
 )
 STAT_MODES = {"game": "GAME", "match": "MATCH", "custom": "CUSTOM"}
+# The game's named AI parameters the panel can change, with their types (ai_params.lua, prototype/ai-params.js).
+AI_PARAMS = {
+    "近距离进攻概率": "float", "中距离进攻概率": "float", "远距离进攻概率": "float", "目标在受击状态进攻概率": "float", "咋呼概率": "float",
+    "重新规划-进攻欲望": "float", "重新规划-起攻权重": "float", "重新规划-摸奖权重": "float", "重新规划-牵制权重": "float", "重新规划-打差合概率": "float",
+    "事件反应-打差合概率": "float", "事件反应-反蓄力动作概率": "float", "autocombo权重": "float", "非autocombo权重": "float",
+    "重新规划-全部攻击距离不满足时保底起攻": "bool", "进攻-起攻最大距离": "float", "进攻-摸奖最小距离": "float", "进攻-摸奖最大距离": "float",
+    "进攻-牵制最小距离": "float", "重新规划-差合最小距离": "float", "重新规划-差合最大距离": "float", "尝试远程攻击的距离": "float",
+    "格挡后-反击距离": "float", "立回-退出立回距离": "float", "立回-近距离分界线": "float", "立回-远距离分界线": "float", "立回-超远距离分界线": "float",
+    "立回-近距离二人转权重": "float", "立回-近距离远离权重": "float", "立回-近距离闪避权重": "float", "立回-中距离二人转权重": "float",
+    "立回-中距离靠近权重": "float", "立回-中距离远离权重": "float", "立回-中距离闪避权重": "float", "立回-远距离二人转权重": "float",
+    "立回-远距离靠近权重": "float", "立回-近距离二人转最小持续时间": "float", "立回-近距离二人转最大持续时间": "float", "立回-中距离二人转最小持续时间": "float",
+    "立回-中距离二人转最大持续时间": "float", "立回-远距离二人转最小持续时间": "float", "立回-远距离二人转最大持续时间": "float", "玩家开始近战攻击-格挡权重": "float",
+    "玩家开始近战攻击-闪避权重": "float", "玩家开始近战攻击-无行为权重": "float", "玩家开始近战攻击-针对动作权重": "float", "玩家开始近战攻击-格挡距离": "float",
+    "玩家开始近战攻击-闪避距离": "float", "远程攻击发射-格挡权重": "float", "远程攻击发射-闪避权重": "float", "远程攻击发射-无行为权重": "float",
+    "远程攻击发射-针对动作权重": "float", "玩家靠近-抢招权重": "float", "玩家靠近-闪避后撤权重": "float", "玩家靠近-无行为权重": "float",
+    "受击-转格挡概率": "float", "受击-允许转格挡计数": "int", "受击-正面脱离计数": "int", "受击-背面脱离计数": "int", "重新规划-不进攻时闪避概率": "float",
+    "重新规划-不进攻时闪避最大距离": "float", "玩家开始远程攻击-反制概率": "float", "闪避敌人近战攻击的距离": "float", "减帧时允许格挡": "bool",
+    "无视子弹开始事件": "bool",
+}
 STAT_POSITIVE = {"Health", "Health_Max", "Shachi_Max", "Attack"}
 STAT_NON_NEGATIVE = {"Shachi", "ShachiAttack"}
 LEGACY_BINDING_NAMES = ("spawn", "start", "stop", "refresh_catalog")
@@ -382,7 +401,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv"}:
+        if name not in {"command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -821,6 +840,12 @@ class Bridge:
             if difficulty not in SPAWN_DIFFICULTIES:
                 raise ValidationError('difficulty must be one of ' + ', '.join(SPAWN_DIFFICULTIES))
             payload['difficulty'] = difficulty
+        elif action == 'set_boss_combos':
+            allowed |= {'enabled'}
+            enabled = request.get('enabled')
+            if type(enabled) is not bool:
+                raise ValidationError('enabled must be true or false')
+            payload.update(enabled=enabled)
         elif action == 'set_fun_feature':
             allowed |= {'feature', 'enabled'}
             feature, enabled = request.get('feature'), request.get('enabled')
@@ -864,6 +889,28 @@ class Bridge:
                 if revision is not None and not (isinstance(revision, str) and re.fullmatch(r'R[0-9A-F]{12}', revision)):
                     raise ValidationError('revision must be R and 12 hex digits')
                 payload['revision'] = revision or 'R' + secrets.token_hex(6).upper()
+        elif action == 'set_ai_params':
+            allowed |= {'values', 'revision'}
+            values = request.get('values')
+            if not isinstance(values, dict):
+                raise ValidationError('values must be an object')
+            clean = {}
+            for name, value in values.items():
+                kind = AI_PARAMS.get(name)
+                if kind is None:
+                    raise ValidationError('unknown AI parameter: ' + str(name)[:64])
+                if type(value) not in (int, float) or not math.isfinite(value) or abs(value) > 1e6:
+                    raise ValidationError(name + ' must be a finite number')
+                if kind == 'bool' and value not in (0, 1):
+                    raise ValidationError(name + ' must be 0 or 1')
+                if kind == 'int' and value != int(value):
+                    raise ValidationError(name + ' must be a whole number')
+                clean[name] = value
+            payload['values'] = clean
+            revision = request.get('revision')
+            if revision is not None and not (isinstance(revision, str) and re.fullmatch(r'R[0-9A-F]{12}', revision)):
+                raise ValidationError('revision must be R and 12 hex digits')
+            payload['revision'] = revision or 'R' + secrets.token_hex(6).upper()
         elif action == 'set_spawn_level':
             # The stored payload is checked again before delivery, so it uses the request's own fields.
             allowed |= {'level_mode', 'level', 'unit_id'}
@@ -933,6 +980,9 @@ class Bridge:
                 # The values travel in a file of their own; the command names the revision to read.
                 rows = "".join(f"{field}\t{payload['values'][field]!r}\n" for field in STAT_FIELDS if field in payload["values"])
                 atomic_text(self._path("stat-custom-request.tsv"), f"StatCustomV1\t{payload['revision']}\n{rows}")
+            if payload["action"] == "set_ai_params":
+                rows = "".join(f"{name}\t{value!r}\n" for name, value in payload["values"].items())
+                atomic_text(self._path("ai-params-request.tsv"), f"AIParamsV1\t{payload['revision']}\n{rows}")
             with self.db:
                 cursor = self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
                     (payload["action"], json.dumps(payload, ensure_ascii=False), "pending", self.clock(), game["game_session"]))
@@ -960,10 +1010,14 @@ class Bridge:
             if 'team' in payload:bindings['stop']='FIXED'
         elif payload['action']=='set_spawn_difficulty':
             bindings={'spawn':payload['difficulty']}
+        elif payload['action']=='set_boss_combos':
+            bindings={'spawn':'ON' if payload['enabled'] else 'OFF'}
         elif payload['action']=='set_fun_feature':
             bindings={'spawn':payload['feature'],'start':'ON' if payload['enabled'] else 'OFF'}
         elif payload['action']=='set_stat_mode':
             bindings={'spawn':STAT_MODES[payload['mode']],'start':payload.get('revision','')}
+        elif payload['action']=='set_ai_params':
+            bindings={'spawn':payload['revision']}
         elif payload['action']=='set_spawn_level':
             bindings={'spawn':payload['level_mode'],'start':'' if payload.get('level') is None else str(payload['level'])}
         elif payload['action']=='set_free_camera':
@@ -1278,6 +1332,22 @@ class Bridge:
                 entry["picked"] = len(entry["options"]) - 1
         return {"units": units, "count": len(units)}
 
+    def ai_params(self):
+        """The AI parameter values the mod saved (ai_params.lua, Runtime/ai-params-settings.tsv)."""
+        text = (bounded_read(self._path("ai-params-settings.tsv"), 65536) or "").replace("\r\n", "\n")
+        values = {}
+        for line in text.split("\n")[1:]:
+            name, _, raw = line.partition("\t")
+            if name not in AI_PARAMS:
+                continue
+            try:
+                number = float(raw)
+            except ValueError:
+                continue
+            if math.isfinite(number):
+                values[name] = int(number) if number.is_integer() else number
+        return {"values": values, "fields": list(AI_PARAMS)}
+
     def stat_settings(self):
         """The spawn stat mode and custom values the mod saved (stat_match.lua, Runtime/stat-match-settings.tsv)."""
         # Lua writes this file in text mode, so on Windows its lines end in CRLF.
@@ -1389,6 +1459,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.keybinds()
             elif path == "/api/stat-settings":
                 result = self.server.bridge.stat_settings()
+            elif path == "/api/ai-params":
+                result = self.server.bridge.ai_params()
             elif path == "/api/codex-icons":
                 result = self.server.bridge.codex_icons()
             elif path == "/api/unit-names":

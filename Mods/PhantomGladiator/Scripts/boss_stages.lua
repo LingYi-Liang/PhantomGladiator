@@ -194,6 +194,7 @@ function Stages.new(options)
     -- function, in the game's call.
     local function reveal(context)
         local actor=U.unwrap(context)
+        if options.onUsed then pcall(options.onUsed,actor) end
         local key=U.key(actor)
         local entry=key and unseen[key]
         if not entry then return nil end

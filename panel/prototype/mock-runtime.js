@@ -74,6 +74,7 @@ const MockRuntime = (() => {
     // level: FOLLOW | EASY | NORMAL | HARD | NIGHTMARE for new units; game: the game's own level
     difficulty: { level: savedDiff, game: "Easy", supported: true, failures: 0, skipped: 0, aiFailed: 0, summonLevel: 18, summonLevelUnit: "BP_Monster_BaiheDisciple_Knife" },
     // Where a summon's level comes from (HOME | HERE | CUSTOM) and each unit's places in the game, as the mod writes them.
+    combo: { supported: true, on: false },
     level: { supported: true, mode: savedLevel.mode || "HOME", custom: savedLevel.custom ?? null, homes: mockHomes(savedLevel.picks || {}) },
     // shachiState: off | locked | failed; guardState: off | waiting | ready | failed; deflects/dodges pressed so far
     fun: { supported: true, shachi: !!savedFun.shachi, deflect: !!savedFun.deflect, dodge: !!savedFun.dodge,
@@ -238,6 +239,7 @@ const MockRuntime = (() => {
         s.down.neutral = 0;
         releaseBaseline();
         return;
+      case "set_boss_combos": s.combo = { supported: true, on: p.enabled }; return;
       case "set_fun_feature": {
         const f = s.fun;
         f[p.feature.toLowerCase()] = p.enabled;
@@ -252,6 +254,9 @@ const MockRuntime = (() => {
         if (p.mode === "custom") Object.assign(m, { values: { ...p.values }, customCount: Object.keys(p.values).length });
         return;
       }
+      case "set_ai_params":
+        s.aiParamValues = { ...p.values };
+        return;
       case "set_clock_hud":
         s.clockHud = { supported: true, on: p.enabled, state: p.enabled ? (s.fight === "idle" ? "waiting" : "shown") : "off" };
         try { localStorage.setItem(CLOCK_HUD_KEY, String(p.enabled)); } catch { /* ignore */ }
@@ -531,6 +536,7 @@ const MockRuntime = (() => {
     toggleFreeCam,
     update,
     setup,
+    async aiParams() { await wait(150); return { values: { ...(s.aiParamValues || {}) } }; },
     async statSettings() { await wait(150); return { mode: s.statMatch.mode, values: { ...s.statMatch.values } }; },
     set(patch) { Object.assign(s, patch); emit({ type: "demo" }); },
   };

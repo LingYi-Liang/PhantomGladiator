@@ -48,7 +48,7 @@ local function harness()
     function h.new()
         return Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
-            opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,
+            opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
             paused=function()return h.paused end})
     end
@@ -65,7 +65,7 @@ test('no fight: no hooks; a fight hooks both getters once and checks the answer'
     aim:tick()
     assert(next(h.hooks)==nil and aim:status().state=='idle')
     h.fighting=true;aim:tick();aim:tick()
-    assert(h.ids==3 and aim:status().state=='running')
+    assert(h.ids==16 and aim:status().state=='running')
     assert(h.all():find('自检（临时放行该单位的类）：以 BP_Monster_',1,true) and aim:status().redirected==0 and h.all():find('改写生效=true',1,true),h.all())
 end)
 
@@ -123,9 +123,9 @@ test('a unit in reserve, a unit without an opponent, and the end of the fight',f
     assert(h.ask('character',object('GA_C_C',{outer=red}))==h.player,'after the fight the player again at once')
     h.now=9;aim:tick();assert(#h.unhooked==0)
     h.now=16;aim:tick()
-    assert(#h.unhooked==3 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
-    h.fighting=true;aim:tick();assert(h.ids==6,'hooked again for the next fight')
-    aim:silence('test');assert(#h.unhooked==6)
+    assert(#h.unhooked==16 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
+    h.fighting=true;aim:tick();assert(h.ids==32,'hooked again for the next fight')
+    aim:silence('test');assert(#h.unhooked==32)
 end)
 
 test('a skill of a fighting unit is not forced onto the player; the first call per class logs what the game would say',function()
@@ -151,5 +151,255 @@ test('a skill of a fighting unit is not forced onto the player; the first call p
     h.paused=false
     h.fighting=false;h.now=1;aim:tick()
     assert(h.askForce(object('GA_LengTu_SA_02_C',{outer=red}))==true,'after the fight the game again at once')
+end)
+test('万剑归宗: the ability of a weapon locks onto the opponent before any bullet; a weapon without an owner goes by its ability',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    blue.RootComponent=object('Capsule')
+    h.fighting=true;aim:tick()
+    local playerRoot=object('PlayerCapsule',{GetOwner=function()return h.player end})
+    local ability=object('GA_ZuoShang_CA_02_C',{GetAvatarActorFromActorInfo=function()return red end,
+        ['Lock Target']={Component=playerRoot},['Lock Target Selected']=true})
+    local weapon=object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=ability})
+    assert(aim:lockAbilityOf(weapon)==true,h.all())
+    assert(ability['Lock Target'].Component==blue.RootComponent and ability['Lock Target Selected']==true)
+    assert(h.all():find('招式锁定 GA_ZuoShang_CA_02_C：原目标=BP_RenewalPlayer_C -> BP_Monster_blue_C 写入=true 读回=生效',1,true),h.all())
+    local count=#h.lines
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=ability}))==true and #h.lines==count,'42 weapons, one change')
+    assert(h.ask('character',weapon)==blue,'its turn toward the target too, with no Owner set (weapons the map placed)')
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C'))==false,'no ability yet')
+    local stranger=object('GA_Other_C',{outer=h.player,['Lock Target']={}})
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=stranger}))==false and stranger['Lock Target'].Component==nil,'not a fighting unit: left alone')
+end)
+test('any skill whose own lock came out on the player goes to the opponent; a lock on anything else is left',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    blue.RootComponent=object('Capsule')
+    h.fighting=true;aim:tick()
+    local playerRoot=object('PlayerCapsule',{GetOwner=function()return h.player end})
+    local ability=object('GA_ZuoShang_CA_01_C',{GetAvatarActorFromActorInfo=function()return red end,['Lock Target']={Component=playerRoot}})
+    local answered
+    local out={set=function(_,value)answered=value end}
+    h.hooks[Aim.paths.lock](ability,false,false,out)
+    assert(ability['Lock Target'].Component==blue.RootComponent and answered.Component==blue.RootComponent)
+    assert(h.all():find('招式的锁定落在玩家，改成对手 招式=GA_ZuoShang_CA_01_C -> BP_Monster_blue_C 写入=true 返回值=true 读回=生效 累计=1',1,true),h.all())
+    local onOpponent=object('GA_Other_C',{GetAvatarActorFromActorInfo=function()return red end,['Lock Target']={Component=blue.RootComponent}})
+    blue.RootComponent.GetOwner=function()return blue end
+    h.hooks[Aim.paths.lock](onOpponent,false,false,out)
+    assert(aim:status().redirected==1,'a lock on the opponent stays')
+    local notOurs=object('GA_Player_C',{outer=h.player,['Lock Target']={Component=playerRoot}})
+    h.hooks[Aim.paths.lock](notOurs,false,false,out)
+    assert(notOurs['Lock Target'].Component==playerRoot,'not a fighting unit')
+end)
+
+test('a caller outside the list acting for a fighting unit keeps the player and is named once',function()
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    h.fighting=true;aim:tick()
+    local other=object('GA_NewSkill_C',{outer=red})
+    assert(h.ask('pawn',other)==h.player and h.ask('pawn',other)==h.player)
+    assert(h.all():find('没改写的取玩家调用 调用方=GA_NewSkill_C 函数=取玩家Pawn',1,true),h.all())
+    local _,n=h.all():gsub('没改写的取玩家调用','')
+    assert(n==1)
+    assert(h.ask('pawn',object('UI_Widget_C'))==h.player and not h.all():find('UI_Widget_C',1,true),'acts for nobody')
+end)
+test('a bullet of a fighting unit aimed at the player goes to its opponent; aimed at a fighter it stays; others are left',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    blue.RootComponent=object('Capsule',{GetOwner=function()return blue end})
+    red.RootComponent=object('RedCapsule',{GetOwner=function()return red end})
+    h.fighting=true;aim:tick()
+    local playerRoot=object('PlayerCapsule',{GetOwner=function()return h.player end})
+    local function param(component)
+        local value={Component=component}
+        return {type=function()return 'RemoteUnrealParam' end,get=function()return value end,set=function(_,v)value=v end,read=function()return value end}
+    end
+    local skill=object('GA_ZuoShang_SpecialAttack_12_C')
+    local out=param(playerRoot)
+    local select=h.hooks[Aim.paths.bullet]
+    assert(select(object('Selector'),red,nil,skill,nil,true,out)==true,'the selector now has a target')
+    assert(out:read().Component==blue.RootComponent)
+    assert(h.all():find('子弹目标改成对手 招式=GA_ZuoShang_SpecialAttack_12_C 原目标=BP_RenewalPlayer_C -> BP_Monster_blue_C 写入=true 读回=生效 累计=1',1,true),h.all())
+    local empty=param(nil)
+    assert(select(object('Selector'),red,nil,skill,nil,true,empty)==true and empty:read().Component==blue.RootComponent,'no target at all goes to the opponent')
+    local fine=param(blue.RootComponent)
+    assert(select(object('Selector'),red,nil,object('GA_Other_C'),nil,true,fine)==nil and fine:read().Component==blue.RootComponent)
+    assert(h.all():find('子弹目标 招式=GA_Other_C 目标=BP_Monster_blue_C（参战单位，不改）',1,true),h.all())
+    local playerBullet=param(red.RootComponent)
+    assert(select(object('Selector'),h.player,nil,skill,nil,true,playerBullet)==nil and playerBullet:read().Component==red.RootComponent,'the player own bullets stay')
+    h.paused=true
+    local during=param(playerRoot)
+    assert(select(object('Selector'),red,nil,skill,nil,true,during)==nil and during:read().Component==playerRoot,'an execution keeps its own')
+    h.paused=false
+end)
+
+test('a flying weapon holding the player when it starts goes to the opponent; its end says where it was',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local spot=function(x)return function()return {X=x,Y=0,Z=0} end end
+    blue.K2_GetActorLocation=spot(1000);red.K2_GetActorLocation=spot(0);h.player.K2_GetActorLocation=spot(5000)
+    blue.RootComponent=object('Capsule',{GetOwner=function()return blue end})
+    h.fighting=true;aim:tick()
+    local playerRoot=object('PlayerCapsule',{GetOwner=function()return h.player end})
+    local skill=object('GA_ZuoShang_Skill_12_C')
+    local sword=object('BP_Bullet_ZuoShang_FlyingSword_C',{BulletOwnerAvatar=red,BulletSourceAbility=skill,CurrentTarget={Component=playerRoot},K2_GetActorLocation=spot(4000)})
+    h.hooks[Aim.paths.FlyingSwordStart](sword)
+    assert(sword.CurrentTarget.Component==blue.RootComponent)
+    assert(h.all():find('BP_Bullet_ZuoShang_FlyingSword_C 起飞 招式=GA_ZuoShang_Skill_12_C 当前目标=BP_Monster_blue_C 距玩家=10.0m 距对手=30.0m 距施法者=40.0m 原目标=BP_RenewalPlayer_C 改成对手 写入=true 读回=生效',1,true),h.all())
+    h.hooks[Aim.paths.FlyingSwordEnd](sword)
+    assert(h.all():find('BP_Bullet_ZuoShang_FlyingSword_C 结束 招式=GA_ZuoShang_Skill_12_C 当前目标=BP_Monster_blue_C 距玩家=10.0m 距对手=30.0m 距施法者=40.0m',1,true),h.all())
+    local fine=object('BP_Bullet_ZuoShang_FlyingSpear_C',{BulletOwnerAvatar=red,CurrentTarget={Component=blue.RootComponent},K2_GetActorLocation=spot(500)})
+    h.hooks[Aim.paths.FlyingSpearStart](fine)
+    assert(aim:status().redirected==1,'already on a fighter')
+    local playerSword=object('BP_Bullet_ZuoShang_FlyingSword_C',{BulletOwnerAvatar=h.player,CurrentTarget={Component=playerRoot}})
+    h.hooks[Aim.paths.FlyingSwordStart](playerSword)
+    assert(playerSword.CurrentTarget.Component==playerRoot,'not a fighting unit')
+end)
+
+test('a selector not loaded yet is hooked once it is there',function()
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local real=StaticFindObject
+    StaticFindObject=function(path)if path==Aim.paths.bullet then return nil end;return real(path) end
+    h.fighting=true;aim:tick()
+    assert(h.hooks[Aim.paths.bullet]==nil and h.all():find('还没找到函数，稍后再试',1,true),h.all())
+    local _,once=h.all():gsub('还没找到函数','');assert(once==1)
+    h.now=1;aim:tick()
+    StaticFindObject=real
+    h.now=2;aim:tick();assert(h.hooks[Aim.paths.bullet]==nil,'not before the wait')
+    h.now=7;aim:tick();assert(h.hooks[Aim.paths.bullet]~=nil,'hooked on the next try')
+end)
+test('an effect that reads the player position by itself follows the opponent while its bullet runs',function()
+    local h=harness();local aim=h.new()
+    FName=function(text)return text end
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local redAt={X=100,Y=0,Z=0}
+    blue.K2_GetActorLocation=function()return {X=1000,Y=0,Z=0} end
+    red.K2_GetActorLocation=function()return redAt end
+    h.player.K2_GetActorLocation=function()return {X=5000,Y=0,Z=0} end
+    local loop,cancelled,scans,list=nil,0,0,{}
+    LoopInGameThreadWithDelay=function(ms,fn)assert(ms==50 and loop==nil);loop=fn;return 'handle' end
+    CancelDelayedAction=function(handle)assert(handle=='handle');cancelled=cancelled+1;loop=nil end
+    FindAllOf=function(class)assert(class=='PBZ_ParticleBullet');scans=scans+1;return list end
+    local function named(text)return object(text,{GetFName=function()return {ToString=function()return text end} end}) end
+    local function bullet(owner,data,status)
+        local comp=object('NiagaraComponent',{sets={}})
+        comp.SetVariableBool=function(self,name,value)self.sets[name]=value end
+        comp.SetVariablePosition=function(self,name,value)self.sets[name]=value;self.sets.position=true end
+        comp.SetVariableVec3=function(self,name,value)self.sets[name]=value;self.sets.vector=true end
+        return object('PBZ_ParticleBullet',{BulletOwnerAvatar=owner,BulletData=data,BulletStatus=status,ParticleComponent=comp,
+            BulletSourceAbility=object('GA_ZuoShang_Skill_19_C'),K2_GetActorLocation=function()return {X=1500,Y=0,Z=0} end})
+    end
+    local rain=named('BD_ZuoShang_Skill_19')
+    h.fighting=true;aim:tick()
+    local launch=h.hooks[Aim.paths.launch]
+    assert(launch,'the launcher is hooked during a fight')
+    -- Another skill's launcher costs nothing: no scan, no loop.
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=named('BD_ZuoShang_FlyingSword_Skill_12_01'),GetAvatarActor=function()return blue end}))
+    assert(loop==nil and scans==0)
+    -- A unit outside the fight uses the effect as the game made it.
+    local stranger=object('BP_Monster_ZuoShang_C')
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return stranger end}))
+    assert(loop==nil and scans==0,'not a fighting unit')
+    local mine=bullet(blue,rain,2)
+    local mapBoss=bullet(stranger,rain,2)
+    local otherEffect=bullet(blue,named('BD_MengHua_CA_03'),2)
+    local spent=bullet(blue,rain,3)
+    list={mapBoss,otherEffect,spent,mine}
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}))
+    assert(loop~=nil and scans==0,'the look happens on the loop, after the launcher ran')
+    loop()
+    local sets=mine.ParticleComponent.sets
+    assert(scans==1 and sets.UE_UseTestTargetPos==true and sets.UE_TestTargetPos.X==100,'switch on, position on the opponent')
+    assert(sets.position and sets.vector)
+    assert(next(mapBoss.ParticleComponent.sets)==nil and next(otherEffect.ParticleComponent.sets)==nil and next(spent.ParticleComponent.sets)==nil)
+    assert(h.all():find('特效目标改成对手 子弹=BD_ZuoShang_Skill_19 招式=GA_ZuoShang_Skill_19_C 对手=BP_Monster_red_C 开关=UE_UseTestTargetPos 写入=true 坐标写入=true/true 发射点距对手=14.0m 距玩家=35.0m',1,true),h.all())
+    assert(aim:status().redirected==1)
+    redAt={X=300,Y=0,Z=0};loop()
+    assert(sets.UE_TestTargetPos.X==300,'follows the opponent')
+    loop();loop()
+    assert(scans==3,'looks only a few times')
+    h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(sets.UE_TestTargetPos.X==300,'nothing while time stands still');h.paused=false
+    mine.BulletStatus=3;loop()
+    assert(sets.UE_UseTestTargetPos==false and cancelled==1 and loop==nil,'switch back off, loop gone once it is over')
+    assert(h.all():find('特效目标还原 子弹=BD_ZuoShang_Skill_19',1,true))
+    -- A fight that ends with one in the air leaves nothing behind.
+    local again=bullet(blue,rain,2);list={again}
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}))
+    loop();assert(again.ParticleComponent.sets.UE_UseTestTargetPos==true)
+    h.fighting=false;aim:tick();h.now=h.now+20;aim:tick()
+    assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false and loop==nil and h.hooks[Aim.paths.launch]==nil)
+    LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
+end)
+test('a skill whose effect only reads the player position: the global value follows the opponent while it runs',function()
+    local h=harness()
+    FName=function(text)return text end
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local redAt={X=100,Y=0,Z=0}
+    blue.K2_GetActorLocation=function()return {X=1000,Y=0,Z=0} end
+    red.K2_GetActorLocation=function()return redAt end
+    h.player.K2_GetActorLocation=function()return {X=5000,Y=0,Z=0} end
+    local value={X=5000,Y=0,Z=0}
+    local instance=object('NiagaraParameterCollectionInstance',{
+        SetVectorParameter=function(_,name,v)assert(name=='CharRootPos');value=v end,GetVectorParameter=function(_,name)assert(name=='CharRootPos');return value end})
+    local real=StaticFindObject
+    local active=true
+    StaticFindObject=function(path)
+        if path:find('NiagaraFunctionLibrary') then return object('NiagaraFunctionLibrary',{GetNiagaraParameterCollection=function()return instance end}) end
+        if path:find('NPC_CharInfo_001') then return object('NPC_CharInfo_001') end
+        if path:find('AbilitySystemBlueprintLibrary') then return object('AbilitySystemBlueprintLibrary',{IsGameplayAbilityActive=function(_,ability)return active and not ability.over end}) end
+        return real(path)
+    end
+    local loop,cancelled=nil,0
+    LoopInGameThreadWithDelay=function(ms,fn)assert(ms==1 and loop==nil);loop=fn;return 'handle' end
+    CancelDelayedAction=function()cancelled=cancelled+1;loop=nil end
+    local aim=Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,members=function()return h.members end,fighting=function()return h.fighting end,
+        statics=function()return h.statics end,opponentOf=function(k)return h.targets[k] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
+        world=function()return object('World') end,paused=function()return h.paused end})
+    h.fighting=true;aim:tick()
+    local start=h.hooks[Aim.paths.skillStart]
+    assert(start,'hooked during a fight')
+    local function skill(name,owner)return object(name,{GetAvatarActorFromActorInfo=function()return owner end}) end
+    start(skill('GA_Other_C',blue));assert(loop==nil,'any other skill costs nothing')
+    start(skill('GA_MengHua_CA_03_C',object('BP_Monster_MengHua_C')));assert(loop==nil,'not a fighting unit: as the game made it')
+    start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
+    loop()
+    assert(value.X==100,'the opponent, written through the same call the player class uses')
+    assert(h.all():find('全局角色位置改成对手 招式=GA_MengHua_CA_03_C 第1次 对手=BP_Monster_red_C 写入前距玩家=0.0m 距对手=49.0m 写入=true 读回距对手=0.0m',1,true),h.all())
+    redAt={X=300,Y=0,Z=0};value={X=5000,Y=0,Z=0};loop();assert(value.X==300,'follows it, and wins over what the player class wrote')
+    h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(value.X==300,'not while time stands still');h.paused=false
+    active=false;h.now=h.now+1;loop();assert(loop~=nil,'the effect may outlive the skill')
+    h.now=h.now+7;loop();assert(loop==nil and cancelled==1 and h.all():find('全局角色位置还原 招式=GA_MengHua_CA_03_C',1,true),h.all())
+    -- A second skill while one runs takes over; the fight ending stops it.
+    active=true;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil);redAt={X=0,Y=0,Z=0};loop();assert(value.X==1000,'its own opponent')
+    start(skill('GA_ZuoShang_P2_Skill_17_C',blue));loop();assert(value.X==0)
+    h.now=h.now+25;loop();assert(loop==nil,'capped')
+    -- A subclass plays the same effect.
+    local child=skill('GA_ZuoShang_P2_Skill_17_NoCD_C',blue)
+    child.GetClass().GetSuperStruct=function()return {GetFName=function()return {ToString=function()return 'GA_ZuoShang_P2_Skill_17_C' end}end,IsValid=function()return true end} end
+    start(child);assert(loop~=nil,'a subclass counts');h.now=h.now+25;loop();assert(loop==nil)
+    -- Two at once: the newest has the value; when it ends the older one gets it back, not the player.
+    redAt={X=300,Y=0,Z=0}
+    local first,second=skill('GA_MengHua_CA_03_C',blue),skill('GA_LengTu_CA_02_C',red)
+    start(first);start(second);loop();assert(value.X==1000,'the newer skill: its opponent')
+    second.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop()
+    assert(loop~=nil and value.X==300,'the older skill again: its opponent')
+    assert(h.all():find('全局角色位置还原 招式=GA_LengTu_CA_02_C',1,true),h.all())
+    first.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop();assert(loop==nil)
+    start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
+    h.fighting=false;aim:tick();h.now=h.now+20;aim:tick();assert(loop==nil and h.hooks[Aim.paths.skillStart]==nil)
+    StaticFindObject=real;LoopInGameThreadWithDelay,CancelDelayedAction=nil,nil
 end)
 print('player_aim: all tests passed')

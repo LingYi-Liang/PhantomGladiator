@@ -392,6 +392,7 @@
           <section class="dock-section" id="dock-companion" aria-labelledby="companion-title"></section>
           <section class="dock-section" id="dock-diff" aria-labelledby="diff-title"></section>
           <section class="dock-section" id="dock-match" aria-labelledby="match-title"></section>
+          <section class="dock-section" id="dock-ai" aria-labelledby="ai-title"></section>
           <section class="dock-section" id="dock-view"></section>
         </div>
         <section class="dock-footer" id="dock-battle" aria-label="${esc(t("field.title"))}"></section>
@@ -928,7 +929,80 @@
         ${groups}<p class="stat-filter-none" hidden>${esc(t("stats.filter.none"))}</p></div>
       <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="stats-clear">${esc(t("stats.dialog.clear"))}</button><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="stats-save" data-autofocus>${esc(t("stats.dialog.save"))}</button></div>`);
   }
+  // AI 行为参数 (set_ai_params, ai_params.lua): blank keeps what the game gave each unit.
+  const AI_GROUPS = ["attack", "range", "movement", "defense"];
+  // Chances are compared with a random 0 to 1 (Condition_Probability), so 1 already means always; what the game writes as 999 or 10 is the same.
+  // Weights and distances take the highest the game's own configs use; what works against the aim goes to 0.
+  const AI_PRESET = {
+    attack: { "近距离进攻概率": 1, "中距离进攻概率": 1, "远距离进攻概率": 1, "目标在受击状态进攻概率": 1, "重新规划-进攻欲望": 1, "重新规划-打差合概率": 1, "事件反应-打差合概率": 1, "事件反应-反蓄力动作概率": 1, "咋呼概率": 0, "重新规划-全部攻击距离不满足时保底起攻": 1 },
+    range: { "进攻-起攻最大距离": 9999, "进攻-摸奖最小距离": 0, "进攻-摸奖最大距离": 1400, "进攻-牵制最小距离": 500, "重新规划-差合最小距离": 0, "重新规划-差合最大距离": 1400, "尝试远程攻击的距离": 2000 },
+    // Close range keeps circling as its one choice, so the weighted pick is never empty.
+    movement: { "立回-退出立回距离": 1000, "立回-近距离二人转权重": 100, "立回-近距离远离权重": 0, "立回-近距离闪避权重": 0, "立回-中距离靠近权重": 100, "立回-中距离远离权重": 0, "立回-中距离闪避权重": 0, "立回-远距离靠近权重": 200,
+      "立回-近距离二人转最小持续时间": 0.5, "立回-近距离二人转最大持续时间": 1, "立回-中距离二人转最小持续时间": 0.5, "立回-中距离二人转最大持续时间": 1, "立回-远距离二人转最小持续时间": 0.2, "立回-远距离二人转最大持续时间": 0.8 },
+    defense: { "玩家开始近战攻击-格挡权重": 1000, "玩家开始近战攻击-闪避权重": 200, "玩家开始近战攻击-无行为权重": 0, "玩家开始近战攻击-针对动作权重": 400, "玩家开始近战攻击-格挡距离": 1500, "玩家开始近战攻击-闪避距离": 1200,
+      "远程攻击发射-格挡权重": 100, "远程攻击发射-闪避权重": 500, "远程攻击发射-无行为权重": 0, "远程攻击发射-针对动作权重": 100, "玩家靠近-抢招权重": 300, "玩家靠近-闪避后撤权重": 50, "玩家靠近-无行为权重": 0,
+      "受击-转格挡概率": 1, "受击-允许转格挡计数": 1, "受击-正面脱离计数": 1, "受击-背面脱离计数": 1, "重新规划-不进攻时闪避概率": 1, "重新规划-不进攻时闪避最大距离": 300, "玩家开始远程攻击-反制概率": 1, "减帧时允许格挡": 1 },
+  };
+  const aiLabel = p => p.label[I18N.lang] || p.label.en || p.label.zh;
+  const aiTip = p => p.tip[I18N.lang] || p.tip.en || p.tip.zh;
+  const aiUnit = p => t("ai.unit." + p.unit, { range: p.range });
+  async function loadAiValues() {
+    ui.aiLoaded = true;
+    try { ui.aiValues = (await RT.aiParams()).values || {}; } catch { ui.aiValues = ui.aiValues || {}; }
+    renderAi();
+  }
+  function aiDialog() {
+    ui.aiDraft = ui.aiDraft || Object.fromEntries(Object.entries(ui.aiValues || {}).map(([k, v]) => [k, String(v)]));
+    const draft = ui.aiDraft, list = window.PG_AI_PARAMS || [];
+    const filled = p => String(draft[p.name] ?? "").trim() !== "";
+    const groups = AI_GROUPS.map(g => {
+      const rows = list.filter(p => p.group === g);
+      return `<details class="stat-group" data-group="${g}" ${g === "attack" || rows.some(filled) ? "open" : ""}>
+        <summary><span class="stat-group-name">${esc(t("ai.group." + g))}</span><span class="stat-group-count">${rows.filter(filled).length}/${rows.length}</span>${icon("chevron-down", "chev")}</summary>
+        ${rows.map(p => `<label class="stat-row" data-search="${esc((aiLabel(p) + " " + aiTip(p) + " " + p.name).toLowerCase())}"><span class="stat-row-name"><span class="ai-row-title"><span class="ai-tip" title="${esc(aiTip(p))}" aria-label="${esc(aiTip(p))}">${icon("info", "icon-sm")}</span><span>${esc(aiLabel(p))}</span></span><small class="mono">${esc(aiUnit(p))}</small></span>
+          <input class="stat-input ai-input" type="text" inputmode="decimal" data-field="${esc(p.name)}" value="${esc(draft[p.name] ?? "")}" placeholder="${esc(t("stats.placeholder"))}" aria-label="${esc(aiLabel(p))}"></label>`).join("")}
+      </details>`;
+    }).join("");
+    openDialog("ai", `<div class="dialog-head"><span class="row-icon">${icon("sliders")}</span><h2 id="dlg-title">${esc(t("ai.dialog.title"))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
+      <div class="dialog-body"><p class="stat-dialog-desc">${esc(t("ai.dialog.desc"))}</p>
+        <div class="stat-actions ai-presets"><button class="btn btn-secondary btn-sm" type="button" data-action="ai-preset" title="${esc(t("ai.preset.tip"))}">${esc(t("ai.preset"))}</button>${AI_GROUPS.map(g => `<button class="btn btn-ghost btn-sm" type="button" data-action="ai-preset" data-group="${g}" title="${esc(t("ai.preset." + g + ".tip"))}">${esc(t("ai.preset." + g))}</button>`).join("")}</div>
+        <input class="stat-filter" type="search" placeholder="${esc(t("stats.filter"))}" aria-label="${esc(t("stats.filter"))}">
+        ${groups}<p class="stat-filter-none" hidden>${esc(t("stats.filter.none"))}</p></div>
+      <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="ai-clear">${esc(t("stats.dialog.clear"))}</button><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="ai-save">${esc(t("ai.save"))}</button></div>`);
+  }
+  async function saveAi() {
+    const values = {}, kinds = new Map((window.PG_AI_PARAMS || []).map(p => [p.name, p]));
+    for (const [name, text] of Object.entries(ui.aiDraft || {})) {
+      const raw = String(text).trim();
+      if (!raw) continue;
+      const number = Number(raw), p = kinds.get(name);
+      if (!p || !Number.isFinite(number) || (p.kind === "bool" && number !== 0 && number !== 1) || (p.kind === "int" && !Number.isInteger(number))) {
+        toast({ kind: "error", title: t("ai.invalid", { name: p ? aiLabel(p) : name }) });
+        return;
+      }
+      values[name] = number;
+    }
+    closeDialog();
+    const count = Object.keys(values).length;
+    const job = await run("set_ai_params", { payload: { values }, ok: () => ({ title: count ? t("toast.ai.saved", { n: count }) : t("toast.ai.cleared"), body: t("toast.ai.body") }) });
+    if (job?.status === "succeeded") { ui.aiValues = values; ui.aiDraft = null; renderAi(); }
+  }
+  function renderAi() {
+    const el = $("#dock-ai");
+    if (!el) return;
+    if (RT.online() && !ui.aiLoaded) loadAiValues();
+    const count = Object.keys(ui.aiValues || {}).length, busy = ui.busy.has("set_ai_params");
+    el.innerHTML = `<div class="dock-head"><h3 id="ai-title">${esc(t("ai.title"))}</h3></div>
+      <p class="muted" style="font-size:12.5px;margin:0 0 8px">${esc(count ? t("ai.count", { n: count }) : t("ai.count.none"))}</p>
+      <button class="btn btn-secondary btn-sm" type="button" data-action="ai-open" ${RT.online() && !busy ? "" : "disabled"}>${icon("sliders", "icon-sm")}${esc(t("ai.edit"))}</button>
+      <div class="control-row${S.combo?.on ? " is-on" : ""}" style="margin-top:10px">
+        <span class="control-icon">${icon("swap")}</span>
+        <div class="control-main"><div class="control-title">${esc(t("ai.combo"))}</div><div class="control-desc">${esc(t("ai.combo.desc"))}</div></div>
+        <button class="switch" type="button" role="switch" aria-checked="${!!S.combo?.on}" data-action="boss-combos" aria-label="${esc(t("ai.combo"))}" ${RT.online() && S.combo?.supported && !ui.busy.has("set_boss_combos") ? "" : "disabled"}></button>
+      </div>`;
+  }
   function renderMatch() {
+    renderAi();
     const el = $("#dock-match");
     if (!el) return;
     const m = S.statMatch, online = RT.online(), busy = ui.busy.has("set_stat_mode") || ui.busy.has("toggle_stat_match");
@@ -1589,6 +1663,8 @@
   const ROLLBACK_FROM = "0.37.6";
   const releaseNotes = r => r?.notes?.[I18N.lang] || r?.notes?.en || r?.notes?.zh || [];
   // Every released version this copy of the app has received (changelog.js), newest first, in the app's language.
+  // ~~text~~ in a note: said fixed in that version but it was not, kept visible and struck out.
+  const noteHTML = n => esc(n).replace(/~~(.+?)~~/g, "<s>$1</s>");
   function releaseHistoryHTML() {
     const list = (window.PG_CHANGELOG || []).filter(r => compareVersions(r.version, S.appVersion) <= 0);
     if (!list.length) return "";
@@ -1597,7 +1673,7 @@
       const current = compareVersions(r.version, S.appVersion) === 0 ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
       const back = compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
         ? `<button class="btn btn-secondary btn-sm release-rollback" type="button" data-action="update-rollback" data-value="${esc(r.version)}">${esc(t("update.rollback"))}</button>` : "";
-      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}${back}</div><ul class="notes">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`;
+      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}${back}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul></div>`;
     }).join("");
     return `<details class="release-history"><summary>${icon("history", "icon-sm")}<span>${esc(t("update.history"))}</span><span class="muted">${esc(t("update.history.count", { n: list.length }))}</span>${icon("chevron-down", "icon-sm release-chevron")}</summary><div class="release-list">${items}</div></details>`;
   }
@@ -1634,7 +1710,7 @@
           return head(t("update.title")) + `<div class="dialog-body">
             <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
             <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t("update.rollback.body"))}</span></div></div>
-            ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+            ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : ""}
             <div class="section-label">${esc(t("update.line"))}</div>
             <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>
           </div>
@@ -1781,11 +1857,13 @@
         return mode === "UNIT" ? t("action.set_spawn_level.unit", { name: unit?.name || p.unit || p.unit_id, label: p.level == null ? t("level.backToDefault") : t("level.levelN", { n: p.level }) })
           : t("action.set_spawn_level", { name: mode === "CUSTOM" ? t("level.customN", { n: p.level }) : t("level.mode." + mode) });
       }
+      case "set_boss_combos": return t(p.enabled ? "ai.combo.on" : "ai.combo.off");
       case "set_fun_feature": return t("action.set_fun_feature", { name: t("fun." + p.feature + ".name"), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
+      case "set_ai_params": return t("action.set_ai_params");
       default: return t("action." + job.action);
     }
   }
@@ -2104,6 +2182,19 @@
     "match-rules": () => matchRulesDialog(),
     "fun-toggle": el => toggleFun(el.dataset.feature),
     "immortal-toggle": el => toggleImmortal(el.dataset.team),
+    "ai-open": async () => { if (!ui.aiLoaded) await loadAiValues(); ui.aiDraft = null; aiDialog(); },
+    "ai-preset": el => {
+      const groups = el.dataset.group ? [el.dataset.group] : AI_GROUPS;
+      for (const g of groups) for (const [k, v] of Object.entries(AI_PRESET[g])) ui.aiDraft[k] = String(v);
+      aiDialog();
+    },
+    "boss-combos": async () => {
+      const enabled = !S.combo?.on;
+      await run("set_boss_combos", { busyKey: "set_boss_combos", payload: { enabled }, ok: () => t(enabled ? "ai.combo.on" : "ai.combo.off") });
+      renderAi();
+    },
+    "ai-clear": () => { ui.aiDraft = {}; for (const input of document.querySelectorAll(".dialog .ai-input")) input.value = ""; },
+    "ai-save": () => saveAi(),
     "stats-mode": el => setStatMode(el.dataset.mode),
     "stats-apply": () => applyStats(),
     "stats-all": async () => { if (!ui.statDraft) await loadStatValues(); statsDialog(); },
@@ -2253,7 +2344,8 @@
   });
   document.addEventListener("input", e => {
     if (e.target.classList?.contains("stat-input")) {
-      statDraft()[e.target.dataset.field] = e.target.value;
+      if (e.target.classList.contains("ai-input")) ui.aiDraft[e.target.dataset.field] = e.target.value;
+      else statDraft()[e.target.dataset.field] = e.target.value;
       const group = e.target.closest(".stat-group");
       if (group) {
         const inputs = [...group.querySelectorAll(".stat-input")];

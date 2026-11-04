@@ -51,12 +51,39 @@ end
 
 do -- inside a slope nothing is under it: traced again from over the spot
     local h=harness()
-    local answers={false,120}
+    local answers={false,100}
     h.g=Ground.new({location=function(actor)return h.at[actor] end,label=function()return 'unit' end,world=function()return h.world end,name=function(t)return t end,
         ground=function(world,x,y,z,up)h.asked[#h.asked+1]={up=up};return table.remove(answers,1) or nil end})
     local t={Translation={X=0,Y=0,Z=50}}
-    assert(h.g:place(h.unit(96),t,h.world) and t.Translation.Z==120+96+3)
+    assert(h.g:place(h.unit(96),t,h.world) and t.Translation.Z==100+96+3)
     assert(h.asked[1].up==0 and h.asked[2].up==nil)
+end
+
+do -- started inside something and the look from 3 m up lands high: the top of that thing, the spot keeps its height
+    local h=harness()
+    local calls=0
+    h.g=Ground.new({location=function(actor)return h.at[actor] end,label=function()return 'unit' end,world=function()return h.world end,name=function(t)return t end,
+        ground=function()calls=calls+1;if calls==1 then return nil,'inside' end;return 166 end})
+    local t={Translation={X=0,Y=0,Z=50}}
+    assert(h.g:place(h.unit(96),t,h.world)==nil and t.Translation.Z==50)
+end
+
+do -- nothing under the spot and the same answer: a hill, a spot at the player's height goes up onto it
+    local h=harness()
+    local calls=0
+    h.g=Ground.new({location=function(actor)return h.at[actor] end,label=function()return 'unit' end,world=function()return h.world end,name=function(t)return t end,
+        ground=function()calls=calls+1;if calls==1 then return nil end;return 340 end})
+    local t={Translation={X=0,Y=0,Z=50}}
+    assert(h.g:place(h.unit(96),t,h.world) and t.Translation.Z==340+96+3,tostring(t.Translation.Z))
+end
+
+do -- started inside something shallow, as a spot sunk a little into the ground: it comes up
+    local h=harness()
+    local calls=0
+    h.g=Ground.new({location=function(actor)return h.at[actor] end,label=function()return 'unit' end,world=function()return h.world end,name=function(t)return t end,
+        ground=function()calls=calls+1;if calls==1 then return nil,'inside' end;return 100 end})
+    local t={Translation={X=0,Y=0,Z=50}}
+    assert(h.g:place(h.unit(96),t,h.world) and t.Translation.Z==100+96+3,tostring(t.Translation.Z))
 end
 
 do -- its real capsule is taller than the class default: lifted out of the ground; a shorter one is left to land

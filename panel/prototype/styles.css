@@ -806,6 +806,8 @@ mark { background: rgba(244, 196, 80, .38); color: inherit; border-radius: 3px; 
 .stat-input::placeholder { color: var(--text-3); font-weight: 500; }
 .stat-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .stat-actions .btn-link { display: inline-flex; align-items: center; gap: 5px; }
+.ai-presets { justify-content: flex-start; flex-wrap: wrap; }
+.notes s { color: var(--text-3); }
 .stat-note { margin: 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
 .rule-head { font-size: 13px; font-weight: 700; color: var(--text); margin: 14px 0 6px; }
 .rule-head:first-child { margin-top: 0; }
@@ -1117,6 +1119,9 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .release-head { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: var(--text); }
 .release-head .muted { font-size: 12px; }
 .release-rollback { margin-left: auto; flex: none; }
+.ai-row-title { display: flex; align-items: center; gap: 6px; }
+.ai-tip { display: inline-flex; flex: none; color: var(--text-3); cursor: help; }
+.ai-tip:hover { color: var(--text); }
 .release-item .notes { margin: 6px 0 8px; }
 .line-list { display: flex; flex-direction: column; gap: 6px; }
 .line { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border-strong); background: var(--surface); text-align: left; transition: all var(--t-fast); }

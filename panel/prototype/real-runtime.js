@@ -37,6 +37,8 @@ const RealRuntime = (() => {
     // spawn_level_mode / spawn_level_custom (home_levels.lua): where a summon's level comes from, HOME | HERE | CUSTOM;
     // homes: each unit's places in the game with the default and the player's pick (backend.py /api/home-levels).
     level: { supported: false, mode: "HOME", custom: null, homes: {} },
+    // boss_combos*: the 连携技 switch (boss_combos.lua).
+    combo: { supported: false, on: false },
     // fun_*: the player-only switches saved by fun_features.lua and what each one reads back.
     fun: { supported: false, shachi: false, deflect: false, dodge: false, shachiState: "off", guardState: "off", deflects: 0, dodges: 0 },
     // immortal_*: the 不倒下 switch of each team (immortal_teams.lua), units locked, locks that did not take.
@@ -253,6 +255,8 @@ const RealRuntime = (() => {
       if (L.supported) L.mode = v.spawn_level_mode;
       L.custom = v.spawn_level_custom ? num("spawn_level_custom") : null;
       const f = s.fun;
+      s.combo.supported = yes("boss_combos_supported");
+      s.combo.on = yes("boss_combos");
       f.supported = yes("fun_supported");
       f.shachi = yes("fun_shachi");
       f.deflect = yes("fun_deflect");
@@ -380,11 +384,13 @@ const RealRuntime = (() => {
       if (payload.mode === "UNIT") body.unit_id = payload.unit;
     }
     else if (action === "set_fun_feature") body = { action, feature: payload.feature, enabled: payload.enabled };
+    else if (action === "set_boss_combos") body = { action, enabled: payload.enabled };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
     else if (action === "set_stat_mode") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
+    else if (action === "set_ai_params") body = { action, values: payload.values };
     else if (action === "configure_keys") { path = "/api/keybinds"; body = Object.fromEntries(KEY_NAMES.map(k => [k, wireKey(payload.bindings[k])])); }
     else body = { action };
     const held = action === "stop" ? owned : action === "clear_neutral" ? s.neutral + s.down.neutral : 0;
@@ -414,6 +420,7 @@ const RealRuntime = (() => {
       await loadHomeLevels().catch(() => {});
     }
     if (action === "set_fun_feature" && done.status === "succeeded") s.fun[payload.feature.toLowerCase()] = payload.enabled;
+    if (action === "set_boss_combos" && done.status === "succeeded") s.combo.on = payload.enabled;
     if (action === "set_team_immortal" && done.status === "succeeded") s.immortal[payload.team] = payload.enabled;
     if (action === "set_clock_hud" && done.status === "succeeded") s.clockHud.on = payload.enabled;
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
@@ -506,6 +513,12 @@ const RealRuntime = (() => {
     setup,
     update,
     openFolder: () => host("openFolder"),
+    // The AI parameter values the mod saved (backend.py ai_params).
+    async aiParams() {
+      const r = await fetch("/api/ai-params", { cache: "no-store" });
+      if (!r.ok) throw fail("rejected");
+      return r.json();
+    },
     // The spawn stat mode and every custom value the mod saved (backend.py stat_settings).
     async statSettings() {
       const r = await fetch("/api/stat-settings", { cache: "no-store" });

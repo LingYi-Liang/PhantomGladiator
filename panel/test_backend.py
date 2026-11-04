@@ -4,6 +4,7 @@ import http.client
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -324,6 +325,45 @@ class BridgeTests(unittest.TestCase):
         settings = self.bridge.stat_settings()
         self.assertEqual((settings["mode"], settings["values"]), ("custom", {"Attack": 120, "Health_Max": 50000.5, "Shield": 3}))
         self.assertEqual(len(settings["fields"]), 227)
+
+    def test_boss_combos_switch_travels_as_on_or_off(self):
+        for enabled, token in ((True, "ON"), (False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_boss_combos", "enabled": enabled})
+            self.assertEqual(command["payload"]["enabled"], enabled)
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue({"action": "set_boss_combos", "enabled": 1})
+
+    def test_ai_params_travel_in_a_file_and_come_back(self):
+        command = self.bridge.enqueue({"action": "set_ai_params", "values": {"近距离进攻概率": 1, "减帧时允许格挡": 0, "受击-正面脱离计数": 3}})
+        revision = command["payload"]["revision"]
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1], "set_ai_params")
+        self.assertEqual(columns[5], revision)
+        rows = (self.bridge.runtime / "ai-params-request.tsv").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(rows[0], "AIParamsV1\t" + revision)
+        self.assertIn("近距离进攻概率\t1", rows)
+        for bad in ({"Bogus": 1}, {"近距离进攻概率": "x"}, {"近距离进攻概率": float("inf")}, {"减帧时允许格挡": 2}, {"受击-正面脱离计数": 1.5}):
+            with self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue({"action": "set_ai_params", "values": bad})
+        self.bridge.enqueue({"action": "set_ai_params", "values": {}})
+        self.write("ai-params-settings.tsv", "AIParamsV1\n近距离进攻概率\t0.5\nBogus\t1\n中距离进攻概率\tx\n")
+        settings = self.bridge.ai_params()
+        self.assertEqual(settings["values"], {"近距离进攻概率": 0.5})
+        self.assertEqual(len(settings["fields"]), 65)
+
+    def test_ai_param_lists_agree(self):
+        root = Path(__file__).resolve().parent.parent
+        lua = (root / "Mods/PhantomGladiator/Scripts/ai_params.lua").read_text(encoding="utf-8")
+        self.assertEqual(dict(re.findall(r"\{'([^']+)','(float|bool|int)'\}", lua)), backend.AI_PARAMS)
+        js = (root / "panel/prototype/ai-params.js").read_text(encoding="utf-8")
+        rows = json.loads(re.search(r"window\.PG_AI_PARAMS = (\[.*\]);", js, re.S).group(1))
+        self.assertEqual({r["name"]: r["kind"] for r in rows}, backend.AI_PARAMS)
+        for row in rows:
+            self.assertEqual(sorted(row["label"]), ["de", "en", "es", "fr", "ja", "zh"], row["name"])
+            self.assertTrue(all(row["label"].values()), row["name"])
+            self.assertEqual(sorted(row["tip"]), ["de", "en", "es", "fr", "ja", "zh"], row["name"])
+            self.assertTrue(all(row["tip"].values()), row["name"])
+            self.assertIn(row["unit"], {"prob", "weight", "cm", "s", "count", "switch"}, row["name"])
 
     def test_clock_hud_travels_in_the_start_key_column(self):
         for enabled, token in ((True, "ON"), (False, "OFF")):

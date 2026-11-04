@@ -50,7 +50,6 @@ local CodexIcons=require('codex_icons')
 local ImmortalTeams=require('immortal_teams')
 local BattleClockHUD=require('battle_clock_hud')
 local CombatLock=require('combat_lock')
-local PlayerAim=require('player_aim')
 local CompanionBars=require('companion_bars')
 local AreaLevels=require('area_levels')
 local HomeLevels=require('home_levels')
@@ -81,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.39.1-game-26367565"
+local BUILD = "v0.40.0-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -139,6 +138,8 @@ local immortalTeams
 local clockHUD
 local combatLock
 local playerAim
+local aiParams
+local bossCombos
 local fightWatch
 local onGround
 local arenaExecutions
@@ -1557,14 +1558,17 @@ local function GroundZ(world,x,y,z,up)
     local out,none={},{R=0,G=0,B=0,A=0}
     local start,finish=z+(up or 300),z-3000
     local ok,hit=pcall(function()return lib:LineTraceSingle(world,{X=x,Y=y,Z=start},{X=x,Y=y,Z=finish},0,false,{},0,out,true,none,none,0)end)
-    -- The table passed as OutHit comes back with the hit's own fields. The trace goes straight down, so its Distance
-    -- gives the height when the point does not read.
+    -- The table passed as OutHit comes back with the hit's own fields. bStartPenetrating reads true on every hit there
+    -- (seen with Distance 183 and PenetrationDepth 0), so a start inside something is told by a Distance of 0. The trace
+    -- goes straight down, so its Distance gives the height when the point does not read.
     local found,how
-    if ok and hit==true and out.bStartPenetrating~=true then
+    local distance=ok and hit==true and UEObserve.unwrap(out.Distance)
+    if ok and hit==true and not (type(distance)=='number' and distance<=0) then
         local okZ,impact=pcall(function()return out.ImpactPoint.Z end)
+        local time=UEObserve.unwrap(out.Time)
         if okZ and type(impact)=='number' then found,how=impact,'ImpactPoint'
-        elseif type(out.Distance)=='number' then found,how=start-out.Distance,'Distance'
-        elseif type(out.Time)=='number' then found,how=start+(finish-start)*out.Time,'Time' end
+        elseif type(distance)=='number' then found,how=start-distance,'Distance'
+        elseif type(time)=='number' then found,how=start+(finish-start)*time,'Time' end
         if found and (found>start+1 or found<finish-1) then found=nil end
     end
     if found then
@@ -1581,13 +1585,27 @@ local function GroundZ(world,x,y,z,up)
         for key in pairs(type(out)=='table' and out or {})do keys[#keys+1]=tostring(key) end
         log(string.format('[Ground] 地面检测没结果：调用=%s 返回=%s 输出字段=[%s] 命中点Z=%s%s',tostring(ok),tostring(hit),table.concat(keys,','),
             tostring(found),ok and '' or ' 错误='..tostring(hit)))
+        local okDump,dump=pcall(function()
+            local impact=out.ImpactPoint
+            local parts={'ImpactPoint类型='..type(impact),'Distance='..tostring(out.Distance)..'('..type(out.Distance)..')','Time='..tostring(out.Time)..'('..type(out.Time)..')',
+                'bStartPenetrating='..tostring(out.bStartPenetrating),'bBlockingHit='..tostring(out.bBlockingHit),'PenetrationDepth='..tostring(out.PenetrationDepth)}
+            if type(impact)=='table' then
+                local inner={}
+                for key,value in pairs(impact)do inner[#inner+1]=tostring(key)..'='..tostring(value) end
+                parts[#parts+1]='ImpactPoint内容=['..table.concat(inner,',')..']'
+            end
+            return table.concat(parts,' ')
+        end)
+        log('[Ground] 命中内容 起点Z='..tostring(start)..' '..tostring(dump))
     end
-    return nil
+    -- The caller can tell a start inside something solid from nothing under the start.
+    return nil,(type(distance)=='number' and distance<=0) and 'inside' or nil
 end
 onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,label=objectName,player=GetPlayerPawn,world=function()return UEHelpers.GetWorld()end,
     name=function(text)return FName(text)end})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
+    onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
     findClass=function(path)return StaticFindObject(path)end,loadClass=function(path)return LoadAsset(path)end,
     statics=GetGameplayStatics,findAll=function(name)return FindAllOf(name)end,ground=GroundZ,
     -- How many actors of a targeting type are registered in this world (左殇's ground weapons, what CA_02 will find).
@@ -1672,11 +1690,17 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
         local ai=GetAIComp(actor)
         return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
     end})
-playerAim=PlayerAim.new({log=log,members=ArenaMembers,statics=GetGameplayStatics,
+playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return UEHelpers.GetWorld() end,
     abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
+    player=GetPlayerPawn,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
     paused=function()return arenaExecutions and arenaExecutions:status().active==true or false end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
+-- AI 行为参数: the panel's values for the AI's named parameters (ai_params.lua).
+bossCombos=require('boss_combos').new({path=Config.RuntimePath,log=log,members=ArenaMembers,
+    fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
+aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=ArenaMembers,aiComp=GetAIComp,
+    tension=function()return StaticFindObject('/Script/TensionMeter.Default__TensionLibrary'),UEHelpers.GetWorld() end})
 -- 怪对怪处决（实验）: a boss stuck on its health lock is executed by the nearest enemy with the game's own pair of
 -- abilities; the enemy borrows the player's skeleton for its half (arena_executions.lua).
 -- 处决镜头: the app switch; during an execution the view plays that execution's own camera (execution_camera.lua).
@@ -1717,6 +1741,8 @@ local function supportSteps(self)
     step('grabs',function()arenaGrabs:sync(Config.EnableNPCGrabs and tickMembers or {},tickStatus.battle_active)end)
     step('combatLock',function()combatLock:tick()end)
     step('playerAim',function()playerAim:tick()end)
+    step('aiParams',function()aiParams:tick()end)
+    step('bossCombos',function()bossCombos:tick()end)
     step('fightWatch',function()fightWatch:tick()end)
     step('reinforce',function()arena:tickReinforcements()end)
     if arenaExecutions then step('executions',function()arenaExecutions:tick()end) end
@@ -1779,7 +1805,7 @@ RegisterKeyBind(Key.F9,{ModifierKey.SHIFT},function()
 end)
 end
 panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,
-    build=BUILD,log=log,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
+    build=BUILD,log=log,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
     router=keyRouter,camera={status=function()return {active=freeCamera:isActive(),pending=freeCamera:hasPending(),
             frozen=freeCamera:isFrozen(),settings=freeCamera:settings()}end,
         toggle=ToggleFreeCam,exit=ForceExitFreeCam,
@@ -1807,6 +1833,8 @@ if ModRef then
         clockHUD:silence()
         combatLock:silence('Mod卸载')
         playerAim:silence('Mod卸载')
+        aiParams:silence()
+        bossCombos:silence()
         if arenaExecutions then arenaExecutions:silence() end
         battle:cancel("Mod卸载")
         if battle:pendingCount()>0 or #arenaActors>0 then

@@ -13,7 +13,7 @@
 --   state it was asked for.
 local U=require('ue_observe')
 local Ground={}
-local CLEARANCE,PLACE_MAX_DROP,MAX_DROP,BESIDE=3,800,1500,300
+local CLEARANCE,PLACE_MAX_DROP,MAX_DROP,BESIDE,MAX_RISE=3,800,1500,300,60
 local WALKING,FALLING,FLYING=1,3,5
 local BLOCK='AI.DisableCombatAI'
 local NO_FALL_DEATH=1e9
@@ -38,12 +38,19 @@ function Ground.new(options)
         return moved and result
     end
     local function trace(world,x,y,z,up)
-        local ok,ground=pcall(options.ground,world,x,y,z,up)
-        return ok and type(ground)=='number' and ground or nil
+        local ok,ground,why=pcall(options.ground,world,x,y,z,up)
+        if ok and type(ground)=='number' then return ground end
+        return nil,ok and why or nil
     end
-    -- From the spot's own height first (a roof over a low room is not its floor), then from over it (a spot inside a slope).
+    -- From its own height first (a roof over a low room is not its floor), then from 3 m up for a spot under a hill or inside
+    -- something. Under a hill the first look finds nothing and the surface can be metres up. A first look that starts inside
+    -- something solid and a second one landing high means the top of that thing (seen 90 and 116 cm up): not a floor.
     local function groundAt(world,x,y,z)
-        return trace(world,x,y,z,0) or trace(world,x,y,z)
+        local found,why=trace(world,x,y,z,0)
+        if found then return found end
+        found=trace(world,x,y,z)
+        if found and why=='inside' and found>z+MAX_RISE then return nil end
+        return found
     end
     function self:tagCount(actor,tag)
         local asc=U.field(actor,'AbilitySystemComponent')

@@ -73,6 +73,15 @@ function Runtime.new(options)
             if not options.statMatch then return {ok=false,message='数值设定模块未加载',spawned_count=0} end
             return options.statMatch:setMode(command.key_spawn,command.key_start)
         end,
+        -- The revision of Runtime/ai-params-request.tsv in key_spawn.
+        set_ai_params=function(command)
+            if not options.aiParams then return {ok=false,message='AI 参数模块未加载',spawned_count=0} end
+            return options.aiParams:setRequest(command.key_spawn)
+        end,
+        set_boss_combos=function(command)
+            if not options.bossCombos then return {ok=false,message='连携技模块未加载',spawned_count=0} end
+            return options.bossCombos:set(command.key_spawn=='ON')
+        end,
         -- The difficulty token travels in the key_spawn column (FOLLOW, EASY, NORMAL, HARD, NIGHTMARE).
         set_spawn_difficulty=function(command)
             if not options.spawnDifficulty then return {ok=false,message='召唤难度模块未加载',spawned_count=0} end
@@ -287,6 +296,8 @@ function Runtime.new(options)
         out.spawn_difficulty_ai_verified=ai.verified or 0
         out.spawn_difficulty_ai_failed=ai.failed or 0
         local fun=options.funFeatures and options.funFeatures:status() or {}
+        out.boss_combos_supported=not not options.bossCombos
+        out.boss_combos=options.bossCombos and options.bossCombos:status().enabled==true or false
         out.fun_supported=not not options.funFeatures
         out.fun_shachi=fun.shachi==true
         out.fun_deflect=fun.deflect==true
