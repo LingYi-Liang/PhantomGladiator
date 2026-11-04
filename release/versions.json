@@ -1,6 +1,110 @@
 {
   "versions": [
     {
+      "version": "0.39.1",
+      "date": "2026-11-04T21:45:35+08:00",
+      "size": 20921089,
+      "sha256": "508d65088ced27096ae53f08c9289e51a31874b5ad6897211c825070e1461c82",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.1/PhantomGladiator-0.39.1-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.1/PhantomGladiator-0.39.1-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.1/PhantomGladiator-0.39.1-win64.zip"
+        }
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.000",
+            "size": 2097152,
+            "sha256": "9e090f10999e720bb219695d70d085b424a4d51ec64d0c3dce756aae2dfc65d4"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.001",
+            "size": 2097152,
+            "sha256": "05af4fc012277d05444a82f4a8813ae465fb95e192419f98842f1e80de545f6f"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.002",
+            "size": 2097152,
+            "sha256": "a87c8d27683ef1e9bdf8163a8220da73c3e07ccc8c9258e43e7ec7c0f21e866e"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.003",
+            "size": 2097152,
+            "sha256": "6f8c9a8464b84c7e386ae23e83771f25897b32fd579243e7e861d66df30e3df6"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.004",
+            "size": 2097152,
+            "sha256": "5365f6f55141dc1f7f02de88dce7c161115bb6bc30e9c95f5142cb584dc27a40"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.005",
+            "size": 2097152,
+            "sha256": "bc5c11c32c1405ff47a45b369729782a1e69a951f67b48455026d4dc5d7c3852"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.006",
+            "size": 2097152,
+            "sha256": "ff0b047ebfe766bf31225c3283c250f0ffb22add44ebcb159a29dfe5081c8515"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.007",
+            "size": 2097152,
+            "sha256": "7a0eda69ac1546746d1adbb6746bb90602428d8ab2760860e7068225ea7c43b9"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.008",
+            "size": 2097152,
+            "sha256": "0586a1ca0cf547bb796723948f7b6680eb2feaa33b3289a10d7c766ba5c5fdba"
+          },
+          {
+            "name": "PhantomGladiator-0.39.1-win64.zip.009",
+            "size": 2046721,
+            "sha256": "b1b812590d2c5b0b255209bcb9e8b07b17411b2e9fdb6cc2ee3bf1f893341f4e"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.39.0",
       "date": "2026-11-04T16:21:28+08:00",
       "size": 20913027,
