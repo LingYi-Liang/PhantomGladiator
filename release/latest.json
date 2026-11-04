@@ -1,147 +1,165 @@
 {
-  "version": "0.39.1",
-  "date": "2026-11-04T21:45:35+08:00",
-  "size": 20921089,
-  "sha256": "508d65088ced27096ae53f08c9289e51a31874b5ad6897211c825070e1461c82",
+  "version": "0.40.0",
+  "date": "2026-11-05T03:15:49+08:00",
+  "size": 20966310,
+  "sha256": "72c2217e066dc8a0f11be7eea6ca200360dc6efb7ecda85ee29c6353a9622b27",
   "notes": {
     "zh": [
-      "适配游戏 11 月 4 日的新补丁（build 26367565）",
-      "新补丁给雷当、献祭之蛇、彭猛、毕峰、烟千岁等 BOSS 的 17 个招式加了强制锁定玩家的判断。现在战斗中蓝红两队的单位不走这个判断，招式会对准对手",
-      "新补丁把冰冻抗性从“冰冻积累”挪到了新属性“冰冻时长”，所以原来的冰冻积累抗性都变成了 0。自定义属性里新增「冰冻时长」一组，可以查看和修改",
-      "更新改用分片下载：从多个节点分片下载，自动换最快的，断了能接着下。更新和回退都能用",
+      "新功能「AI 行为」：可以直接改游戏 AI 自己读的 65 个参数，分攻击欲望、进攻距离、走位、防御和反应四组，每个参数旁边都有说明。留空就用每个单位原来的值，填了场上和之后召唤的单位马上生效。可以全部拉满，也可以按组拉满",
+      "新开关「BOSS 连携技」（默认关）：打开后，同队的少主护卫铁鬼和玉妖会放组合技；关掉就是两个单独的 BOSS。目前只有这一对",
+      "修复组织冥主：左殇放出的一大片飞剑打向玩家本体（隐身、无仇恨也一样）：这些飞剑读的是玩家的位置，现在跟着他的对手",
+      "龙体左殇的剑雨，以及救苦救难梦华圣母娘娘、梦差：冷荼、大师兄的绝望剑意、赤影骨刃：囚锋、影魅杀手的同类招式，现在也改打对手。这几招还没有在游戏里逐个确认；两招同时放时，只有后放的打得准",
+      "修复组织冥主：左殇的万剑归宗可能朝玩家飞：飞出去的武器要向招式取锁定目标，这个目标现在固定为他的对手。战斗中招式和子弹的目标落到玩家身上时，也都改成对手",
+      "修复召唤贴地一直没生效：地面检测读错了数据。现在会直接出生在地面上；出生点落在物件里时，会往玩家方向挪到能站的地方",
+      "更新记录里，以前写了修好但其实没修好的内容，现在用删除线划掉了",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Updated for the game's November 4 patch (build 26367565)",
-      "The patch added a check to 17 boss moves (Lei Dang, the Sacrificial Serpent, Peng Meng, Bi Feng, Yan Qiansui and others) that forces them to lock onto the player. Blue and red units in a fight now skip that check, so these moves aim at their opponent",
-      "The patch moved frost resistance from frost buildup to a new frost duration attribute, so the old frost buildup resistance now reads 0 everywhere. Custom stats have a new Frost duration group to view and change it",
-      "Updates now download in parts: small pieces from several mirrors, switching to the fastest and picking up where they stopped. This works for updates and for rolling back",
+      "New AI behavior panel: change 65 parameters the game's own AI reads, in four groups: attack desire, attack distances, movement, defense and reactions, each with a tip. Blank keeps each unit's value; a filled one applies at once to units on the field and new ones. Max them all at once or group by group",
+      "New Boss team-up moves switch (off by default): when on, Tie Gui and Yu Yao on the same team use their combo attacks; off, they are two separate bosses. This pair is the only one so far",
+      "Fixed Zuo Shang's swarm of flying swords going for the player's body, even hidden and with no aggro: the swords read the player's position and now follow his opponent",
+      "The sword rain of dragon-form Zuo Shang and similar moves of Meng Hua, Lengtu, the Eldest Brother's Sword of Despair, Qiu Feng and the Ying Mei assassin now go for the opponent too. These have not each been confirmed in game; when two run at once, only the later one aims true",
+      "Fixed Zuo Shang's flying weapons possibly going for the player: the weapons ask the move for its lock target, and that target is now his opponent. In a fight, any move or bullet whose target lands on the player now goes to the opponent",
+      "Fixed spawning on the ground, which never really worked: the ground check read the wrong data. Units now start on the ground; a spawn point inside an object moves toward the player to somewhere they can stand",
+      "In the release history, things once listed as fixed that were not are now struck through",
       "This version needs the in-game mod updated; follow the prompt in the app"
     ],
     "ja": [
-      "ゲームの 11 月 4 日のパッチ（build 26367565）に対応しました",
-      "パッチで雷当、献祭の蛇、彭猛、畢峰、煙千歳など、ボスの 17 の技にプレイヤーを強制的にロックする判定が追加されました。戦闘中の青・赤チームのユニットはこの判定を通らなくなり、技は相手を狙います",
-      "パッチで凍結耐性が「凍結蓄積」から新しい属性「凍結時間」に移され、以前の凍結蓄積耐性はすべて 0 になりました。カスタム属性に「凍結時間」のグループを追加し、確認と変更ができます",
-      "アップデートを分割ダウンロードに変更しました。複数のサーバーから小分けにダウンロードし、最も速いものに切り替え、中断しても続きから再開します。アップデートでも巻き戻しでも使えます",
+      "新機能「AI の行動」：ゲームの AI が読む 65 個のパラメータを変更できます。攻撃意欲、攻撃距離、移動、防御と反応の 4 グループで、それぞれに説明があります。空欄なら各ユニット本来の値のまま、入力すると場のユニットと新しく召喚するユニットにすぐ反映されます。まとめて最大にも、グループごとに最大にもできます",
+      "新スイッチ「BOSS 連携技」（初期はオフ）：オンにすると同じチームの鉄鬼と玉妖がコンボ技を使います。オフなら別々の BOSS 2 体です。今のところこの組み合わせだけです",
+      "左殇が放つ大量の飛剣がプレイヤー本体（透明・敵対なしでも）へ向かう問題を修正：飛剣はプレイヤーの位置を読んでいましたが、今は相手を追います",
+      "龍体左殇の剣雨と、夢華、冷荼、大師兄の絶望剣意、囚鋒、影魅の同種の技も相手を狙うようになりました。これらはゲーム内で一つずつ確認できていません。2 つの技が同時に出ると、後に出した技だけが正しく狙えます",
+      "左殇の飛ぶ武器がプレイヤーへ向かうことがある問題を修正：武器は技にロック対象を尋ねますが、その対象を相手に固定しました。戦闘中に技や弾の対象がプレイヤーになった場合も相手に変わります",
+      "地面への召喚が実は機能していなかった問題を修正：地面判定が誤ったデータを読んでいました。今は地面の上に出現します。出現位置が物の中なら、プレイヤーの方へ立てる場所まで移動します",
+      "更新履歴で、修正済みと書いたものの直っていなかった内容に取り消し線を引きました",
       "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
     ],
     "fr": [
-      "Mise à jour pour le correctif du jeu du 4 novembre (build 26367565)",
-      "Le correctif a ajouté à 17 attaques de boss (Lei Dang, le Serpent sacrificiel, Peng Meng, Bi Feng, Yan Qiansui et d'autres) un test qui les force à verrouiller le joueur. Les unités bleues et rouges en combat ne passent plus par ce test, ces attaques visent donc leur adversaire",
-      "Le correctif a déplacé la résistance au gel de l'accumulation de gel vers un nouvel attribut, la durée de gel : l'ancienne résistance à l'accumulation de gel vaut donc 0 partout. Les statistiques personnalisées ont un nouveau groupe « Durée de gel » pour la voir et la modifier",
-      "Les mises à jour se téléchargent désormais par morceaux : de petits fichiers depuis plusieurs miroirs, en passant au plus rapide et en reprenant en cas de coupure. Cela vaut pour les mises à jour et pour le retour à une version précédente",
+      "Nouveau panneau Comportement de l'IA : modifiez 65 paramètres lus par l'IA du jeu, en quatre groupes : envie d'attaquer, distances d'attaque, déplacement, défense et réactions, chacun avec une aide. Vide : chaque unité garde sa valeur ; rempli : s'applique tout de suite aux unités sur le terrain et aux nouvelles. Tout mettre au maximum ou groupe par groupe",
+      "Nouvel interrupteur Attaques combinées des boss (désactivé par défaut) : activé, Tie Gui et Yu Yao dans la même équipe utilisent leurs attaques combinées ; désactivé, ce sont deux boss séparés. Seule cette paire pour l'instant",
+      "Correction de la nuée d'épées volantes de Zuo Shang qui visait le corps du joueur, même caché et sans agressivité : les épées lisaient la position du joueur et suivent désormais son adversaire",
+      "La pluie d'épées de Zuo Shang en forme de dragon et les attaques semblables de Meng Hua, Lengtu, l'Épée du désespoir du Frère aîné, Qiu Feng et l'assassin Ying Mei visent aussi l'adversaire. Elles n'ont pas toutes été confirmées en jeu ; quand deux se déclenchent ensemble, seule la dernière vise juste",
+      "Correction des armes volantes de Zuo Shang qui pouvaient viser le joueur : les armes demandent leur cible de verrouillage à l'attaque, et cette cible est désormais son adversaire. En combat, toute attaque ou tout projectile dont la cible tombe sur le joueur va désormais vers l'adversaire",
+      "Correction de l'apparition au sol, qui n'avait jamais vraiment marché : la détection du sol lisait les mauvaises données. Les unités apparaissent désormais au sol ; un point d'apparition dans un objet se déplace vers le joueur jusqu'à un endroit où se tenir",
+      "Dans l'historique, ce qui était annoncé comme corrigé sans l'être est désormais barré",
       "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
     ],
     "de": [
-      "Angepasst an den Spielpatch vom 4. November (Build 26367565)",
-      "Der Patch hat 17 Boss-Angriffen (Lei Dang, Opferschlange, Peng Meng, Bi Feng, Yan Qiansui und weitere) eine Prüfung hinzugefügt, die sie auf den Spieler festlegt. Blaue und rote Einheiten im Kampf überspringen diese Prüfung jetzt, die Angriffe zielen also auf ihren Gegner",
-      "Der Patch hat die Frostresistenz vom Frostaufbau auf das neue Attribut Frostdauer verlegt, die alte Frostaufbau-Resistenz steht daher überall auf 0. Die benutzerdefinierten Werte haben eine neue Gruppe „Frostdauer“ zum Ansehen und Ändern",
-      "Updates werden jetzt in Teilen geladen: kleine Stücke von mehreren Servern, mit Wechsel zum schnellsten und Fortsetzen nach Abbrüchen. Das gilt für Updates und für das Zurückwechseln",
+      "Neu: KI-Verhalten. Ändere 65 Parameter, die die KI des Spiels liest, in vier Gruppen: Angriffslust, Angriffsdistanzen, Bewegung, Verteidigung und Reaktionen, jeweils mit Hinweis. Leer behält den Wert jeder Einheit; ausgefüllt gilt sofort für Einheiten im Feld und neue. Alles auf einmal oder gruppenweise maximieren",
+      "Neuer Schalter Boss-Kombiangriffe (standardmäßig aus): Ist er an, setzen Tie Gui und Yu Yao im selben Team ihre Kombiangriffe ein; aus sind es zwei getrennte Bosse. Bisher nur dieses Paar",
+      "Behoben: Der Schwarm fliegender Schwerter von Zuo Shang zielte auf den Körper des Spielers, auch versteckt und ohne Aggro. Die Schwerter lasen die Position des Spielers und folgen jetzt seinem Gegner",
+      "Der Schwertregen von Zuo Shang in Drachenform und ähnliche Angriffe von Meng Hua, Lengtu, dem Schwert der Verzweiflung des Ältesten Bruders, Qiu Feng und dem Ying-Mei-Assassinen zielen jetzt ebenfalls auf den Gegner. Sie wurden nicht alle einzeln im Spiel bestätigt; laufen zwei gleichzeitig, zielt nur der spätere richtig",
+      "Behoben: Die fliegenden Waffen von Zuo Shang konnten auf den Spieler zielen. Die Waffen fragen den Angriff nach seinem Ziel, und dieses Ziel ist jetzt sein Gegner. Im Kampf geht jeder Angriff und jedes Geschoss, dessen Ziel auf dem Spieler landet, jetzt zum Gegner",
+      "Behoben: Das Spawnen auf dem Boden hat nie richtig funktioniert, weil die Bodenprüfung die falschen Daten las. Einheiten starten jetzt auf dem Boden; ein Spawnpunkt in einem Objekt rückt zum Spieler hin, bis dort Platz zum Stehen ist",
+      "Im Update-Verlauf sind Einträge, die als behoben galten, es aber nicht waren, jetzt durchgestrichen",
       "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
     ],
     "es": [
-      "Adaptado al parche del juego del 4 de noviembre (build 26367565)",
-      "El parche añadió a 17 ataques de jefes (Lei Dang, la Serpiente del sacrificio, Peng Meng, Bi Feng, Yan Qiansui y otros) una comprobación que los obliga a fijar al jugador. Las unidades azules y rojas en combate ya no pasan por ella, así que esos ataques apuntan a su rival",
-      "El parche movió la resistencia a la congelación de la acumulación de congelación a un nuevo atributo, la duración de congelación, por lo que la antigua resistencia a la acumulación ahora vale 0 en todas partes. Las estadísticas personalizadas tienen un nuevo grupo «Duración de congelación» para verla y cambiarla",
-      "Las actualizaciones ahora se descargan por partes: trozos pequeños desde varios servidores, cambiando al más rápido y continuando si se corta. Sirve para actualizar y para volver a una versión anterior",
+      "Nuevo panel Comportamiento de la IA: cambia 65 parámetros que lee la IA del juego, en cuatro grupos: ganas de atacar, distancias de ataque, movimiento, defensa y reacciones, cada uno con una ayuda. En blanco, cada unidad conserva su valor; relleno, se aplica al momento a las unidades en campo y a las nuevas. Se puede poner todo al máximo o por grupos",
+      "Nuevo interruptor Ataques combinados de jefes (desactivado por defecto): activado, Tie Gui y Yu Yao en el mismo equipo usan sus ataques combinados; desactivado, son dos jefes separados. De momento solo esta pareja",
+      "Corregido: el enjambre de espadas voladoras de Zuo Shang iba al cuerpo del jugador, incluso oculto y sin agresividad. Las espadas leían la posición del jugador y ahora siguen a su rival",
+      "La lluvia de espadas de Zuo Shang en forma de dragón y ataques parecidos de Meng Hua, Lengtu, la Espada de la desesperación del Hermano mayor, Qiu Feng y el asesino Ying Mei ahora también van al rival. No se han confirmado una a una en el juego; si dos coinciden, solo la última apunta bien",
+      "Corregido: las armas voladoras de Zuo Shang podían ir a por el jugador. Las armas piden al ataque su objetivo fijado, y ese objetivo ahora es su rival. En combate, cualquier ataque o proyectil cuyo objetivo caiga en el jugador ahora va al rival",
+      "Corregida la aparición sobre el suelo, que nunca funcionó de verdad: la comprobación del suelo leía datos equivocados. Las unidades ahora aparecen en el suelo; un punto de aparición dentro de un objeto se mueve hacia el jugador hasta un sitio donde estar de pie",
+      "En el historial, lo que se anunció como corregido sin estarlo ahora aparece tachado",
       "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/PhantomGladiator-0.39.1-win64.zip"
+      "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/PhantomGladiator-0.40.0-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.1/PhantomGladiator-0.39.1-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.0/PhantomGladiator-0.40.0-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.1/PhantomGladiator-0.39.1-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.0/PhantomGladiator-0.40.0-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.000",
+        "name": "PhantomGladiator-0.40.0-win64.zip.000",
         "size": 2097152,
-        "sha256": "9e090f10999e720bb219695d70d085b424a4d51ec64d0c3dce756aae2dfc65d4"
+        "sha256": "5d28e5ea1bf05b19af1a75dc5a373780a8b4aee0a122bb52e2cf6c5a7d0ecab3"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.001",
+        "name": "PhantomGladiator-0.40.0-win64.zip.001",
         "size": 2097152,
-        "sha256": "05af4fc012277d05444a82f4a8813ae465fb95e192419f98842f1e80de545f6f"
+        "sha256": "d93502d793e05ed1f83ca9ba1350c6342ee7cb9b5bad5676f7ec3ae182a5b11a"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.002",
+        "name": "PhantomGladiator-0.40.0-win64.zip.002",
         "size": 2097152,
-        "sha256": "a87c8d27683ef1e9bdf8163a8220da73c3e07ccc8c9258e43e7ec7c0f21e866e"
+        "sha256": "fbae053faad6ae7afd7686e6bad4a11de249af8146503a6a8a048f57d29ac7d9"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.003",
+        "name": "PhantomGladiator-0.40.0-win64.zip.003",
         "size": 2097152,
-        "sha256": "6f8c9a8464b84c7e386ae23e83771f25897b32fd579243e7e861d66df30e3df6"
+        "sha256": "23f45d0c580a4032e3cbb5371c2a3a8dabd6eeee0c4b035fbab54387f2778b52"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.004",
+        "name": "PhantomGladiator-0.40.0-win64.zip.004",
         "size": 2097152,
-        "sha256": "5365f6f55141dc1f7f02de88dce7c161115bb6bc30e9c95f5142cb584dc27a40"
+        "sha256": "ed91ab747edb05cee21eb49be8158da047b99cb24b511d31b03a8c3490f930f3"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.005",
+        "name": "PhantomGladiator-0.40.0-win64.zip.005",
         "size": 2097152,
-        "sha256": "bc5c11c32c1405ff47a45b369729782a1e69a951f67b48455026d4dc5d7c3852"
+        "sha256": "986ff0f0aab887e0fef1c28ca6b15725969dbe609fd2cc7e95ab15691b0b6cb1"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.006",
+        "name": "PhantomGladiator-0.40.0-win64.zip.006",
         "size": 2097152,
-        "sha256": "ff0b047ebfe766bf31225c3283c250f0ffb22add44ebcb159a29dfe5081c8515"
+        "sha256": "05b78b9b1fc02da3c122628b03e414de1dbe5e5754324d588b3b0167b052adc7"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.007",
+        "name": "PhantomGladiator-0.40.0-win64.zip.007",
         "size": 2097152,
-        "sha256": "7a0eda69ac1546746d1adbb6746bb90602428d8ab2760860e7068225ea7c43b9"
+        "sha256": "0baca56824bad16bca8e6445f03eb22b615746649d599eb4595e95059ae4e927"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.008",
+        "name": "PhantomGladiator-0.40.0-win64.zip.008",
         "size": 2097152,
-        "sha256": "0586a1ca0cf547bb796723948f7b6680eb2feaa33b3289a10d7c766ba5c5fdba"
+        "sha256": "fe635803e607feef104de05500c5b5f023ea2e7ee9f575ae97fe053944ff2576"
       },
       {
-        "name": "PhantomGladiator-0.39.1-win64.zip.009",
-        "size": 2046721,
-        "sha256": "b1b812590d2c5b0b255209bcb9e8b07b17411b2e9fdb6cc2ee3bf1f893341f4e"
+        "name": "PhantomGladiator-0.40.0-win64.zip.009",
+        "size": 2091942,
+        "sha256": "ea5807f6dbddacd5c98e4d8152193476215b3d11a7ab5bf67745c110d03151dc"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.39.1/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.0/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.39.1/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.0/"
       }
     ]
   }
