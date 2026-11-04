@@ -1,82 +1,76 @@
 {
-  "version": "0.38.4",
-  "date": "2026-11-03T21:12:35+08:00",
-  "size": 20842073,
-  "sha256": "d2eafebb2ee0d1c333f0941ac62aeac46afa54d3855237dfbc33a6391f8b6b16",
+  "version": "0.39.0",
+  "date": "2026-11-04T16:21:28+08:00",
+  "size": 20913027,
+  "sha256": "ec0d657f6dd4110364cce829e6f7d774911743ba8d7b9f7d6bd7983b22303da9",
   "notes": {
     "zh": [
-      "梦差：冷荼 能打完整场阶段战了：召唤时按她原地图的摆法放好召唤点和瞬移点，她会一轮轮放召唤物，最后亲自下场。藏着备用的人偶不再算存活，战斗不会卡住；她按设定不能被锁定时，对手先去打她的召唤物",
-      "另有 11 个 BOSS 的特殊招式要用原地图里摆好的标记点，召唤时一并放好，不会再朝世界原点瞬移、召唤物也不会刷在原点：玉瓒、独眼弓客、献祭之蛇、烟千岁、组织冥主：左殇（含银发）、龙体左殇、火流星、碧海大师残躯、荡秽、武轩",
-      "组织冥主：左殇 六成血的转阶段大招会拔起地上的兵器射向对手：召唤时按竹林古屋的位置埋好 42 把，平时看不见，被拔起时才显现",
-      "雷当：独臂虎 的跳劈落点和落石、冷荼的一招弹幕，原来以世界原点为准，现在以召唤的位置为准",
-      "蓝红两队召唤出来面对面站，不会再有一方背对对手、挨打一阵才还手",
-      "开着自由观战（无仇恨、隐身）时，BOSS 的招式不再锁定玩家，改为对准它的对手",
-      "召唤的冷荼不再改动你存档里断魂山那场冷荼的进度",
+      "新功能：更新记录里，v0.37.6 起的旧版本后面多了「回退到此版本」按钮。新版本有问题时可以换回去，设置和按键都保留，之后也能再升级回来",
+      "修复开战后怪站着不动、不交战：出生点略高于地面，又离镜头较远时，会被游戏的防坠落机制冻在半空。现在召唤时直接放到地面上，万一还被冻住也会自动放回地面",
+      "修复打到一半怪突然消失：被打飞或走下悬崖后摔死，不管还剩多少血。现在摔落不会致死，掉下悬崖的会被拉回对手身边",
+      "修复彭猛、毕峰半血就被处决：这几个 BOSS 的收尾处决现在只在打到锁血线时才触发",
+      "修复雷当、献祭之蛇二阶段、冷荼打到锁血线后一直不死：它们没有处决动作，20 秒后按倒下收尾，这场才打得完",
+      "修复更新窗口的两个问题：内容长时底部按钮被挤出窗口；三条线路测速都超时时窗口一直转圈",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Lengtu now plays her whole staged fight: when she is summoned, the summon points and teleport spots of her own arena are placed around her, so her rounds of summons come out one after another and she finally steps in herself. Her hidden reserve puppets no longer count as alive, so the fight no longer gets stuck, and while she is out of reach by design her opponents fight her summons",
-      "11 more bosses have special moves that use markers placed in their own map; these are now placed when they are summoned, so the moves no longer warp toward the world origin and summons no longer appear there",
-      "Zuo Shang's phase move at 60% health pulls weapons out of the ground and fires them at his opponent: 42 are placed where they stand in his arena, unseen until the move picks them up",
-      "Lei Dang's leap and falling rocks, and one of Lengtu's bullet bursts, now use the spot they were summoned at instead of the world origin",
-      "Blue and red now spawn facing each other, so one side no longer stands with its back to the other and takes hits before fighting back",
-      "In free camera (no aggro, hidden), bosses' skills no longer lock onto the player; they aim at their opponent instead",
-      "A summoned Lengtu no longer changes the progress of her own fight in your save",
-      "This version updates the in-game mod; follow the prompt in the app"
+      "New: in the release history, versions from v0.37.6 on have a Roll back button. If a new version has a problem you can go back; settings and keys stay, and you can upgrade again later",
+      "Fixed units standing still after a fight starts: a spawn point slightly above the ground and far from the camera got them frozen in mid-air by the game's fall protection. Units now spawn on the ground, and one that still gets frozen is put back down",
+      "Fixed units vanishing mid-fight: they had died from a fall, whatever health they had left. Falls no longer kill, and a unit that goes off a cliff is brought back beside its opponent",
+      "Fixed Peng Meng and Bi Feng being executed at half health: these bosses' finishers now only trigger on their health lock",
+      "Fixed Lei Dang, the Sacrificial Serpent's second phase and Lengtu never dying once on their health lock: they have no finisher, so after 20 seconds they fall and the fight can end",
+      "Fixed two problems in the update window: long content pushed the bottom buttons out of the window, and it kept spinning when all three download lines timed out",
+      "This version needs the in-game mod updated; follow the prompt in the app"
     ],
     "ja": [
-      "冷荼が段階戦を最後まで戦うようになりました。召喚時に元のマップどおりの召喚位置と瞬間移動地点を周りに置くので、召喚物を一波ずつ出し、最後には自ら戦います。隠された予備の人形は生存数に数えなくなり、戦闘が止まらなくなりました。設定上ロックできない間は、相手はまず召喚物と戦います",
-      "ほかに11体のボスの特殊技が元のマップに置かれた目印を使います。召喚時に一緒に置くので、ワールド原点へ瞬間移動したり、召喚物が原点に出たりしなくなりました",
-      "左殇がHP6割で使う段階移行の大技は、地面の武器を引き抜いて相手に放ちます。元の戦場の位置に42本を置き、普段は見えず、引き抜かれた時に現れます",
-      "雷当（独臂虎）の跳び斬りの着地点と落石、冷荼の弾幕の一つは、ワールド原点ではなく召喚された位置を基準にするようになりました",
-      "青と赤は向かい合って召喚されるようになり、片方が相手に背を向けて、しばらく殴られてから反撃することがなくなりました",
-      "フリーカメラ（敵対なし・透明）中、ボスの技がプレイヤーをロックしなくなり、相手を狙います",
-      "召喚した冷荼が、セーブデータにある本来の冷荼戦の進行を変えなくなりました",
-      "このバージョンはゲーム内Modの更新が必要です。アプリの案内に従ってください"
+      "新機能：更新履歴の v0.37.6 以降の旧バージョンに「このバージョンに戻す」ボタンを追加。新バージョンに問題があれば戻せます。設定とキーはそのままで、後からまたアップデートできます",
+      "戦闘開始後にユニットが立ったまま動かない問題を修正：出現位置が地面より少し高く、カメラから遠いと、ゲームの落下防止機能で空中に固定されていました。出現時に地面へ置くようにし、それでも固定された場合は自動で地面に戻します",
+      "戦闘の途中でユニットが消える問題を修正：吹き飛ばされたり崖から落ちたりすると、残り体力に関係なく落下死していました。落下では死ななくなり、崖から落ちたユニットは相手のそばに戻ります",
+      "彭猛と畢峰が体力半分で処決される問題を修正：これらのボスの決着処決は体力ロックに達したときだけ発動します",
+      "雷当、献祭の蛇の第二段階、冷荼が体力ロックに達した後に倒れない問題を修正：処決動作がないため、20 秒後に倒れて戦闘が終わります",
+      "アップデート画面の問題を 2 つ修正：内容が長いと下のボタンが画面外に出る問題と、3 つの回線がすべてタイムアウトすると読み込みが終わらない問題",
+      "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
     ],
     "fr": [
-      "Lengtu mène désormais tout son combat par phases : à son invocation, les points d'invocation et de téléportation de sa propre arène sont placés autour d'elle, ses vagues d'invocations arrivent l'une après l'autre et elle finit par combattre elle-même. Ses pantins de réserve cachés ne comptent plus comme vivants, le combat ne se bloque plus, et tant qu'elle est hors d'atteinte par conception, ses adversaires combattent ses invocations",
-      "11 autres boss ont des attaques spéciales qui utilisent des repères placés dans leur propre carte ; ils sont maintenant placés à l'invocation, les attaques ne se téléportent plus vers l'origine du monde et les invocations n'y apparaissent plus",
-      "L'attaque de changement de phase de Zuo Shang à 60 % de vie arrache des armes du sol et les lance sur son adversaire : 42 armes sont placées comme dans son arène, invisibles jusqu'à ce que l'attaque les prenne",
-      "Le saut et les chutes de pierres de Lei Dang, ainsi qu'une salve de Lengtu, partent maintenant du point d'invocation et non de l'origine du monde",
-      "Bleus et rouges apparaissent désormais face à face : un camp ne tourne plus le dos à l'autre pour encaisser des coups avant de riposter",
-      "En caméra libre (sans agressivité, caché), les techniques des boss ne verrouillent plus le joueur ; elles visent leur adversaire",
-      "Une Lengtu invoquée ne modifie plus la progression de son propre combat dans votre sauvegarde",
-      "Cette version met à jour le mod en jeu ; suivez l'invite de l'application"
+      "Nouveau : dans l'historique des versions, les versions à partir de la v0.37.6 ont un bouton « Revenir à cette version ». Si une nouvelle version pose problème, vous pouvez revenir en arrière ; réglages et touches sont conservés et vous pourrez remettre à jour plus tard",
+      "Correction des unités immobiles après le début du combat : un point d'apparition un peu au-dessus du sol et loin de la caméra les faisait figer en l'air par la protection antichute du jeu. Elles apparaissent maintenant au sol, et une unité encore figée est reposée automatiquement",
+      "Correction des unités qui disparaissent en plein combat : elles mouraient d'une chute, quelle que soit leur santé. Les chutes ne tuent plus, et une unité tombée d'une falaise revient à côté de son adversaire",
+      "Correction de Peng Meng et Bi Feng exécutés à mi-santé : le coup de grâce de ces boss ne se déclenche plus que sur leur verrou de santé",
+      "Correction de Lei Dang, de la seconde phase du Serpent sacrificiel et de Lengtu qui ne mouraient jamais une fois sur leur verrou de santé : ils n'ont pas de coup de grâce, ils tombent donc au bout de 20 secondes et le combat peut se terminer",
+      "Correction de deux problèmes de la fenêtre de mise à jour : un contenu long poussait les boutons du bas hors de la fenêtre, et elle restait à charger quand les trois lignes de téléchargement expiraient",
+      "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
     ],
     "de": [
-      "Lengtu kämpft jetzt ihren ganzen Phasenkampf: Bei der Beschwörung werden die Beschwörungs- und Teleportpunkte ihrer eigenen Arena um sie herum platziert, ihre Beschwörungswellen kommen nacheinander, und am Ende kämpft sie selbst. Ihre versteckten Reservepuppen zählen nicht mehr als lebend, der Kampf bleibt nicht mehr hängen, und solange sie planmäßig unerreichbar ist, kämpfen ihre Gegner gegen ihre Beschwörungen",
-      "11 weitere Bosse haben Spezialangriffe, die Markierungen aus ihrer eigenen Karte nutzen; diese werden jetzt bei der Beschwörung platziert, sodass die Angriffe nicht mehr zum Weltursprung teleportieren und Beschwörungen dort nicht mehr erscheinen",
-      "Zuo Shangs Phasenwechsel-Angriff bei 60 % Leben reißt Waffen aus dem Boden und schleudert sie auf seinen Gegner: 42 Waffen werden wie in seiner Arena platziert, unsichtbar, bis der Angriff sie aufnimmt",
-      "Lei Dangs Sprung und Steinschlag sowie eine Salve von Lengtu gehen jetzt vom Beschwörungsort aus statt vom Weltursprung",
-      "Blau und Rot erscheinen jetzt einander zugewandt; keine Seite steht mehr mit dem Rücken zur anderen und steckt erst Treffer ein, bevor sie zurückschlägt",
-      "In der freien Kamera (keine Aggro, versteckt) visieren die Fähigkeiten von Bossen nicht mehr den Spieler an, sondern ihren Gegner",
-      "Eine beschworene Lengtu ändert nicht mehr den Fortschritt ihres eigenen Kampfes in deinem Spielstand",
-      "Diese Version aktualisiert den Mod im Spiel; folge dem Hinweis in der App"
+      "Neu: Im Versionsverlauf haben Versionen ab v0.37.6 eine Schaltfläche „Auf diese Version zurück“. Hat eine neue Version Probleme, kannst du zurückwechseln; Einstellungen und Tasten bleiben erhalten, und du kannst später wieder aktualisieren",
+      "Behoben: Einheiten standen nach Kampfbeginn still. Ein Spawnpunkt etwas über dem Boden und weit von der Kamera ließ sie durch den Absturzschutz des Spiels in der Luft einfrieren. Einheiten erscheinen jetzt auf dem Boden, und eine trotzdem eingefrorene wird wieder abgesetzt",
+      "Behoben: Einheiten verschwanden mitten im Kampf. Sie starben durch einen Sturz, egal wie viel Leben sie noch hatten. Stürze töten nicht mehr, und eine von der Klippe gestürzte Einheit kommt neben ihren Gegner zurück",
+      "Behoben: Peng Meng und Bi Feng wurden bei halbem Leben hingerichtet. Der Abschluss dieser Bosse wird jetzt nur noch an ihrer Lebenssperre ausgelöst",
+      "Behoben: Lei Dang, die zweite Phase der Opferschlange und Lengtu starben an ihrer Lebenssperre nie. Sie haben keinen Abschluss, deshalb fallen sie nach 20 Sekunden und der Kampf kann enden",
+      "Zwei Fehler im Update-Fenster behoben: Langer Inhalt schob die unteren Schaltflächen aus dem Fenster, und es lud endlos, wenn alle drei Download-Wege eine Zeitüberschreitung hatten",
+      "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
     ],
     "es": [
-      "Lengtu ahora libra todo su combate por fases: al invocarla se colocan a su alrededor los puntos de invocación y de teletransporte de su propia arena, sus oleadas de invocaciones salen una tras otra y al final pelea ella misma. Sus marionetas de reserva ocultas ya no cuentan como vivas, el combate ya no se atasca, y mientras está fuera de alcance por diseño sus rivales luchan contra sus invocaciones",
-      "Otros 11 jefes tienen ataques especiales que usan marcas colocadas en su propio mapa; ahora se colocan al invocarlos, así que los ataques ya no se teletransportan hacia el origen del mundo y las invocaciones ya no aparecen allí",
-      "El ataque de cambio de fase de Zuo Shang al 60 % de vida arranca armas del suelo y las lanza contra su rival: se colocan 42 donde están en su arena, invisibles hasta que el ataque las toma",
-      "El salto y la lluvia de piedras de Lei Dang, y una ráfaga de Lengtu, ahora parten del lugar de invocación y no del origen del mundo",
-      "Azules y rojos aparecen ahora frente a frente: ningún bando queda de espaldas al otro recibiendo golpes antes de responder",
-      "Con la cámara libre (sin agresividad, oculto), las habilidades de los jefes ya no fijan al jugador; apuntan a su rival",
-      "Una Lengtu invocada ya no cambia el progreso de su propio combate en tu partida",
-      "Esta versión actualiza el mod del juego; sigue el aviso de la aplicación"
+      "Novedad: en el historial de versiones, las versiones desde la v0.37.6 tienen un botón «Volver a esta versión». Si una versión nueva da problemas puedes volver atrás; los ajustes y las teclas se conservan y luego puedes actualizar de nuevo",
+      "Corregido: unidades quietas al empezar el combate. Un punto de aparición algo por encima del suelo y lejos de la cámara hacía que la protección contra caídas del juego las congelara en el aire. Ahora aparecen en el suelo, y una que siga congelada se devuelve al suelo",
+      "Corregido: unidades que desaparecían a mitad de combate. Morían por una caída, con la salud que les quedara. Las caídas ya no matan, y una unidad que cae por un precipicio vuelve junto a su rival",
+      "Corregido: Peng Meng y Bi Feng eran ejecutados a media salud. El remate de estos jefes solo se activa ahora en su bloqueo de salud",
+      "Corregido: Lei Dang, la segunda fase de la Serpiente del sacrificio y Lengtu nunca morían en su bloqueo de salud. No tienen remate, así que caen a los 20 segundos y el combate puede terminar",
+      "Corregidos dos problemas de la ventana de actualización: el contenido largo sacaba los botones inferiores de la ventana, y se quedaba cargando si las tres líneas de descarga agotaban el tiempo",
+      "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.38.4/PhantomGladiator-0.38.4-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
     }
   ]
 }

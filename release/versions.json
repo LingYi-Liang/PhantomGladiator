@@ -1,6 +1,26 @@
 {
   "versions": [
     {
+      "version": "0.39.0",
+      "date": "2026-11-04T16:21:28+08:00",
+      "size": 20913027,
+      "sha256": "ec0d657f6dd4110364cce829e6f7d774911743ba8d7b9f7d6bd7983b22303da9",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.39.0/PhantomGladiator-0.39.0-win64.zip"
+        }
+      ]
+    },
+    {
       "version": "0.38.4",
       "date": "2026-11-03T21:12:35+08:00",
       "size": 20842073,
