@@ -7,7 +7,7 @@ newest built dist/PhantomGladiator-* folder:
 
     python -I tools/test_update_check.py [webview2 folder]
 """
-import http.server, json, pathlib, shutil, subprocess, sys, tempfile, threading, time
+import collections, hashlib, http.server, json, os, pathlib, shutil, subprocess, sys, tempfile, threading, time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSC = pathlib.Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
@@ -37,6 +37,47 @@ def main():
             self.end_headers()
 
         def do_GET(self):
+            if self.path == "/hits":
+                data = json.dumps(sorted(hits)).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if self.path == "/whole":
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(whole)))
+                self.end_headers()
+                self.wfile.write(whole)
+                return
+            if self.path.startswith("/src/"):
+                _, _, kind, file = self.path.split("/")
+                hits[f"{kind}/{file}"] += 1
+                body = blobs.get(file)
+                try:
+                    if kind == "missing" or body is None:
+                        self.send_response(404)
+                        self.end_headers()
+                    elif kind == "corrupt":
+                        self.send_response(200)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(b"x" * len(body))
+                    elif kind == "slow":
+                        self.send_response(200)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        for at in range(0, len(body), 2048):
+                            self.wfile.write(body[at:at + 2048])
+                            time.sleep(0.25)
+                    else:
+                        self.send_response(200)
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                except OSError:
+                    pass  # the app dropped a slow source
+                return
             name = self.path.strip("/").removesuffix(".json")
             if name.startswith("slow"):
                 time.sleep(8)  # past the app's 6 s timeout
@@ -73,6 +114,24 @@ def main():
     pages.update({"stale/versions": listed("stale", "0.37.1"), "full/versions": listed("full", "0.38.0", "0.37.1", "0.37.0"),
                   "broken/versions": listed("broken", "0.37.1", downloads=False), "nojson/versions": "{not json",
                   "notlisted/versions": json.dumps({"other": []})})
+
+    # A package in five parts, and manifests whose parts come from different kinds of source.
+    hits = collections.Counter()
+    blobs = {f"part.{i:03d}": bytes([65 + i]) * 200000 for i in range(5)}
+    whole = b"".join(blobs[k] for k in sorted(blobs))
+
+    def split(version, kinds, size=None, names=None):
+        files = [{"name": (names or {}).get(k, k), "size": len(v), "sha256": hashlib.sha256(v).hexdigest()} for k, v in sorted(blobs.items())]
+        return json.dumps({"version": version, "date": "d", "size": size or len(whole), "sha256": hashlib.sha256(whole).hexdigest(),
+                           "downloads": [{"id": "github", "url": base + "/whole"}],
+                           "parts": {"files": files, "sources": [{"id": k, "url": f"{base}/src/{k}/"} for k in kinds]}})
+
+    pages.update({"split-mixed": split("0.37.2", ["missing", "corrupt", "slow", "good"]),
+                  "split-dead": split("0.37.4", ["missing", "corrupt"]),
+                  "split-resume": split("0.37.3", ["resume"]),
+                  "split-slow": split("0.37.5", ["slow"]),
+                  "split-wrongsize": split("0.37.6", ["good"], size=1),
+                  "split-badname": split("0.37.7", ["good"], names={"part.000": "../part.000"})})
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     wv = webview2_folder()
@@ -87,7 +146,8 @@ def main():
                         str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs"),
                         str(ROOT / "tools/test_update_check.cs")], check=True)
         # A crash prints in the console's code page, not UTF-8.
-        run = subprocess.run([str(exe), base], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+        run = subprocess.run([str(exe), base], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240,
+                             env=dict(os.environ, PG_DATA_DIR=str(tmp / "data")))
     server.shutdown()
     print(run.stdout, end="")
     if run.stderr:

@@ -42,7 +42,8 @@ namespace PhantomGladiator
                 var back = Environment.GetEnvironmentVariable("PG_TEST_ROLLBACK");
                 var found = string.IsNullOrEmpty(back) ? client.Check("zh") : client.SelectVersion(back, "zh");
                 if ((bool)found["latest"]) throw new Exception("no newer version found");
-                client.Download("github", (done, size, speed) => { });
+                var line = Environment.GetEnvironmentVariable("PG_TEST_LINE");
+                client.Download(string.IsNullOrEmpty(line) ? "github" : line, (done, size, speed) => { });
                 client.Verify();
                 client.Install();
                 return 0;

@@ -446,10 +446,203 @@ namespace PhantomGladiator
     }
 
     // ---------- Updates ----------
+    // Downloads a package split into small files (a manifest's "parts", tools/release/parts.py) from whichever listed
+    // source is fastest right now. A short speed test says little about a congested mirror, so the ranking comes from the
+    // parts themselves: the first parts go to different sources, later ones to the fastest so far, and a part running far
+    // behind the best source is dropped and fetched again from there. A part that fails, or fails its SHA-256, goes to
+    // another source. Finished parts stay on disk, so a retry only fetches what is missing.
+    sealed class PartDownload
+    {
+        public sealed class Part { public string Name; public long Size; public string Sha256; }
+        public sealed class Source { public string Id, Url; public object Ms; public double Speed; public bool Sampled; public int Failures, Busy; }
+        sealed class TooSlow : Exception { }
+        sealed class StoppedByOther : Exception { }
+
+        const int WorkerCount = 4, ExploreUntil = 3, SlowAfterMs = 3000;
+        const double SlowFactor = 3;
+
+        readonly List<Part> parts;
+        readonly List<Source> sources;
+        readonly string folder;
+        readonly Func<bool> cancelled;
+        readonly Action<long, long, double> progress;
+        readonly object gate = new object();
+        readonly Queue<int> waiting = new Queue<int>();
+        readonly Dictionary<int, HashSet<Source>> tried = new Dictionary<int, HashSet<Source>>();
+        readonly Dictionary<int, int> attempts = new Dictionary<int, int>();
+        readonly Stopwatch reportClock = Stopwatch.StartNew();
+        long total, done, lastDone, lastTick;
+        bool stopped;
+
+        public PartDownload(List<Part> parts, List<Source> sources, string folder, Func<bool> cancelled, Action<long, long, double> progress)
+        {
+            this.parts = parts;
+            this.sources = sources;
+            this.folder = folder;
+            this.cancelled = cancelled;
+            this.progress = progress;
+        }
+
+        public static string Sha256Of(string path)
+        {
+            using (var sha = SHA256.Create())
+            using (var f = File.OpenRead(path))
+                return BitConverter.ToString(sha.ComputeHash(f)).Replace("-", "").ToLowerInvariant();
+        }
+
+        public void Run()
+        {
+            Directory.CreateDirectory(folder);
+            total = parts.Sum(p => p.Size);
+            for (var i = 0; i < parts.Count; i++)
+            {
+                var have = Path.Combine(folder, parts[i].Name);
+                if (File.Exists(have) && new FileInfo(have).Length == parts[i].Size && Sha256Of(have) == parts[i].Sha256) done += parts[i].Size;
+                else waiting.Enqueue(i);
+            }
+            lastDone = done;
+            var workers = Enumerable.Range(0, Math.Min(WorkerCount, Math.Max(1, waiting.Count))).Select(n => Task.Run(() => Work())).ToArray();
+            try { Task.WaitAll(workers); }
+            catch (AggregateException e)
+            {
+                var inner = e.Flatten().InnerExceptions;
+                var known = inner.OfType<HostError>().OrderBy(x => x.Code == "cancelled" ? 0 : 1).FirstOrDefault();
+                throw known ?? new HostError("download", inner[0].Message);
+            }
+            progress(done, total, 0);
+        }
+
+        void Work()
+        {
+            while (true)
+            {
+                int index;
+                Source source;
+                lock (gate)
+                {
+                    if (stopped) return;
+                    if (cancelled()) { stopped = true; throw new HostError("cancelled", ""); }
+                    if (waiting.Count == 0) return;
+                    index = waiting.Dequeue();
+                    source = Pick(index);
+                    if (source == null) { stopped = true; throw new HostError("download", "所有下载节点都失败了。"); }
+                    source.Busy++;
+                }
+                var read = new long[1];
+                var clock = Stopwatch.StartNew();
+                try
+                {
+                    Fetch(parts[index], source, clock, read);
+                    lock (gate) { source.Busy--; Sample(source, read[0], clock); }
+                }
+                catch (HostError)
+                {
+                    lock (gate) { source.Busy--; stopped = true; }
+                    throw;
+                }
+                catch (StoppedByOther)
+                {
+                    lock (gate) source.Busy--;
+                    return;
+                }
+                catch (TooSlow)
+                {
+                    lock (gate) { source.Busy--; Sample(source, read[0], clock); done -= read[0]; waiting.Enqueue(index); }
+                }
+                catch (Exception)
+                {
+                    lock (gate) { source.Busy--; source.Failures++; done -= read[0]; waiting.Enqueue(index); }
+                }
+            }
+        }
+
+        // Called with the lock held. Null once a part has failed everywhere a few times over.
+        Source Pick(int index)
+        {
+            int count;
+            attempts.TryGetValue(index, out count);
+            attempts[index] = count + 1;
+            if (count >= sources.Count * 3) return null;
+            HashSet<Source> used;
+            if (!tried.TryGetValue(index, out used)) tried[index] = used = new HashSet<Source>();
+            var open = sources.Where(s => !used.Contains(s)).ToList();
+            if (open.Count == 0)
+            {
+                used.Clear();
+                open = sources.ToList();
+            }
+            var fresh = open.Where(s => !s.Sampled && s.Failures == 0).OrderBy(s => s.Busy).ThenBy(s => s.Ms == null ? int.MaxValue : (int)s.Ms).FirstOrDefault();
+            var measured = sources.Count(s => s.Sampled && s.Failures == 0);
+            var pick = fresh != null && (measured < ExploreUntil || open.All(s => !s.Sampled))
+                ? fresh
+                : open.OrderByDescending(s => s.Speed / (1 + s.Failures)).First();
+            used.Add(pick);
+            return pick;
+        }
+
+        // Called with the lock held.
+        void Sample(Source source, long bytes, Stopwatch clock)
+        {
+            var speed = bytes * 1000.0 / Math.Max(1, clock.ElapsedMilliseconds);
+            source.Speed = source.Sampled ? (source.Speed + speed) / 2 : speed;
+            source.Sampled = true;
+        }
+
+        void Fetch(Part part, Source source, Stopwatch clock, long[] read)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(source.Url + part.Name);
+            req.UserAgent = "PhantomGladiator";
+            req.Timeout = 10000;
+            req.ReadWriteTimeout = 15000;
+            req.ServicePoint.ConnectionLimit = WorkerCount * 2;
+            var temp = Path.Combine(folder, part.Name + ".tmp");
+            using (var res = req.GetResponse())
+            using (var input = res.GetResponseStream())
+            using (var output = File.Create(temp))
+            {
+                var buffer = new byte[65536];
+                int n;
+                while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    output.Write(buffer, 0, n);
+                    read[0] += n;
+                    lock (gate)
+                    {
+                        if (cancelled()) { stopped = true; throw new HostError("cancelled", ""); }
+                        if (stopped) throw new StoppedByOther();
+                        done += n;
+                        Report();
+                        if (clock.ElapsedMilliseconds >= SlowAfterMs)
+                        {
+                            var speed = read[0] * 1000.0 / clock.ElapsedMilliseconds;
+                            if (sources.Any(s => s != source && s.Sampled && s.Failures == 0 && s.Speed > speed * SlowFactor)) throw new TooSlow();
+                        }
+                    }
+                }
+            }
+            if (read[0] != part.Size || Sha256Of(temp) != part.Sha256) throw new InvalidDataException("bad part " + part.Name);
+            var target = Path.Combine(folder, part.Name);
+            if (File.Exists(target)) File.Delete(target);
+            File.Move(temp, target);
+        }
+
+        // Called with the lock held.
+        void Report()
+        {
+            var now = reportClock.ElapsedMilliseconds;
+            if (now - lastTick < 200) return;
+            progress(done, total, Math.Max(0, done - lastDone) * 1000.0 / Math.Max(1, now - lastTick));
+            lastTick = now;
+            lastDone = done;
+        }
+    }
+
     sealed class UpdateClient
     {
         readonly BuildInfo build;
         Dictionary<string, object> manifest;
+        List<PartDownload.Part> partFiles;
+        List<PartDownload.Source> partSources;
         string downloaded;
         volatile bool cancel;
 
@@ -527,13 +720,67 @@ namespace PhantomGladiator
         // What the update dialog shows for the version in manifest.
         Dictionary<string, object> Describe(string lang)
         {
+            ReadParts();
+            var downloads = ((System.Collections.ArrayList)manifest["downloads"]).Cast<Dictionary<string, object>>().ToList();
+            var answers = downloads.Select(d => Task.Run(() => Latency((string)d["url"]))).ToArray();
+            var sourceAnswers = partSources == null ? new Task<object>[0] : partSources.Select(s => Task.Run(() => Latency(s.Url + partFiles[0].Name))).ToArray();
+            Task.WaitAll(answers.Concat(sourceAnswers).Cast<Task>().ToArray());
             var lines = new List<object>();
-            foreach (Dictionary<string, object> d in (System.Collections.ArrayList)manifest["downloads"])
-                lines.Add(new Dictionary<string, object> { { "id", d["id"] }, { "ms", Latency((string)d["url"]) } });
+            if (partSources != null)
+            {
+                for (var i = 0; i < partSources.Count; i++) partSources[i].Ms = sourceAnswers[i].Result;
+                var answered = partSources.Where(s => s.Ms != null).Select(s => (int)s.Ms).ToList();
+                lines.Add(new Dictionary<string, object> { { "id", "parts" }, { "ms", answered.Count > 0 ? (object)answered.Min() : null } });
+            }
+            for (var i = 0; i < downloads.Count; i++)
+                lines.Add(new Dictionary<string, object> { { "id", downloads[i]["id"] }, { "ms", answers[i].Result } });
             object notes = new string[0];
             var all = manifest.ContainsKey("notes") ? manifest["notes"] as Dictionary<string, object> : null;
             if (all != null) notes = all.ContainsKey(lang) ? all[lang] : (all.ContainsKey("en") ? all["en"] : notes);
             return new Dictionary<string, object> { { "latest", false }, { "version", manifest["version"] }, { "date", manifest.ContainsKey("date") ? manifest["date"] : "" }, { "size", manifest["size"] }, { "notes", notes }, { "lines", lines } };
+        }
+
+        // The manifest's "parts", if it has usable ones. Anything off and the whole-file lines are used instead, as for a
+        // release from before parts existed.
+        void ReadParts()
+        {
+            partFiles = null;
+            partSources = null;
+            try
+            {
+                var parts = manifest.ContainsKey("parts") ? manifest["parts"] as Dictionary<string, object> : null;
+                if (parts == null) return;
+                var files = ((System.Collections.ArrayList)parts["files"]).Cast<Dictionary<string, object>>()
+                    .Select(f => new PartDownload.Part { Name = (string)f["name"], Size = Convert.ToInt64(f["size"]), Sha256 = ((string)f["sha256"]).ToLowerInvariant() }).ToList();
+                var sources = ((System.Collections.ArrayList)parts["sources"]).Cast<Dictionary<string, object>>()
+                    .Select(s => new PartDownload.Source { Id = (string)s["id"], Url = (string)s["url"] }).ToList();
+                if (files.Count == 0 || sources.Count == 0 || files.Sum(f => f.Size) != Convert.ToInt64(manifest["size"])) return;
+                if (files.Any(f => !Regex.IsMatch(f.Name, @"^[\w.-]+$"))) return;
+                partFiles = files;
+                partSources = sources;
+            }
+            catch (Exception) { }
+        }
+
+        void DownloadParts(Action<long, long, double> progress)
+        {
+            cancel = false;
+            var version = (string)manifest["version"];
+            var updates = Paths.In("updates");
+            Directory.CreateDirectory(updates);
+            foreach (var stale in Directory.GetDirectories(updates, "parts-*"))
+                if (Path.GetFileName(stale) != "parts-" + version) try { Directory.Delete(stale, true); } catch (Exception) { }
+            var folder = Path.Combine(updates, "parts-" + version);
+            new PartDownload(partFiles, partSources, folder, () => cancel, progress).Run();
+            var target = Path.Combine(updates, "PhantomGladiator-" + version + ".zip");
+            var joined = target + ".part";
+            using (var output = File.Create(joined))
+                foreach (var file in partFiles)
+                    using (var input = File.OpenRead(Path.Combine(folder, file.Name))) input.CopyTo(output);
+            if (File.Exists(target)) File.Delete(target);
+            File.Move(joined, target);
+            downloaded = target;
+            try { Directory.Delete(folder, true); } catch (Exception) { }
         }
 
         // A manifest an update can be installed from (version, size, SHA-256 and download lines), or null.
@@ -584,6 +831,11 @@ namespace PhantomGladiator
         public void Download(string line, Action<long, long, double> progress)
         {
             if (manifest == null) throw new HostError("offline", "");
+            if (line == "parts" && partFiles != null)
+            {
+                DownloadParts(progress);
+                return;
+            }
             cancel = false;
             var size = Convert.ToInt64(manifest["size"]);
             var urls = ((System.Collections.ArrayList)manifest["downloads"]).Cast<Dictionary<string, object>>().ToList();

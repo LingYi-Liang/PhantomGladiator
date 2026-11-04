@@ -1575,7 +1575,7 @@
   }
 
   // ---------- Update flow ----------
-  const LINE_IDS = ["auto", "cn1", "cn2", "github"];
+  const LINE_IDS = ["auto", "parts", "cn1", "cn2", "github"];
   const versionParts = v => String(v || "").split(".").map(n => parseInt(n, 10) || 0);
   const compareVersions = (a, b) => {
     const x = versionParts(a), y = versionParts(b);
@@ -1599,8 +1599,14 @@
     }).join("");
     return `<details class="release-history"><summary>${icon("history", "icon-sm")}<span>${esc(t("update.history"))}</span><span class="muted">${esc(t("update.history.count", { n: list.length }))}</span>${icon("chevron-down", "icon-sm release-chevron")}</summary><div class="release-list">${items}</div></details>`;
   }
-  // When no line answers the speed test the first one is still tried: the short test can time out where a download works.
-  function lineFor(info, id) { return id === "auto" ? [...info.lines].filter(l => l.ms !== null).sort((a, b) => a.ms - b.ms)[0] || info.lines[0] : info.lines.find(l => l.id === id); }
+  // The lines "auto" goes through, best first: a split download when it answers (it measures its sources for real and
+  // changes source by itself), then by speed test. When no line answers the first one is still tried: the short test can
+  // time out where a download works.
+  function autoLines(info) {
+    const answered = info.lines.filter(l => l.ms !== null).sort((a, b) => (b.id === "parts") - (a.id === "parts") || a.ms - b.ms);
+    return [...answered, ...info.lines.filter(l => l.ms === null)];
+  }
+  function lineFor(info, id) { return id === "auto" ? autoLines(info)[0] : info.lines.find(l => l.id === id); }
   function updateHTML() {
     const u = ui.update, info = u.info;
     const head = title => `<div class="dialog-head"><h2 id="dlg-title">${esc(title)}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>`;
@@ -1615,7 +1621,7 @@
           <div class="dialog-foot"><a class="btn btn-ghost" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.manual"))}</a><button class="btn btn-primary" type="button" data-action="update-check">${icon("refresh", "icon-sm")}${esc(t("common.retry"))}</button></div>`;
       case "available": {
         const best = lineFor(info, "auto");
-        const lines = LINE_IDS.map(id => {
+        const lines = LINE_IDS.filter(id => id !== "parts" || info.lines.some(l => l.id === id)).map(id => {
           const l = id === "auto" ? best : info.lines.find(x => x.id === id);
           const lat = !l || l.ms === null ? `<span class="latency bad">${esc(t("update.line.timeout"))}</span>` : `<span class="latency${l.ms > 100 ? " slow" : ""}">${icon("signal", "icon-sm")}${l.ms} ms</span>`;
           const sub = id === "auto" ? t("update.line.autoDesc", { line: t("update.line." + best.id) }) : t("update.line." + id + ".desc");
@@ -1645,7 +1651,7 @@
       case "downloading":
       case "verifying": {
         const p = u.progress || { done: 0, total: info.size, speed: 0 }, ratio = p.done / p.total, verifying = u.phase === "verifying";
-        const line = t("update.line." + lineFor(info, u.line).id);
+        const line = t("update.line." + (u.lineNow || lineFor(info, u.line).id));
         return head(t("update.title")) + `<div class="dialog-body"><div class="dl-panel">
             <div class="dl-title">${verifying ? '<span class="spinner"></span>' : icon("download")}${esc(verifying ? t("update.verifying") : t("update.downloading", { v: info.version, line }))}</div>
             <div class="progress${verifying ? " is-green" : ""}"><i style="width:${(ratio * 100).toFixed(1)}%"></i></div>
@@ -1720,13 +1726,23 @@
     setDialog(updateHTML());
   }
   async function downloadUpdate() {
-    const u = ui.update, line = lineFor(u.info, u.line);
+    const u = ui.update;
     u.phase = "downloading";
-    u.progress = { done: 0, total: u.info.size, speed: 0 };
-    setDialog(updateHTML());
-    u.dl = RT.update.download(line.id, u.info.size, p => { u.progress = p; if (dlg?.kind === "update" && !patchDownload()) setDialog(updateHTML()); });
     try {
-      await u.dl.promise;
+      // Automatic: a line that fails hands over to the next one. A cancel stops here.
+      const order = u.line === "auto" ? autoLines(u.info) : [lineFor(u.info, u.line)];
+      for (let i = 0; i < order.length; i++) {
+        u.lineNow = order[i].id;
+        u.progress = { done: 0, total: u.info.size, speed: 0 };
+        setDialog(updateHTML());
+        u.dl = RT.update.download(order[i].id, u.info.size, p => { u.progress = p; if (dlg?.kind === "update" && !patchDownload()) setDialog(updateHTML()); });
+        try {
+          await u.dl.promise;
+          break;
+        } catch (error) {
+          if (error.code === "cancelled" || i === order.length - 1) throw error;
+        }
+      }
       u.dl = null;
       u.phase = "verifying";
       setDialog(updateHTML());

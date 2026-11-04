@@ -430,6 +430,7 @@ const MockRuntime = (() => {
         date: "2026-11-08T10:00:00+08:00",
         size: 19874816,
         lines: [
+          { id: "parts", ms: 31 + Math.floor(Math.random() * 20) },
           { id: "cn1", ms: 38 + Math.floor(Math.random() * 20) },
           { id: "cn2", ms: 110 + Math.floor(Math.random() * 60) },
           { id: "github", ms: null },
@@ -446,6 +447,7 @@ const MockRuntime = (() => {
         date: (window.PG_CHANGELOG || []).find(r => r.version === version)?.date || "",
         size: 20822497,
         lines: [
+          { id: "parts", ms: 35 },
           { id: "cn1", ms: 42 },
           { id: "cn2", ms: 128 },
           { id: "github", ms: null },
@@ -454,10 +456,10 @@ const MockRuntime = (() => {
     },
     download(lineId, size, onProgress) {
       const rate = lineId === "github" ? 420000 : lineId === "cn2" ? 1900000 : 3600000;
-      let done = 0, timer = null, cancelled = false;
+      let done = 0, timer = null, cancelled = false, stop = null;
       const promise = new Promise((resolve, reject) => {
+        stop = () => reject(fail("cancelled"));
         const step = () => {
-          if (cancelled) { reject(fail("cancelled")); return; }
           const speed = rate * (0.75 + Math.random() * 0.5);
           done = Math.min(size, done + speed / 5);
           onProgress({ done, total: size, speed });
@@ -465,7 +467,7 @@ const MockRuntime = (() => {
         };
         timer = setTimeout(step, 300);
       });
-      return { promise, cancel() { cancelled = true; clearTimeout(timer); } };
+      return { promise, cancel() { cancelled = true; clearTimeout(timer); stop(); } };
     },
     async verify() { await wait(1000); return true; },
     async install() { await wait(1700); s.appVersion = "0.27.0"; s.modVersion = online() ? s.modVersion : "0.27.0"; return true; },

@@ -75,7 +75,16 @@ def main():
             files[f"/pkg-{version}.zip"] = package
             return {"version": version, "date": "2026-11-02T00:00:00+08:00", "size": len(package),
                     "sha256": hashlib.sha256(package).hexdigest(), "notes": {"zh": ["test"]},
-                    "downloads": [{"id": "github", "url": f"{base}/pkg-{version}.zip"}]}
+                    "downloads": [{"id": "github", "url": f"{base}/pkg-{version}.zip"}],
+                    "parts": split(version, package)}
+
+        def split(version, package):
+            parts = []
+            for at in range(0, len(package), 1024 * 1024):
+                piece, name = package[at:at + 1024 * 1024], f"{version}.{at // (1024 * 1024):03d}"
+                files[f"/parts/{name}"] = piece
+                parts.append({"name": name, "size": len(piece), "sha256": hashlib.sha256(piece).hexdigest()})
+            return {"files": parts, "sources": [{"id": "local", "url": f"{base}/parts/"}]}
 
         files["/latest.json"] = json.dumps(release("0.37.22")).encode("utf-8")
         files["/versions.json"] = json.dumps({"versions": [release("0.37.21"), release("0.37.20")]}).encode("utf-8")
@@ -97,10 +106,10 @@ def main():
             (data / "updates" / "Microsoft.Web.WebView2.Core.dll").write_bytes(b"left by an old update")
             return installed, data
 
-        def run_app(installed, data, back=""):
+        def run_app(installed, data, back="", line=""):
             report = work / "report.txt"
             report.unlink(missing_ok=True)
-            env = dict(os.environ, PG_DATA_DIR=str(data), PG_TEST_REPORT=str(report), PG_TEST_ROLLBACK=back)
+            env = dict(os.environ, PG_DATA_DIR=str(data), PG_TEST_REPORT=str(report), PG_TEST_ROLLBACK=back, PG_TEST_LINE=line)
             run = subprocess.run([str(installed / "PhantomGladiator.exe")], env=env, timeout=120)
             for _ in range(300):
                 if report.exists():
@@ -136,6 +145,15 @@ def main():
         assert "version=0.37.22" in lines, "\n".join(lines)
         assert (installed / "app" / "python" / "lib.txt").read_text(encoding="utf-8") == "0.37.22"
         print("PASS and from the older version the player updates forward again")
+
+        installed, data = setup("split")
+        lines = run_app(installed, data, line="parts")
+        text = "\n".join(lines)
+        assert "version=0.37.22" in lines, text
+        assert (installed / "app" / "python" / "lib.txt").read_text(encoding="utf-8") == "0.37.22"
+        updates = next(line for line in lines if line.startswith("updates=")).split("=", 1)[1].split(",")
+        assert updates == ["PhantomGladiator-0.37.22.zip"], f"the parts are joined and gone: {updates}"
+        print("PASS a split download joins, passes SHA-256 and installs the same way")
     finally:
         server.shutdown()
         for _ in range(20):
