@@ -1,4 +1,4 @@
--- Derived from GlobalConfig_Mechanic Execution channel; combat-only scope, current game build 26266538.
+-- Derived from GlobalConfig_Mechanic Execution channel; combat-only scope, current game build 26367565.
 return {
     ["Execution.Type.Combat"]={
         executor_required={"CharacterState.Space.Ground"},

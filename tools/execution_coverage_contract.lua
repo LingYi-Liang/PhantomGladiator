@@ -1,6 +1,6 @@
 -- Derived coverage contract from the current mounted actor-config audit; no asset bytes.
 return {
-    game_build="26266538", actor_configs=60, entries=93, executors={
+    game_build="26367565", actor_configs=60, entries=93, executors={
         GA_Hun_BEx_Common_AquaKiller_YuCha_01_C=true,
         GA_Hun_BEx_Common_EMei_EMeiCi_01_C=true,
         GA_Hun_BEx_Common_EMei_ShuangCi_01_C=true,

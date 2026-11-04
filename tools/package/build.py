@@ -32,7 +32,7 @@ DEPS = {
               "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.5/PhantomGladiator-0.37.5-win64.zip"),
 }
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
-VERIFIED_GAME_BUILD = "26266538"
+VERIFIED_GAME_BUILD = "26367565"
 REPO = "LingYi-Liang/PhantomGladiator"
 # latest.json is read from the repository through jsDelivr first (reachable from mainland China).
 MANIFESTS = [

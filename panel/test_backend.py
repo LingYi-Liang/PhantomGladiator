@@ -273,7 +273,7 @@ class BridgeTests(unittest.TestCase):
         command = self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": everything})
         rows = (self.bridge.runtime / "stat-custom-request.tsv").read_text(encoding="utf-8").splitlines()[1:]
         self.assertEqual([row.split("\t")[0] for row in rows], list(backend.STAT_FIELDS))
-        self.assertEqual((len(rows), len(set(backend.STAT_FIELDS))), (223, 223))
+        self.assertEqual((len(rows), len(set(backend.STAT_FIELDS))), (227, 227))
         for mode, token in (("game", "GAME"), ("match", "MATCH")):
             command = self.bridge.enqueue({"action": "set_stat_mode", "mode": mode})
             columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
@@ -323,7 +323,7 @@ class BridgeTests(unittest.TestCase):
         self.write("stat-match-settings.tsv", "StatMatchV2\tcustom\nAttack\t120\nHealth_Max\t50000.5\nShield\t3\nBogus\t1\n")
         settings = self.bridge.stat_settings()
         self.assertEqual((settings["mode"], settings["values"]), ("custom", {"Attack": 120, "Health_Max": 50000.5, "Shield": 3}))
-        self.assertEqual(len(settings["fields"]), 223)
+        self.assertEqual(len(settings["fields"]), 227)
 
     def test_clock_hud_travels_in_the_start_key_column(self):
         for enabled, token in ((True, "ON"), (False, "OFF")):

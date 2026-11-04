@@ -840,7 +840,9 @@
     { key: "weapon", fields: ["Health", "Shachi", "Strength", "Ranged", "Magic", "Martial", "Summon"].map(w => "Resistance_ShachiWeapon" + w) },
     ...STAT_DAMAGE.map(family => ({ key: family, family, fields: STAT_PREFIXES.map(p => p + "_" + family) })),
     { key: "status", fields: ["Infliction_Max", "StatusInflictionDecrementRate", ...["Ignite", "Poison", "Frost", "Thunder", "Electrified", "Bleed", "BloodBurst", "Water"].map(x => x + "_Accumulation")] },
-    ...STAT_BUILDUP.map(family => ({ key: family, family, fields: STAT_PREFIXES.map(p => buildupField(p, family)) })),
+    ...STAT_BUILDUP.flatMap(family => [{ key: family, family, fields: STAT_PREFIXES.map(p => buildupField(p, family)) },
+      // Since game build 26367565 frost resistance lives here: the character table's value moved off Resistance_FrostAccumulation.
+      ...(family === "Frost" ? [{ key: "FrostDuration", family: "FrostDuration", fields: STAT_PREFIXES.slice(3).map(p => p + "_FrostDuration") }] : [])]),
     { key: "ultimate", fields: ["UltimateCharge", "UltimateCharge_Max", "UltimateChargeCount", "UltimateChargeCount_Max", "UltimateChargeAdditiveRate", "UltimateChargeGainRateMultiplier", "SpiritShadow", "SpiritShadow_Max", "Awakening", "Awakening_Max"] },
     { key: "execution", fields: ["ExecutionExecutorNormalHealthThreshold", "ExecutionExecutorBreakHealthThreshold", "ExecutionTargetNormalHealthThreshold", "ExecutionTargetBreakHealthThreshold"] },
     { key: "movement", fields: ["WalkSpeed", "JogSpeed", "SprintSpeed", "CrouchSpeed", "FinalWalkSpeed"] },
@@ -1459,7 +1461,7 @@
   // The mod is installed but is not the build this app ships (after an app update).
   const modOutdated = () => !!S.components?.some(c => c.id === "mod" && !c.ok && c.detail);
   function componentsHTML() {
-    const comps = (S.components || [{ id: "game", ok: true, detail: "build 26266538" }, { id: "loader", ok: S.installed, detail: "UE4SS 3.0.1" }, { id: "mod", ok: S.installed, detail: "v" + S.modVersion }]).map(c => [c.id, c.ok, c.detail, c.warn]);
+    const comps = (S.components || [{ id: "game", ok: true, detail: "build 26367565" }, { id: "loader", ok: S.installed, detail: "UE4SS 3.0.1" }, { id: "mod", ok: S.installed, detail: "v" + S.modVersion }]).map(c => [c.id, c.ok, c.detail, c.warn]);
     const missing = comps.some(c => !c[1]);
     return `<div class="comp-list">${comps.map(([id, ok, detail, warn]) => `<div class="comp">${compState(ok)}<span class="comp-name">${esc(t("comp." + id))}<small>${esc(detail)}</small></span>${warn ? `<span class="chip chip-amber">${esc(t("comp.untested"))}</span>` : ""}<span class="${ok ? "muted" : ""}" style="font-size:12.5px">${esc(t(ok ? "comp.ok" : id === "mod" && detail ? "comp.outdated" : "comp.missing"))}</span></div>`).join("")}</div>
       ${ui.installing ? `<div style="margin-top:10px"><div class="progress"><i style="width:${Math.round(ui.installing.ratio * 100)}%"></i></div><div class="progress-meta"><span>${esc(t("comp.installing", { step: t("comp." + ui.installing.step) }))}</span><span>${Math.round(ui.installing.ratio * 100)}%</span></div></div>`

@@ -76,6 +76,8 @@ Stats.allFields={
     'DealtVulnerabilityMultiplier_FrostAccumulation','DealtReductionMultiplier_FrostAccumulation',
     'Resistance_FrostAccumulation','TakenAdditiveMultiplier_FrostAccumulation',
     'TakenVulnerabilityMultiplier_FrostAccumulation','TakenReductionMultiplier_FrostAccumulation',
+    'Resistance_FrostDuration','TakenAdditiveMultiplier_FrostDuration',
+    'TakenVulnerabilityMultiplier_FrostDuration','TakenReductionMultiplier_FrostDuration',
     'Amplification_Electrified','DealtVulnerabilityMultiplier_ElectrifiedAccumulation',
     'DealtReductionMultiplier_ElectrifiedAccumulation','Resistance_ElectrifiedAccumulation',
     'TakenAdditiveMultiplier_ElectrifiedAccumulation','TakenVulnerabilityMultiplier_ElectrifiedAccumulation',
@@ -101,7 +103,7 @@ Stats.levelOne={Health_Max='Health_Max_Lv1',Shachi_Max='Shachi_Max_Lv1',Attack='
     Infliction_Max='Infliction_Max_Lv1'}
 Stats.levelOneFields={'Health_Max_Lv1','Shachi_Max_Lv1','Attack_Lv1','ShachiAttack_Lv1','Infliction_Max_Lv1'}
 -- No GE_MA_<field>_1_Override among the game's assets (asset-index.tsv): these are written on the set's own
--- FGameplayAttributeData (base and current) and read back from it; the other 209 go through the native effect.
+-- FGameplayAttributeData (base and current) and read back from it; the other 213 go through the native effect.
 Stats.direct={}
 for _,field in ipairs({'Infliction_Max_Lv1','Amplification_DefenceShachi','DealtVulnerabilityMultiplier_DefenceShachi',
         'DealtReductionMultiplier_DefenceShachi','Resistance_ShachiWeaponHealth','Resistance_ShachiWeaponShachi',

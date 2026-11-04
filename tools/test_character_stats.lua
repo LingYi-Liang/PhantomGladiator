@@ -49,12 +49,12 @@ local adapter=Stats.new();assert(adapter:snapshot(actor))
 assert(adapter:writeBase(actor,'Attack',70) and adapter:nativeValue(actor,'Attack')==70 and calls==1)
 assert(adapter:writeBase(actor,'Health_Min',100) and adapter:nativeValue(actor,'Health_Min')==100 and attributes.Health_Min.BaseValue==100)
 for _,field in ipairs(Stats.fields)do assert(field~='Health_Min','matching NPCs must never copy the observer health floor')end
--- Every attribute of the set is writable: 209 through the native effect, the 14 without one on the field.
+-- Every attribute of the set is writable: 213 through the native effect, the 14 without one on the field.
 local all,direct,matched={},0,{}
 for _,field in ipairs(Stats.allFields)do assert(not all[field],'duplicate '..field);all[field]=true;if Stats.direct[field] then direct=direct+1 end end
 for field in pairs(Stats.direct)do assert(all[field],'direct field not in the set: '..field)end
 for _,field in ipairs(Stats.fields)do assert(all[field],'matched field not in the set: '..field);matched[field]=true end
-assert(#Stats.allFields==223 and direct==14 and #Stats.fields==107)
+assert(#Stats.allFields==227 and direct==14 and #Stats.fields==107)
 local before=calls
 for index,field in ipairs(Stats.allFields)do
     local value=1000+index
@@ -62,7 +62,7 @@ for index,field in ipairs(Stats.allFields)do
     assert(adapter:nativeValue(actor,field)==value and adapter:read(actor,field).base==value,field)
     assert(adapter:via(field)==(Stats.direct[field] and 'field' or 'effect'))
 end
-assert(calls-before==209,'only attributes with an effect call the native writer: '..(calls-before))
+assert(calls-before==213,'only attributes with an effect call the native writer: '..(calls-before))
 -- A struct handed out as a copy: the in-place write does not stick, so the whole field is assigned.
 local copy={BaseValue=5,CurrentValue=5}
 attributes.Resistance_ShachiWeaponShachi=setmetatable({type=function()return 'UScriptStruct' end},{__index=copy,__newindex=function()end})

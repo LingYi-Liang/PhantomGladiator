@@ -147,7 +147,7 @@ end)
 test('custom fields beyond the matched ones: maxima first, an explicit current kept, unreadable ones named',function()
     local h=harness()
     h.files['memory/stat-custom-request.tsv']='StatCustomV1\tR1\nHealth\t100\nShield\t50\nHealth_Max\t5000\n'
-    assert(h.match:setMode('CUSTOM','R1').ok and h.match:status().custom_count==3 and h.match:status().custom_fields==223)
+    assert(h.match:setMode('CUSTOM','R1').ok and h.match:status().custom_count==3 and h.match:status().custom_fields==227)
     local a=h:actor(300,80,20);local r=h.match:onSpawn(a,'A')
     assert(r.ok and a.values.Health_Max.current==5000 and a.values.Health.current==100,'the maximum is written before the current value')
     assert(#r.rejected==1 and r.rejected[1]=='Shield','an attribute this unit cannot read is named, not fatal')

@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.39.0-on-ground"
+local BUILD = "v0.39.1-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1673,6 +1673,7 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
         return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
     end})
 playerAim=PlayerAim.new({log=log,members=ArenaMembers,statics=GetGameplayStatics,
+    abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
     paused=function()return arenaExecutions and arenaExecutions:status().active==true or false end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})

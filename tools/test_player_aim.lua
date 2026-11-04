@@ -31,6 +31,15 @@ local function harness()
         return h.player
     end
     h.statics=object('Default__GameplayStatics',{GetPlayerCharacter=function(_,context,index)return h.ask('character',context)end})
+    -- The game asking whether a skill must go for the player: the pre-hook's return value replaces its answer.
+    h.gameAnswer=true
+    function h.askForce(ability)
+        local hook=h.hooks[Aim.paths.force]
+        local answer=hook and hook(object('Default__PBZPlayerAbilityTargetLibrary'),ability)
+        if answer~=nil then return answer end
+        return h.gameAnswer
+    end
+    h.abilityTargets=object('Default__PBZPlayerAbilityTargetLibrary',{ShouldForcePlayerAbilityTarget=function(_,ability)return h.askForce(ability)end})
     function h.unit(team,reserve)
         local actor=object('BP_Monster_'..team..'_C')
         h.members[#h.members+1]={actor=actor,team=team,reserve=reserve}
@@ -39,7 +48,7 @@ local function harness()
     function h.new()
         return Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
-            opponentOf=function(key)return h.targets[key] end,
+            opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
             paused=function()return h.paused end})
     end
@@ -56,7 +65,7 @@ test('no fight: no hooks; a fight hooks both getters once and checks the answer'
     aim:tick()
     assert(next(h.hooks)==nil and aim:status().state=='idle')
     h.fighting=true;aim:tick();aim:tick()
-    assert(h.ids==2 and aim:status().state=='running')
+    assert(h.ids==3 and aim:status().state=='running')
     assert(h.all():find('自检（临时放行该单位的类）：以 BP_Monster_',1,true) and aim:status().redirected==0 and h.all():find('改写生效=true',1,true),h.all())
 end)
 
@@ -114,8 +123,33 @@ test('a unit in reserve, a unit without an opponent, and the end of the fight',f
     assert(h.ask('character',object('GA_C_C',{outer=red}))==h.player,'after the fight the player again at once')
     h.now=9;aim:tick();assert(#h.unhooked==0)
     h.now=16;aim:tick()
-    assert(#h.unhooked==2 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
-    h.fighting=true;aim:tick();assert(h.ids==4,'hooked again for the next fight')
-    aim:silence('test');assert(#h.unhooked==4)
+    assert(#h.unhooked==3 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
+    h.fighting=true;aim:tick();assert(h.ids==6,'hooked again for the next fight')
+    aim:silence('test');assert(#h.unhooked==6)
+end)
+
+test('a skill of a fighting unit is not forced onto the player; the first call per class logs what the game would say',function()
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    h.fighting=true;aim:tick()
+    local skill=object('GA_ChiLian_P2_CA_01_C',{GetAvatarActorFromActorInfo=function()return red end})
+    assert(h.askForce(skill)==false,'answered false')
+    assert(h.all():find('不强制锁玩家 调用方=GA_ChiLian_P2_CA_01_C 游戏原本=true 挂钩后=false 累计=1',1,true),h.all())
+    local count=#h.lines
+    assert(h.askForce(skill)==false and #h.lines==count,'told once per class')
+    assert(aim:status().redirected==2)
+    h.gameAnswer=false
+    local other=object('GA_LeiDang_CA_C',{outer=blue})
+    assert(h.askForce(other)==false and h.all():find('不强制锁玩家 调用方=GA_LeiDang_CA_C 游戏原本=false 挂钩后=false 累计=3',1,true),h.all())
+    -- Not ours, or an execution playing, or an empty argument: the game's own answer.
+    h.gameAnswer=true
+    assert(h.askForce(object('GA_YuBi_CA_02_C',{outer=h.player}))==true,'a skill of a unit that is not fighting')
+    assert(h.askForce(nil)==true)
+    h.paused=true
+    assert(h.askForce(object('GA_LengTu_CA_03_C',{outer=red}))==true)
+    h.paused=false
+    h.fighting=false;h.now=1;aim:tick()
+    assert(h.askForce(object('GA_LengTu_SA_02_C',{outer=red}))==true,'after the fight the game again at once')
 end)
 print('player_aim: all tests passed')

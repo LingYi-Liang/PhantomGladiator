@@ -179,7 +179,7 @@ v0.36 之前，召唤出来的单位一律是 0 级，拿的是游戏里最低�
 | --- | --- |
 | 系统 | Windows 10 / 11，64 位 |
 | 运行库 | Microsoft Edge WebView2（Windows 10/11 一般自带；缺少时助手会给出微软官方下载链接）、.NET Framework 4.8（系统自带） |
-| 游戏 | Steam 版《影之刃零》，已测试 build **26266538**；其他版本未经测试 |
+| 游戏 | Steam 版《影之刃零》，已测试 build **26367565**；其他版本未经测试 |
 | 模组加载器 | UE4SS 3.0.1（随包附带；游戏里已经装了 UE4SS 时不会覆盖） |
 
 ## 已验证的范围
@@ -344,6 +344,6 @@ python tools/package/build.py --deps <下载目录> --seed <游戏的 Runtime �
 
 **Why can an early boss beat a late one?** In monster-vs-monster fights each hit takes a share of the target's max HP: attacker's level-1 attack × move multiplier ÷ target's level-1 HP. Level only makes the numbers bigger, so a level-7 boss with 41,800 HP can beat a level-26 one with 223,200 HP. For a fight that is fair on numbers, set *Unit stats* to *Equal stats*: every unit takes the first one's numbers, copying 107 combat attributes and the level-1 base values, leaving moves, speed and AI to decide.
 
-**Requirements**: Windows 10/11 64-bit, WebView2 runtime (built in), Steam version of *Phantom Blade Zero* build 26266538 (other builds untested).
+**Requirements**: Windows 10/11 64-bit, WebView2 runtime (built in), Steam version of *Phantom Blade Zero* build 26367565 (other builds untested).
 
 The mod only changes objects in memory while the game runs; it never edits game files or saves. Unit portraits are saved by the mod from your own copy of the game and stay on your PC. This is an unofficial fan project, not affiliated with S-GAME. Released under the [MIT License](LICENSE).

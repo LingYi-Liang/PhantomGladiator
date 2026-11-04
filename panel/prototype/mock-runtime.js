@@ -476,12 +476,12 @@ const MockRuntime = (() => {
   const setup = {
     async detectGame() {
       await wait(1500);
-      return { path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PBZ", store: "Steam", build: "26266538" };
+      return { path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PBZ", store: "Steam", build: "26367565" };
     },
     async components() {
       await wait(700);
       return [
-        { id: "game", ok: true, detail: "build 26266538" },
+        { id: "game", ok: true, detail: "build 26367565" },
         { id: "loader", ok: s.installed, detail: "UE4SS 3.0.1" },
         { id: "mod", ok: s.installed, detail: "v" + s.appVersion },
       ];

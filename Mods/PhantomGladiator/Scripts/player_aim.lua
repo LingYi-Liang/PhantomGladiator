@@ -11,12 +11,19 @@
 -- way GetDifficulty is answered in ai_difficulty.lua (verified in v0.33.1). The hooks exist only while a fight
 -- runs; on install one call is made with a unit as the context (its class let through for that call) and the
 -- answer read back.
+-- 招式锁玩家（三）: 28 skills (17 of them new in game build 26367565) override RequestLockTarget: when
+-- PBZPlayerAbilityTargetLibrary.ShouldForcePlayerAbilityTarget says so they call ResolvePlayerAbilityTarget instead of
+-- the normal lock. The disassembled start of its condition checks that the player is alive and walks the caster's
+-- HatredList. For a fighting unit's ability the hook answers false, so the skill takes the normal lock. The first call
+-- for each class also asks the function with the hook out of the way and through it, and logs both answers.
+-- IsPlayerInCasterHatredList is called natively from it, so a hook there would not be reached.
 local U=require('ue_observe')
 local Aim={}
 local STATICS='/Script/Engine.GameplayStatics:'
-Aim.paths={character=STATICS..'GetPlayerCharacter',pawn=STATICS..'GetPlayerPawn'}
-local ORDER={'character','pawn'}
-local LABEL={character='取玩家角色',pawn='取玩家Pawn'}
+Aim.paths={character=STATICS..'GetPlayerCharacter',pawn=STATICS..'GetPlayerPawn',
+    force='/Script/PBZAbilityTargetRuntime.PBZPlayerAbilityTargetLibrary:ShouldForcePlayerAbilityTarget'}
+local ORDER={'character','pawn','force'}
+local LABEL={character='取玩家角色',pawn='取玩家Pawn',force='强制锁玩家'}
 local UNHOOK_SECONDS,LINES,SUMMARY_SECONDS=10,12,10
 local CACHE_SECONDS,DEPTH=20,8
 local STEPS={'Pawn','BulletOwnerAvatar','Owner','Instigator'}
@@ -136,6 +143,35 @@ function Aim.new(options)
         end
     end
 
+    local asking=nil      -- while the hook's own check runs: 'game' lets the call through, 'hook' answers it
+    local function askForce(object,mode)
+        local okLib,lib=pcall(function()return options.abilityTargets()end)
+        if not okLib or not U.valid(lib) then return '函数库不可用' end
+        asking=mode
+        local ok,got=pcall(function()return lib:ShouldForcePlayerAbilityTarget(object)end)
+        asking=nil
+        return ok and tostring(got) or '错误:'..tostring(got)
+    end
+    local function forced(_,ability)
+        if asking=='game' then return nil end
+        if asking=='hook' then return false end
+        if not self.alive or not next(fighters) then return nil end
+        local object=U.unwrap(ability)
+        if not U.valid(object) then return nil end
+        local unit=unitOf(object)
+        if not unit or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+        self.redirected=self.redirected+1
+        self.counts.force=self.counts.force+1;self.window.force=self.window.force+1
+        local where=className(object)
+        if lines<LINES and not seenLines['force'..where] then
+            seenLines['force'..where]=true;lines=lines+1
+            local game=options.abilityTargets and askForce(object,'game') or '未读'
+            local hook=options.abilityTargets and askForce(object,'hook') or '未读'
+            say(string.format('不强制锁玩家 调用方=%s 游戏原本=%s 挂钩后=%s 累计=%d',where,game,hook,self.counts.force))
+        end
+        return false
+    end
+
     -- One call with a unit as the world context: the hook must answer with its opponent, not the player.
     local function selfCheck()
         local lib=options.statics and options.statics()
@@ -163,7 +199,7 @@ function Aim.new(options)
             local okFind,found=pcall(StaticFindObject,path)
             if not okFind or not U.valid(found) then say('找不到函数 '..path)
             else
-                local ok,pre,post=pcall(RegisterHook,path,callback(name),function()end)
+                local ok,pre,post=pcall(RegisterHook,path,name=='force' and forced or callback(name),function()end)
                 if ok and type(pre)=='number' and type(post)=='number' then
                     hooks[name]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post)
                 else say('挂钩注册失败 '..name..'：'..tostring(pre))end
