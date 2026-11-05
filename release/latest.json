@@ -1,152 +1,170 @@
 {
-  "version": "0.40.2",
-  "date": "2026-11-05T19:33:14+08:00",
-  "size": 20985665,
-  "sha256": "f7b198a3e933ab16129c55b7c587281745fa6bb15cc67e77016a7546c1cb9a39",
+  "version": "0.40.3",
+  "date": "2026-11-06T00:24:33+08:00",
+  "size": 21021372,
+  "sha256": "0e7bf5432f28504a80b538680ed54abb4a821a2ce1d1c040ea9de30ea0cfef2e",
   "notes": {
     "zh": [
-      "修复沐小葵：铁玉女王当随从打完一场后，只有音效、替身不再出现：BOSS 脱战时游戏会销毁它的召唤物，而替身只在出场时生成一次。现在本模组召唤的单位脱战时不再销毁召唤物",
-      "替身不再被当成随从指挥：不跟随、不会被传送到你身边或被召回，也不计入随从数量",
-      "新开关「随从处决 BOSS」（默认关）：打开后，BOSS 能被处决时，附近的随从会上去处决，包括地图上的 BOSS。小怪和你处决过的 BOSS 不会抢。这个功能还没有在游戏里测过",
-      "关于页加了作者的个人 QQ 群 1038314448，有任何问题和反馈都可以直接来",
+      "新功能「镜头跟踪」：在「观战」里打开，镜头跟住一个单位和它的对手，按两人的距离自动调远近。鼠标、滚轮、WASD/QE 可以随时手动调，停手几秒后回到自动。有侧面、肩后、环绕三种构图，快捷键默认没绑定。侧面构图在游戏里测过，肩后、环绕和换目标还没有",
+      "修复荆野等骑兵骑在马上原地打空气、发呆：马现在会跟着骑手一起打。目前只改了蓝队和红队",
+      "修复单位死后尸体还被当成目标：现在死了就不能再被仇恨，活着的单位会转向下一个目标",
+      "修复自由观战时召唤到墙角：单位现在出在镜头看着的地方，出生点隔着墙时会拉回到墙这边。观战时玩家身体停在原地、没有碰撞，退出后恢复",
+      "琴女人偶、冰雪琴女、烟千岁、骨婉约的虚化怪打怪时破不了：现在蓝红队和随从默认解除，可以在单位卡片上切回原版",
+      "魔渊、彭猛、毕峰、雷当、献祭之蛇、磷火意识、机灵鬼的单位卡片上加了开关：到锁血线后处决，或者直接打死",
+      "除镜头跟踪的侧面构图外，上面这些都还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.2",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Fixed Mu Xiaokui's second phase as a companion playing only sounds after its first fight, with the stands no longer appearing: the game destroys a boss's summons when it leaves combat, and the stands are made only once, when she appears. Units this mod summons now keep their summons when they leave combat",
-      "Stands no longer take companion orders: they don't follow, get teleported to you or get recalled, and don't count as companions",
-      "New Companions execute bosses switch (off by default): when on, a nearby companion goes in to execute a boss once it can be executed, bosses on the map included. Minions and bosses you have executed are left to you. This has not been tested in game yet",
-      "The About page now lists the author's personal QQ group, 1038314448. Come there directly with any questions or feedback",
+      "New Camera tracking: turn it on under Spectate and the camera follows a unit and its opponent, adjusting its distance to the gap between them. Mouse, wheel and WASD/QE can take over at any time, and each goes back to automatic a few seconds after you stop. Three framings: side, over the shoulder and orbit. Its hotkeys start unbound. Side framing has been tested in game; over the shoulder, orbit and switching targets have not",
+      "Fixed Jing Ye and other mounted units attacking thin air or standing idle on horseback: the horse now fights along with its rider. Blue and Red only so far",
+      "Fixed corpses still being targeted: a dead unit can no longer draw aggro, and the living move on to their next target",
+      "Fixed free camera summons ending up in corners: units now appear where the camera is looking, and a spawn point behind a wall is pulled back to this side of it. While the free camera is on, your body stays put with no collision; everything is restored when you exit",
+      "Monsters can't break the Phantom state of the Qin Nü Puppet, Ice Qin Nü, Yan Qiansui and Gu Wanyue: Blue, Red and companion units now go without it by default, and a switch on the unit card brings it back",
+      "New switch on the cards of bosses with a health lock (Mo Yuan, Peng Meng, Bi Feng, Lei Dang and others): at the lock, execute or simply kill",
+      "Apart from side framing, none of this has been tested in game yet. If something goes wrong, you can roll back to v0.40.2 from the update history",
       "This version needs the in-game mod updated; follow the prompt in the app"
     ],
     "ja": [
-      "沐小葵の第二段階をお供にすると、一戦終えた後は音だけで替身が出なくなる問題を修正：BOSS が戦闘を離れるとゲームがその召喚物を破棄し、替身は登場時に一度しか作られません。今はこのモッドで召喚したユニットは戦闘を離れても召喚物を破棄しません",
-      "替身をお供として指示しないようにしました。追従、あなたのそばへの転送、呼び戻しの対象にならず、お供の数にも数えません",
-      "新スイッチ「お供が BOSS を処刑」（初期はオフ）：オンにすると、BOSS が処刑できる状態になったとき、近くのお供が処刑しに行きます。マップ上の BOSS も含みます。雑魚とあなたが処刑した BOSS は横取りしません。この機能はまだゲーム内で試していません",
-      "情報ページに作者の個人 QQ グループ 1038314448 を追加しました。質問やフィードバックがあれば直接どうぞ",
+      "新機能「カメラ追従」：「観戦」でオンにすると、カメラが 1 体とその相手を追い、2 体の距離に合わせて遠近を自動で調整します。マウス、ホイール、WASD/QE でいつでも手動で操作でき、操作をやめて数秒で自動に戻ります。構図は側面、肩越し、周回の 3 種類。キーは初期状態では未設定です。側面はゲーム内で確認済みですが、肩越し、周回、対象の切り替えは未確認です",
+      "荊野など騎兵が馬上でその場で空振りしたり棒立ちになる問題を修正：馬が騎手と一緒に戦うようになりました。今のところ青・赤チームのみです",
+      "倒れたあとの死体が標的にされ続ける問題を修正：倒れたユニットはヘイト対象にならず、生きているユニットは次の標的に向かいます",
+      "自由視点で召喚すると隅に出る問題を修正：ユニットはカメラが向いている場所に出て、出現位置が壁の向こうならこちら側に戻します。自由視点中はプレイヤーの体がその場に止まり、当たり判定もなくなります。終了すると元に戻ります",
+      "琴女人形、氷雪琴女、煙千歳、骨婉約の虚化はモンスターには破れません：青・赤チームとお供は既定で解除し、ユニットカードのスイッチで原作どおりに戻せます",
+      "魔淵、彭猛、畢峰、雷当など HP ロックのあるボスのカードにスイッチを追加：ロックに達したら処刑するか、そのまま倒すかを選べます",
+      "カメラ追従の側面以外は、まだゲーム内で確認していません。問題があれば更新履歴から v0.40.2 に戻せます",
       "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
     ],
     "fr": [
-      "Correction de Mu Xiaokui en deuxième phase comme compagnon : après un premier combat, on n'entendait plus que les sons et les doublures n'apparaissaient plus. Le jeu détruit les invocations d'un boss quand il quitte le combat, et les doublures ne sont créées qu'une fois, à son arrivée. Les unités invoquées par ce mod gardent désormais leurs invocations en quittant le combat",
-      "Les doublures ne reçoivent plus d'ordres de compagnon : elles ne suivent pas, ne sont pas téléportées vers vous ni rappelées, et ne comptent pas comme compagnons",
-      "Nouvel interrupteur Les compagnons exécutent les boss (désactivé par défaut) : activé, un compagnon proche va exécuter un boss dès que c'est possible, y compris les boss de la carte. Les sbires et les boss que vous avez exécutés vous restent. Pas encore testé en jeu",
-      "La page À propos indique désormais le groupe QQ personnel de l'auteur, 1038314448. Venez-y directement pour toute question ou tout retour",
+      "Nouveau suivi de caméra : activez-le dans Spectateur et la caméra suit une unité et son adversaire, en réglant sa distance selon l'écart entre les deux. La souris, la molette et WASD/QE reprennent la main à tout moment, et chacun revient à l'auto quelques secondes après l'arrêt. Trois cadrages : côté, par-dessus l'épaule et orbite. Les raccourcis ne sont pas attribués au départ. Le cadrage de côté a été testé en jeu, mais pas l'épaule, l'orbite ni le changement de cible",
+      "Correction de Jing Ye et des autres cavaliers qui frappaient dans le vide ou restaient immobiles sur leur monture : le cheval combat désormais avec son cavalier. Seulement pour les Bleus et les Rouges pour l'instant",
+      "Correction des cadavres encore pris pour cible : une unité morte n'attire plus l'aggro, et les vivants passent à leur cible suivante",
+      "Correction des invocations en caméra libre qui finissaient dans un coin : les unités apparaissent là où regarde la caméra, et un point d'apparition derrière un mur est ramené de ce côté. Pendant la caméra libre, votre corps reste sur place sans collision ; tout est rétabli à la sortie",
+      "Les monstres ne peuvent pas briser l'état spectral de la Poupée Qin Nü, de la Qin Nü de glace, de Yan Qiansui et de Gu Wanyue : les Bleus, les Rouges et les compagnons ne l'ont plus par défaut, et un bouton sur la carte de l'unité le rétablit",
+      "Nouveau bouton sur la carte des boss à verrou de vie (Mo Yuan, Peng Meng, Bi Feng, Lei Dang et d'autres) : au verrou, exécution ou mort directe",
+      "À part le cadrage de côté, rien de tout cela n'a encore été testé en jeu. En cas de problème, vous pouvez revenir à la v0.40.2 depuis l'historique des mises à jour",
       "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
     ],
     "de": [
-      "Behoben: Mu Xiaokui in der zweiten Phase spielte als Begleiterin nach dem ersten Kampf nur noch Geräusche ab, die Doppelgänger erschienen nicht mehr. Das Spiel zerstört die Beschwörungen eines Bosses, wenn er den Kampf verlässt, und die Doppelgänger entstehen nur einmal, wenn sie erscheint. Vom Mod beschworene Einheiten behalten ihre Beschwörungen jetzt, wenn sie den Kampf verlassen",
-      "Doppelgänger bekommen keine Begleiter-Befehle mehr: Sie folgen nicht, werden nicht zu dir teleportiert oder zurückgerufen und zählen nicht als Begleiter",
-      "Neuer Schalter Begleiter richten Bosse hin (standardmäßig aus): Ist er an, richtet ein Begleiter in der Nähe einen Boss hin, sobald das möglich ist, auch Bosse auf der Karte. Kleine Gegner und Bosse, die du hingerichtet hast, bleiben dir. Noch nicht im Spiel getestet",
-      "Die Info-Seite nennt jetzt die persönliche QQ-Gruppe des Autors, 1038314448. Komm bei Fragen oder Feedback einfach direkt vorbei",
+      "Neue Kameraverfolgung: Unter Zuschauen einschalten, dann folgt die Kamera einer Einheit und ihrem Gegner und passt den Abstand an die Distanz der beiden an. Maus, Mausrad und WASD/QE übernehmen jederzeit, und jedes kehrt einige Sekunden nach dem Loslassen auf automatisch zurück. Drei Bildausschnitte: Seite, über die Schulter und Orbit. Die Tasten sind anfangs nicht belegt. Die Seitenansicht wurde im Spiel getestet, Schulter, Orbit und Zielwechsel noch nicht",
+      "Behoben: Jing Ye und andere Reiter schlugen auf dem Pferd in die Luft oder standen untätig herum. Das Pferd kämpft jetzt mit seinem Reiter. Vorerst nur für Blau und Rot",
+      "Behoben: Leichen wurden weiter als Ziel gewählt. Tote Einheiten ziehen kein Aggro mehr, die Lebenden wechseln zum nächsten Ziel",
+      "Behoben: Beschwörungen in der freien Kamera landeten in Ecken. Einheiten erscheinen jetzt dort, wohin die Kamera schaut, und ein Spawnpunkt hinter einer Wand wird auf diese Seite zurückgeholt. In der freien Kamera bleibt dein Körper ohne Kollision an Ort und Stelle; beim Beenden wird alles wiederhergestellt",
+      "Den Phantomzustand von Qin-Nü-Puppe, Eis-Qin-Nü, Yan Qiansui und Gu Wanyue können Monster nicht brechen: Blau, Rot und Begleiter haben ihn jetzt standardmäßig nicht mehr, ein Schalter auf der Einheitenkarte stellt ihn wieder her",
+      "Neuer Schalter auf den Karten von Bossen mit Lebenssperre (Mo Yuan, Peng Meng, Bi Feng, Lei Dang und weitere): an der Sperre Hinrichtung oder direkt töten",
+      "Außer der Seitenansicht wurde all das noch nicht im Spiel getestet. Bei Problemen kannst du im Update-Verlauf auf v0.40.2 zurückgehen",
       "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
     ],
     "es": [
-      "Corregido: Mu Xiaokui en su segunda fase como compañera solo reproducía sonidos tras el primer combate y los dobles dejaban de aparecer. El juego destruye las invocaciones de un jefe cuando sale de combate, y los dobles solo se crean una vez, cuando ella aparece. Las unidades invocadas por este mod ahora conservan sus invocaciones al salir de combate",
-      "Los dobles ya no reciben órdenes de compañero: no siguen, no se teletransportan a tu lado ni se llaman de vuelta, y no cuentan como compañeros",
-      "Nuevo interruptor Los compañeros ejecutan jefes (desactivado por defecto): activado, un compañero cercano va a ejecutar a un jefe en cuanto se pueda, incluidos los jefes del mapa. Los enemigos menores y los jefes que hayas ejecutado quedan para ti. Aún no se ha probado en el juego",
-      "La página Acerca de ahora muestra el grupo personal de QQ del autor, 1038314448. Ven directamente con cualquier pregunta o comentario",
+      "Nuevo seguimiento de cámara: actívalo en Espectador y la cámara sigue a una unidad y a su rival, ajustando la distancia según la separación entre ambos. El ratón, la rueda y WASD/QE toman el control en cualquier momento, y cada uno vuelve a automático unos segundos después de soltar. Tres encuadres: lateral, sobre el hombro y órbita. Las teclas empiezan sin asignar. El encuadre lateral se ha probado en el juego; sobre el hombro, órbita y cambiar de objetivo, todavía no",
+      "Corregido que Jing Ye y otros jinetes golpearan al aire o se quedaran quietos a caballo: ahora el caballo pelea junto a su jinete. Por ahora solo en Azul y Rojo",
+      "Corregido que los cadáveres siguieran siendo objetivo: una unidad muerta ya no atrae aggro y las vivas pasan a su siguiente objetivo",
+      "Corregido que las invocaciones en cámara libre acabaran en un rincón: las unidades aparecen donde mira la cámara y un punto de aparición tras una pared vuelve a este lado. Con la cámara libre, tu cuerpo se queda en su sitio y sin colisión; al salir todo vuelve a como estaba",
+      "Los monstruos no pueden romper el estado fantasma de la Muñeca Qin Nü, la Qin Nü de hielo, Yan Qiansui y Gu Wanyue: Azul, Rojo y compañeros ya no lo tienen por defecto, y un interruptor en la tarjeta de la unidad lo recupera",
+      "Nuevo interruptor en la tarjeta de los jefes con bloqueo de vida (Mo Yuan, Peng Meng, Bi Feng, Lei Dang y otros): al llegar al bloqueo, ejecución o muerte directa",
+      "Salvo el encuadre lateral, nada de esto se ha probado aún en el juego. Si algo falla, puedes volver a la v0.40.2 desde el historial de actualizaciones",
       "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.3/PhantomGladiator-0.40.3-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.3/PhantomGladiator-0.40.3-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.3/PhantomGladiator-0.40.3-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.000",
+        "name": "PhantomGladiator-0.40.3-win64.zip.000",
         "size": 2097152,
-        "sha256": "9c953467780319fd2fbb31516c91c6e1f47f95a42e3d9688c7e9e32d62f11c08"
+        "sha256": "ff8908358d6c82f039cb2735e09bc3855162ee564c5b44373b58a9ed1b3d9142"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.001",
+        "name": "PhantomGladiator-0.40.3-win64.zip.001",
         "size": 2097152,
-        "sha256": "ac76afbc3206c214112c3742bb39be72fe2ea896916392a5fdd95b0553ddc4db"
+        "sha256": "68c696cf3453101548572697dd5b0622edc222e382b877959fe6ee029c7d8b7f"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.002",
+        "name": "PhantomGladiator-0.40.3-win64.zip.002",
         "size": 2097152,
-        "sha256": "028ba7a140a8644ed569908d71c818508cc88f18d7b13a28545663ef32497b83"
+        "sha256": "8b834d263a7cc1db2e19c8398c13492f9d0c87f673bf2026f076f360819b5b95"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.003",
+        "name": "PhantomGladiator-0.40.3-win64.zip.003",
         "size": 2097152,
-        "sha256": "696422d7371da4c4d43ad934a80478cd86692b9c6437a42815cc5be05325e40d"
+        "sha256": "3862cfe1993b143509d367603691200c2109aa323b5bf8645a9028c7bdc72ead"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.004",
+        "name": "PhantomGladiator-0.40.3-win64.zip.004",
         "size": 2097152,
-        "sha256": "6ed351aebc4803573c42852892f62e1fc9819b77f8558f25352ec6aa761a5b6b"
+        "sha256": "8b471624dbb2be79104decc81ac9715975f60b626d702fc38c1fedb76660d60c"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.005",
+        "name": "PhantomGladiator-0.40.3-win64.zip.005",
         "size": 2097152,
-        "sha256": "edee4697a219b0d5b6b0a63aee18dc81f1d4bfeb1ce991dcb5379f199a564a41"
+        "sha256": "708360faccdf117595f9ce7dd10d382a990d511e72c292212ee09098be888c50"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.006",
+        "name": "PhantomGladiator-0.40.3-win64.zip.006",
         "size": 2097152,
-        "sha256": "c950c8b3ce5c037d03421c55f8cd9f20e91f45a20af3e206508ae5c377529bfe"
+        "sha256": "f83bdde4ddddacf5f139c5d8d2f7d85d87dec7e463d26cc8bf1f010cdda07824"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.007",
+        "name": "PhantomGladiator-0.40.3-win64.zip.007",
         "size": 2097152,
-        "sha256": "6c8e2d400672f9114bcd661ff3167d72e3d453f014ab758e186238fc5958d5dd"
+        "sha256": "c054727f577e1b43b0d63bfdcb46c1b364fecd930491a75bc3eeafb3a29c8407"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.008",
+        "name": "PhantomGladiator-0.40.3-win64.zip.008",
         "size": 2097152,
-        "sha256": "e00b3a463c4a06507e80de05fde0c59eda5b185f5355259e0aa928d3449cb3f0"
+        "sha256": "6f3bbd4a65cd86ac824a470028c04bb303ccf105a9ffdeab224616a32c609a40"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.009",
+        "name": "PhantomGladiator-0.40.3-win64.zip.009",
         "size": 2097152,
-        "sha256": "24424ac6270cd084387679f6bf645f2e7dffabcb8e2f04c8a2c6eac48e220b72"
+        "sha256": "f2c215b582518f5f5636a92851941ef3d53cb5f54972a44cfde1ad87458549e1"
       },
       {
-        "name": "PhantomGladiator-0.40.2-win64.zip.010",
-        "size": 14145,
-        "sha256": "46277d4952882f92309a3c4990793190cb2ad1d331de18c7c0b66e323073b6f1"
+        "name": "PhantomGladiator-0.40.3-win64.zip.010",
+        "size": 49852,
+        "sha256": "4a0e6ca5aefa883113a9be823acceaa65db67deec9a6e167fc997ad4f6289f3c"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.3/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.3/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.3/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.3/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.3/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.3/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.3/"
       }
     ]
   }
