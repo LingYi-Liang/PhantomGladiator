@@ -1,164 +1,152 @@
 {
-  "version": "0.40.1",
-  "date": "2026-11-05T07:35:18+08:00",
-  "size": 20976632,
-  "sha256": "8cfb07d755d1ab129f8ba47e3e690a3eeaee10e0fda82fa24148c9a8295ce5f0",
+  "version": "0.40.2",
+  "date": "2026-11-05T19:33:14+08:00",
+  "size": 20985665,
+  "sha256": "f7b198a3e933ab16129c55b7c587281745fa6bb15cc67e77016a7546c1cb9a39",
   "notes": {
     "zh": [
-      "修复战斗中每隔几秒卡一下：模组在反复查找没加载的飞行武器，每次卡 100~200 毫秒。现在只有左殇一族在场才查，查不到时间隔会越拉越长",
-      "龙体左殇的剑雨，以及救苦救难梦华圣母娘娘、梦差：冷荼、大师兄的绝望剑意、赤影骨刃：囚锋、影魅杀手的同类招式，这次才真正改打对手：上一版的写入其实没生效，那条说明已划掉。两招同时放时，只有后放的打得准",
-      "剑雨的目标在 7 米内时会原地落下，这是招式本身的设计；目标跑出 7 米才会追过去",
-      "沐小葵：铁玉女王和龙体左殇的替身不再算参战单位：不计入存活人数和胜负，敌人也不会再去打这些无敌的替身",
-      "修复新单位可能沿用已离场单位的状态：游戏会重复使用内存地址，防坠落保护、处决判断、不倒下的重试次数之前可能串到新单位上",
-      "设置或恢复记录里有未知、损坏的内容时，模组不会再因此起不来或读错：未知内容会忽略，错误的值改用默认值",
+      "修复沐小葵：铁玉女王当随从打完一场后，只有音效、替身不再出现：BOSS 脱战时游戏会销毁它的召唤物，而替身只在出场时生成一次。现在本模组召唤的单位脱战时不再销毁召唤物",
+      "替身不再被当成随从指挥：不跟随、不会被传送到你身边或被召回，也不计入随从数量",
+      "新开关「随从处决 BOSS」（默认关）：打开后，BOSS 能被处决时，附近的随从会上去处决，包括地图上的 BOSS。小怪和你处决过的 BOSS 不会抢。这个功能还没有在游戏里测过",
+      "关于页加了作者的个人 QQ 群 1038314448，有任何问题和反馈都可以直接来",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Fixed a hitch every few seconds in fights: the mod kept looking up flying weapons that were not loaded, costing 100-200 ms each time. It now looks only while Zuo Shang's family is on the field, and waits longer after each failed lookup",
-      "The sword rain of dragon-form Zuo Shang and similar moves of Meng Hua, Lengtu, the Eldest Brother's Sword of Despair, Qiu Feng and the Ying Mei assassin now really go for the opponent: the last version's write never took effect, and that note is struck through. When two run at once, only the later one aims true",
-      "The sword rain falls where it is when the target is within 7 m; that is how the move is built. It chases only a target beyond 7 m",
-      "The stands of Mu Xiaokui's second phase and dragon-form Zuo Shang no longer count as fighters: they don't count as alive or decide the result, and enemies no longer attack these invulnerable stands",
-      "Fixed new units possibly keeping the state of a unit that left: the game reuses memory addresses, so fall protection, execution checks and Undying retry counts could carry over",
-      "Unknown or damaged entries in settings or restore records no longer stop the mod from starting or get misread: unknown entries are ignored and bad values fall back to defaults",
+      "Fixed Mu Xiaokui's second phase as a companion playing only sounds after its first fight, with the stands no longer appearing: the game destroys a boss's summons when it leaves combat, and the stands are made only once, when she appears. Units this mod summons now keep their summons when they leave combat",
+      "Stands no longer take companion orders: they don't follow, get teleported to you or get recalled, and don't count as companions",
+      "New Companions execute bosses switch (off by default): when on, a nearby companion goes in to execute a boss once it can be executed, bosses on the map included. Minions and bosses you have executed are left to you. This has not been tested in game yet",
+      "The About page now lists the author's personal QQ group, 1038314448. Come there directly with any questions or feedback",
       "This version needs the in-game mod updated; follow the prompt in the app"
     ],
     "ja": [
-      "戦闘中に数秒おきに引っかかる問題を修正：読み込まれていない飛ぶ武器をモッドが探し続け、そのたびに 100〜200 ミリ秒止まっていました。今は左殇の一族がいるときだけ探し、見つからないと間隔を延ばします",
-      "龍体左殇の剣雨と、夢華、冷荼、大師兄の絶望剣意、囚鋒、影魅の同種の技が、今度こそ相手を狙います。前のバージョンの書き込みは実は効いておらず、その記載には取り消し線を引きました。2 つの技が同時に出ると、後に出した技だけが正しく狙えます",
-      "剣雨は対象が 7 m 以内だとその場に落ちます。これは技本来の仕様で、7 m より離れると追いかけます",
-      "沐小葵の第二段階と龍体左殇の替身を参戦ユニットとして扱わないようにしました。生存数や勝敗に数えず、敵も無敵の替身を攻撃しなくなります",
-      "新しいユニットが退場したユニットの状態を引き継ぐことがある問題を修正：ゲームはメモリアドレスを再利用するため、落下保護、処刑の判定、「倒れない」の再試行回数が引き継がれることがありました",
-      "設定や復元記録に未知の内容や壊れた内容があっても、モッドが起動できなくなったり誤って読んだりしません。未知の内容は無視し、不正な値は既定値を使います",
+      "沐小葵の第二段階をお供にすると、一戦終えた後は音だけで替身が出なくなる問題を修正：BOSS が戦闘を離れるとゲームがその召喚物を破棄し、替身は登場時に一度しか作られません。今はこのモッドで召喚したユニットは戦闘を離れても召喚物を破棄しません",
+      "替身をお供として指示しないようにしました。追従、あなたのそばへの転送、呼び戻しの対象にならず、お供の数にも数えません",
+      "新スイッチ「お供が BOSS を処刑」（初期はオフ）：オンにすると、BOSS が処刑できる状態になったとき、近くのお供が処刑しに行きます。マップ上の BOSS も含みます。雑魚とあなたが処刑した BOSS は横取りしません。この機能はまだゲーム内で試していません",
+      "情報ページに作者の個人 QQ グループ 1038314448 を追加しました。質問やフィードバックがあれば直接どうぞ",
       "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
     ],
     "fr": [
-      "Correction d'un à-coup toutes les quelques secondes en combat : le mod cherchait sans cesse des armes volantes non chargées, ce qui coûtait 100 à 200 ms à chaque fois. Il ne cherche plus que si la famille de Zuo Shang est sur le terrain, et attend plus longtemps après chaque échec",
-      "La pluie d'épées de Zuo Shang en forme de dragon et les attaques semblables de Meng Hua, Lengtu, l'Épée du désespoir du Frère aîné, Qiu Feng et l'assassin Ying Mei visent enfin vraiment l'adversaire : l'écriture de la version précédente n'avait aucun effet, et cette note est barrée. Quand deux se déclenchent ensemble, seule la dernière vise juste",
-      "La pluie d'épées tombe sur place quand la cible est à moins de 7 m : l'attaque est conçue ainsi. Elle ne poursuit qu'une cible à plus de 7 m",
-      "Les doublures de Mu Xiaokui en deuxième phase et de Zuo Shang en forme de dragon ne comptent plus comme combattants : elles n'entrent plus dans le nombre de survivants ni dans le résultat, et les ennemis n'attaquent plus ces doublures invincibles",
-      "Correction des nouvelles unités qui pouvaient garder l'état d'une unité partie : le jeu réutilise les adresses mémoire, donc la protection contre les chutes, les vérifications d'exécution et les essais d'« Immortel » pouvaient se transmettre",
-      "Des contenus inconnus ou abîmés dans les réglages ou les données de restauration n'empêchent plus le mod de démarrer et ne sont plus mal lus : l'inconnu est ignoré et les valeurs incorrectes reprennent leur valeur par défaut",
+      "Correction de Mu Xiaokui en deuxième phase comme compagnon : après un premier combat, on n'entendait plus que les sons et les doublures n'apparaissaient plus. Le jeu détruit les invocations d'un boss quand il quitte le combat, et les doublures ne sont créées qu'une fois, à son arrivée. Les unités invoquées par ce mod gardent désormais leurs invocations en quittant le combat",
+      "Les doublures ne reçoivent plus d'ordres de compagnon : elles ne suivent pas, ne sont pas téléportées vers vous ni rappelées, et ne comptent pas comme compagnons",
+      "Nouvel interrupteur Les compagnons exécutent les boss (désactivé par défaut) : activé, un compagnon proche va exécuter un boss dès que c'est possible, y compris les boss de la carte. Les sbires et les boss que vous avez exécutés vous restent. Pas encore testé en jeu",
+      "La page À propos indique désormais le groupe QQ personnel de l'auteur, 1038314448. Venez-y directement pour toute question ou tout retour",
       "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
     ],
     "de": [
-      "Behoben: Im Kampf ruckelte es alle paar Sekunden. Der Mod suchte immer wieder nach nicht geladenen fliegenden Waffen, was jedes Mal 100 bis 200 ms kostete. Jetzt sucht er nur, solange Zuo Shangs Familie im Feld ist, und wartet nach jedem Fehlschlag länger",
-      "Der Schwertregen von Zuo Shang in Drachenform und ähnliche Angriffe von Meng Hua, Lengtu, dem Schwert der Verzweiflung des Ältesten Bruders, Qiu Feng und dem Ying-Mei-Assassinen zielen jetzt wirklich auf den Gegner: Der Schreibvorgang der letzten Version hatte keine Wirkung, der Eintrag ist durchgestrichen. Laufen zwei gleichzeitig, zielt nur der spätere richtig",
-      "Der Schwertregen fällt an Ort und Stelle, wenn das Ziel weniger als 7 m entfernt ist; so ist der Angriff gebaut. Nur ein Ziel jenseits von 7 m wird verfolgt",
-      "Die Doppelgänger von Mu Xiaokui in der zweiten Phase und von Zuo Shang in Drachenform zählen nicht mehr als Kämpfer: Sie zählen nicht als lebend, entscheiden nicht über das Ergebnis, und Gegner greifen diese unverwundbaren Doppelgänger nicht mehr an",
-      "Behoben: Neue Einheiten konnten den Zustand einer gegangenen Einheit behalten. Das Spiel verwendet Speicheradressen wieder, dadurch konnten Sturzschutz, Hinrichtungsprüfung und die Versuche von „Unsterblich“ übernommen werden",
-      "Unbekannte oder beschädigte Inhalte in Einstellungen oder Wiederherstellungsdaten verhindern den Start des Mods nicht mehr und werden nicht mehr falsch gelesen: Unbekanntes wird ignoriert, falsche Werte fallen auf den Standard zurück",
+      "Behoben: Mu Xiaokui in der zweiten Phase spielte als Begleiterin nach dem ersten Kampf nur noch Geräusche ab, die Doppelgänger erschienen nicht mehr. Das Spiel zerstört die Beschwörungen eines Bosses, wenn er den Kampf verlässt, und die Doppelgänger entstehen nur einmal, wenn sie erscheint. Vom Mod beschworene Einheiten behalten ihre Beschwörungen jetzt, wenn sie den Kampf verlassen",
+      "Doppelgänger bekommen keine Begleiter-Befehle mehr: Sie folgen nicht, werden nicht zu dir teleportiert oder zurückgerufen und zählen nicht als Begleiter",
+      "Neuer Schalter Begleiter richten Bosse hin (standardmäßig aus): Ist er an, richtet ein Begleiter in der Nähe einen Boss hin, sobald das möglich ist, auch Bosse auf der Karte. Kleine Gegner und Bosse, die du hingerichtet hast, bleiben dir. Noch nicht im Spiel getestet",
+      "Die Info-Seite nennt jetzt die persönliche QQ-Gruppe des Autors, 1038314448. Komm bei Fragen oder Feedback einfach direkt vorbei",
       "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
     ],
     "es": [
-      "Corregido un tirón cada pocos segundos en combate: el mod buscaba una y otra vez armas voladoras sin cargar, lo que costaba de 100 a 200 ms cada vez. Ahora solo busca mientras la familia de Zuo Shang está en el campo, y espera más tras cada fallo",
-      "La lluvia de espadas de Zuo Shang en forma de dragón y ataques parecidos de Meng Hua, Lengtu, la Espada de la desesperación del Hermano mayor, Qiu Feng y el asesino Ying Mei ahora sí van al rival: la escritura de la versión anterior no tenía efecto, y esa nota está tachada. Si dos coinciden, solo la última apunta bien",
-      "La lluvia de espadas cae donde está si el objetivo está a menos de 7 m: el ataque está hecho así. Solo persigue a un objetivo a más de 7 m",
-      "Los dobles de Mu Xiaokui en su segunda fase y de Zuo Shang en forma de dragón ya no cuentan como combatientes: no cuentan como vivos ni deciden el resultado, y los enemigos ya no atacan a estos dobles invulnerables",
-      "Corregido: las unidades nuevas podían conservar el estado de una que se había ido. El juego reutiliza direcciones de memoria, así que la protección contra caídas, la comprobación de ejecución y los intentos de «Inmortal» podían pasar a la nueva",
-      "Los contenidos desconocidos o dañados en los ajustes o en los datos de restauración ya no impiden que el mod arranque ni se leen mal: lo desconocido se ignora y los valores incorrectos vuelven al valor por defecto",
+      "Corregido: Mu Xiaokui en su segunda fase como compañera solo reproducía sonidos tras el primer combate y los dobles dejaban de aparecer. El juego destruye las invocaciones de un jefe cuando sale de combate, y los dobles solo se crean una vez, cuando ella aparece. Las unidades invocadas por este mod ahora conservan sus invocaciones al salir de combate",
+      "Los dobles ya no reciben órdenes de compañero: no siguen, no se teletransportan a tu lado ni se llaman de vuelta, y no cuentan como compañeros",
+      "Nuevo interruptor Los compañeros ejecutan jefes (desactivado por defecto): activado, un compañero cercano va a ejecutar a un jefe en cuanto se pueda, incluidos los jefes del mapa. Los enemigos menores y los jefes que hayas ejecutado quedan para ti. Aún no se ha probado en el juego",
+      "La página Acerca de ahora muestra el grupo personal de QQ del autor, 1038314448. Ven directamente con cualquier pregunta o comentario",
       "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.1/PhantomGladiator-0.40.1-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.2/PhantomGladiator-0.40.2-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.000",
+        "name": "PhantomGladiator-0.40.2-win64.zip.000",
         "size": 2097152,
-        "sha256": "2014e8744a33b535b56193a9a92f634d46c0d2245a167b82fc4518cf751882cd"
+        "sha256": "9c953467780319fd2fbb31516c91c6e1f47f95a42e3d9688c7e9e32d62f11c08"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.001",
+        "name": "PhantomGladiator-0.40.2-win64.zip.001",
         "size": 2097152,
-        "sha256": "b7125c48979778f8fd3f003631126337a2d7a710426c15d8095a45ded1215f27"
+        "sha256": "ac76afbc3206c214112c3742bb39be72fe2ea896916392a5fdd95b0553ddc4db"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.002",
+        "name": "PhantomGladiator-0.40.2-win64.zip.002",
         "size": 2097152,
-        "sha256": "ae9fa47692e29eae8c721dd776dccb9af06ff90cbc87e4e44a6a112ac6e9796d"
+        "sha256": "028ba7a140a8644ed569908d71c818508cc88f18d7b13a28545663ef32497b83"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.003",
+        "name": "PhantomGladiator-0.40.2-win64.zip.003",
         "size": 2097152,
-        "sha256": "2003927e56bd97422ffabd5c184a4acd77e9ed8fc2c3f989854b4270013630bd"
+        "sha256": "696422d7371da4c4d43ad934a80478cd86692b9c6437a42815cc5be05325e40d"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.004",
+        "name": "PhantomGladiator-0.40.2-win64.zip.004",
         "size": 2097152,
-        "sha256": "68e449d82db755e2e657a53660bc599fcfe511207dd0293e17aefac0460a7b28"
+        "sha256": "6ed351aebc4803573c42852892f62e1fc9819b77f8558f25352ec6aa761a5b6b"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.005",
+        "name": "PhantomGladiator-0.40.2-win64.zip.005",
         "size": 2097152,
-        "sha256": "9fceb9dc65d9c2a3fb94657ec23d897461b0567bd72b20d672c0f3b26bdcbfba"
+        "sha256": "edee4697a219b0d5b6b0a63aee18dc81f1d4bfeb1ce991dcb5379f199a564a41"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.006",
+        "name": "PhantomGladiator-0.40.2-win64.zip.006",
         "size": 2097152,
-        "sha256": "4617313567723e718cd974df16a363df7500a703c5d794875b156074a0e8c1b7"
+        "sha256": "c950c8b3ce5c037d03421c55f8cd9f20e91f45a20af3e206508ae5c377529bfe"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.007",
+        "name": "PhantomGladiator-0.40.2-win64.zip.007",
         "size": 2097152,
-        "sha256": "5cf2677c43546989b8e580aa3b080ca3f34d6a1256dd0fff796b3c021df0dd83"
+        "sha256": "6c8e2d400672f9114bcd661ff3167d72e3d453f014ab758e186238fc5958d5dd"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.008",
+        "name": "PhantomGladiator-0.40.2-win64.zip.008",
         "size": 2097152,
-        "sha256": "9e8165ae311575a00759bc53adc89ddb3ac07006c6423448fbc6f339dbf8203d"
+        "sha256": "e00b3a463c4a06507e80de05fde0c59eda5b185f5355259e0aa928d3449cb3f0"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.009",
+        "name": "PhantomGladiator-0.40.2-win64.zip.009",
         "size": 2097152,
-        "sha256": "dc5db1c88c2022d63677085cd2d26b3e7f1158c42121f7f04348361eda706d84"
+        "sha256": "24424ac6270cd084387679f6bf645f2e7dffabcb8e2f04c8a2c6eac48e220b72"
       },
       {
-        "name": "PhantomGladiator-0.40.1-win64.zip.010",
-        "size": 5112,
-        "sha256": "b9b52509d7b66e938837cf1b22f5b7ec800d6f49bbe7948b508352a1dda35d57"
+        "name": "PhantomGladiator-0.40.2-win64.zip.010",
+        "size": 14145,
+        "sha256": "46277d4952882f92309a3c4990793190cb2ad1d331de18c7c0b66e323073b6f1"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.1/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.2/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.2/"
       }
     ]
   }
