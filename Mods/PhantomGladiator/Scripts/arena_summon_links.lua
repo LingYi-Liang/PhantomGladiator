@@ -5,7 +5,8 @@ local Links={}
 function Links.new(options)
     options=options or {};local self={lastSummary=nil}
     local findAll=options.findAll or FindAllOf
-    function self:scan(members)
+    -- onOwnedPassive: called with each summon passive of a unit in members.
+    function self:scan(members,onOwnedPassive)
         local owned,links={},{}
         for _,unit in ipairs(members) do local key=U.key(unit.actor);if key then owned[key]=unit.actor end end
         if not next(owned) then return {} end
@@ -30,6 +31,7 @@ function Links.new(options)
                 local ownerKey=ok and U.key(avatar) or nil
                 if ownerKey and owned[ownerKey] then
                     stats.owned=stats.owned+1
+                    if onOwnedPassive and not pcall(onOwnedPassive,ability) then stats.errors=stats.errors+1 end
                     local values,read=U.field(ability,'SpawnedSummonInstances')
                     local rows=read and U.array(values) or nil
                     if not rows then stats.errors=stats.errors+1 end

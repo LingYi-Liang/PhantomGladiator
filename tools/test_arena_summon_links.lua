@@ -30,6 +30,16 @@ for _,entry in ipairs(found) do
     assert(entry.actor==child or entry.actor==own)
 end
 assert(#scanner:scan({{actor=root},{actor=enemy},{actor=child},{actor=own}})==0,'already owned summons must not be adopted again')
+local passives={}
+scanner:scan({{actor=root,team='companion'}},function(a)passives[#passives+1]=a end)
+assert(#passives==1 and passives[1]==ability,'the passive of a unit in the list is handed on')
+passives={}
+scanner:scan({{actor=enemy,team='red'}},function(a)passives[#passives+1]=a end)
+assert(#passives==0,'not the passive of a unit outside the list')
+local errors=''
+local logged=Links.new({getWorld=function()return world end,findAll=function()return {ability} end,getNPCs=function()return {} end,log=function(s)errors=s end})
+logged:scan({{actor=root,team='blue'}},function()error('boom')end)
+assert(errors:find('errors=1',1,true),'an error there stays in the count and the scan goes on: '..errors)
 root.alive=false;enemy.alive=false
 assert(#scanner:scan({{actor=root},{actor=enemy}})==0,'invalid owners must not be dereferenced or used to claim map actors')
 print('arena_summon_links: PASS (native list, false pending flag, exact owner, conflicts, world boundary, duplicate and invalid exclusions)')

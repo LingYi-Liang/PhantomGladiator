@@ -24,7 +24,8 @@ local function actor(name,tags)
     return object({GetClass=function()return cls end,bHidden=false,
         AbilitySystemComponent=object({GetGameplayTagCount=function(_,tag)return (tags or {})[tag.TagName] or 0 end})})
 end
-FName=function(s)return s end
+-- As in the game: FName is callable but is not a Lua function.
+FName=setmetatable({},{__call=function(_,s)return s end})
 local function test(name,fn)fn();passed=passed+1;print('ok - '..name)end
 test('tag identifies a stand without a class-name guess',function()
     local a=actor('BP_Unknown_C',{['CharacterType.Stand']=1})
@@ -120,6 +121,12 @@ test('detail is bounded while summary counts keep selected and empty results',fu
     f.now=15;f.watch:tick();assert(f.all():find('selected=500 empty=500',1,true))
     for i=1,1000 do f.now=f.now+15;f.watch:tick() end
     assert(#f.logs<=240,'a long fight has a global log budget')
+end)
+test('a companion\'s stands are watched like an arena unit\'s',function()
+    local f=fixture()
+    f.members={{actor=f.owner,team='companion'},{actor=f.stand,team='companion',stand=true,summoner=f.owner}}
+    f.watch:tick()
+    assert(next(f.hooks)~=nil,'hooked for a companion')
 end)
 test('no stands and unload remove hooks; saved callbacks become inert',function()
     local f=fixture();f.watch:tick();f.members={};f.watch:tick();assert(next(f.hooks)==nil)

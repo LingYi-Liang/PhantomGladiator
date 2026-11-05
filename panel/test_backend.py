@@ -385,6 +385,16 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(bad)
 
+    def test_companion_executions_travels_in_the_start_key_column(self):
+        for enabled, token in ((True, "ON"), (False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_companion_executions", "enabled": enabled})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+            self.assertEqual(columns[1:8], ["set_companion_executions", "", "blue", "1", "", token, ""])
+        for bad in ({"action": "set_companion_executions"}, {"action": "set_companion_executions", "enabled": 1},
+                    {"action": "set_companion_executions", "enabled": False, "unit_id": "BP_Monster_MoTian"}):
+            with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(bad)
+
     def test_team_immortal_travels_in_the_team_and_start_key_columns(self):
         for team in backend.IMMORTAL_TEAMS:
             for enabled, token in ((True, "ON"), (False, "OFF")):

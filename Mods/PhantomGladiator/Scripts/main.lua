@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.1-game-26367565"
+local BUILD = "v0.40.2-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1629,13 +1629,14 @@ bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDest
 local grabStudy=Config.EnableGrabStudy and GrabStudy.new({path=Config.RuntimePath,log=log,ready=function()return runtimeSession:status().game_ready==true end}) or nil
 arenaGrabs=ArenaGrabs.new({path=Config.RuntimePath,log=log,hp=GetHP,ready=function()return runtimeSession:status().game_ready==true end})
 function arenaSupport:discover()
-    for _,link in ipairs(summonLinks:scan(ArenaMembers())) do
+    for _,link in ipairs(summonLinks:scan(ArenaMembers(),function(ability)self.summonKeep:passive(ability)end)) do
         local result=arena:adoptSummon(link.actor,link.parent,link.class_path,link.evidence)
         if not result.ok then log('[SummonLinks] 接管未确认：'..tostring(result.message)) end
     end
 end
 arenaSupport.stands=require('arena_stands').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
-companions=Companion.new({log=log,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
+arenaSupport.summonKeep=require('summon_keep').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
+companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
 -- Read-only: which of a companion's attacks may hit the player, and why (companion_hit_probe.lua).
 companionHitProbe=Config.EnableCompanionHitProbe and CompanionHitProbe.new({log=log,getPlayer=GetPlayerPawn,hp=GetHP,location=GetLocation,
@@ -1708,7 +1709,9 @@ aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=Arena
 -- 处决镜头: the app switch; during an execution the view plays that execution's own camera (execution_camera.lua).
 executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,
     getWorld=UEHelpers.GetWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
+arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
+    companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
@@ -1734,6 +1737,7 @@ local function supportSteps(self)
     if attackScan then step('attackScan',function()attackScan:tick()end) end
     if codexArt then step('codexArt',function()codexArt:tick()end) end
     if codexIcons then step('codexIcons',function()codexIcons:tick()end) end
+    step('summonKeep',function()self.summonKeep:tick()end)
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
@@ -1808,7 +1812,7 @@ RegisterKeyBind(Key.F9,{ModifierKey.SHIFT},function()
 end)
 end
 panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,
-    build=BUILD,log=log,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
+    build=BUILD,log=log,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
     router=keyRouter,camera={status=function()return {active=freeCamera:isActive(),pending=freeCamera:hasPending(),
             frozen=freeCamera:isFrozen(),settings=freeCamera:settings()}end,
         toggle=ToggleFreeCam,exit=ForceExitFreeCam,
@@ -1836,6 +1840,7 @@ if ModRef then
         clockHUD:silence()
         combatLock:silence('Mod卸载')
         arenaSupport.stands:silence()
+        arenaSupport.summonKeep:silence()
         playerAim:silence('Mod卸载')
         aiParams:silence()
         bossCombos:silence()

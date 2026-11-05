@@ -34,7 +34,7 @@ local function label(object)
 end
 local function tagCount(actor,tag)
     local asc=U.field(actor,'AbilitySystemComponent')
-    if not U.valid(asc) or type(FName)~='function' then return nil end
+    if not U.valid(asc) or FName==nil then return nil end
     local value=call(asc,'GetGameplayTagCount',{TagName=FName(tag)})
     return type(value)=='number' and value or nil
 end
@@ -163,7 +163,7 @@ function Stands.new(options)
         local previous=owned
         owned,parents={},{}
         for _,member in ipairs(options.members() or {})do
-            if member.stand and (member.team=='blue' or member.team=='red') then
+            if member.stand and (member.team=='blue' or member.team=='red' or member.team=='companion') then
                 local key,parent=U.key(member.actor),U.key(member.summoner)
                 if key then
                     owned[key]=member.actor

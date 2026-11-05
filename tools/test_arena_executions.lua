@@ -189,6 +189,117 @@ do
         print((ok and 'ok - ' or 'FAIL - ')..name..(ok and '' or ': '..tostring(err)))
         if not ok then failures[#failures+1]=name end
     end
+    -- 随从处决 BOSS: a companion, its hatred list and a boss it is after.
+    local function companionCase(opts)
+        opts=opts or {}
+        local h=harness()
+        local on=opts.on~=false
+        local boss=h.boss('BP_Boss',opts.hp or 100,opts.floor or 0,opts.boss)
+        local mate=h.enemy(opts.at or {X=300,Y=0,Z=0})
+        mate.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={boss}})
+        h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.fighting=false
+        h.members={{actor=mate,team='companion'}}
+        local exec=h.new({companions=function()return on end,isStand=opts.isStand})
+        return h,exec,boss,mate,function(value)on=value end
+    end
+    regression('the switch off: a boss a companion is after is left to the player',function()
+        local h,exec=companionCase({on=false})
+        h.run(exec,2);assert(exec:status().started==0)
+        exec:stop('regression')
+    end)
+    regression('the switch on: the companion executes a boss of the map, with no arena fight on',function()
+        local h,exec,boss,mate=companionCase()
+        h.run(exec,0.5)
+        assert(exec:status().started==1,h.all())
+        assert(exec:executing(mate) and not exec:executing(boss),'it can say who is executing')
+        assert(h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Boss_0 at 0.0'),table.concat(h.calls,' | '))
+        assert(h.all():find('随从处决登记 BP_Boss（UltimateBoss）',1,true),h.all())
+        exec:stop('regression')
+        assert(not exec:executing(mate))
+    end)
+    regression('the same for a boss summoned with no team, and a fight in the arena does not stop it',function()
+        local h,exec,boss,mate=companionCase()
+        local blue,red=h.enemy({X=9000,Y=0,Z=0}),h.enemy({X=9000,Y=300,Z=0})
+        h.fighting=true
+        h.members={{actor=mate,team='companion'},{actor=boss,team='neutral'},{actor=blue,team='blue'},{actor=red,team='red'}}
+        h.run(exec,0.5);assert(exec:status().started==1,h.all())
+        exec:stop('regression')
+    end)
+    regression('minions stay the player\'s: only a boss is taken',function()
+        local h,exec=companionCase({boss={rank='Elite'}})
+        h.run(exec,2);assert(exec:status().started==0,h.all())
+        exec:stop('regression')
+    end)
+    regression('a boss the player is executing stays the player\'s',function()
+        local h,exec,boss=companionCase()
+        boss['Execution Component'].CurrentExecutionInfo={Executor=h.player,Target=boss,IsTarget=true}
+        h.run(exec,2);assert(exec:status().started==0)
+        assert(h.all():find('玩家处决过或正在处决，随从不抢：BP_Boss',1,true),h.all())
+        exec:stop('regression')
+    end)
+    regression('the player and the arena\'s own units are never taken, whatever is on the list',function()
+        local h,exec,boss,mate=companionCase()
+        local arena=h.boss('BP_ArenaBoss',100,0);h.tags[arena]={['CharacterState.CanWeakExecute.Weak']=1}
+        local friend=h.boss('BP_FriendBoss',100,0);h.tags[friend]={['CharacterState.CanWeakExecute.Weak']=1}
+        -- A player that reads like a boss: only its being the player keeps it off the list.
+        h.player=h.boss('BP_Player',100,0);h.tags[h.player]={['CharacterState.CanWeakExecute.Weak']=1}
+        mate.BP_PBZHatredManagerComponent.HatredList={h.player,arena,friend}
+        h.members={{actor=mate,team='companion'},{actor=friend,team='companion'},{actor=arena,team='blue'}}
+        h.run(exec,2);assert(exec:status().started==0,h.all())
+        exec:stop('regression')
+    end)
+    regression('a companion does not step into the arena: nobody on the arena\'s teams is executed by one',function()
+        local h=harness()
+        local boss=h.boss('BP_Boss',100,0);h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
+        local mate=h.enemy({X=300,Y=0,Z=0})
+        h.members={{actor=boss,team='red'},{actor=mate,team='companion'}}
+        local exec=h.new({companions=function()return true end})
+        h.run(exec,2);assert(exec:status().started==0,h.all())
+        exec:stop('regression')
+    end)
+    regression('a stand is no boss to execute, and no executor either',function()
+        local h,exec=companionCase({isStand=function()return true end})
+        h.run(exec,2);assert(exec:status().started==0,h.all())
+        exec:stop('regression')
+        -- The boss is on the summoner's list, out of her reach, and her parked stand is right beside it.
+        local h2,exec2,boss,mate=companionCase()
+        local summoner=h2.enemy({X=50000,Y=0,Z=0})
+        summoner.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={boss}})
+        mate.BP_PBZHatredManagerComponent=nil
+        h2.members={{actor=summoner,team='companion'},{actor=mate,team='companion',stand=true,reserve=true}}
+        h2.run(exec2,2);assert(exec2:status().started==0,'a parked stand does not execute')
+        exec2:stop('regression')
+    end)
+    regression('out of reach it waits; once the companion is close it goes',function()
+        local h,exec,boss,mate=companionCase({at={X=5000,Y=0,Z=0}})
+        h.run(exec,2);assert(exec:status().started==0)
+        mate.at={X=300,Y=0,Z=0};h.run(exec,0.5);assert(exec:status().started==1,h.all())
+        exec:stop('regression')
+    end)
+    regression('a boss on its death lock is ended by the companion\'s execution, as in the arena',function()
+        local h,exec,boss=companionCase({hp=2,floor=1})
+        h.tags[boss]={}
+        h.run(exec,2.5);assert(exec:status().started==1,h.all())
+        assert(h.all():find('开始（卡在锁血线）目标=BP_Boss',1,true),h.all())
+        h.run(exec,MOYUAN_RUN+1)
+        assert(h.has('apply GE_Kill_C level=0.0 context=table') and exec:status().kills==1,table.concat(h.calls,' | '))
+    end)
+    regression('a boss that leaves the list is forgotten without a line, and the switch going off stops the look',function()
+        local h,exec,boss,mate,set=companionCase()
+        h.tags[boss]={}
+        h.run(exec,0.5)
+        mate.BP_PBZHatredManagerComponent.HatredList={}
+        h.run(exec,0.5)
+        assert(not h.all():find('单位已离场',1,true),h.all())
+        mate.BP_PBZHatredManagerComponent.HatredList={boss}
+        h.run(exec,0.5)
+        assert(select(2,h.all():gsub('随从处决登记 BP_Boss',''))==2,'looked at afresh when it comes back: '..h.all())
+        h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
+        set(false);h.run(exec,1);assert(exec:status().started==0)
+        set(true);h.run(exec,0.5);assert(exec:status().started==1)
+        exec:stop('regression')
+    end)
     regression('execution eligibility is discarded when a unit leaves and its address is reused',function()
         local h=harness();local old=h.boss('BP_Same',100,0,{pairs={},locks={}})
         local enemy=h.enemy({X=300,Y=0,Z=0})

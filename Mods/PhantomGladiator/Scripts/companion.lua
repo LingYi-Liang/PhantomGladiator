@@ -630,7 +630,7 @@ function Companion.new(options)
         end
         local count=0
         for key,member in pairs(live)do
-            count=count+1
+            if not member.stand then count=count+1 end
             local record=units[key]
             if not record then
                 -- e.g. a companion's own summons, adopted into its team without a follow state
@@ -653,60 +653,65 @@ function Companion.new(options)
                     keepFriendly(record.mount,mount,player)
                 end
             end
-            if U.valid(player) and (not record.assistAt or now-record.assistAt>=ASSIST_SECONDS) then
-                record.assistAt=now
-                local enemies=hatredCount(player)
-                local lib=options.aiLib and options.aiLib()
-                local world=options.getWorld and options.getWorld()
-                if enemies and enemies>0 and U.valid(lib) and U.valid(world) then
-                    local before=hatredCount(member.actor)
-                    local ok=pcall(function()lib:SyncHatredList(player,member.actor,world)end)
-                    if ok then self.assists=self.assists+1 end
-                    if not record.assistLogged then
-                        record.assistLogged=true
-                        say('协助 同步玩家仇恨到随从 调用='..tostring(ok)..' 玩家仇恨='..enemies..' 随从仇恨 '..tostring(before)..' -> '..tostring(hatredCount(member.actor)))
+            -- A stand waits parked with its AI off until a move of its summoner shows it, and that move places it
+            -- (GAA_TeleportCharacterRelativeToTargetActor). Follow, teleport and target orders would move it in the middle of one.
+            -- While it executes a boss (arena_executions.lua) the same goes for a companion.
+            if not member.stand and not (options.busy and options.busy(member.actor)) then
+                if U.valid(player) and (not record.assistAt or now-record.assistAt>=ASSIST_SECONDS) then
+                    record.assistAt=now
+                    local enemies=hatredCount(player)
+                    local lib=options.aiLib and options.aiLib()
+                    local world=options.getWorld and options.getWorld()
+                    if enemies and enemies>0 and U.valid(lib) and U.valid(world) then
+                        local before=hatredCount(member.actor)
+                        local ok=pcall(function()lib:SyncHatredList(player,member.actor,world)end)
+                        if ok then self.assists=self.assists+1 end
+                        if not record.assistLogged then
+                            record.assistLogged=true
+                            say('协助 同步玩家仇恨到随从 调用='..tostring(ok)..' 玩家仇恨='..enemies..' 随从仇恨 '..tostring(before)..' -> '..tostring(hatredCount(member.actor)))
+                        end
                     end
                 end
-            end
-            local ai=aiOf(member.actor)
-            local state=ai and tagName(U.field(ai,'CurrentStateTag')) or '?'
-            local d=U.valid(player) and distance(member.actor,player) or nil
-            if ai and U.valid(player) then
-                if not record.keysChecked then followKeys(record,ai,player) end
-                -- Outside combat the idle state may assign its parameters again; keep the target on the player.
-                if record.followKeys and #record.followKeys>0 and not state:find('Combat',1,true)
-                    and (not record.keysAt or now-record.keysAt>=2) then
-                    record.keysAt=now
-                    local ok=pointFollowKeys(record,ai,player)
-                    if not record.keysLogged then record.keysLogged=true;say('跟随对象键指向玩家 读回='..ok..'/'..#record.followKeys)end
-                end
-                keepUp(record,member.actor,player,state,d,now)
-                -- Running on our orders, or moving fast on its own in combat: sample the animation inputs.
-                if record.speedMode=='run' then sampleAnimation(record,member.actor,ai,'我们让它跑',now)
-                elseif state:find('Combat',1,true) and (record.combatSamples or 0)<4 then
-                    local okVelocity,velocity=pcall(function()return member.actor:GetVelocity()end)
-                    local x,y=okVelocity and U.struct(velocity,'X'),okVelocity and U.struct(velocity,'Y')
-                    if type(x)=='number' and type(y)=='number' and math.sqrt(x*x+y*y)>300 and (not record.sampleAt or now-record.sampleAt>=1) then
-                        record.combatSamples=(record.combatSamples or 0)+1
-                        record.samples=math.max(0,(record.samples or 0)-1) -- combat samples do not use up the running ones
-                        sampleAnimation(record,member.actor,ai,'战斗中自己快速移动',now)
+                local ai=aiOf(member.actor)
+                local state=ai and tagName(U.field(ai,'CurrentStateTag')) or '?'
+                local d=U.valid(player) and distance(member.actor,player) or nil
+                if ai and U.valid(player) then
+                    if not record.keysChecked then followKeys(record,ai,player) end
+                    -- Outside combat the idle state may assign its parameters again; keep the target on the player.
+                    if record.followKeys and #record.followKeys>0 and not state:find('Combat',1,true)
+                        and (not record.keysAt or now-record.keysAt>=2) then
+                        record.keysAt=now
+                        local ok=pointFollowKeys(record,ai,player)
+                        if not record.keysLogged then record.keysLogged=true;say('跟随对象键指向玩家 读回='..ok..'/'..#record.followKeys)end
+                    end
+                    keepUp(record,member.actor,player,state,d,now)
+                    -- Running on our orders, or moving fast on its own in combat: sample the animation inputs.
+                    if record.speedMode=='run' then sampleAnimation(record,member.actor,ai,'我们让它跑',now)
+                    elseif state:find('Combat',1,true) and (record.combatSamples or 0)<4 then
+                        local okVelocity,velocity=pcall(function()return member.actor:GetVelocity()end)
+                        local x,y=okVelocity and U.struct(velocity,'X'),okVelocity and U.struct(velocity,'Y')
+                        if type(x)=='number' and type(y)=='number' and math.sqrt(x*x+y*y)>300 and (not record.sampleAt or now-record.sampleAt>=1) then
+                            record.combatSamples=(record.combatSamples or 0)+1
+                            record.samples=math.max(0,(record.samples or 0)-1) -- combat samples do not use up the running ones
+                            sampleAnimation(record,member.actor,ai,'战斗中自己快速移动',now)
+                        end
+                    end
+                    if not state:find('Combat',1,true) and (not record.engageAt or now-record.engageAt>=1) then
+                        record.engageAt=now
+                        engage(record,member.actor,ai,player,ours)
                     end
                 end
-                if not state:find('Combat',1,true) and (not record.engageAt or now-record.engageAt>=1) then
-                    record.engageAt=now
-                    engage(record,member.actor,ai,player,ours)
+                if state~=record.state then
+                    if record.state and self.stateLines<STATE_LINES then
+                        self.stateLines=self.stateLines+1
+                        say('状态变化 '..className(member.actor)..' '..record.state..' -> '..state..' 距玩家='..fmt(d))
+                    end
+                    record.state=state
                 end
-            end
-            if state~=record.state then
-                if record.state and self.stateLines<STATE_LINES then
-                    self.stateLines=self.stateLines+1
-                    say('状态变化 '..className(member.actor)..' '..record.state..' -> '..state..' 距玩家='..fmt(d))
+                if now-record.at<=WATCH_SECONDS and (not record.watchAt or now-record.watchAt>=WATCH_EVERY) then
+                    record.watchAt=now
+                    say('跟随观察 '..className(member.actor)..' 距玩家='..fmt(d)..' 状态='..state..' 闲置数据='..(ai and show(idleData(ai)) or '?'))
                 end
-                record.state=state
-            end
-            if now-record.at<=WATCH_SECONDS and (not record.watchAt or now-record.watchAt>=WATCH_EVERY) then
-                record.watchAt=now
-                say('跟随观察 '..className(member.actor)..' 距玩家='..fmt(d)..' 状态='..state..' 闲置数据='..(ai and show(idleData(ai)) or '?'))
             end
         end
         self.count=count
@@ -722,7 +727,7 @@ function Companion.new(options)
         local count,near,missed=0,0,{}
         for _,member in ipairs(options.members and options.members() or {})do
             local actor=member.actor
-            if member.team=='companion' and U.valid(actor) then
+            if member.team=='companion' and not member.stand and U.valid(actor) and not (options.busy and options.busy(actor)) then
                 local okHP,hp=true,1
                 if options.hp then okHP,hp=pcall(options.hp,actor) end
                 if okHP and type(hp)=='number' and hp>0 then

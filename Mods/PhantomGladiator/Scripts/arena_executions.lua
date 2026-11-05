@@ -24,6 +24,8 @@
 -- the mod presses for it: the game's GameplayEvent.QTE.HuoLiuXing goes to the player's ability system, where the
 -- executed side listens, every GAP seconds; the executor's ability and borrowed body play a hit each time and their
 -- finale once the executed side has moved to its own.
+-- 随从处决 BOSS (the app switch, companion_executions.lua): outside the arena's teams, a boss on a companion's hatred list,
+-- summoned with no team or of the map, can be executed the same way by the nearest companion. Minions stay the player's.
 local U=require('ue_observe')
 local Stats=require('character_stats')
 local PoseProbe=require('execution_pose_probe')
@@ -291,11 +293,15 @@ function Exec.new(options)
         return yes
     end
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
+    -- team: the target's arena team, or nil for a companion's foe, which only companions go for.
     local function opponent(target,team,reach,anyone,executionType)
         local best,bestDistance
         for _,member in ipairs(options.members() or {}) do
             local other=member.actor
-            if (member.team=='blue' or member.team=='red') and member.team~=team and not member.reserve and U.valid(other) then
+            local against
+            if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
+            else against=member.team=='companion' end
+            if against and not member.reserve and U.valid(other) then
                 local hp=read(other,'Health')
                 local d=hp and hp>0 and distance(target,other)
                 if d and d<=reach and (not bestDistance or d<bestDistance) and (anyone or isHumanoid(other))
@@ -841,6 +847,76 @@ function Exec.new(options)
         available=function(executor)return self.enabled and next(pendingBodies)==nil
             and (not executor or not active or U.key(active.executor)==U.key(executor))end,data=animationData,adopt=adoptNative})
 
+    -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
+    local function tryExecute(target,unit,t,team)
+        local hp=read(target,'Health')
+        if not hp or hp<=0 then return false end
+        local locked=onLock(target,unit,hp)
+        if locked then unit.since=unit.since or t else unit.since=nil end
+        local reason=locked and t-unit.since>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
+        if not reason and not unit.lockOnly then
+            for _,tag in ipairs({'CharacterState.CanRiderExecute','CharacterState.Stand.Break','CharacterState.CanWeakExecute'})do
+                if tagsMatch(target,{tag},true)then reason=tag;break end
+            end
+        end
+        if not reason then return false end
+        local selected=inspect(target,true,locked)
+        local executor,d
+        if selected.state=='ready' then executor,d=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type)end
+        if executor then start(executor,target,selected,d,reason);return true end
+        if selected.state~='ready' and not unit.conditionWait then unit.conditionWait=true;say('有处决数据，当前原生标签/骑乘条件未满足：'..className(target)) end
+        if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有对手，等对手靠近：'..className(target)) end
+        return false
+    end
+    -- What the companions are after, while the switch is on: anything on their hatred lists but the player and the arena's
+    -- own units. A unit summoned with no team is summoned to be fought, so it counts.
+    local function companionFoes(members)
+        if not (options.companions and options.companions()) then return {} end
+        local skip,seen,foes={},{},{}
+        local playerKey=U.key(options.getPlayer and options.getPlayer())
+        if playerKey then skip[playerKey]=true end
+        for _,member in ipairs(members)do
+            local key=member.team~='neutral' and U.key(member.actor)
+            if key then skip[key]=true end
+        end
+        for _,member in ipairs(members)do
+            if member.team=='companion' and not member.reserve then
+                local list=U.field(U.field(member.actor,'BP_PBZHatredManagerComponent'),'HatredList')
+                for _,enemy in ipairs(U.array(list) or {})do
+                    local key=U.key(enemy)
+                    if key and not skip[key] and not seen[key] then seen[key]=true;foes[#foes+1]={actor=enemy,key=key} end
+                end
+            end
+        end
+        return foes
+    end
+    -- The player has this one (the game keeps the last executor on the target's component): it stays the player's.
+    local function theirExecutorIsPlayer(target)
+        local info=U.field(U.field(target,'Execution Component'),'CurrentExecutionInfo')
+        local executor=weak(U.struct(info,'Executor'))
+        local playerKey=U.key(options.getPlayer and options.getPlayer())
+        return playerKey~=nil and U.key(executor)==playerKey
+    end
+    local function considerFoes(foes,t)
+        for _,foe in ipairs(foes)do
+            local unit=units[foe.key]
+            if not unit then
+                unit=inspect(foe.actor);unit.foe=true;units[foe.key]=unit
+                if unit.boss and options.isStand and options.isStand(foe.actor) then unit.state='none' end
+                if unit.boss and unit.state=='ready' then
+                    say(string.format('随从处决登记 %s（%s）：锁血效果=%d 个 技能对=%s / %s（%s）',className(foe.actor),unit.rank,#unit.locks,
+                        short(unit.pair.execution),short(unit.pair.executed),unit.pair.source))
+                elseif unit.boss then
+                    say('随从处决：这个 BOSS 没有能用的处决动作，不处决：'..className(foe.actor)..' 状态='..unit.state)
+                end
+            end
+            if unit.boss and unit.state=='ready' and not (unit.again and t<unit.again) then
+                if theirExecutorIsPlayer(foe.actor) then
+                    if not unit.playerHeld then unit.playerHeld=true;say('玩家处决过或正在处决，随从不抢：'..className(foe.actor)) end
+                elseif tryExecute(foe.actor,unit,t,nil) then return end
+            end
+        end
+    end
     function self:tick()
         local members=options.members() or {}
         local present={}
@@ -848,15 +924,22 @@ function Exec.new(options)
             local key=U.key(member.actor)
             if key then present[key]=true end
         end
-        for key in pairs(units)do if not present[key] then units[key]=nil;say('单位已离场，清除处决判断 读回=不在当前名单') end end
+        local foes=companionFoes(members)
+        for _,foe in ipairs(foes)do present[foe.key]=true end
+        for key,unit in pairs(units)do
+            if not present[key] then
+                units[key]=nil
+                if not unit.foe then say('单位已离场，清除处决判断 读回=不在当前名单') end
+            end
+        end
         if not self.enabled then return end
         chain:auditExisting()
         opportunities:tick()
         for key,body in pairs(pendingBodies) do if not U.valid(body.comp) then pendingBodies[key]=nil end end
         if next(pendingBodies) then self.message='面部附着恢复待重试，请停止/清场';return end
         if active then watch();return end
-        if options.fighting and not options.fighting() then return end
         local t=now()
+        if options.fighting and not options.fighting() then considerFoes(foes,t);return end
         for _,member in ipairs(members) do
             local target=member.actor
             local key=U.key(target)
@@ -893,31 +976,10 @@ function Exec.new(options)
                         unit.stuck=nil
                     end
                 end
-                if unit.state=='ready' and not (unit.again and t<unit.again) and not immortal then
-                    local hp=read(target,'Health')
-                    if hp and hp>0 then
-                        local locked=onLock(target,unit,hp)
-                        if locked then unit.since=unit.since or t else unit.since=nil end
-                        local reason=locked and t-unit.since>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
-                        if not reason and not unit.lockOnly then
-                            for _,tag in ipairs({'CharacterState.CanRiderExecute','CharacterState.Stand.Break','CharacterState.CanWeakExecute'})do
-                                if tagsMatch(target,{tag},true)then reason=tag;break end
-                            end
-                        end
-                        if reason then
-                            local selected=inspect(target,true,locked)
-                            local executor,d
-                            if selected.state=='ready' then executor,d=opponent(target,member.team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type)end
-                            if executor then
-                                if selected.state=='ready' then start(executor,target,selected,d,reason);return end
-                            end
-                            if selected.state~='ready' and not unit.conditionWait then unit.conditionWait=true;say('有处决数据，当前原生标签/骑乘条件未满足：'..className(target)) end
-                            if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有对手，等对手靠近：'..className(target)) end
-                        end
-                    end
-                end
+                if unit.state=='ready' and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
             end
         end
+        considerFoes(foes,t)
     end
     -- F4 / stop: give the body back; the boss is left as it is.
     function self:stop(why)
@@ -939,6 +1001,10 @@ function Exec.new(options)
         units={}
     end
     function self:silence()chain:silence();opportunities:silence();if active and active.playback then active.playback:stop() end end
+    function self:executing(actor)
+        local key=U.key(actor)
+        return key~=nil and active~=nil and U.key(active.executor)==key
+    end
     function self:status()
         return {enabled=self.enabled,active=active~=nil,started=self.started,finished=self.finished,failures=self.failures,
             kills=self.kills,message=self.message}

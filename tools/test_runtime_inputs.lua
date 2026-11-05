@@ -49,6 +49,7 @@ local modules={
     {'immortal_teams','ImmortalTeamsV1\tblue=1\n','immortal-teams.tsv'},
     {'battle_clock_hud','ClockHudV1\tshow=1\n','clock-hud.tsv'},
     {'execution_camera','ExecutionCameraV1\ton=1\n','execution-camera.tsv'},
+    {'companion_executions','CompanionExecutionsV1\ton=1\n','companion-executions.tsv'},
     {'function_keybinds','FunctionKeysV2\t1\nspawn\t65\t0\n','function-keybinds.tsv'},
     {'npc_catalog','PhantomGladiatorCatalogV1\nclass\t/Test/Unit.Unit_C\n','catalog.tsv'},
     {'unit_keybinds','UnitKeysV2\t1\n/Test/Unit.Unit_C\t65\t0\tblue\t1\n','unit-keybinds.tsv'},

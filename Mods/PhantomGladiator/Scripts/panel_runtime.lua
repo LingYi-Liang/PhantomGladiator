@@ -112,6 +112,11 @@ function Runtime.new(options)
             if not options.executionCamera then return {ok=false,message='处决镜头模块未加载',spawned_count=0} end
             return options.executionCamera:set(command.key_start)
         end,
+        -- ON or OFF in key_start (companion_executions.lua).
+        set_companion_executions=function(command)
+            if not options.companionExecutions then return {ok=false,message='随从处决模块未加载',spawned_count=0} end
+            return options.companionExecutions:set(command.key_start)
+        end,
         start=function()
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
             return options.arena:start()
@@ -228,6 +233,8 @@ function Runtime.new(options)
         out.execution_camera=executionCamera.on==true
         out.execution_camera_state=executionCamera.state or 'off'
         out.execution_camera_failures=executionCamera.failures or 0
+        out.companion_executions_supported=not not options.companionExecutions
+        out.companion_executions=options.companionExecutions and options.companionExecutions:status().on==true or false
         out.clock_hud_message=clockHUD.message or ''
         -- The level a summon gets: the highest map enemy near the player at the last look (spawn_level.lua).
         local level=options.spawnLevel and options.spawnLevel:status() or {}

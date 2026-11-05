@@ -50,6 +50,9 @@ const MockRuntime = (() => {
   try { savedClockHud = localStorage.getItem(CLOCK_HUD_KEY) === "true"; } catch { /* storage may be unavailable */ }
   // The execution camera switch mirrors execution_camera.lua (Runtime/execution-camera.tsv).
   const EXEC_CAM_KEY = "pg-proto.executionCamera";
+  const COMPANION_EXEC_KEY = "pg-proto.companionExec";
+  let savedCompanionExec = false;
+  try { savedCompanionExec = localStorage.getItem(COMPANION_EXEC_KEY) === "true"; } catch { /* storage may be unavailable */ }
   let savedExecCam = false;
   try { savedExecCam = localStorage.getItem(EXEC_CAM_KEY) === "true"; } catch { /* storage may be unavailable */ }
   const s = {
@@ -84,6 +87,7 @@ const MockRuntime = (() => {
     clock: { state: "", seconds: 0 },   // the fight's game seconds: running while fighting, ended once one side is out
     clockHud: { supported: true, on: savedClockHud, state: savedClockHud ? "waiting" : "off" },  // off | waiting | shown | failed
     executionCamera: { supported: true, on: savedExecCam, state: savedExecCam ? "waiting" : "off" },  // off | waiting | running
+    companionExec: { supported: true, on: savedCompanionExec },
     fight: "idle",              // idle | fighting | ended
     winner: "",                 // blue | red | draw
     cleanup: "",                // "" | restore_pending (one more cleanup) | spawn_uncertain (restart the game)
@@ -264,6 +268,10 @@ const MockRuntime = (() => {
       case "set_execution_camera":
         s.executionCamera = { supported: true, on: p.enabled, state: p.enabled ? "waiting" : "off" };
         try { localStorage.setItem(EXEC_CAM_KEY, String(p.enabled)); } catch { /* ignore */ }
+        return;
+      case "set_companion_executions":
+        s.companionExec = { supported: true, on: p.enabled };
+        try { localStorage.setItem(COMPANION_EXEC_KEY, String(p.enabled)); } catch { /* ignore */ }
         return;
       case "set_team_immortal":
         s.immortal[p.team] = p.enabled;

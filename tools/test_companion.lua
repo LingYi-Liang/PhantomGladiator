@@ -338,4 +338,56 @@ test('recall brings every live companion beside the player at once, fanned out; 
     local none=here:recall()
     assert(none.ok and none.message=='没有可召回的随从' and here:status().recalls==3)
 end)
+test('a stand keeps the player\'s side but takes no follow, teleport, target or recall orders and is not counted',function()
+    local boss,stand,standAI=unit(false),unit(false)
+    standAI=stand.Controller.SGameAIComponent
+    local moved,orders,syncedTo=0,0,{}
+    stand.K2_GetActorRotation=function()return {Pitch=0,Yaw=0,Roll=0}end
+    stand.K2_TeleportTo=function()moved=moved+1;return true end
+    standAI.ForceIntoCombat=function()orders=orders+1 end
+    standAI.AIPerception=object({GetPerceivedHostileActors=function(_,out)out.OutActors={object({},'Enemy')}end},'Perception')
+    stand.SetMovementMode=function()orders=orders+1 end
+    boss.K2_GetActorRotation=function()return {Pitch=0,Yaw=0,Roll=0}end
+    boss.K2_TeleportTo=function(_,dest)locations[boss]=dest;return true end
+    local list={{actor=boss,team='companion',class_path='/Mobs/Boss.Boss_C'},
+        {actor=stand,team='companion',stand=true,summoner=boss,class_path='/Mobs/Stand.Stand_C'}}
+    local aiLib=object({SyncHatredList=function(_,_,to)syncedTo[to]=true end},'Lib')
+    player.BP_PBZHatredManagerComponent.HatredList={object({},'Enemy')}
+    locations[player]={X=0,Y=0,Z=0};locations[boss]={X=100,Y=0,Z=0};locations[stand]={X=50000,Y=0,Z=0}
+    local clockNow,logs=1000,{}
+    local here=Companion.new({log=function(s)logs[#logs+1]=s end,getPlayer=function()return player end,getWorld=function()return world end,
+        aiLib=function()return aiLib end,members=function()return list end,clock=function()return clockNow end,
+        getLocation=function(a)return locations[a] or {X=0,Y=0,Z=0} end,hp=function()return 100 end})
+    for _=1,12 do clockNow=clockNow+1;here:tick() end
+    assert(stand['Faction Component'].faction.TagName=='Faction.Player','it fights for the player')
+    assert(stand['Faction Component'].relations[player]==0 and player['Faction Component'].relations[stand]==0)
+    assert(moved==0,'500 m from the player and it stays where it is')
+    assert(orders==0,'no movement mode or combat order')
+    assert(syncedTo[boss] and not syncedTo[stand],'the assist goes to the companion, not its stand')
+    assert(here:status().count==1,'one companion')
+    locations[boss]={X=5000,Y=0,Z=0}
+    local r=here:recall()
+    assert(r.ok and r.message=='已召回 1/1 个随从到身边' and moved==0,r.message)
+    player.BP_PBZHatredManagerComponent.HatredList={}
+end)
+test('a companion executing a boss takes no follow, teleport or recall orders meanwhile, and goes back to them after',function()
+    local one=unit(false)
+    local moved=0
+    one.K2_GetActorRotation=function()return {Pitch=0,Yaw=0,Roll=0}end
+    one.K2_TeleportTo=function()moved=moved+1;return true end
+    local list={{actor=one,team='companion',class_path='/Mobs/One.One_C'}}
+    locations[player]={X=0,Y=0,Z=0};locations[one]={X=50000,Y=0,Z=0}
+    local executing,clockNow=true,5000
+    local here=Companion.new({log=function()end,getPlayer=function()return player end,getWorld=function()return world end,
+        members=function()return list end,clock=function()return clockNow end,busy=function(a)return executing and a==one end,
+        getLocation=function(a)return locations[a] or {X=0,Y=0,Z=0} end,hp=function()return 100 end})
+    for _=1,8 do clockNow=clockNow+1;here:tick() end
+    assert(moved==0,'it stays through the clip')
+    assert(one['Faction Component'].faction.TagName=='Faction.Player','it keeps its side')
+    assert(here:status().count==1,'it still counts')
+    assert(here:recall().message=='没有可召回的随从' and moved==0)
+    executing=false
+    clockNow=clockNow+1;here:tick()
+    assert(moved==1,'500 m away with the clip over: teleported as usual')
+end)
 print('companion: PASS (official follow state, player faction, friendly relation, AI restart, gated assist, follow watch, roster, missing class, follow keys, walk/run, stuck fallback, teleport and boss fights, always friendly, mounts, stuck teleport, recall)')

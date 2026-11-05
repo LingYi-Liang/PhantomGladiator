@@ -699,11 +699,26 @@
            <div class="solo-stats">${esc(t("companion.stats", { alive: fmtNum(alive), down: fmtNum(down) }))}</div>`
         : `<p class="solo-desc">${esc(t("companion.desc"))}</p>`}
       ${warn}
+      ${companionExecRow()}
       <div class="solo-actions">${use}${guardHTML("companion")}
         ${held ? `<button class="btn btn-secondary btn-sm" type="button" data-action="recall-companions" ${online && alive && !recalling ? "" : "disabled"}>${recalling ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("zap", "icon-sm")}<span>${esc(t("companion.recall"))}</span>${keyCap(S.keys.recall_companions)}</button>` : ""}
         <button class="btn btn-ghost btn-sm solo-clear" type="button" data-action="dismiss-companions" ${online && held && !busy ? "" : "disabled"}>${busy ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("trash", "icon-sm")}<span>${esc(t("companion.dismiss"))}</span></button>
       </div>
       ${held ? `<p class="solo-note">${esc(t("companion.recallNote"))} ${esc(t("companion.note"))}</p>` : ""}`;
+  }
+  // Whether companions may execute bosses (set_companion_executions, companion_executions.lua); off, only the player does.
+  function companionExecRow() {
+    const h = S.companionExec, busy = ui.busy.has("set_companion_executions"), shown = h.on && h.supported;
+    const desc = !h.supported && RT.online() ? t("fun.old") : t(h.on ? "companion.exec.on" : "companion.exec.desc");
+    return `<div class="control-row${shown ? " is-on" : ""}">
+          <span class="control-icon">${icon("swords")}</span>
+          <div class="control-main"><div class="control-title">${esc(t("companion.exec"))}</div><div class="control-desc">${esc(desc)}</div></div>
+          <button class="switch" type="button" role="switch" aria-checked="${h.on}" aria-busy="${busy}" data-action="companion-executions" aria-label="${esc(t("companion.exec"))}" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button>
+        </div>`;
+  }
+  function toggleCompanionExec() {
+    const enabled = !S.companionExec.on;
+    run("set_companion_executions", { payload: { enabled }, ok: () => t(enabled ? "toast.companionExec.on" : "toast.companionExec.off") });
   }
   async function soloAgain() {
     const last = ui.lastSolo;
@@ -1622,6 +1637,7 @@
   }
 
   // ---------- About page ----------
+  const QQ_GROUP = "1038314448";
   function aboutHTML() {
     const u = ui.update;
     const status = u.phase === "checking" ? `<span class="spinner"></span>${esc(t("update.checking"))}`
@@ -1638,7 +1654,10 @@
         <div class="author"><span class="author-avatar" aria-hidden="true">泠</span>
           <div style="min-width:0"><div class="muted" style="font-size:12px">${esc(t("about.author"))}</div><div class="author-name">泠依_01</div>
             <div class="author-meta">${icon("tv", "icon-sm")}<span>${esc(t("about.bili"))}</span><b class="mono" style="font-size:13px">10010098</b>
-              <button class="icon-btn icon-btn-sm" type="button" data-action="copy-uid" aria-label="${esc(t("about.copyUid"))}" title="${esc(t("about.copyUid"))}">${icon("copy", "icon-sm")}</button></div></div></div>
+              <button class="icon-btn icon-btn-sm" type="button" data-action="copy-uid" aria-label="${esc(t("about.copyUid"))}" title="${esc(t("about.copyUid"))}">${icon("copy", "icon-sm")}</button></div>
+            <div class="author-meta">${icon("message", "icon-sm")}<span>${esc(t("about.qqGroup"))}</span><b class="mono" style="font-size:13px">${QQ_GROUP}</b>
+              <button class="icon-btn icon-btn-sm" type="button" data-action="copy-qq-group" aria-label="${esc(t("about.copyQqGroup"))}" title="${esc(t("about.copyQqGroup"))}">${icon("copy", "icon-sm")}</button></div>
+            <p class="author-note">${esc(t("about.qqGroupNote"))}</p></div></div>
         <div class="link-buttons">
           <a class="btn btn-secondary" href="${BILI}" target="_blank" rel="noopener noreferrer">${icon("tv", "icon-sm")}${esc(t("about.visitBili"))}${icon("external", "icon-sm")}</a>
           <a class="btn btn-secondary" href="${REPO}" target="_blank" rel="noopener noreferrer">${icon("code", "icon-sm")}GitHub${icon("external", "icon-sm")}</a>
@@ -1862,6 +1881,7 @@
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
       default: return t("action." + job.action);
@@ -2202,6 +2222,7 @@
     "stats-clear": () => { ui.statDraft = {}; for (const input of document.querySelectorAll(".dialog .stat-input")) input.value = ""; },
     "clock-hud": () => toggleClockHud(),
     "execution-camera": () => toggleExecutionCamera(),
+    "companion-executions": () => toggleCompanionExec(),
     "match-focus": () => { const el = $("#dock-match"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); el?.querySelector(".switch")?.focus({ preventScroll: true }); },
     "launch-game": () => { closePopover(); RT.launchGame(); toast({ kind: "info", title: t("toast.launching"), body: t("toast.launching.body") }); },
     "unitkey-capture": el => { if (ui.capture?.kind === "unit") cancelCapture(); else startCapture({ kind: "unit", id: el.dataset.id }); },
@@ -2275,6 +2296,7 @@
       toast({ kind: "success", title: t("toast.settingsReset") });
     },
     "copy-uid": () => copyText("10010098"),
+    "copy-qq-group": () => copyText(QQ_GROUP),
     "update-check": () => checkUpdate(),
     "update-rollback": el => rollbackTo(el.dataset.value),
     "update-line": el => { ui.update.line = el.dataset.value; setDialog(updateHTML()); $(`.line[data-value="${el.dataset.value}"]`)?.focus(); },

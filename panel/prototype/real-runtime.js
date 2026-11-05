@@ -49,6 +49,8 @@ const RealRuntime = (() => {
     clockHud: { supported: false, on: false, state: "off" },
     // execution_camera_*: the execution camera switch, and whether it is playing now (execution_camera.lua).
     executionCamera: { supported: false, on: false, state: "off" },
+    // companion_executions*: whether companions may execute bosses (companion_executions.lua).
+    companionExec: { supported: false, on: false },
     // free_camera_*: 时停 and the free camera's speed (cm/s), turn and smoothing (%) as free_camera.lua saved them.
     frozen: false,
     camSettings: { supported: false, speed: 900, turn: 100, smooth: 40 },
@@ -273,6 +275,7 @@ const RealRuntime = (() => {
       s.clock = { state: v.battle_clock || "", seconds: num("battle_seconds") };
       s.clockHud = { supported: yes("clock_hud_supported"), on: yes("clock_hud"), state: v.clock_hud_state || "off" };
       s.executionCamera = { supported: yes("execution_camera_supported"), on: yes("execution_camera"), state: v.execution_camera_state || "off" };
+      s.companionExec = { supported: yes("companion_executions_supported"), on: yes("companion_executions") };
       s.frozen = yes("free_camera_frozen");
       if (yes("free_camera_settings_supported")) s.camSettings = { supported: true, speed: num("free_camera_speed"), turn: num("free_camera_turn"), smooth: num("free_camera_smooth") };
       s.scan = v.catalog_state === "scanning" ? { done: num("catalog_paths_done"), total: Math.max(1, num("catalog_paths_total")) } : null;
@@ -330,7 +333,7 @@ const RealRuntime = (() => {
       topbar: [s.game, jobs.filter(j => j.status === "failed" || j.status === "uncertain").length],
       sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
-      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion],
+      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on],
       match: [s.game, JSON.stringify({ ...s.statMatch, values: undefined })],
       diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom],
       fun: [s.game, JSON.stringify(s.fun)],
@@ -388,6 +391,7 @@ const RealRuntime = (() => {
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
+    else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
     else if (action === "set_stat_mode") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
     else if (action === "set_ai_params") body = { action, values: payload.values };
@@ -424,6 +428,7 @@ const RealRuntime = (() => {
     if (action === "set_team_immortal" && done.status === "succeeded") s.immortal[payload.team] = payload.enabled;
     if (action === "set_clock_hud" && done.status === "succeeded") s.clockHud.on = payload.enabled;
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
+    if (action === "set_companion_executions" && done.status === "succeeded") s.companionExec.on = payload.enabled;
     if (action === "set_free_camera" && done.status === "succeeded") Object.assign(s.camSettings, { speed: payload.speed, turn: payload.turn, smooth: payload.smooth });
     if (action === "set_stat_mode" && done.status === "succeeded") {
       s.statMatch.mode = payload.mode;

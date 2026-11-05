@@ -980,6 +980,7 @@ details.advanced[open] > summary { border-bottom: 1px solid var(--border); }
 .author-avatar { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(145deg, #eebda9, #c0634e); color: #fff; font: 400 30px/1 var(--font-brush); box-shadow: 0 6px 16px -6px rgba(192, 99, 78, .6); flex: none; }
 .author-name { font-size: 18px; font-weight: 750; }
 .author-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: var(--text-2); font-size: 13px; flex-wrap: wrap; }
+.author-note { margin-top: 4px; color: var(--text-3); font-size: 12.5px; text-wrap: pretty; }
 .link-buttons { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 20px; }
 .legal { font-size: 12.5px; color: var(--text-3); line-height: 1.65; padding: 0 4px; }
 
