@@ -9,6 +9,10 @@
 -- a unit sitting on it for a map enemy). It goes straight into the rider's Spawner variable, so OnSpawnFromSpawner
 -- and its Init Level do not run. Then the mount is read from the rider (BP_SGameDriverComponent.DrivingVehicle)
 -- with the spawner the script made for it, and all three leave with the rider.
+-- The mount is an AI of its own and does the walking. AIScript_Rider hands it the rider's list (SyncHatredList ->
+-- AddActorToHatredList -> CheckCanHatredTarget), which needs the mount hostile to the target; the game's own player is, an
+-- arena opponent is not, so the mount stayed idle and the rider swung at the air where it stood. A rider sent at a target
+-- now sends its mount as well (fight), which is kept at it (hold) and sent back when it drops out of combat (dropped).
 local U=require('ue_observe')
 local Mounts={}
 local SPAWNER='/SGameAI/Tools/Spawner/BP_AISpawner.BP_AISpawner_C'
@@ -34,6 +38,7 @@ local ANCHORED={
     BP_Monster_LengTu=true,                                            -- 梦差：冷荼
 }
 local WAIT=15        -- seconds a rider may take to get on its mount before the log says it never did
+local FIGHT_LINES=24 -- log lines about mounts in a fight
 local NEAR=50        -- cm: the script puts the mount's spawner exactly where ours stands
 
 function Mounts.isRider(className)
@@ -56,6 +61,7 @@ function Mounts.new(options)
     local log=options.log or function()end
     local now=options.now or os.clock
     local self={records={},prepared=0,mounted=0,released=0,failures=0}
+    local fightLines=0
     local function say(text)log('[Mount] '..text)end
     local function className(actor)
         local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
@@ -185,6 +191,70 @@ function Mounts.new(options)
                 end
             end
         end
+    end
+
+    -- The mount under a rider right now: nil once it has got off.
+    local function riding(record)
+        if not record or not U.valid(record.mount) or gone(record.mount) then return nil end
+        local current=U.field(U.field(record.rider,'BP_SGameDriverComponent'),'DrivingVehicle')
+        return U.valid(current) and U.key(current)==U.key(record.mount) and record.mount or nil
+    end
+    local function sayFight(text)
+        if fightLines<FIGHT_LINES then fightLines=fightLines+1;say(text) end
+    end
+    -- A rider was sent at a target. Returns whether a mount went too.
+    function self:fight(rider,target)
+        local record=self.records[U.key(rider) or '']
+        local mount=riding(record)
+        if not mount or not U.valid(target) or not options.attack then return false end
+        local ok,sent=pcall(options.attack,mount,target)
+        record.target=target;record.targetKey=U.key(target)
+        sayFight(string.format('骑兵 %s：坐骑 %s 跟着攻击 %s 调用=%s 读回=%s',record.name,className(mount),className(target),tostring(ok),tostring(ok and sent)))
+        return ok and sent==true
+    end
+    -- Every few seconds of a fight: a mount found after the order, or one that dropped out of combat, goes after the target.
+    function self:hold(rider,target)
+        local record=self.records[U.key(rider) or '']
+        local mount=riding(record)
+        if not mount or not U.valid(target) then return false end
+        if record.targetKey~=U.key(target) then return self:fight(rider,target) end
+        if not options.inCombat or not options.engage then return false end
+        local okState,combat=pcall(options.inCombat,mount)
+        if not okState or combat~=false then return false end
+        local ok,engaged,after=pcall(options.engage,mount,target)
+        sayFight(string.format('骑兵 %s：坐骑不在战斗状态，重新迎敌 调用=%s 状态读回=%s',record.name,tostring(ok and engaged),tostring(after)))
+        return ok and engaged==true
+    end
+    -- A mount's AI dropped out of combat (combat_lock.lua). True when the address was a mount's.
+    function self:dropped(key)
+        for _,record in pairs(self.records)do
+            if U.key(record.mount)==key then
+                local mount=riding(record)
+                if mount and U.valid(record.target) and options.engage then pcall(options.engage,mount,record.target) end
+                return true
+            end
+        end
+        return false
+    end
+    -- The mounts carrying a living fighter of blue or red, for the hatred hooks.
+    function self:vehicles(members)
+        local list={}
+        for _,member in ipairs(members or {})do
+            local record=(member.team=='blue' or member.team=='red') and self.records[U.key(member.actor) or ''] or nil
+            local mount=riding(record)
+            local hp=mount and options.hp and options.hp(member.actor)
+            if mount and not (type(hp)=='number' and hp<=0) then list[#list+1]={actor=mount,team=member.team,rider=member.actor} end
+        end
+        return list
+    end
+    -- Whether an actor is a mount this mod holds: its hatred entry may be written the way a fighter's is.
+    function self:holds(actor)
+        local key=U.key(actor)
+        if not key then return false end
+        for _,record in pairs(self.records)do
+            if U.key(record.mount)==key then return true end
+        end
+        return false
     end
 
     -- The mounts and spawners the mod holds, by address: not map enemies (spawn_level.lua).

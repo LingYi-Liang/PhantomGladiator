@@ -166,6 +166,62 @@ test('view target changes without replacing PlayerController, Player or Pawn; ex
     assert(h.pc.moveDepth==0 and h.pc.lookDepth==0 and not c:hasPending())
     h.timers[1].callback();assert(not h.camera.alive,'retained callback is inert after exit')
 end)
+test('the view is told only while the player has the camera',function()
+    local h=harness();local c=h.cameraController
+    assert(c:view()==nil,'not running')
+    assert(c:enter())
+    h.input.W=1;h.input.MouseX=30;h:tick()
+    local position,rotation=c:view()
+    assert(position.X==h.camera.position.X and rotation.Yaw==h.camera.rotation.Yaw)
+    assert(c:borrow());assert(c:view()==nil,'lent to the execution camera')
+    assert(c:release());assert(c:view()~=nil)
+    assert(c:stop('F7'));assert(c:view()==nil,'stopped')
+end)
+test('while following, the track says where the camera goes; a failure or an end falls back to the free camera',function()
+    local h=harness();local c=h.cameraController
+    local track={on=true,stops={}}
+    function track:running()return self.on end
+    function track:stop(why)self.stops[#self.stops+1]=why;self.on=false end
+    function track:frame(dt,now,input)
+        self.input=input
+        if self.fail then error('boom') end
+        return self.position,{Pitch=-12,Yaw=725,Roll=0}
+    end
+    h.options.track=function()return track end
+    assert(c:enter())
+    track.position={X=1234,Y=567,Z=89}
+    h.input.W=1;h.input.MouseX=2;h.input.MouseWheelAxis=3;h.input.E=1;h.input.LeftShift=1;h:tick()
+    assert(h.camera.position.X==1234 and h.camera.position.Y==567 and h.camera.rotation.Pitch==-12,'moved where it said')
+    assert(track.input.mx==2 and track.input.forward==1 and track.input.up==1 and track.input.wheel==3 and track.input.fast==true)
+    assert(track.input.speed==c:settings().speed and track.input.turn==c:settings().turn and track.input.smooth==c:settings().smooth)
+    -- The free camera carries on from there, not from where it last aimed.
+    track.on=false;h.input={}
+    h:tick()
+    assert(h.camera.position.X==1234,'still, no keys')
+    local yaw=h.camera.rotation.Yaw
+    assert(math.abs(((yaw-5+180)%360)-180)<0.01,yaw)
+    -- A wheel that does not read is no wheel.
+    track.on=true;track.position={X=1,Y=2,Z=3};h:tick()
+    assert(track.input.wheel==0)
+    -- An error ends the following, not the camera.
+    track.fail=true;h.input.W=1;h:tick()
+    assert(c:isActive() and track.stops[1]=='出错' and h.camera.position.X>1,'carries on as the free camera')
+    track.fail=false;track.on=true
+    -- nil from the track: this frame is the free camera's.
+    track.position=nil;local x=h.camera.position.X;h:tick()
+    assert(h.camera.position.X>x)
+    -- Leaving the camera ends the following, and borrowing pauses it.
+    track.position={X=5,Y=5,Z=5};track.input=nil
+    assert(c:borrow());h:tick();assert(track.input==nil,'lent to the execution camera')
+    assert(c:release())
+    assert(c:stop('F7'));assert(track.stops[#track.stops]=='退出自由观战')
+end)
+test('the field of view is told while the camera runs',function()
+    local h=harness();local c=h.cameraController
+    assert(c:fieldOfView()==nil)
+    assert(c:enter());assert(c:fieldOfView()==80)
+    assert(c:stop('F7'));assert(c:fieldOfView()==nil)
+end)
 test('preexisting guards and another systems increment are preserved',function()
     local h=harness();h.pc.moveDepth=2;h.pc.lookDepth=1
     assert(h.cameraController:enter());assert(h.cameraController:stop('F7'))

@@ -439,6 +439,7 @@ function Arena.new(options)
         for _,unit in ipairs(active) do
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
             if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget) end
+            if scan and options.holdMount and unit.assignedTarget then invoke('holdMount',unit.actor,unit.assignedTarget) end
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.
             local held=unit_by_key(unit.assignedKey)
@@ -565,6 +566,12 @@ function Arena.new(options)
             local okForward, forward = invoke("getForward", player)
             location, forward = okLoc and vector(location) or nil, okForward and vector(forward) or nil
             if not location or not forward then return response(false, "位置或朝向读回无效", { spawned_count = 0 }) end
+            -- In the free camera the batch goes where the view points (spawn_spot.lua).
+            if options.spawnOrigin then
+                local okOrigin,at,look=invoke('spawnOrigin',location,forward,team,world)
+                at,look=okOrigin and vector(at) or nil,okOrigin and vector(look) or nil
+                if at and look then location,forward=at,look end
+            end
             local spawned, activated, failures = 0, 0, 0
             local escorted, escortsWanted = 0, 0
             local spawnWarning

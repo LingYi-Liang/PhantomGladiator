@@ -20,7 +20,7 @@ spec.loader.exec_module(backend)
 
 UNIT = "/PBZCombatAsset/ActorData/Mobs/023_Vessel_Child/BP_Monster_Vessel_Child.BP_Monster_Vessel_Child_C"
 NPC_REASON = "native_parent=/Script/CoreUObject.Class'/Script/ProjectPBZ.PBZCharacter_NPC'"
-BINDINGS = {"spawn": "F9", "start": "F3", "stop": "F4", "refresh_catalog": "F1",'toggle_camera':'UNBOUND','exit_camera':'UNBOUND','cycle_team':'UNBOUND','toggle_spectator':'UNBOUND','recall_companions':'UNBOUND','toggle_time_stop':'UNBOUND'}
+BINDINGS = {"spawn": "F9", "start": "F3", "stop": "F4", "refresh_catalog": "F1",'toggle_track':'UNBOUND','track_pick':'UNBOUND','track_next':'UNBOUND','toggle_camera':'UNBOUND','exit_camera':'UNBOUND','cycle_team':'UNBOUND','toggle_spectator':'UNBOUND','recall_companions':'UNBOUND','toggle_time_stop':'UNBOUND'}
 
 
 class BridgeTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class BridgeTests(unittest.TestCase):
         self.write("status.tsv", "schema_version\t1\nheartbeat_unix\t100\n" +
                    (f"game_session\t{session}\n" if session is not None else "") +
                    (f"game_ready\t{str(ready).lower()}\n" if ready is not None else "")+
-                   'function_keys_schema\t3\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n')
+                   'function_keys_schema\t4\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n')
 
     def allow_fixture(self, unit_id):
         policy = json.loads(self.policy.read_text(encoding="utf-8"))
@@ -177,7 +177,7 @@ class BridgeTests(unittest.TestCase):
             command = self.bridge.enqueue(payload)
             wire = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])})
             columns = wire.rstrip("\n").split("\t")
-            self.assertEqual(len(columns), 16 if action=='configure_keys' else 10)
+            self.assertEqual(len(columns), 19 if action=='configure_keys' else 10)
             self.assertEqual(columns[3:5], ["blue", "1"])
 
     def test_companion_team_is_accepted_for_summons_and_unit_keys(self):
@@ -395,6 +395,43 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(bad)
 
+    def test_camera_track_travels_in_the_unit_spawn_and_start_key_columns(self):
+        command = self.bridge.enqueue({"action": "set_camera_track", "framing": "shoulder", "resume": 5, "unit_id": "2147468727"})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1:8], ["set_camera_track", "2147468727", "blue", "1", "SHOULDER", "5", ""])
+        command = self.bridge.enqueue({"action": "set_camera_track", "framing": "side", "resume": 0})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1:8], ["set_camera_track", "", "blue", "1", "SIDE", "0", ""])
+        for bad in ({"action": "set_camera_track"}, {"action": "set_camera_track", "framing": "side"},
+                    {"action": "set_camera_track", "framing": "wide", "resume": 3},
+                    {"action": "set_camera_track", "framing": "side", "resume": 11},
+                    {"action": "set_camera_track", "framing": "side", "resume": -1},
+                    {"action": "set_camera_track", "framing": "side", "resume": 1.5},
+                    {"action": "set_camera_track", "framing": "side", "resume": True},
+                    {"action": "set_camera_track", "framing": "side", "resume": 3, "unit_id": "BP_Monster_MoTian"},
+                    {"action": "set_camera_track", "framing": "side", "resume": 3, "enabled": True}):
+            with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(bad)
+        for action in ("toggle_track", "track_pick", "track_next"):
+            command = self.bridge.enqueue({"action": action})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+            self.assertEqual(columns[1:5], [action, "", "blue", "1"])
+
+    def test_unit_rule_travels_in_the_unit_spawn_and_start_key_columns(self):
+        command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "kill"})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_MoTian", "blue", "1", "LOCK", "KILL", ""])
+        command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_YanQianSui", "rule": "phantom", "value": "keep"})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_YanQianSui", "blue", "1", "PHANTOM", "KEEP", ""])
+        for bad in ({"action": "set_unit_rule"}, {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock"},
+                    {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "keep"},
+                    {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "size", "value": "kill"},
+                    {"action": "set_unit_rule", "unit_id": "../x", "rule": "lock", "value": "kill"},
+                    {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "kill", "enabled": True}):
+            with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(bad)
+
     def test_team_immortal_travels_in_the_team_and_start_key_columns(self):
         for team in backend.IMMORTAL_TEAMS:
             for enabled, token in ((True, "ON"), (False, "OFF")):
@@ -463,7 +500,7 @@ class BridgeTests(unittest.TestCase):
         self.bridge = backend.Bridge(self.root / "Runtime", clock=lambda: now[0], validation_path=self.policy)
         def status(ready):
             self.write("status.tsv", f"schema_version\t1\nheartbeat_unix\t{now[0]}\ngame_session\tsession-A\ngame_ready\t{str(ready).lower()}\n"
-                       "function_keys_schema\t3\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n")
+                       "function_keys_schema\t4\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n")
         status(False)
         summon = self.spawn()
         select = self.bridge.enqueue({"action": "select_unit", "unit_id": UNIT})
@@ -542,8 +579,8 @@ class BridgeTests(unittest.TestCase):
         command = self.bridge.enqueue({"action": "configure_keys", "bindings": requested})
         self.bridge.tick()
         columns = (self.bridge.runtime / "inbox.tsv").read_text().rstrip("\n").split("\t")
-        self.assertEqual(columns[5:15], [backend.binding_token(requested[name]) for name in backend.BINDING_NAMES])
-        self.assertEqual(columns[-1],'3')
+        self.assertEqual(columns[5:18], [backend.binding_token(requested[name]) for name in backend.BINDING_NAMES])
+        self.assertEqual(columns[-1],'4')
         self.assertEqual(self.bridge.keybinds()["requested"], {name:backend.parse_binding(value) for name,value in requested.items()})
         self.assertEqual(self.bridge.keybinds()["active"]["spawn"], None)
         for key in ("F10", "VK_82_MOD_1", "NUM_NOT_A_KEY"):
@@ -601,7 +638,7 @@ class BridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.function_keybinds()['bindings']['toggle_camera']['active'])
         with self.assertRaisesRegex(backend.ValidationError,'自由观战'):
             self.bridge.enqueue({'action':'configure_unit_key','unit_id':UNIT,'key_code':117,'modifiers':4})
-        self.write('status.tsv','schema_version\t1\nheartbeat_unix\t100\ngame_session\tsession-A\ngame_ready\ttrue\nfunction_keys_schema\t3\nfunction_keys_epoch\tnew-keys\nfunction_keys_revision\t3\nkey_toggle_camera\tVK_117_MOD_0\n')
+        self.write('status.tsv','schema_version\t1\nheartbeat_unix\t100\ngame_session\tsession-A\ngame_ready\ttrue\nfunction_keys_schema\t4\nfunction_keys_epoch\tnew-keys\nfunction_keys_revision\t3\nkey_toggle_camera\tVK_117_MOD_0\n')
         self.write('function-keybinds-state.tsv','FunctionKeyStateV2\t3\told-keys\ntoggle_camera\t0\tstale error\n')
         state=self.bridge.function_keybinds()
         self.assertTrue(state['bindings']['toggle_camera']['active'])
@@ -642,7 +679,7 @@ class BridgeTests(unittest.TestCase):
     def test_time_stop_key_and_free_camera_settings_travel_in_the_key_columns(self):
         job=self.bridge.enqueue({'action':'configure_keys','bindings':{**BINDINGS,'toggle_time_stop':'P'}})
         columns=self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')
-        self.assertEqual((len(columns),columns[14],columns[-1]),(16,'VK_80_MOD_0','3'))
+        self.assertEqual((len(columns),columns[14],columns[-1]),(19,'VK_80_MOD_0','4'))
         stop=self.bridge.enqueue({'action':'toggle_time_stop'})
         wire=self.bridge._wire({'id':stop['id'],'payload':json.dumps(stop['payload'])}).strip().split('\t')
         self.assertEqual(wire[1:5],['toggle_time_stop','','blue','1'])
@@ -1291,7 +1328,7 @@ class HTTPTests(unittest.TestCase):
         self.assertIn("csrf_token", data)
         self.assertNotIn("Access-Control-Allow-Origin", headers)
         (self.bridge.runtime / "status.tsv").write_text(
-            f"schema_version\t1\nheartbeat_unix\t{backend.time.time()}\ngame_session\thttp-test\ngame_ready\ttrue\nfunction_keys_schema\t3\nfunction_keys_epoch\thttp-keys\nfunction_keys_revision\t0\n", encoding="utf-8")
+            f"schema_version\t1\nheartbeat_unix\t{backend.time.time()}\ngame_session\thttp-test\ngame_ready\ttrue\nfunction_keys_schema\t4\nfunction_keys_epoch\thttp-keys\nfunction_keys_revision\t0\n", encoding="utf-8")
         write_headers = {"Content-Type": "application/json", "Origin": self.server.origin,
                          "X-CSRF-Token": data["csrf_token"]}
         status, _, raw = self.request("POST", "/api/command", json.dumps({"action": "refresh_catalog"}), write_headers)

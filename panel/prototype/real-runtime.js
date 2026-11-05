@@ -8,7 +8,7 @@ const RealRuntime = (() => {
   const emit = event => { for (const fn of listeners) fn(event || {}); };
   const fail = (code, detail = "") => Object.assign(new Error(detail || code), { code, detail });
   const webview = window.chrome && window.chrome.webview;
-  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop"];
+  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
   const QUEUE_STUCK_MS = 12000;
 
@@ -51,6 +51,11 @@ const RealRuntime = (() => {
     executionCamera: { supported: false, on: false, state: "off" },
     // companion_executions*: whether companions may execute bosses (companion_executions.lua).
     companionExec: { supported: false, on: false },
+    // track_*: 镜头跟踪 (camera_track.lua). targets: { key, cls, team } of the units it can follow, while the free camera runs.
+    track: { supported: false, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
+    // unit_rules: what each unit's card says, BP_X:lock=kill;BP_Y:phantom=keep (unit_rules.lua).
+    unitRules: {},
+    unitRulesSupported: false,
     // free_camera_*: 时停 and the free camera's speed (cm/s), turn and smoothing (%) as free_camera.lua saved them.
     frozen: false,
     camSettings: { supported: false, speed: 900, turn: 100, smooth: 40 },
@@ -276,6 +281,15 @@ const RealRuntime = (() => {
       s.clockHud = { supported: yes("clock_hud_supported"), on: yes("clock_hud"), state: v.clock_hud_state || "off" };
       s.executionCamera = { supported: yes("execution_camera_supported"), on: yes("execution_camera"), state: v.execution_camera_state || "off" };
       s.companionExec = { supported: yes("companion_executions_supported"), on: yes("companion_executions") };
+      s.track = { supported: yes("track_supported"), on: yes("track_on"), framing: v.track_framing || "side", resume: num("track_resume"),
+        target: v.track_target || "", targetClass: v.track_target_class || "", otherClass: v.track_other_class || "",
+        targets: (v.track_targets || "").split(";").filter(Boolean).map(item => { const [key, cls, team] = item.split(":"); return { key, cls, team }; }) };
+      s.unitRulesSupported = yes("unit_rules_supported");
+      s.unitRules = {};
+      for (const item of (v.unit_rules || "").split(";")) {
+        const m = item.match(/^([A-Za-z0-9_]+):(\w+)=(\w+)$/);
+        if (m) (s.unitRules[m[1]] ||= {})[m[2]] = m[3];
+      }
       s.frozen = yes("free_camera_frozen");
       if (yes("free_camera_settings_supported")) s.camSettings = { supported: true, speed: num("free_camera_speed"), turn: num("free_camera_turn"), smooth: num("free_camera_smooth") };
       s.scan = v.catalog_state === "scanning" ? { done: num("catalog_paths_done"), total: Math.max(1, num("catalog_paths_total")) } : null;
@@ -285,6 +299,7 @@ const RealRuntime = (() => {
       Object.assign(s.statMatch, { baseline: null, matched: 0, failures: 0, reset: false });
       s.difficulty.game = "";
       s.clock = { state: "", seconds: 0 };
+      Object.assign(s.track, { on: false, target: "", targetClass: "", otherClass: "", targets: [] });
       owned = 0;
     }
     const toggling = jobs.some(j => j.action === "toggle_spectator" && j.status === "pending");
@@ -341,8 +356,9 @@ const RealRuntime = (() => {
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
-      view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop]), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
+      view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next]), JSON.stringify(s.track), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
       keys: [s.game, JSON.stringify(s.keys)],
+      grid: [s.unitRulesSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
@@ -392,6 +408,8 @@ const RealRuntime = (() => {
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
+    else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };
+    else if (action === "set_camera_track") { body = { action, framing: payload.framing, resume: payload.resume }; if (payload.target) body.unit_id = payload.target; }
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
     else if (action === "set_stat_mode") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
     else if (action === "set_ai_params") body = { action, values: payload.values };
@@ -429,6 +447,8 @@ const RealRuntime = (() => {
     if (action === "set_clock_hud" && done.status === "succeeded") s.clockHud.on = payload.enabled;
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
     if (action === "set_companion_executions" && done.status === "succeeded") s.companionExec.on = payload.enabled;
+    if (action === "set_unit_rule" && done.status === "succeeded") (s.unitRules[payload.unit] ||= {})[payload.rule] = payload.value;
+    if (action === "set_camera_track" && done.status === "succeeded") Object.assign(s.track, { framing: payload.framing, resume: payload.resume }, payload.target ? { target: payload.target } : {});
     if (action === "set_free_camera" && done.status === "succeeded") Object.assign(s.camSettings, { speed: payload.speed, turn: payload.turn, smooth: payload.smooth });
     if (action === "set_stat_mode" && done.status === "succeeded") {
       s.statMatch.mode = payload.mode;

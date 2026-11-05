@@ -30,7 +30,7 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_spawn_level"}
+ACTIONS = {"spawn", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_spawn_level"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
@@ -44,6 +44,8 @@ SPAWN_LEVEL_MAX = 60
 HOME_LEVEL_SOURCES = {"native", "area", "extra", "prologue", "picked"}
 HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
+# Rules set on a unit's card (unit_rules.lua).
+UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep")}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
 FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
 # Teams whose units can be kept from going down (immortal_teams.lua); no-team units are the player's to beat.
@@ -160,11 +162,15 @@ STAT_NON_NEGATIVE = {"Shachi", "ShachiAttack"}
 LEGACY_BINDING_NAMES = ("spawn", "start", "stop", "refresh_catalog")
 # The eight of FunctionKeysV2 (function_keybinds.lua); a save may lack the ones added later, which stay unbound.
 V2_BINDING_NAMES = LEGACY_BINDING_NAMES + ("toggle_camera", "exit_camera", "cycle_team", "toggle_spectator")
-BINDING_NAMES = V2_BINDING_NAMES + ("recall_companions", "toggle_time_stop")
-BINDING_LABELS = dict(zip(BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）")))
-# Function key schemas the mod reports (status.tsv function_keys_schema): 2 had eight keys, 3 has ten and takes
-# configure_keys in 16 columns. Keys are shown for both; saving needs 3, the mod this app installs.
-FUNCTION_KEY_SCHEMAS = ("2", "3")
+BINDING_NAMES = V2_BINDING_NAMES + ("recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next")
+BINDING_LABELS = dict(zip(BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位")))
+# Function key schemas the mod reports (status.tsv function_keys_schema): 2 had eight keys, 3 ten, 4 has thirteen and takes
+# configure_keys in 19 columns. Keys are shown for all; saving needs 4, the mod this app installs.
+FUNCTION_KEY_SCHEMAS = ("2", "3", "4")
+# 镜头跟踪 (camera_track.lua).
+TRACK_FRAMINGS = ("side", "shoulder", "orbit")
+TRACK_RESUME_MAX = 10
+TRACK_TARGET = re.compile(r"[0-9]{1,24}")
 CATALOG_FIELDS = ("id", "name", "category", "class_path", "loaded", "spawnable", "reason")
 CODEX_FIELDS = ("class_path", "zh_name", "is_boss", "enemy_type", "source")
 # From v0.37.5 the mod adds the name in the game's current language and that language (codex_catalog_export.lua).
@@ -936,6 +942,26 @@ class Bridge:
                 if type(value) is not int or not low <= value <= high:
                     raise ValidationError('%s must be a whole number from %d to %d' % (field, low, high))
                 payload[field] = value
+        elif action == 'set_camera_track':
+            allowed |= {'framing', 'resume', 'unit_id'}
+            framing, resume, target = request.get('framing'), request.get('resume'), request.get('unit_id')
+            if framing not in TRACK_FRAMINGS:
+                raise ValidationError('framing must be one of ' + ', '.join(TRACK_FRAMINGS))
+            if type(resume) is not int or not 0 <= resume <= TRACK_RESUME_MAX:
+                raise ValidationError('resume must be a whole number from 0 to %d' % TRACK_RESUME_MAX)
+            if target is not None and not (isinstance(target, str) and TRACK_TARGET.fullmatch(target)):
+                raise ValidationError('unit_id must be the address of a unit on the field')
+            payload.update(framing=framing, resume=resume)
+            if target is not None:
+                payload['unit_id'] = target
+        elif action == 'set_unit_rule':
+            allowed |= {'unit_id', 'rule', 'value'}
+            unit, rule, value = request.get('unit_id'), request.get('rule'), request.get('value')
+            if not (isinstance(unit, str) and UNIT_SHORT_ID.fullmatch(unit)):
+                raise ValidationError('unit_id must be a unit id such as BP_Monster_Name')
+            if rule not in UNIT_RULES or value not in UNIT_RULES[rule]:
+                raise ValidationError('rule and value must be one of the unit rules')
+            payload.update(unit_id=unit, rule=rule, value=value)
         elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions'):
             allowed.add('enabled')
             enabled = request.get('enabled')
@@ -946,10 +972,10 @@ class Bridge:
             allowed.add("bindings")
             bindings = request.get("bindings")
             if not isinstance(bindings, dict) or set(bindings) != set(BINDING_NAMES):
-                raise ValidationError("快捷键设置必须包含十项功能，请刷新面板")
+                raise ValidationError("快捷键设置必须包含十三项功能，请刷新面板")
             parsed,seen = {},{}
             game=self.game_status();values=game.get('values',{})
-            if values.get('function_keys_schema')!='3':raise ValidationError('游戏端尚未支持新版功能改键（召回随从），请先更新并重载新版Mod')
+            if values.get('function_keys_schema')!='4':raise ValidationError('游戏端尚未支持新版功能改键（镜头跟踪），请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
@@ -1024,11 +1050,15 @@ class Bridge:
             bindings={'spawn':str(payload['speed']),'start':str(payload['turn']),'stop':str(payload['smooth'])}
         elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions'):
             bindings={'start':'ON' if payload['enabled'] else 'OFF'}
+        elif payload['action']=='set_unit_rule':
+            bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
+        elif payload['action']=='set_camera_track':
+            bindings={'spawn':payload['framing'].upper(),'start':str(payload['resume'])}
         fields = [str(row["id"]), payload["action"], payload.get("unit_id", ""),
                   payload.get("team", "blue"), str(payload.get("count", 1))]
         if payload['action']=='configure_keys':
             fields.extend(binding_token(bindings.get(name)) for name in BINDING_NAMES)
-            fields.append('3')
+            fields.append('4')
         else:
             fields.extend(bindings.get(name, "") for name in LEGACY_BINDING_NAMES)
             fields.append("1")
@@ -1261,7 +1291,7 @@ class Bridge:
             if rows and rows[0]==['FunctionKeyStateV2',str(revision),epoch]:
                 for row in rows[1:]:
                     if len(row)==3 and row[0] in bindings and row[2]:bindings[row[0]]['message']=row[2]
-        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema')=='3' and epoch),
+        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema')=='4' and epoch),
                 'bindings':bindings,'revision':revision,'errors':errors}
 
     # A codex icon's texture name (codex_icons.lua): the only thing an icon URL or index row may carry.

@@ -50,6 +50,8 @@ local modules={
     {'battle_clock_hud','ClockHudV1\tshow=1\n','clock-hud.tsv'},
     {'execution_camera','ExecutionCameraV1\ton=1\n','execution-camera.tsv'},
     {'companion_executions','CompanionExecutionsV1\ton=1\n','companion-executions.tsv'},
+    {'unit_rules','UnitRulesV1\nBP_Monster_MoTian\tlock\tkill\n','unit-rules.tsv'},
+    {'camera_track','CameraTrackV1\tframing=orbit\tresume=5\n','camera-track.tsv'},
     {'function_keybinds','FunctionKeysV2\t1\nspawn\t65\t0\n','function-keybinds.tsv'},
     {'npc_catalog','PhantomGladiatorCatalogV1\nclass\t/Test/Unit.Unit_C\n','catalog.tsv'},
     {'unit_keybinds','UnitKeysV2\t1\n/Test/Unit.Unit_C\t65\t0\tblue\t1\n','unit-keybinds.tsv'},

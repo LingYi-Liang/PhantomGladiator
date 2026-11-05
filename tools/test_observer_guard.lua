@@ -11,8 +11,29 @@ local function fixture()
     end
     local function weak(o)return {type=function()return 'TWeakObjectPtr' end,Get=function()return o end}end
     h.world=object('/Test.World')
-    h.pawn=object('/Test.World.Player',{bHidden=false,bCanBeDamaged=true})
+    h.pawn=object('/Test.World.Player',{bHidden=false,bCanBeDamaged=true,collision=true,at={X=100,Y=200,Z=300},order={}})
     function h.pawn:GetOuter()return h.world end
+    function h.pawn:GetActorEnableCollision()
+        if h.unreadableCollision then error('fixture unreadable') end
+        return self.collision
+    end
+    function h.pawn:SetActorEnableCollision(value)
+        if h.rejectCollision then error('fixture rejected') end
+        self.collision=value;self.order[#self.order+1]='collision='..tostring(value)
+    end
+    function h.pawn:K2_GetActorLocation()return self.at end
+    function h.pawn:K2_GetActorRotation()return {Pitch=0,Yaw=45,Roll=0} end
+    function h.pawn:K2_TeleportTo(at,rot)
+        assert(rot.Yaw==45);self.at={X=at.X,Y=at.Y,Z=at.Z};self.teleports=(self.teleports or 0)+1
+        return true
+    end
+    h.cmc=object('/Test.World.Player.Move',{MovementMode=1,CustomMovementMode=7})
+    function h.cmc:SetMovementMode(mode,custom)
+        h.pawn.order[#h.pawn.order+1]='mode='..mode
+        if h.rejectMode then return end
+        self.MovementMode,self.CustomMovementMode=mode,custom
+    end
+    h.pawn.CharacterMovement=h.cmc
     function h.pawn:SetActorHiddenInGame(value)assert(self.alive);self.bHidden=value end
     h.pawn.AttributeSetBase=object('/Test.World.Player.Stats',{Health={BaseValue=345,CurrentValue=345},Health_Min={BaseValue=0,CurrentValue=0}})
     h.weapon=object('/Test.World.Weapon',{bHidden=false})
@@ -186,6 +207,97 @@ test('unknown floor rollback still fails entry until its state is restored',func
     h.rejectFloorRestore=false
     assert(h.guard:stop(h.context) and h.asc:GetGameplayEffectCount(h.cls,nil,true)==0)
     assert(h.pawn.bCanBeDamaged and not h.spectator.enabled and not h.pawn.bHidden)
+end)
+test('the hidden body stops moving, then loses its collision; on the way out the collision comes back first',function()
+    local h=fixture();h.guard:enter(h.context)
+    assert(h.cmc.MovementMode==0 and h.pawn.collision==false)
+    assert(h.pawn.order[1]=='mode=0' and h.pawn.order[2]=='collision=false','stopped before the floor goes')
+    assert(h.record.guard_body_owned=='1' and h.record.guard_body_mode=='1' and h.record.guard_body_custom=='7' and h.record.guard_body_collision=='1')
+    assert(h.record.guard_body_x=='100' or h.record.guard_body_x=='100.0')
+    local text=table.concat(h.logs,'\n')
+    assert(text:find('玩家身体 移动模式 1 -> 0 碰撞 true -> false（调用=true） 位置=100,200,300',1,true),text)
+    h.pawn.order={}
+    assert(h.guard:stop(h.context))
+    assert(h.pawn.order[1]=='collision=true' and h.pawn.order[2]=='mode=1','the floor is back before it walks')
+    assert(h.pawn.collision==true and h.cmc.MovementMode==1 and h.cmc.CustomMovementMode==7 and h.record.guard_body_owned=='0')
+    text=table.concat(h.logs,'\n')
+    assert(text:find('玩家身体恢复 移动模式=1 碰撞=true 离进入点=0cm',1,true),text)
+    -- Stopped again with nothing owned: left alone.
+    h.pawn.order={}
+    h.guard:enter(h.context);h.record.guard_body_owned='0'
+    h.pawn.order={};assert(h.guard:stop(h.context) and #h.pawn.order==0)
+end)
+test('a body whose collision was already off gets it back off',function()
+    local h=fixture();h.pawn.collision=false;h.cmc.MovementMode=3
+    h.guard:enter(h.context)
+    assert(h.record.guard_body_collision=='0' and h.cmc.MovementMode==0)
+    assert(h.guard:stop(h.context) and h.pawn.collision==false and h.cmc.MovementMode==3)
+end)
+test('not being able to stop or read the body leaves it as it was and the camera working',function()
+    for _,break_it in ipairs({
+        function(h)h.pawn.CharacterMovement=nil end,
+        function(h)h.unreadableCollision=true end,
+        function(h)h.pawn.K2_GetActorLocation=function()error('fixture unreadable') end end,
+        function(h)h.rejectMode=true end,
+    })do
+        local h=fixture();break_it(h)
+        h.guard:enter(h.context)
+        assert(h.pawn.bHidden and h.override==h.component,'the rest of the guard went on')
+        assert(h.pawn.collision==true and h.cmc.MovementMode==1,'nothing half done')
+        assert(h.record.guard_body_owned~='1')
+        assert(table.concat(h.logs,'\n'):find('玩家身体碰撞没有关',1,true))
+        h.pawn.order={}
+        assert(h.guard:stop(h.context) and #h.pawn.order==0,'nothing to put back')
+    end
+    -- Stopped, but the collision stays on: it is still put back as it was.
+    local h=fixture();h.rejectCollision=true
+    h.guard:enter(h.context)
+    assert(h.cmc.MovementMode==0 and h.pawn.collision==true)
+    h.rejectCollision=false
+    assert(h.guard:stop(h.context) and h.cmc.MovementMode==1 and h.pawn.collision==true)
+end)
+test('a body that something sets moving again is stopped and carried back; a nudge is only logged',function()
+    local h=fixture();h.guard:enter(h.context)
+    local function ticks(n)for _=1,n do h.guard:tick(h.context) end end
+    ticks(30)
+    assert(not table.concat(h.logs,'\n'):find('玩家身体被移动',1,true),'still: nothing to say')
+    -- Falling: no floor without collision.
+    h.cmc.MovementMode=3;h.pawn.at={X=100,Y=200,Z=200}
+    ticks(30)
+    assert(h.cmc.MovementMode==0 and h.pawn.teleports==1 and h.pawn.at.Z==300)
+    local text=table.concat(h.logs,'\n')
+    assert(text:find('玩家身体被移动 离进入点=100cm 模式=3 重新停住=true 放回=true',1,true),text)
+    -- Moved a little by something else: the log shows it, it is not fought over.
+    h.pawn.at={X=130,Y=200,Z=300}
+    ticks(30)
+    assert(h.pawn.teleports==1 and h.pawn.at.X==130)
+    assert(table.concat(h.logs,'\n'):find('玩家身体被移动 离进入点=30cm 模式=0 重新停住=false 放回=false',1,true))
+    -- Moving again but close by: stopped, not carried.
+    h.cmc.MovementMode=1;h.pawn.at={X=110,Y=200,Z=300}
+    ticks(30)
+    assert(h.cmc.MovementMode==0 and h.pawn.teleports==1)
+    assert(h.guard:stop(h.context))
+    assert(table.concat(h.logs,'\n'):find('玩家身体恢复 移动模式=1 碰撞=true 离进入点=10cm',1,true),table.concat(h.logs,'\n'))
+end)
+test('a restore that does not take is tried again, and a new load of the mod can finish it from the journal',function()
+    local h=fixture();h.guard:enter(h.context)
+    h.rejectMode=true
+    assert(not h.guard:stop(h.context) and h.record.guard_body_owned=='1')
+    assert(h.pawn.collision==true,'collision is back already')
+    h.rejectMode=false
+    -- The journal keeps these fields, and a new guard works from them.
+    for _,name in ipairs({'guard_body_owned','guard_body_mode','guard_body_custom','guard_body_collision','guard_body_x','guard_body_y','guard_body_z'})do
+        local kept=false
+        for _,field in ipairs(Guard.fields)do kept=kept or field==name end
+        assert(kept,name)
+    end
+    local fresh=Guard.new(h.options)
+    assert(fresh:stop(h.context) and h.cmc.MovementMode==1 and h.cmc.CustomMovementMode==7 and h.record.guard_body_owned=='0')
+    -- The pawn has gone in the meantime: nothing to put back, no waiting on it.
+    local g=fixture();g.guard:enter(g.context)
+    g.recordObjects.pawn=nil
+    g.guard:stop(g.context)
+    assert(g.record.guard_body_owned=='0')
 end)
 test('legacy journals remove only the exact previously owned effect handle',function()
     local h=fixture();h.guard:enter(h.context);h:addEffect(42);h:addEffect(99)

@@ -373,14 +373,14 @@ test("companions are dismissed on their own and reported apart from the arena",f
     assert(h.reported.companion_count==2 and h.reported.companion_owned_records==3 and h.reported.companion_supported)
     assert(h.reported.companion_follow==2 and h.reported.companion_failures==1)
 end)
-test("recall goes to the companions from the app and from its function key; keys report schema 3",function()
+test("recall goes to the companions from the app and from its function key; keys report schema 4",function()
     local h=harness();local recalls=0
     h.runtime=h.new({companions={status=function()return {stuck=1,recalls=recalls}end,
         recall=function()assert(h.inGame);recalls=recalls+1;return {ok=true,message='已召回 2/2 个随从到身边',spawned_count=0}end}})
     h.runtime:start()
     h.inbox={action='recall_companions'};h:tick()
     assert(recalls==1 and h.result.ok and h.result.message=='已召回 2/2 个随从到身边')
-    assert(h.reported.function_keys_schema==3 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
+    assert(h.reported.function_keys_schema==4 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
     h.inbox={action='configure_keys',key_spawn='UNBOUND',key_start='UNBOUND',key_stop='UNBOUND',key_refresh_catalog='UNBOUND',
         key_toggle_camera='UNBOUND',key_exit_camera='UNBOUND',key_cycle_team='UNBOUND',key_toggle_spectator='UNBOUND',key_recall_companions='F5'}
     h:tick();assert(h.result.ok,h.result.message)
@@ -464,5 +464,63 @@ test('time stop opens the camera frozen when it is off and toggles inside it; th
     -- Not in a map: the camera does not open for it.
     active,frozen=false,false;h.sessionState.game_ready=false
     h.inbox={action='toggle_time_stop'};h:tick();assert(not h.result.ok and not active)
+end)
+test('camera tracking: the keys open the free camera first, the settings reach the module, and the app reads it back',function()
+    local h=harness()
+    local active,opened=false,0
+    local calls={}
+    local track={on=false,
+        status=function(self)return {on=self.on,framing='side',resume=3,target=self.on and '42' or '',target_class=self.on and 'BP_A_C' or '',other_class=''} end,
+        targets=function()return '42:BP_A_C:blue' end,
+        start=function(self)calls[#calls+1]='start';self.on=true;return {ok=true,message='on',spawned_count=0} end,
+        finish=function(self)calls[#calls+1]='finish';self.on=false;return {ok=true,message='off',spawned_count=0} end,
+        pick=function()calls[#calls+1]='pick';return {ok=true,message='pick',spawned_count=0} end,
+        next=function()calls[#calls+1]='next';return {ok=true,message='next',spawned_count=0} end,
+        set=function(_,framing,resume,target)calls[#calls+1]=table.concat({framing,resume,target},'|');return {ok=true,message='set',spawned_count=0} end}
+    local camera={status=function()return {active=active,pending=false} end,
+        toggle=function()opened=opened+1;active=true;return {ok=true,message='in',spawned_count=0} end,
+        exit=function()active=false;return {ok=true,message='out',spawned_count=0} end}
+    h.runtime=h.new({track=track,camera=camera});h.runtime:start()
+    h:tick()
+    assert(h.reported.track_supported==true and h.reported.track_on==false and h.reported.track_framing=='side' and h.reported.track_resume==3)
+    assert(h.reported.track_targets=='','the list only while the camera runs')
+    h.inbox={action='toggle_track'};h:tick()
+    assert(h.result.ok and opened==1 and active and calls[1]=='start')
+    assert(h.reported.track_on==true and h.reported.track_target=='42' and h.reported.track_target_class=='BP_A_C' and h.reported.track_targets=='42:BP_A_C:blue')
+    h.inbox={action='toggle_track'};h:tick()
+    assert(h.result.ok and calls[2]=='finish' and opened==1 and active,'turning it off leaves the camera')
+    h.inbox={action='track_pick'};h:tick();assert(calls[3]=='pick' and opened==1)
+    h.inbox={action='track_next'};h:tick();assert(calls[4]=='next')
+    h.inbox={action='set_camera_track',unit_id='42',key_spawn='SHOULDER',key_start='5'};h:tick()
+    assert(h.result.ok and calls[5]=='shoulder|5|42',calls[5])
+    -- Not in a map: the camera does not open for it.
+    active=false;h.sessionState.game_ready=false
+    for _,action in ipairs({'toggle_track','track_pick','track_next'})do
+        local before=#calls
+        h.inbox={action=action};h:tick()
+        assert(not h.result.ok and not active and #calls==before,action)
+    end
+    -- No module: says so.
+    local none=harness()
+    none.runtime=none.new({});none.runtime:start()
+    for _,action in ipairs({'toggle_track','track_pick','track_next','set_camera_track'})do
+        none.inbox={action=action};none:tick()
+        assert(not none.result.ok)
+    end
+    assert(none.reported.track_supported==false)
+end)
+test('unit rules: the card reaches the module, its value goes lower case, and the app reads them back',function()
+    local h=harness()
+    local set={}
+    local rules={set=function(_,id,rule,value)set[#set+1]={id,rule,value};return {ok=true,message='saved',spawned_count=0} end,
+        status=function()return {text='BP_Monster_MoTian:lock=kill'} end}
+    h.runtime=h.new({unitRules=rules});h.runtime:start()
+    h.inbox={action='set_unit_rule',unit_id='BP_Monster_MoTian',key_spawn='LOCK',key_start='KILL'};h:tick()
+    assert(h.result.ok and set[1][1]=='BP_Monster_MoTian' and set[1][2]=='lock' and set[1][3]=='kill')
+    assert(h.reported.unit_rules_supported==true and h.reported.unit_rules=='BP_Monster_MoTian:lock=kill')
+    local none=harness()
+    none.runtime=none.new({});none.runtime:start()
+    none.inbox={action='set_unit_rule',unit_id='BP_Monster_MoTian',key_spawn='LOCK',key_start='KILL'};none:tick()
+    assert(not none.result.ok and none.reported.unit_rules_supported==false and none.reported.unit_rules=='')
 end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

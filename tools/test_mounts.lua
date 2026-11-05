@@ -148,4 +148,57 @@ test('without the spawner class the rider is summoned as before',function()
     assert(all():find('不能放刷怪点；照旧生成，坐骑会出在世界原点',1,true))
     findable=true
 end)
+-- In a fight: the mount goes where the rider is sent, is kept at it and sent back, and stops counting once the rider is off.
+do
+    local attacks,engages={},{}
+    local state='AI.State.Idle'
+    local health={}
+    local local_lines={}
+    local fight=Mounts.new({log=function(s)local_lines[#local_lines+1]=s end,now=function()return now end,
+        location=function(a)return locations[a] end,isDestroying=function(a)return a.destroying==true end,
+        findClass=function()return spawnerClass end,statics=function()return statics end,findAll=function()return {} end,
+        destroy=function(a)a.destroying=true end,hp=function(a)return health[a] end,
+        attack=function(mount,target)attacks[#attacks+1]={mount,target};return true end,
+        inCombat=function()return state:find('Combat',1,true)~=nil,state end,
+        engage=function(mount,target)engages[#engages+1]={mount,target};return true,'AI.State.Combat' end})
+    local function text()return table.concat(local_lines,'\n') end
+    local jingye=rider('BP_Monster_JingYe_C')
+    local target=object({},'BP_Monster_MoTian_C')
+    local second=object({},'BP_Monster_AHua_C')
+    assert(fight:prepare(jingye,transform,world).ok)
+    -- Not on its mount yet: nothing goes.
+    assert(fight:fight(jingye,target)==false and #attacks==0)
+    local horse=object({},'BP_Monster_Horse_JingYe_C')
+    jingye.BP_SGameDriverComponent.DrivingVehicle=horse
+    fight:tick()
+    assert(fight:holds(horse) and not fight:holds(jingye))
+    local members={{actor=jingye,team='blue'},{actor=target,team='red'}}
+    local list=fight:vehicles(members)
+    assert(#list==1 and list[1].actor==horse and list[1].team=='blue' and list[1].rider==jingye)
+    assert(#fight:vehicles({{actor=jingye,team='companion'}})==0,'only blue and red')
+    -- Mounted after the order: the regular check sends it.
+    assert(fight:hold(jingye,target)==true and #attacks==1 and attacks[1][1]==horse and attacks[1][2]==target)
+    assert(text():find('坐骑 BP_Monster_Horse_JingYe_C 跟着攻击 BP_Monster_MoTian_C 调用=true 读回=true',1,true),text())
+    -- Same target: an idle mount is sent back, one in combat is left alone.
+    assert(fight:hold(jingye,target)==true and #engages==1 and #attacks==1)
+    state='AI.State.Combat'
+    assert(fight:hold(jingye,target)==false and #engages==1,'never forces a mount already fighting')
+    -- A new target goes straight through.
+    assert(fight:fight(jingye,second)==true and attacks[2][2]==second)
+    assert(fight:hold(jingye,second)==false and #attacks==2)
+    -- Its AI drops: by the mount's address, at the current target.
+    assert(fight:dropped(tostring(horse:GetAddress()))==true and #engages==2 and engages[2][2]==second)
+    assert(fight:dropped('nobody')==false)
+    -- A dead rider's mount is out of the hatred hooks.
+    health[jingye]=0
+    assert(#fight:vehicles(members)==0)
+    health[jingye]=100
+    -- Off the mount: no longer sent, no longer counted, still cleared with the rider.
+    jingye.BP_SGameDriverComponent.DrivingVehicle=nil
+    assert(#fight:vehicles(members)==0 and fight:fight(jingye,target)==false and fight:hold(jingye,target)==false)
+    assert(fight:holds(horse),'the mod still holds it for the clean-up')
+    fight:releaseActor(jingye,'已清理')
+    assert(not fight:holds(horse) and horse.destroying==true)
+    print('ok - a mount follows its rider into a fight')
+end
 print('mounts: all tests passed')

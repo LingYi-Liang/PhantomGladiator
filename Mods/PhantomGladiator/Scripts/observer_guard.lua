@@ -5,13 +5,18 @@ local Stats=require('character_stats')
 local Guard={fields={'guard_started','guard_spectator_before','guard_spectator_owned',
     'guard_damage_before','guard_damage_owned','guard_hide_count','guard_lock_handle','guard_lock_intent','guard_effects_before',
     'guard_floor_handle','guard_floor_intent','guard_floor_effects_before','guard_floor_base','guard_floor_current','guard_floor_direct',
-    'guard_audio_owned','guard_listener_override','guard_probe_before','guard_hp'}}
+    'guard_audio_owned','guard_listener_override','guard_probe_before','guard_hp',
+    'guard_body_owned','guard_body_mode','guard_body_custom','guard_body_collision','guard_body_x','guard_body_y','guard_body_z'}}
 for _,name in ipairs({'guard_asc','guard_lock_class','guard_sound','guard_listener','guard_old_probe','guard_probe'})do
     Guard.fields[#Guard.fields+1]=name;Guard.fields[#Guard.fields+1]=name..'_key'
 end
 for i=1,32 do
     for _,suffix in ipairs({'','_key','_before','_owned'})do Guard.fields[#Guard.fields+1]='guard_hidden'..i..suffix end
 end
+local MOVE_NONE=0
+local PUT_BACK=50      -- cm: a body that started moving and got this far is carried back
+local BODY_STEP=10     -- cm of drift worth a log line
+local BODY_LINES=10
 local function same(a,b)local k=U.key(a);return k~=nil and k==U.key(b)end
 local function call(obj,name,...)
     if not U.valid(obj) then return false,'invalid '..name end
@@ -36,6 +41,18 @@ local function put(obj,field,value)
     assert(U.valid(obj),'invalid before '..field);obj[field]=value
     assert(U.field(obj,field)==value,field..' readback mismatch')
 end
+local function located(actor)
+    local read,at=call(actor,'K2_GetActorLocation')
+    if not read then return nil end
+    local x,y,z=U.struct(at,'X'),U.struct(at,'Y'),U.struct(at,'Z')
+    if type(x)=='number' and type(y)=='number' and type(z)=='number' then return {X=x,Y=y,Z=z} end
+end
+local function where(v)return v and string.format('%.0f,%.0f,%.0f',v.X,v.Y,v.Z) or '?' end
+local function homeOf(r)
+    local x,y,z=tonumber(r.guard_body_x),tonumber(r.guard_body_y),tonumber(r.guard_body_z)
+    return x and y and z and {X=x,Y=y,Z=z} or nil
+end
+local function gap(a,b)return a and b and math.sqrt((a.X-b.X)^2+(a.Y-b.Y)^2+(a.Z-b.Z)^2) or nil end
 local function hp(pawn)
     return U.struct(U.field(U.field(pawn,'AttributeSetBase'),'Health'),'CurrentValue')
 end
@@ -139,10 +156,64 @@ function Guard.new(options)
             r[name..'_owned']='1';c.save()
             need(actor,'SetActorHiddenInGame',true);assert(bool(actor,'bHidden'),'hidden state not verified')
         end
+        self:enterBody(c)
         self:enterAudio(c)
         log('[Observer] 已开启：玩家仇恨资格=false can_damage='..tostring(U.field(pawn,'bCanBeDamaged'))
             ..' health_floor_verified='..tostring(self.healthVerified)
             ..' hidden_actors='..#targets..' HP='..health..'；锁血/声音实际效果待实测')
+    end
+    -- Hidden and unhurt is not gone: the capsule still stops whoever walks into it and whoever hits it can shove it, so the
+    -- body gets in the way of the fight and drifts while the camera is elsewhere. Without collision it has no floor and would
+    -- fall, so it stops moving first. Failing here costs only this; the camera still works.
+    function self:enterBody(c)
+        local r,pawn=c.record,c.pawn
+        self.bodyAway,self.bodyLines=0,0
+        local cmc=U.field(pawn,'CharacterMovement')
+        local mode=tonumber((U.field(cmc,'MovementMode')))
+        local custom=tonumber((U.field(cmc,'CustomMovementMode')))
+        local read,collision=call(pawn,'GetActorEnableCollision')
+        local at=located(pawn)
+        if not mode or not read or type(collision)~='boolean' or not at then
+            log('[Observer] 玩家身体碰撞没有关：读不到 移动模式='..tostring(mode)..' 碰撞='..tostring(collision)..' 位置='..where(at))
+            return
+        end
+        r.guard_body_mode=tostring(mode);r.guard_body_custom=tostring(custom or 0);r.guard_body_collision=collision and '1' or '0'
+        r.guard_body_x,r.guard_body_y,r.guard_body_z=tostring(at.X),tostring(at.Y),tostring(at.Z)
+        r.guard_body_owned='1';c.save()
+        local stopped=call(cmc,'SetMovementMode',MOVE_NONE,0)
+        local now=tonumber((U.field(cmc,'MovementMode')))
+        if not stopped or now~=MOVE_NONE then
+            if now==mode then r.guard_body_owned='0';c.save() end
+            log('[Observer] 玩家身体碰撞没有关：移动模式没能停住 调用='..tostring(stopped)..' 读回='..tostring(now))
+            return
+        end
+        local off=call(pawn,'SetActorEnableCollision',false)
+        local got,after=call(pawn,'GetActorEnableCollision')
+        log(string.format('[Observer] 玩家身体 移动模式 %d -> %s 碰撞 %s -> %s（调用=%s） 位置=%s',mode,tostring(now),tostring(collision),
+            got and tostring(after) or '?',tostring(off),where(at)))
+    end
+    -- Nothing should move it now; if something does, say so. Something that sets it moving again has it falling: with no
+    -- collision there is no floor.
+    function self:holdBody(c)
+        local r,pawn=c.record,c.pawn
+        local cmc=U.field(pawn,'CharacterMovement')
+        local mode=tonumber((U.field(cmc,'MovementMode')))
+        local home,at=homeOf(r),located(pawn)
+        local away=gap(at,home)
+        local restarted=mode~=nil and mode~=MOVE_NONE
+        local put=false
+        if restarted then
+            call(cmc,'SetMovementMode',MOVE_NONE,0)
+            if away and away>PUT_BACK then
+                local okRot,rot=call(pawn,'K2_GetActorRotation')
+                local moved,result=call(pawn,'K2_TeleportTo',home,okRot and rot or {Pitch=0,Yaw=0,Roll=0})
+                put=moved and result~=false
+            end
+        end
+        if (restarted or (away and math.abs(away-(self.bodyAway or 0))>=BODY_STEP)) and (self.bodyLines or 0)<BODY_LINES then
+            self.bodyAway,self.bodyLines=away or self.bodyAway,(self.bodyLines or 0)+1
+            log(string.format('[Observer] 玩家身体被移动 离进入点=%s 模式=%s 重新停住=%s 放回=%s',away and string.format('%.0fcm',away) or '?',tostring(mode),tostring(restarted),tostring(put)))
+        end
     end
     function self:enterAudio(c)
         local r=c.record
@@ -177,6 +248,7 @@ function Guard.new(options)
         local spectator=assert(options.getSpectator(),'spectator unavailable')
         if not spectator:status().enabled_requested then spectator:on() end
         assert(bool(c.pawn,'bHidden') and not bool(c.pawn,'bCanBeDamaged'),'player observer flags changed')
+        if r.guard_body_owned=='1' then self:holdBody(c) end
         if r.guard_floor_direct=='1' then
             local floor=stats:read(c.pawn,'Health_Min')
             local verified=floor and floor.current+0.01>=tonumber(r.guard_hp) or false
@@ -296,6 +368,24 @@ function Guard.new(options)
                 assert(stackCount(id)==0,'owned LockHealth handle still active')
             end
             r.guard_lock_handle='';r.guard_lock_intent='0';c.save()
+        end)
+        attempt('body',function()
+            local pawn=stored(c,'pawn')
+            if r.guard_body_owned=='1' and pawn then
+                -- Collision first: walking looks for its floor the moment it is set.
+                local wanted=r.guard_body_collision~='0'
+                need(pawn,'SetActorEnableCollision',wanted)
+                local read,now=call(pawn,'GetActorEnableCollision')
+                assert(read and now==wanted,'player collision restore not verified')
+                local cmc=U.field(pawn,'CharacterMovement');assert(U.valid(cmc),'player movement component unavailable')
+                local mode=assert(tonumber(r.guard_body_mode),'player movement mode snapshot unavailable')
+                need(cmc,'SetMovementMode',mode,tonumber(r.guard_body_custom) or 0)
+                local after=tonumber((U.field(cmc,'MovementMode')))
+                assert(after==mode,'player movement mode restore not verified')
+                local away=gap(located(pawn),homeOf(r))
+                log(string.format('[Observer] 玩家身体恢复 移动模式=%d 碰撞=%s 离进入点=%s',after,tostring(now),away and string.format('%.0fcm',away) or '?'))
+            end
+            r.guard_body_owned='0';c.save()
         end)
         for i=tonumber(r.guard_hide_count) or 0,1,-1 do
             local name='guard_hidden'..i

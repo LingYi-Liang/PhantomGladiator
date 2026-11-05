@@ -212,8 +212,11 @@ function Camera.new(options)
     function self:isActive()return self.active end
     function self:hasPending()return self.record~=nil end
     function self:isFrozen()return self.active and self.session~=nil and self.session.frozen~=nil end
+    local function trackOf()return options.track and options.track() or nil end
     function self:stop(reason)
         self.active=false;self.session=nil
+        local track=trackOf()
+        if track then pcall(track.stop,track,'退出自由观战') end
         if self.handle then
             local ok=pcall(CancelDelayedAction,self.handle)
             if ok then self.handle=nil end
@@ -362,29 +365,48 @@ function Camera.new(options)
             local up=math.max(axis(s.pc,'E'),axis(s.pc,'SpaceBar'))-math.max(axis(s.pc,'Q'),axis(s.pc,'LeftControl'),axis(s.pc,'RightControl'))
             local fast=math.max(axis(s.pc,'LeftShift'),axis(s.pc,'RightShift'))>0
             local tuning=self.tuning
-            -- The mouse moves where the view aims; the view eases toward it (smoothing 0: at once).
-            s.aimYaw=(s.aimYaw+mx*tuning.turn/100)%360
-            s.aimPitch=math.max(-89,math.min(89,s.aimPitch+my*tuning.turn/100))
-            local turnEase=tuning.smooth>0 and 1-math.exp(-dt/(TURN_TAU*tuning.smooth/100)) or 1
-            local yawGap=(s.aimYaw-s.rotation.Yaw+180)%360-180
-            local pitchGap=s.aimPitch-s.rotation.Pitch
-            local rotation={Pitch=s.rotation.Pitch+pitchGap*turnEase,Yaw=(s.rotation.Yaw+yawGap*turnEase)%360,Roll=0}
-            -- The keys set a velocity to reach; the velocity eases toward it, so starts and stops are soft.
-            local yaw,pitch=math.rad(rotation.Yaw),math.rad(rotation.Pitch)
-            local speed=tuning.speed*(fast and 3 or 1)/math.max(1,math.sqrt(forward*forward+right*right+up*up))
-            local want={X=(forward*math.cos(pitch)*math.cos(yaw)-right*math.sin(yaw))*speed,
-                Y=(forward*math.cos(pitch)*math.sin(yaw)+right*math.cos(yaw))*speed,
-                Z=(forward*math.sin(pitch)+up)*speed}
-            local moveEase=tuning.smooth>0 and 1-math.exp(-dt/(MOVE_TAU*tuning.smooth/100)) or 1
-            local v=s.velocity
-            v.X,v.Y,v.Z=v.X+(want.X-v.X)*moveEase,v.Y+(want.Y-v.Y)*moveEase,v.Z+(want.Z-v.Z)*moveEase
-            -- Settled: no keys, eased to a stop, the view on its aim. Nothing to send.
-            if math.abs(v.X)+math.abs(v.Y)+math.abs(v.Z)<1 and want.X==0 and want.Y==0 and want.Z==0
-                and math.abs(yawGap)<0.01 and math.abs(pitchGap)<0.01 then
-                v.X,v.Y,v.Z=0,0,0
-                return
+            local position,rotation
+            -- 镜头跟踪 (camera_track.lua) says where the camera goes while it runs; a failure there only ends the following.
+            local track=trackOf()
+            if track and track:running() then
+                local readWheel,wheel=call(s.pc,'GetInputAnalogKeyState',key('MouseWheelAxis'))
+                local framed,at,facing=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
+                    wheel=readWheel and number(wheel) and wheel or 0,turn=tuning.turn,speed=tuning.speed,smooth=tuning.smooth,world=s.world})
+                if framed then position,rotation=at,facing
+                else
+                    log('[FreeCamera] 镜头跟踪出错，退回自由视角：'..tostring(at))
+                    pcall(track.stop,track,'出错')
+                end
+                if position then
+                    s.aimYaw,s.aimPitch=rotation.Yaw%360,math.max(-89,math.min(89,rotation.Pitch))
+                    s.velocity={X=0,Y=0,Z=0}
+                end
             end
-            local position={X=s.position.X+v.X*dt,Y=s.position.Y+v.Y*dt,Z=s.position.Z+v.Z*dt}
+            if not position then
+                -- The mouse moves where the view aims; the view eases toward it (smoothing 0: at once).
+                s.aimYaw=(s.aimYaw+mx*tuning.turn/100)%360
+                s.aimPitch=math.max(-89,math.min(89,s.aimPitch+my*tuning.turn/100))
+                local turnEase=tuning.smooth>0 and 1-math.exp(-dt/(TURN_TAU*tuning.smooth/100)) or 1
+                local yawGap=(s.aimYaw-s.rotation.Yaw+180)%360-180
+                local pitchGap=s.aimPitch-s.rotation.Pitch
+                rotation={Pitch=s.rotation.Pitch+pitchGap*turnEase,Yaw=(s.rotation.Yaw+yawGap*turnEase)%360,Roll=0}
+                -- The keys set a velocity to reach; the velocity eases toward it, so starts and stops are soft.
+                local yaw,pitch=math.rad(rotation.Yaw),math.rad(rotation.Pitch)
+                local speed=tuning.speed*(fast and 3 or 1)/math.max(1,math.sqrt(forward*forward+right*right+up*up))
+                local want={X=(forward*math.cos(pitch)*math.cos(yaw)-right*math.sin(yaw))*speed,
+                    Y=(forward*math.cos(pitch)*math.sin(yaw)+right*math.cos(yaw))*speed,
+                    Z=(forward*math.sin(pitch)+up)*speed}
+                local moveEase=tuning.smooth>0 and 1-math.exp(-dt/(MOVE_TAU*tuning.smooth/100)) or 1
+                local v=s.velocity
+                v.X,v.Y,v.Z=v.X+(want.X-v.X)*moveEase,v.Y+(want.Y-v.Y)*moveEase,v.Z+(want.Z-v.Z)*moveEase
+                -- Settled: no keys, eased to a stop, the view on its aim. Nothing to send.
+                if math.abs(v.X)+math.abs(v.Y)+math.abs(v.Z)<1 and want.X==0 and want.Y==0 and want.Z==0
+                    and math.abs(yawGap)<0.01 and math.abs(pitchGap)<0.01 then
+                    v.X,v.Y,v.Z=0,0,0
+                    return
+                end
+                position={X=s.position.X+v.X*dt,Y=s.position.Y+v.Y*dt,Z=s.position.Z+v.Z*dt}
+            end
             local moved,result=call(s.camera,'K2_SetActorLocationAndRotation',position,rotation,false,{},true)
             assert(moved and result~=false,'camera movement failed')
             s.position,s.rotation=position,rotation
@@ -539,6 +561,18 @@ function Camera.new(options)
         return {ok=true,message='已解除时停',spawned_count=0}
     end
     function self:toggle()if self.active then return self:stop('切换自由观战') else return self:enter()end end
+    -- Where the view is while the player has this camera (summons go where it points, spawn_spot.lua).
+    function self:view()
+        local s=self.session
+        if not self.active or not s or s.borrowed then return nil end
+        return s.position,s.rotation
+    end
+    -- The view's width, for 镜头跟踪's framing.
+    function self:fieldOfView()
+        local s=self.session
+        local fov=s and U.field(U.field(s.camera,'CameraComponent'),'FieldOfView')
+        return number(fov) and fov or nil
+    end
     -- 处决镜头 (execution_camera.lua) moves this camera for one execution; the view target stays, input movement
     -- waits, and release puts the camera back where the player left it.
     function self:borrow()
@@ -558,6 +592,8 @@ function Camera.new(options)
             and math.abs(actual.Z-back.position.Z)<0.5
     end
     function self:silence()
+        local track=trackOf()
+        if track then pcall(track.stop,track,'Mod卸载') end
         self.alive=false;self.active=false;self.session=nil
         if self.handle then pcall(CancelDelayedAction,self.handle);self.handle=nil end
         if self.record then log('[FreeCamera] 卸载保留恢复记录；下一次游戏线程恢复，不在卸载线程访问对象') end

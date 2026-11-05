@@ -22,11 +22,13 @@ local function harness()
         h.members[#h.members+1]={actor=actor,team=team}
         return actor,component,manager
     end
-    function h.new()
-        return Lock.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
+    function h.new(extra)
+        local settings={log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
             members=function()return h.members end,aiOf=function(actor)return h.ai[actor] end,
             hatredOf=function(actor)return h.hatred[actor] end,fighting=function()return h.fighting end,
-            onDropped=function(key)h.dropped[#h.dropped+1]=key end,onSensed=function(key)h.sensed[#h.sensed+1]=key end})
+            onDropped=function(key)h.dropped[#h.dropped+1]=key end,onSensed=function(key)h.sensed[#h.sensed+1]=key end}
+        for key,value in pairs(extra or {})do settings[key]=value end
+        return Lock.new(settings)
     end
     -- The game calling a hooked function: what the callback answers.
     function h.call(name,...)local hook=h.hooks[Lock.paths[name]];return hook and hook(...) end
@@ -155,4 +157,66 @@ do
     assert(#h.dropped==0 and #h.sensed==0)
     assert(h.call('exit',enemyAI)==false,'ordinary combatants keep combat lock')
 end
-print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands)')
+-- A dead unit stops being hatable by this fight's units and comes off their lists once, through the game's remove.
+-- Written straight into the array it is not in the corpse's BeHatredList, so the game's OnDead would miss it.
+do
+    local h=harness()
+    local health,lists={},{}
+    local lock=h.new({hp=function(actor)return health[actor] end,label=function()return 'Corpse' end,
+        hates=function(manager,actor)return lists[manager] and lists[manager][actor]==true end})
+    local corpse,corpseAI,corpseHatred=h.unit('red')
+    local fighter,fighterAI,fighterHatred=h.unit('blue')
+    local other,_,otherHatred=h.unit('blue')
+    local mate,_,mateHatred=h.unit('red')
+    health[corpse],health[fighter],health[other],health[mate]=100,100,100,100
+    lists[fighterHatred]={[corpse]=true}
+    lists[otherHatred]={}
+    local calls=0
+    fighterHatred.RemoveActorFromHatredList=function(_,actor)calls=calls+1;lists[fighterHatred][actor]=nil end
+    h.fighting=true;lock:tick()
+    assert(h.call('canHate',fighterHatred,corpse)==true,'alive: may be hated')
+    health[corpse]=0;lock:tick()
+    assert(h.call('canHate',fighterHatred,corpse)==false and h.call('canBeHated',fighterHatred,corpse)==false,'a corpse is refused')
+    assert(calls==1 and lists[fighterHatred][corpse]==nil,'taken off the list that held it')
+    assert(h.all():find('尸体移出仇恨表 尸体=Corpse 表里有它的单位=1 移出=1 读回仍在=0',1,true),h.all())
+    assert(h.call('exit',corpseAI)==nil,'its own AI is left to the game')
+    assert(h.call('canHate',fighterHatred,mate)==true,'the living stay hatable')
+    lock:tick();assert(calls==1,'only once')
+    health[corpse]=50;lock:tick()
+    assert(h.call('canHate',fighterHatred,corpse)==true,'up again: hatable again')
+    lists[fighterHatred][corpse]=true;health[corpse]=0;lock:tick()
+    assert(calls==2,'a second death is forgotten again')
+    -- Health that cannot be read counts as alive.
+    health[other]=nil;lock:tick()
+    assert(h.call('canHate',mateHatred,other)==true)
+    assert(lock:status().refused==2,tostring(lock:status().refused))
+end
+-- The list that keeps a corpse after the remove says so.
+do
+    local h=harness()
+    local health={}
+    local lock=h.new({hp=function(actor)return health[actor] end,hates=function()return true end})
+    local corpse=h.unit('red');local fighter,_,fighterHatred=h.unit('blue')
+    health[corpse],health[fighter]=0,100
+    fighterHatred.RemoveActorFromHatredList=function()end
+    h.fighting=true;lock:tick()
+    assert(h.all():find('移出=0 读回仍在=1',1,true),h.all())
+end
+-- A mount hates the way its rider does, stays in combat and is sent back, and is never hated itself.
+do
+    local h=harness()
+    local mount,mountAI,mountHatred=object('Horse'),object('HorseAI'),object('HorseHatred')
+    h.ai[mount]=mountAI;h.hatred[mount]=mountHatred
+    local lock=h.new({vehicles=function()return {{actor=mount,team='blue'}} end})
+    local rider=h.unit('blue');local enemy,_,enemyHatred=h.unit('red')
+    h.fighting=true;lock:tick()
+    assert(h.call('canHate',mountHatred,enemy)==true,'the mount may hate the other side')
+    assert(h.call('canHate',mountHatred,rider)==nil,'not its own side')
+    assert(h.call('exit',mountAI)==false,'stays in combat')
+    assert(h.call('canHate',enemyHatred,mount)==false and h.call('canBeHated',enemyHatred,mount)==false,'nobody targets the mount')
+    h.call('transition',mountAI,tag('AI.Transition.CombatToIdle'))
+    assert(#h.dropped==1 and h.dropped[1]==tostring(mount.GetAddress()),'sent back by its own address')
+    h.fighting=false;lock:tick()
+    assert(h.call('canHate',enemyHatred,mount)==nil,'after the fight the game answers again')
+end
+print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands, corpses, mounts)')

@@ -83,8 +83,12 @@ function Ground.new(options)
         local ground=groundAt(world,spot.X,spot.Y,spot.Z)
         local closer
         if not ground or spot.Z-ground>PLACE_MAX_DROP then
-            local player=options.player and options.player()
-            local at=player and options.location(player)
+            -- Toward the middle of the batch (spawn_spot.lua), which is the player unless the free camera chose the spot.
+            local at=options.anchor and options.anchor() or nil
+            if not at then
+                local player=options.player and options.player()
+                at=player and options.location(player)
+            end
             for _,share in ipairs(at and CLOSER or {})do
                 local x,y=at.X+(spot.X-at.X)*share,at.Y+(spot.Y-at.Y)*share
                 local there=groundAt(world,x,y,spot.Z)

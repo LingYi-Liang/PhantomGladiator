@@ -12,6 +12,12 @@
 -- (ai_difficulty.lua, verified in v0.33.1); every other AI keeps the game's answers. The hooks exist
 -- only while a fight runs and are removed a little after it ends. Hooks that were only there to find
 -- the exit path, and the attack token condition (never asked for these units in v0.37.8), are gone.
+-- A corpse stays an actor for about 10 s (BP_RenewalNPC DestroyDelay). The game takes a dead unit off the lists of those in
+-- its BeHatredList (OnDead), but an entry written straight into a HatredList is not in there, and AIScript_TargetSelector
+-- picks the nearest actor of the HatredList: a unit went on standing over the corpse. So a dead unit is not hatable by this
+-- fight's units, and comes off their lists the moment it is seen dead.
+-- A rider's mount (options.vehicles) is an AI of its own that carries the rider: it gets the same answers as a hater, stays
+-- in combat and is sent back, but it is nobody's target, so its rider is what the other side goes for.
 local U=require('ue_observe')
 local Lock={}
 local AI='/SGameAI/BP_SGameAIComponent.BP_SGameAIComponent_C:'
@@ -43,12 +49,16 @@ end
 function Lock.new(options)
     local log=options.log or function()end
     local clock=options.clock or os.clock
-    local self={alive=true,state='idle',held=0,passed=0,message='没有进行中的战斗',counts={},window={}}
+    local self={alive=true,state='idle',held=0,passed=0,refused=0,message='没有进行中的战斗',counts={},window={}}
+    local corpseLines=0
     for _,name in ipairs(ORDER)do self.counts[name]=0;self.window[name]=0 end
     local hooks={}        -- name -> {pre=, post=} while installed
     local components={}   -- AI component address -> team, for this mod's blue and red units in a fight
     local managers={}     -- hatred manager address -> team
     local teams={}        -- unit address -> team
+    local corpses={}      -- unit address -> team, a fighting unit with no health left
+    local forgotten={}    -- unit address -> true once it came off the others' lists
+    local mounts={}       -- mount address -> true: hates, is not hated
     local owners={}       -- AI component address -> unit address
     local cache={}        -- unit address -> {ai=, hatred=} component addresses (a unit keeps its components)
     local dropped={}      -- unit address -> clock() of the last send-back
@@ -81,6 +91,11 @@ function Lock.new(options)
     for _,name in ipairs({'canHate','canBeHated'})do
         callbacks[name]=function(context,actor)
             if not self.alive then return nil end
+            local asked=addr(U.unwrap(actor)) or ''
+            if managers[addr(U.unwrap(context)) or ''] and (corpses[asked] or mounts[asked]) then
+                self.refused=self.refused+1
+                return false
+            end
             local mine,theirs=opponents(context,actor)
             if not mine then return nil end
             count(name,function()return mine..' → '..theirs end)
@@ -146,19 +161,50 @@ function Lock.new(options)
         if not next(hooks) then self.state='idle';self.message='没有进行中的战斗' end
     end
 
+    -- True only for a read that says no health is left; a unit whose health cannot be read counts as alive.
+    local function dead(actor)
+        if not options.hp then return false end
+        local ok,hp=pcall(options.hp,actor)
+        return ok and type(hp)=='number' and hp<=0
+    end
+    -- Takes a fresh corpse off the list of every unit still fighting, through the game's own remove, and reads it back.
+    local function forget(corpse,living)
+        if not options.hatredOf or not options.hates then return end
+        local held,removed,left=0,0,0
+        for _,member in ipairs(living)do
+            local manager=options.hatredOf(member.actor)
+            if U.valid(manager) and U.valid(corpse) and options.hates(manager,corpse)==true then
+                held=held+1
+                pcall(function()manager:RemoveActorFromHatredList(corpse)end)
+                if options.hates(manager,corpse)==false then removed=removed+1 else left=left+1 end
+            end
+        end
+        if corpseLines<LINES then
+            corpseLines=corpseLines+1
+            say(string.format('尸体移出仇恨表 尸体=%s 表里有它的单位=%d 移出=%d 读回仍在=%d 累计拒绝=%d',
+                options.label and options.label(corpse) or tostring(U.key(corpse)),held,removed,left,self.refused))
+        end
+    end
     -- Support tick: index the fighting units and their components; install while a fight runs.
     function self:tick()
         if not self.alive then return end
         local now=clock()
-        local ai,hatred,units,known,own={},{},{},{},{}
+        local ai,hatred,units,known,own,bodies,horses={},{},{},{},{},{},{}
+        local fresh,living={},{}
         if options.fighting() then
-            for _,member in ipairs(options.members())do
+            local members=options.members()
+            for _,member in ipairs(members)do
                 -- Stands keep their native AI/hatred answers. A summon held in reserve is not in the fight yet;
                 -- a unit out of reach by its own design
                 -- (member.untargetable, boss_stages.lua) still hates but keeps the game's answer as a target.
                 if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
                     local key=U.key(member.actor)
-                    if key then
+                    if key and dead(member.actor) then
+                        bodies[key]=member.team
+                        if not forgotten[key] then fresh[#fresh+1]=member end
+                    elseif key then
+                        forgotten[key]=nil
+                        living[#living+1]=member
                         local c=cache[key] or {ai=addr(options.aiOf(member.actor)),hatred=options.hatredOf and addr(options.hatredOf(member.actor))}
                         known[key]=c
                         if not member.untargetable then units[key]=member.team end
@@ -167,8 +213,23 @@ function Lock.new(options)
                     end
                 end
             end
+            for _,vehicle in ipairs(options.vehicles and options.vehicles(members) or {})do
+                local key=U.key(vehicle.actor)
+                if key then
+                    local c=cache[key] or {ai=addr(options.aiOf(vehicle.actor)),hatred=options.hatredOf and addr(options.hatredOf(vehicle.actor))}
+                    known[key]=c
+                    horses[key]=true
+                    if c.ai then ai[c.ai]=vehicle.team;own[c.ai]=key end
+                    if c.hatred then hatred[c.hatred]=vehicle.team end
+                end
+            end
         end
-        components,managers,teams,cache,owners=ai,hatred,units,known,own
+        components,managers,teams,cache,owners,corpses,mounts=ai,hatred,units,known,own,bodies,horses
+        for _,member in ipairs(fresh)do
+            forget(member.actor,living)
+            local key=U.key(member.actor)
+            if key then forgotten[key]=true end
+        end
         if next(teams) then
             quietSince=nil
             if not next(hooks) and self.state~='failed' then install() end
@@ -186,7 +247,7 @@ function Lock.new(options)
             summaryAt=now
         end
     end
-    function self:status()return {state=self.state,held=self.held,message=self.message,counts=self.counts}end
+    function self:status()return {state=self.state,held=self.held,refused=self.refused,message=self.message,counts=self.counts}end
     function self:silence(reason)uninstall(reason or 'Mod卸载');self.alive=false end
     return self
 end

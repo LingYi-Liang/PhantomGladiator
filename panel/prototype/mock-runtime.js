@@ -51,6 +51,9 @@ const MockRuntime = (() => {
   // The execution camera switch mirrors execution_camera.lua (Runtime/execution-camera.tsv).
   const EXEC_CAM_KEY = "pg-proto.executionCamera";
   const COMPANION_EXEC_KEY = "pg-proto.companionExec";
+  const UNIT_RULES_KEY = "pg-proto.unitRules";
+  let savedUnitRules = {};
+  try { savedUnitRules = JSON.parse(localStorage.getItem(UNIT_RULES_KEY)) || {}; } catch { /* storage may be unavailable */ }
   let savedCompanionExec = false;
   try { savedCompanionExec = localStorage.getItem(COMPANION_EXEC_KEY) === "true"; } catch { /* storage may be unavailable */ }
   let savedExecCam = false;
@@ -88,12 +91,15 @@ const MockRuntime = (() => {
     clockHud: { supported: true, on: savedClockHud, state: savedClockHud ? "waiting" : "off" },  // off | waiting | shown | failed
     executionCamera: { supported: true, on: savedExecCam, state: savedExecCam ? "waiting" : "off" },  // off | waiting | running
     companionExec: { supported: true, on: savedCompanionExec },
+    track: { supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
+    unitRules: savedUnitRules,
+    unitRulesSupported: true,
     fight: "idle",              // idle | fighting | ended
     winner: "",                 // blue | red | draw
     cleanup: "",                // "" | restore_pending (one more cleanup) | spawn_uncertain (restart the game)
     stopOutcome: "ok",          // ok | partial (next cleanup leaves one restore record) | stuck (every cleanup does)
     // The eight function keys (BINDING_NAMES in backend.py) start unbound; each is null or { code, mods }.
-    keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, toggle_time_stop: null },
+    keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
     unitKeys: {},               // unitId -> { code, mods }
     nextOutcome: "ok",          // ok | error | uncertain | matchWarn | matchAbort (next spawn only)
     updateScenario: "available",// available | latest | offline
@@ -227,6 +233,28 @@ const MockRuntime = (() => {
       case "set_free_camera":
         Object.assign(s.camSettings, { speed: job.payload.speed, turn: job.payload.turn, smooth: job.payload.smooth });
         return;
+      case "toggle_track":
+      case "track_pick":
+      case "track_next": {
+        // Outside the free camera it opens first; the demo's field stands in for the units on it.
+        if (job.action === "toggle_track" && s.track.on) {
+          Object.assign(s.track, { on: false, target: "", targetClass: "", otherClass: "" });
+          job.message = "镜头跟踪已关闭";
+          return;
+        }
+        if (!s.freeCam) setFreeCam(true);
+        const list = [["1001", "BP_Monster_MoTian_C", "blue"], ["1002", "BP_Monster_AHua_GuiTouDao_C", "red"]].map(([key, cls, team]) => ({ key, cls, team }));
+        const at = list.findIndex(u => u.key === s.track.target);
+        const chosen = list[job.action === "track_next" ? (at + 1) % list.length : Math.max(at, 0)], other = list.find(u => u !== chosen);
+        Object.assign(s.track, { on: true, targets: list, target: chosen.key, targetClass: chosen.cls, otherClass: other.cls });
+        job.message = "镜头跟踪已开启";
+        return;
+      }
+      case "set_camera_track": {
+        const p = job.payload, chosen = s.track.targets.find(u => u.key === p.target);
+        Object.assign(s.track, { framing: p.framing, resume: p.resume }, chosen ? { target: chosen.key, targetClass: chosen.cls, otherClass: s.track.targets.find(u => u !== chosen)?.cls || "" } : {});
+        return;
+      }
       case "recall_companions":
         // companion.lua recall(): the live ones beside the player.
         job.message = s.companion ? `已召回 ${s.companion}/${s.companion} 个随从到身边` : "没有可召回的随从";
@@ -272,6 +300,10 @@ const MockRuntime = (() => {
       case "set_companion_executions":
         s.companionExec = { supported: true, on: p.enabled };
         try { localStorage.setItem(COMPANION_EXEC_KEY, String(p.enabled)); } catch { /* ignore */ }
+        return;
+      case "set_unit_rule":
+        (s.unitRules[p.unit] ||= {})[p.rule] = p.value;
+        try { localStorage.setItem(UNIT_RULES_KEY, JSON.stringify(s.unitRules)); } catch { /* ignore */ }
         return;
       case "set_team_immortal":
         s.immortal[p.team] = p.enabled;

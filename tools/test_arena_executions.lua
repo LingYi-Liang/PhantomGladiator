@@ -723,6 +723,44 @@ do
     local kills=exec:status().kills
     h.run(exec,25);assert(exec:status().kills==kills,'once')
 end
+-- 打到死 on a unit's card: on its death lock it dies at once, whatever team, with no execution. A phase floor stays, an
+-- immortal team stays, and a unit without the rule is executed as ever.
+do
+    local h=harness()
+    local killed=h.boss('BP_Monster_MoTian',1,1,{locks={LOCK},pairs={MOYUAN},rank='UltimateBoss'})
+    local executed=h.boss('BP_Monster_PengMeng_Axe',1,1,{locks={LOCK},pairs={GUN},rank='GreatBoss'})
+    local phase=h.boss('BP_Monster_PhaseBoss',150,150,{locks={},pairs={},rank='NormalBoss'})
+    local alone=h.boss('BP_Monster_Solo',1,1,{locks={LOCK},pairs={},rank='NormalBoss'})
+    local notYet=h.boss('BP_Monster_NotYet',400,1,{locks={LOCK},pairs={},rank='NormalBoss'})
+    for _,b in ipairs({killed,executed,phase,alone,notYet})do h.attrs[b].Health_Max=300 end
+    local rule={[killed]=true,[phase]=true,[alone]=true,[notYet]=true}
+    h.members={{actor=killed,team='red'},{actor=phase,team='red'},{actor=alone,team='neutral'},{actor=notYet,team='red'},
+        {actor=executed,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    local exec=h.new({killOnLock=function(actor)return rule[actor]==true end})
+    exec:tick()
+    assert(h.all():find('到锁血线直接打死（卡面设置）BP_Monster_MoTian：去锁血[GE_MoYuan_LockHealth_C=true',1,true),h.all())
+    assert(h.all():find('到锁血线直接打死（卡面设置）BP_Monster_Solo',1,true),'a unit with no team too: '..h.all())
+    assert(exec:status().kills==2,exec:status().kills)
+    assert(not h.all():find('打死（卡面设置）BP_Monster_PhaseBoss',1,true),'a floor over 1% of its health is a phase')
+    assert(not h.all():find('打死（卡面设置）BP_Monster_NotYet',1,true),'not on the line yet')
+    exec:tick();assert(exec:status().kills==2,'once')
+    assert(not h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Monster_MoTian_0 at 0.0'),'no execution for it')
+    h.run(exec,1.5)
+    assert(h.has('play GA_Hun_BEx_Common_GuiChai_Gun_02_C + GA_Hun_BEd_Common_GuiChai_Gun_02_C on BP_Monster_PengMeng_Axe_0 at 0.0'),'the unit without the rule is executed: '..h.all())
+    -- Reached later: it dies when it gets there.
+    h.attrs[notYet].Health=1
+    h.run(exec,DATA.GA_Hun_BEx_Common_GuiChai_Gun_02_C.executor+1)
+    assert(h.all():find('到锁血线直接打死（卡面设置）BP_Monster_NotYet',1,true),h.all())
+    -- A team held up by its 不倒下 switch stays up: that floor is the switch's.
+    local g=harness()
+    local guarded=g.boss('BP_Monster_Guarded',1,1,{locks={LOCK},pairs={},rank='NormalBoss'})
+    g.attrs[guarded].Health_Max=300
+    g.immortal.red=true
+    g.members={{actor=guarded,team='red'}}
+    local held=g.new({killOnLock=function()return true end})
+    held:tick()
+    assert(held:status().kills==0 and not g.all():find('打死（卡面设置）',1,true),g.all())
+end
 -- Out of reach by design, a minion, or off the lock again: not ended.
 do
     local h=harness()

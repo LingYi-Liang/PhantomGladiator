@@ -9,7 +9,7 @@ const state = {
   submittedSelection: "", selectionJob: null, selectionError: "", selectionSending: false,
   commandChain: Promise.resolve(), keyJob: null, diskSummary: null, trialPolicy: '',unitKeyServer:false,unitKeyRevision:'',unitKeyEvent:'',teamRevision:'',
 };
-const actions = {spawn:"召唤单位",select_unit:"同步快捷键选择",start:"开始交战",stop:"停止并清理",clear_neutral:"清理未配队单位",refresh_catalog:"扫描游戏目录",configure_keys:"修改快捷键",configure_unit_key:"设置单位快捷键",toggle_spectator:"单独切换无仇恨",toggle_stat_match:"切换数值统一",toggle_camera:"自由观战（无仇恨＋隐身＋无敌锁血）",exit_camera:"退出观战并恢复",cycle_team:"切换队伍",recall_companions:"召回随从",dismiss_companions:"解散随从",toggle_time_stop:"时停",set_free_camera:"自由视角设置"};
+const actions = {spawn:"召唤单位",select_unit:"同步快捷键选择",start:"开始交战",stop:"停止并清理",clear_neutral:"清理未配队单位",refresh_catalog:"扫描游戏目录",configure_keys:"修改快捷键",configure_unit_key:"设置单位快捷键",toggle_spectator:"单独切换无仇恨",toggle_stat_match:"切换数值统一",toggle_camera:"自由观战（无仇恨＋隐身＋无敌锁血）",exit_camera:"退出观战并恢复",cycle_team:"切换队伍",recall_companions:"召回随从",dismiss_companions:"解散随从",toggle_track:"镜头跟踪开关",track_pick:"镜头锁定屏幕中央的单位",track_next:"镜头跟踪下一个单位",set_camera_track:"保存镜头跟踪设置",toggle_time_stop:"时停",set_free_camera:"自由视角设置"};
 const labels = {queued:"等待发送",pending:"等待游戏回执",succeeded:"已完成",failed:"失败",uncertain:"结果未确认"};
 const yieldUI = () => new Promise(resolve => setTimeout(resolve, 0));
 function element(tag, cls, text) { const node=document.createElement(tag); if(cls)node.className=cls; if(text!==undefined)node.textContent=String(text); return node; }

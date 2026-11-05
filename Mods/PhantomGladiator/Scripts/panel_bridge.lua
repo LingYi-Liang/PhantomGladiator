@@ -15,7 +15,8 @@ local JOURNAL, COMPACT = "command-journal.tsv", "command-journal.compact.tsv"
 -- and each Lua state dropped a random few (the battle clock, fun_supported, current_count...).
 local MAX_STATUS = 256
 local MAX_COUNT = 100   -- units per summon, as arena_controller.lua MAX_BATCH
-local ACTIONS = { spawn = true, start = true, stop = true, refresh_catalog = true,
+local ACTIONS = { spawn = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
+    toggle_track = true, track_pick = true, track_next = true, set_camera_track = true,
     configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
     toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_ai_params=true,set_spawn_level=true }
 local ACK_STATUS = { ok = true, error = true, uncertain = true }
@@ -69,9 +70,9 @@ local function parseInbox(content)
     local id = validID(fields[1]) and fields[1] or nil
     if #content > MAX_INBOX then return nil, "invalid payload: inbox too long", id end
     -- configure_keys: schema 2 carries eight keys in 14 columns, schema 3 ten in 16 (recall_companions and
-    -- toggle_time_stop, v0.38.2).
-    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3'))
-    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14 or 16 columns", id end
+    -- toggle_time_stop, v0.38.2), schema 4 thirteen in 19 (toggle_track, track_pick and track_next).
+    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3') or (#fields==19 and fields[19]=='4'))
+    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14, 16 or 19 columns", id end
     if not id then return nil, "invalid payload: command id", nil end
     if not ACTIONS[fields[2]] then return nil, "invalid payload: unknown action", id end
     if #fields[3] > 512 or fields[3]:find("%c") then return nil, "invalid payload: unit_id", id end
@@ -99,7 +100,8 @@ local function parseInbox(content)
     if extended then
         command.key_toggle_camera=fields[10];command.key_exit_camera=fields[11]
         command.key_cycle_team=fields[12];command.key_toggle_spectator=fields[13]
-        if #fields==16 then command.key_recall_companions=fields[14];command.key_toggle_time_stop=fields[15] end
+        if #fields>=16 then command.key_recall_companions=fields[14];command.key_toggle_time_stop=fields[15] end
+        if #fields==19 then command.key_toggle_track=fields[16];command.key_track_pick=fields[17];command.key_track_next=fields[18] end
     end
     return command,nil,id
 end

@@ -21,7 +21,7 @@ const requests=[],notices=[];let units=[];
 keys.init({available:()=>true,units:()=>units,request:async bindings=>{requests.push(bindings);return {id:1};},refresh:async()=>{},changed(){},notify:text=>notices.push(text)});
 keys.observe({available:true,bindings:empty(),errors:[]},[]);
 const rows=elements['key-fields'].children;
-assert.equal(rows.length,10);for(const row of rows)assert.equal(row.children[1].children[0].textContent,'未绑定');
+assert.equal(rows.length,13);for(const row of rows)assert.equal(row.children[1].children[0].textContent,'未绑定');
 const button=name=>rows[Object.keys(UnitShortcuts.functionNames).indexOf(name)].children[1].children[0];
 const press=(code,key=code,mods={})=>keydown({code,key,preventDefault(){},stopPropagation(){},...mods});
 button('toggle_camera').events.click();press('F6');

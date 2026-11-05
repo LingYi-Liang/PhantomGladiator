@@ -29,6 +29,14 @@ function Runtime.new(options)
         local status=options.session:status()
         if status.game_ready~=true then return status.game_ready_reason or "游戏尚未就绪" end
     end
+    -- nil once the free camera is running; otherwise why it could not be opened.
+    local function openCamera()
+        if not options.camera then return {ok=false,message='自由观战模块未加载',spawned_count=0} end
+        if options.camera:status().active then return nil end
+        local why=readyError();if why then return {ok=false,message=why,spawned_count=0} end
+        local entered=options.camera:toggle()
+        if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开',spawned_count=0} end
+    end
     self.handlers={
         spawn=function(command)
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
@@ -58,6 +66,28 @@ function Runtime.new(options)
             if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开，未时停',spawned_count=0} end
             local frozen=options.camera:freeze(true)
             return {ok=frozen.ok==true,message='已进入自由观战；'..tostring(frozen.message),spawned_count=0}
+        end,
+        -- 镜头跟踪 (camera_track.lua). Outside the free camera it opens first, like 时停; leaving the camera ends it.
+        toggle_track=function()
+            if not options.track then return {ok=false,message='镜头跟踪模块未加载',spawned_count=0} end
+            if options.track:status().on then return options.track:finish() end
+            local failed=openCamera();if failed then return failed end
+            return options.track:start()
+        end,
+        track_pick=function()
+            if not options.track then return {ok=false,message='镜头跟踪模块未加载',spawned_count=0} end
+            local failed=openCamera();if failed then return failed end
+            return options.track:pick()
+        end,
+        track_next=function()
+            if not options.track then return {ok=false,message='镜头跟踪模块未加载',spawned_count=0} end
+            local failed=openCamera();if failed then return failed end
+            return options.track:next()
+        end,
+        -- Framing upper case in key_spawn, the seconds before automatic comes back in key_start, the unit's address in unit_id.
+        set_camera_track=function(command)
+            if not options.track then return {ok=false,message='镜头跟踪模块未加载',spawned_count=0} end
+            return options.track:set((command.key_spawn or ''):lower(),command.key_start,command.unit_id)
         end,
         -- Speed, turn and smoothing as whole numbers in the key_spawn, key_start and key_stop columns.
         set_free_camera=function(command)
@@ -111,6 +141,11 @@ function Runtime.new(options)
         set_execution_camera=function(command)
             if not options.executionCamera then return {ok=false,message='处决镜头模块未加载',spawned_count=0} end
             return options.executionCamera:set(command.key_start)
+        end,
+        -- The unit in unit_id, the rule in key_spawn and its value in key_start, upper case on the wire (unit_rules.lua).
+        set_unit_rule=function(command)
+            if not options.unitRules then return {ok=false,message='单位规则模块未加载',spawned_count=0} end
+            return options.unitRules:set(command.unit_id,command.key_spawn:lower(),command.key_start:lower())
         end,
         -- ON or OFF in key_start (companion_executions.lua).
         set_companion_executions=function(command)
@@ -235,6 +270,15 @@ function Runtime.new(options)
         out.execution_camera_failures=executionCamera.failures or 0
         out.companion_executions_supported=not not options.companionExecutions
         out.companion_executions=options.companionExecutions and options.companionExecutions:status().on==true or false
+        local track=options.track and options.track:status() or nil
+        out.track_supported=track~=nil
+        if track then
+            out.track_on=track.on==true;out.track_framing=track.framing;out.track_resume=track.resume
+            out.track_target=track.target;out.track_target_class=track.target_class;out.track_other_class=track.other_class
+            out.track_targets=options.camera and options.camera:status().active and options.track:targets() or ''
+        end
+        out.unit_rules_supported=not not options.unitRules
+        out.unit_rules=options.unitRules and options.unitRules:status().text or ''
         out.clock_hud_message=clockHUD.message or ''
         -- The level a summon gets: the highest map enemy near the player at the last look (spawn_level.lua).
         local level=options.spawnLevel and options.spawnLevel:status() or {}
@@ -333,8 +377,8 @@ function Runtime.new(options)
         out.spectator_message=spectator.message
         out.spectator_read_failures=spectator.readFailures
         local functions=self.functionKeys:status()
-        -- 3: nine function keys, the ninth recall_companions (v0.38.2); configure_keys comes in 15 columns.
-        out.function_keys_schema=3;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
+        -- 4: thirteen function keys, the last three toggle_track, track_pick and track_next; configure_keys comes in 19 columns.
+        out.function_keys_schema=4;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
         return out
     end})

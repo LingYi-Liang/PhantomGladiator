@@ -350,12 +350,14 @@ test('v2 key configuration carries eight explicit bindings including unbound val
 end)
 
 test('v3 key configuration adds recall and time stop as keys nine and ten; both are plain commands too',function()
-    local fs=filesystem();local got,recalls,stops,camera={},0,0,nil
+    local fs=filesystem();local got,recalls,stops,camera,cameraTrack={},0,0,nil,nil
     local payload='keys3\tconfigure_keys\t\tblue\t1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_117_MOD_1\tUNBOUND\tUNBOUND\tUNBOUND\tVK_116_MOD_0\tVK_80_MOD_0\t3\n'
     local bridge=create(fs,nil,{handlers={
         configure_keys=function(command)got[#got+1]=command;return {ok=true,message='configured',spawned_count=0}end,
         recall_companions=function()recalls=recalls+1;return {ok=true,message='已召回 1/1 个随从到身边',spawned_count=0}end,
         toggle_time_stop=function()stops=stops+1;return {ok=true,message='已解除时停',spawned_count=0}end,
+        set_unit_rule=function(command)unitRule=command;return {ok=true,message='saved',spawned_count=0}end,
+        set_camera_track=function(command)cameraTrack=command;return {ok=true,message='saved',spawned_count=0}end,
         set_free_camera=function(command)camera=command;return {ok=true,message='saved',spawned_count=0}end}})
     deliver(fs,payload);bridge:tick()
     assert(#got==1 and got[1].schema_version==3 and got[1].key_toggle_camera=='VK_117_MOD_1')
@@ -370,8 +372,18 @@ test('v3 key configuration adds recall and time stop as keys nine and ten; both 
     deliver(fs,command('t1','toggle_time_stop',''));bridge:tick()
     assert(stops==1 and fs.files['runtime/ack.tsv']=='t1\tok\t已解除时停\t0\n')
     -- Speed, turn and smoothing travel as whole numbers in the first three key columns.
+    deliver(fs,'keys4\tconfigure_keys\t\tblue\t1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_117_MOD_1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_84_MOD_0\tVK_89_MOD_0\tVK_85_MOD_0\t4\n');bridge:tick()
+    assert(#got==2 and got[2].schema_version==4 and got[2].key_toggle_track=='VK_84_MOD_0' and got[2].key_track_pick=='VK_89_MOD_0' and got[2].key_track_next=='VK_85_MOD_0')
+    assert(got[2].key_recall_companions=='UNBOUND' and got[2].key_toggle_camera=='VK_117_MOD_1')
+    deliver(fs,command('c0','set_unit_rule','BP_Monster_MoTian','blue',1,{'LOCK','KILL','',''}));bridge:tick()
+    assert(unitRule and unitRule.unit_id=='BP_Monster_MoTian' and unitRule.key_spawn=='LOCK' and unitRule.key_start=='KILL')
     deliver(fs,command('c1','set_free_camera','','blue',1,{'1500','150','25',''}));bridge:tick()
     assert(camera and camera.key_spawn=='1500' and camera.key_start=='150' and camera.key_stop=='25')
+    deliver(fs,command('c2','set_camera_track','2147468727','blue',1,{'SHOULDER','5','',''}));bridge:tick()
+    assert(cameraTrack and cameraTrack.unit_id=='2147468727' and cameraTrack.key_spawn=='SHOULDER' and cameraTrack.key_start=='5')
+    cameraTrack=nil
+    deliver(fs,command('c3','set_camera_track','','blue',1,{'SIDE','0','',''}));bridge:tick()
+    assert(cameraTrack and cameraTrack.unit_id=='' and cameraTrack.key_start=='0')
 end)
 
 test('camera exit is a session-bound recovery action that remains available while loading',function()

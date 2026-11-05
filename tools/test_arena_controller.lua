@@ -822,4 +822,22 @@ do
     end
     assert(related,'new enemy reinforcements still receive stand damage relations')
 end
+-- In the free camera a batch works from the origin it is given (spawn_spot.lua); with none it stays on the player.
+do
+    local asked={}
+    local f = fixture({spawnOrigin=function(at,look,team,w)
+        asked[#asked+1]={at=at,look=look,team=team,world=w}
+        return {X=5000,Y=6000,Z=700},{X=0,Y=1,Z=0}
+    end})
+    assert(f.arena:spawn("/Catalog/BP_Test.BP_Test_C", "blue", 1).ok)
+    assert(#asked==1 and asked[1].at.X==0 and asked[1].at.Z==100 and asked[1].look.X==2 and asked[1].team=="blue" and asked[1].world==f.world)
+    local spot=f.transforms[1].Translation
+    assert(spot.X==5000+360 and spot.Y==6000+600 and spot.Z==750,'origin + first row, facing the origin\'s way: '..spot.X..','..spot.Y..','..spot.Z)
+    local kept = fixture({spawnOrigin=function()return nil end})
+    assert(kept.arena:spawn("/Catalog/BP_Test.BP_Test_C", "blue", 1).ok)
+    assert(kept.transforms[1].Translation.X==600,'no origin back: the player')
+    local bad = fixture({spawnOrigin=function()error('boom')end})
+    assert(bad.arena:spawn("/Catalog/BP_Test.BP_Test_C", "blue", 1).ok)
+    assert(bad.transforms[1].Translation.X==600,'a failure is no reason not to summon')
+end
 print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands)")

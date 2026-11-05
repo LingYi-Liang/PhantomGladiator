@@ -20,8 +20,8 @@
   const REPO = "https://github.com/LingYi-Liang/PhantomGladiator";
   const BILI = "https://space.bilibili.com/10010098";
   // The eight function keys backend.py accepts (BINDING_NAMES); all of them start unbound.
-  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", toggle_time_stop: "stop" };
-  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator"]], ["companion", ["recall_companions"]]];
+  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
+  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions"]]];
   const NO_KEYS = Object.fromEntries(Object.keys(KEY_ICONS).map(action => [action, null]));
   const VK_CODES = { Space: 32, Pause: 19, CapsLock: 20, NumLock: 144, ScrollLock: 145, Backquote: 192, NumpadEnter: 13, Tab: 9, Enter: 13, Backspace: 8, Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Minus: 189, Equal: 187, BracketLeft: 219, BracketRight: 221, Backslash: 220, Semicolon: 186, Quote: 222, Comma: 188, Period: 190, Slash: 191, NumpadAdd: 107, NumpadSubtract: 109, NumpadMultiply: 106, NumpadDivide: 111, NumpadDecimal: 110 };
   const VK_NAMES = { 8: "Backspace", 9: "Tab", 13: "Enter", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "←", 38: "↑", 39: "→", 40: "↓", 45: "Insert", 46: "Delete", 106: "Num*", 107: "Num+", 109: "Num-", 110: "Num.", 111: "Num/", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 219: "[", 220: "\\", 221: "]", 222: "'" };
@@ -427,6 +427,26 @@
       ${ui.settings.allUnits ? `<span class="chip chip-amber">${icon("flask")}${esc(t("filter.allUnitsOn"))}</span>` : ""}
       <span class="toolbar-end" aria-live="polite">${esc(t("grid.count", { n: shown }))}</span>`;
   }
+  // Units whose card carries a rule (set_unit_rule, unit_rules.lua). lock: a death lock with an end of its own, so not 冷荼's
+  // staged fight or 荆野's, whose lock goes when he gets off his horse. phantom: 虚化 that no NPC can break.
+  const UNIT_RULE_OF = {
+    BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
+    BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
+    BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
+  };
+  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"] };
+  const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || UNIT_RULE_VALUES[rule][0];
+  function unitRuleHTML(u) {
+    const rule = UNIT_RULE_OF[u.id];
+    if (!rule || (RT.online() && !S.unitRulesSupported)) return "";
+    const value = unitRuleValue(u.id, rule), changed = value !== UNIT_RULE_VALUES[rule][0];
+    return `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(t(`unitRule.${rule}.tip`))}">${esc(t(`unitRule.${rule}.${value}`))}</button>`;
+  }
+  function toggleUnitRule(id, rule) {
+    const [first, second] = UNIT_RULE_VALUES[rule];
+    const value = unitRuleValue(id, rule) === first ? second : first;
+    run("set_unit_rule", { payload: { unit: id, rule, value }, ok: () => { renderGrid(); return t(`unitRule.${rule}.${value}`); } });
+  }
   function cardHTML(u, q, focusable) {
     const sel = u.id === ui.selectedId, key = S.unitKeys[u.id];
     const chips = [
@@ -448,6 +468,7 @@
           ${chips ? `<span class="card-chips">${chips}</span>` : ""}
         </span>
       </button>
+      ${unitRuleHTML(u)}
       <div class="card-quick">
         <button class="quick-btn quick-blue" type="button" tabindex="-1" data-action="quick" data-team="blue" data-id="${u.id}" title="${esc(t("card.quickTitle", { n: ui.count, team: teamName("blue") }))}">${icon("plus")}${esc(teamName("blue"))}</button>
         <button class="quick-btn quick-red" type="button" tabindex="-1" data-action="quick" data-team="red" data-id="${u.id}" title="${esc(t("card.quickTitle", { n: ui.count, team: teamName("red") }))}">${icon("plus")}${esc(teamName("red"))}</button>
@@ -1193,6 +1214,7 @@
           ${camBtn}
         </div>
         ${timeStopRow()}
+        ${trackRow()}
         ${camSettingsHTML()}
         <div class="control-row${on && !phase ? " is-on" : ""}">
           <span class="control-icon">${icon("shield")}</span>
@@ -1228,6 +1250,47 @@
           <div class="control-main"><div class="control-title">${esc(t("view.timeStop"))}${on ? `<span class="chip chip-green">${esc(t("view.timeStop.active"))}</span>` : keyCap(S.keys.toggle_time_stop)}</div><div class="control-desc">${esc(desc)}</div>${keyLineHTML("toggle_time_stop")}</div>
           <button class="switch" type="button" role="switch" aria-checked="${on}" aria-busy="${busy}" data-action="time-stop" aria-label="${esc(t("view.timeStop"))}" ${usable ? "" : "disabled"}></button>
         </div>`;
+  }
+  // 镜头跟踪 (toggle_track, set_camera_track, camera_track.lua): the free camera follows a unit and keeps its opponent in the
+  // picture; outside the camera it opens first. Leaving the camera ends it.
+  const TRACK_FRAMINGS = ["side", "shoulder", "orbit"];
+  const trackUnitName = cls => { const id = (cls || "").replace(/_C$/, ""); return byId.get(id)?.name || id; };
+  function trackRow() {
+    const h = S.track, busy = ui.busy.has("toggle_track"), usable = (S.freeCam ? RT.online() : RT.ready()) && h.supported && !busy;
+    const desc = !h.supported && RT.online() ? t("fun.old")
+      : h.on ? t("view.track.on", { name: trackUnitName(h.targetClass), other: h.otherClass ? trackUnitName(h.otherClass) : t("view.track.noOther") }) : t("view.track.desc");
+    const save = usable || (h.supported && RT.online());
+    const list = h.targets.some(u => u.key === h.target) ? h.targets : [];
+    return `<div class="control-row${h.on ? " is-on" : ""}">
+          <span class="control-icon">${icon("target")}</span>
+          <div class="control-main"><div class="control-title">${esc(t("view.track"))}${h.on ? `<span class="chip chip-green">${esc(t("view.track.active"))}</span>` : keyCap(S.keys.toggle_track)}</div><div class="control-desc">${esc(desc)}</div>${keyLineHTML("toggle_track")}</div>
+          <button class="switch" type="button" role="switch" aria-checked="${h.on}" aria-busy="${busy}" data-action="track-toggle" aria-label="${esc(t("view.track"))}" ${usable ? "" : "disabled"}></button>
+        </div>
+        <details class="cam-settings track-settings"${ui.trackSettingsOpen || h.on ? " open" : ""}><summary>${icon("sliders", "icon-sm")}<span>${esc(t("view.track.title"))}</span>${icon("chevron-down", "icon-sm cam-chevron")}</summary>
+        <div class="cam-settings-body">
+          ${h.on && list.length ? `<label class="cam-setting"><span>${esc(t("view.track.target"))}</span><span></span><select class="select track-select" id="track-target" aria-label="${esc(t("view.track.target"))}">${list.map(u => `<option value="${esc(u.key)}"${u.key === h.target ? " selected" : ""}>${esc(trackUnitName(u.cls))} · ${esc(teamName(u.team))}</option>`).join("")}</select></label>` : ""}
+          <label class="cam-setting"><span>${esc(t("view.track.framing"))}</span><span></span><select class="select track-select" id="track-framing" aria-label="${esc(t("view.track.framing"))}" ${save ? "" : "disabled"}>${TRACK_FRAMINGS.map(v => `<option value="${v}"${v === h.framing ? " selected" : ""}>${esc(t("view.track.framing." + v))}</option>`).join("")}</select></label>
+          <label class="cam-setting"><span>${esc(t("view.track.resume"))}</span><output id="track-resume-value">${esc(trackResumeText(h.resume))}</output>
+            <input class="cam-range" type="range" id="track-resume" min="0" max="10" step="1" value="${h.resume}" ${save ? "" : "disabled"} aria-label="${esc(t("view.track.resume"))}"></label>
+          <div class="cam-settings-foot"><span>${esc(t("view.track.hint"))}</span></div>
+          <div class="control-key-list">${keyLineTitled("track_pick")}${keyLineTitled("track_next")}</div>
+        </div></details>`;
+  }
+  const trackResumeText = seconds => seconds ? t("view.track.resumeValue", { n: seconds }) : t("view.track.resumeOff");
+  function keyLineTitled(action) {
+    return `<div class="track-key"><span>${esc(t("keys.action." + action))}${keyCap(S.keys[action])}</span>${keyLineHTML(action)}</div>`;
+  }
+  // One command carries all three. A change made while the last one is on its way goes next instead of being dropped.
+  function saveTrack(change) {
+    ui.trackChange = { ...ui.trackChange, ...change };
+    clearTimeout(ui.trackTimer);
+    ui.trackTimer = setTimeout(sendTrack, 250);
+  }
+  function sendTrack() {
+    if (ui.busy.has("set_camera_track")) { ui.trackTimer = setTimeout(sendTrack, 250); return; }
+    const h = S.track, change = ui.trackChange;
+    ui.trackChange = null;
+    run("set_camera_track", { payload: { framing: h.framing, resume: h.resume, ...change } });
   }
   // The free camera's speed, turn and smoothing (set_free_camera); a slider saves when it is let go.
   const CAM_DEFAULTS = { speed: 900, turn: 100, smooth: 40 };
@@ -1882,6 +1945,8 @@
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_camera_track": return t("action.set_camera_track");
+      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
       default: return t("action." + job.action);
@@ -2165,6 +2230,7 @@
     "open-update": () => { closePopover(); openUpdate(); },
     "open-history": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); openHistory(); },
     "clear-queue": () => clearQueue(),
+    "track-toggle": () => run("toggle_track", { ok: j => t(/关闭/.test(j.message || "") ? "toast.track.off" : "toast.track.on") }),
     "time-stop": () => run("toggle_time_stop", { ok: j => t(/解除/.test(j.message || "") ? "toast.timeStop.off" : "toast.timeStop.on") }),
     "cam-reset": () => {
       Object.assign(S.camSettings, CAM_DEFAULTS);
@@ -2175,6 +2241,7 @@
     "dialog-dismiss": () => { if (ui.update.phase !== "installing") closeDialog(); },
     "toast-close": el => dismissToast(el.dataset.toastId),
     select: el => { selectUnit(el.dataset.id, { scroll: !!el.dataset.scroll }); },
+    "unit-rule": el => toggleUnitRule(el.dataset.id, el.dataset.rule),
     quick: el => { if (ui.selectedId !== el.dataset.id) selectUnit(el.dataset.id); if (!ui.busy.has("spawn")) summon(el.dataset.id, el.dataset.team, ui.count); },
     type: el => { ui.type = el.dataset.type; renderToolbar(); renderGrid({ animate: true }); },
     "clear-search": () => { ui.query = ""; const input = $("#search"); input.value = ""; input.focus(); renderToolbar(); renderGrid(); },
@@ -2388,7 +2455,8 @@
       document.querySelector(".dialog .stat-filter-none").hidden = any;
       return;
     }
-    if (e.target.classList?.contains("cam-range")) {
+    if (e.target.id === "track-resume") document.getElementById("track-resume-value").textContent = trackResumeText(Number(e.target.value));
+    if (e.target.classList?.contains("cam-range") && e.target.dataset.cam) {
       const out = document.getElementById("cam-" + e.target.dataset.cam + "-value");
       if (out) out.textContent = camValue(e.target.dataset.cam, Number(e.target.value));
       return;
@@ -2407,10 +2475,16 @@
     if (e.target.id === "level-custom") ui.levelCustom = e.target.value;
     if (e.target.id === "home-level") setHomeLevel(e.target.dataset.id, e.target.value);
     if (e.target.id === "onb-lang") { setLanguage(e.target.value); }
-    if (e.target.classList?.contains("cam-range")) saveCamSettings(camSliderValues());
+    if (e.target.classList?.contains("cam-range") && e.target.dataset.cam) saveCamSettings(camSliderValues());
+    if (e.target.id === "track-target") saveTrack({ target: e.target.value });
+    if (e.target.id === "track-framing") saveTrack({ framing: e.target.value });
+    if (e.target.id === "track-resume") saveTrack({ resume: Number(e.target.value) });
   });
   // A details element does not bubble its toggle; keep the free camera settings open across re-renders.
-  document.addEventListener("toggle", e => { if (e.target.classList?.contains("cam-settings")) ui.camSettingsOpen = e.target.open; }, true);
+  document.addEventListener("toggle", e => {
+    if (e.target.classList?.contains("track-settings")) ui.trackSettingsOpen = e.target.open;
+    else if (e.target.classList?.contains("cam-settings")) ui.camSettingsOpen = e.target.open;
+  }, true);
   const isTyping = el => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
   document.addEventListener("keydown", e => {
     if (ui.capture) {

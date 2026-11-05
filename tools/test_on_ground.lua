@@ -179,4 +179,15 @@ do -- a crowd does not use up what the log says later
     assert(h.g:free(u,nil)==true and h.all():find('解除空中冻结',1,true),h.all())
 end
 
+do -- over a drop, a spot moves toward the middle of the batch when there is one, not toward the hidden body
+    local h=harness()
+    local anchored=Ground.new({log=function()end,location=function()return {X=9000,Y=9000,Z=100} end,player=function()return h.world end,
+        anchor=function()return {X=0,Y=0,Z=100} end,label=function()return 'unit' end,name=function(s)return s end,
+        ground=function(_,x)return x==300 and 90 or nil end})
+    local u=h.unit(96)
+    local t={Translation={X=400,Y=0,Z=150}}
+    local placed=anchored:place(u,t,h.world)
+    assert(placed and placed.closer==0.75 and t.Translation.X==300 and t.Translation.Y==0,'moved along the line to the anchor')
+end
+
 print('on_ground: PASS')

@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.2-game-26367565"
+local BUILD = "v0.40.3-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -145,6 +145,7 @@ local onGround
 local arenaExecutions
 local executionCamera
 local mounts
+local arenaSupport={}
 local bossStages
 local BeginArenaObservation
 local spawnAudit=SpawnAudit.new(Config.RuntimePath.."/spawn-attempts.tsv",log)
@@ -318,6 +319,8 @@ local function AddHatred(attacker, victim)
             ownB=ownB or actor:GetAddress()==victim:GetAddress()
         end
     end
+    -- A rider's mount carries the fight for its rider (mounts.lua).
+    if mounts and mounts:holds(attacker) then ownA=true end
     if not has and ownA and ownB then
         local wrote=pcall(function()
             checked(hm); checked(victim)
@@ -555,6 +558,11 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     if route=='npc' and spawnLevel then
         local leveled,levelError=pcall(function()spawnLevel:prepare(pawn,objectName(pawn),leader)end)
         if not leveled then log('[SpawnLevel] 出生前失败: '..tostring(levelError)) end
+    end
+    -- A spot behind a wall comes back to this side of it (spawn_spot.lua).
+    if route=='npc' and arenaSupport.spawnSpot then
+        local cleared,clearError=pcall(function()arenaSupport.spawnSpot:clear(world,t)end)
+        if not cleared then log('[SpawnSpot] 查墙失败: '..tostring(clearError)) end
     end
     -- A summon starts on the ground, not over it (on_ground.lua).
     local placedOnGround=route=='npc' and onGround and onGround:place(pawn,t,world) or nil
@@ -1168,7 +1176,8 @@ end
 
 local observerGuard=ObserverGuard.new({log=log,getSpectator=function()return spectator end})
 local freeCamera=FreeCamera.new({path=Config.RuntimePath,log=log,getController=GetRealPlayerController,guard=observerGuard,
-    getWorld=UEHelpers.GetWorld,moveSpeed=Config.FreeCamera.MoveSpeed,mouseSensitivity=Config.FreeCamera.MouseSensitivity})
+    getWorld=UEHelpers.GetWorld,moveSpeed=Config.FreeCamera.MoveSpeed,mouseSensitivity=Config.FreeCamera.MouseSensitivity,
+    track=function()return arenaSupport.track end})
 -- Real seconds less the time 时停 held the game: timers about units that cannot move meanwhile (a companion stuck
 -- for 6 s is teleported) wait while it lasts.
 local frozenSince,frozenTotal=nil,0
@@ -1416,7 +1425,14 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         end
         return activationRequested==true and ai~=nil and type(hp)=="number" and hp>0,"仅确认初始化调用、AI组件和正HP；行为待验收"
     end,
-    setRelation=SetFactionRelation,forceAttack=ForceAttack,
+    spawnOrigin=function(body,look,team,world)return arenaSupport.spawnSpot:origin(body,look,team,world) end,
+    setRelation=SetFactionRelation,
+    forceAttack=function(attacker,victim)
+        local sent=ForceAttack(attacker,victim)
+        if mounts then mounts:fight(attacker,victim) end
+        return sent
+    end,
+    holdMount=function(rider,target)if mounts then mounts:hold(rider,target) end end,
     -- Whether the unit's AI state is combat (AI.State.Combat; Idle and Search are not), and its state name.
     inCombat=function(actor)
         local sg=GetAIComp(actor)
@@ -1427,18 +1443,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     -- Sends a unit that left combat back at its opponent: hatred entry and ForceIntoCombat. The faction
     -- relation and blackboard target written by ForceAttack at the start still hold.
-    engage=function(attacker,victim)
-        local sg=GetAIComp(attacker)
-        if not sg or not safeValid(victim) then return false,'AI组件或目标无效' end
-        local hm=GetHatredComp(attacker)
-        local hatred='?';pcall(function()hatred=#hm.HatredList end)
-        AddHatred(attacker,victim)
-        local ok=pcall(function()sg:ForceIntoCombat(victim)end)
-        local state='?';pcall(function()state=FNameToString(sg.CurrentStateTag.TagName)end)
-        local a,b=GetLocation(attacker),GetLocation(victim)
-        local d=a and b and math.sqrt(DistSq(a,b))/100
-        return ok,state,'迎敌前仇恨数='..tostring(hatred)..' 距目标='..(d and string.format('%.1fm',d) or '?')
-    end,
+    engage=function(attacker,victim)return arenaSupport:engage(attacker,victim)end,
     prepareBattle=function(members)return arenaGrabs:sync(Config.EnableNPCGrabs and members or {},true,true) end,
     destroy=function(actor)
         checked(actor); actor:K2_DestroyActor()
@@ -1497,7 +1502,6 @@ bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=UEHelpers.Ge
     codexPath=Config.RuntimePath..'/codex.tsv',log=log})
 -- Companions show the game's own health bar above their heads, as enemies do (companion_bars.lua).
 local companionBars=Config.ShowCompanionHealthBars and CompanionBars.new({log=log,hp=GetHP,maxHP=GetMaxHP}) or nil
-local arenaSupport={}
 -- One copy of the arena's members and status per support tick: a dozen modules ask for them, and each
 -- call re-checks every unit with the engine (50 units made the support tick take 20-50 ms in v0.37.2).
 -- Outside a tick the arena is asked directly.
@@ -1547,7 +1551,15 @@ spawnLevel=SpawnLevel.new({log=log,path=Config.RuntimePath,getPlayer=GetPlayerPa
 -- Riders: an empty spawner of the mod's where they are summoned, their mount found and cleared with them (mounts.lua).
 mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,
     findClass=function(path)return StaticFindObject(path)end,statics=GetGameplayStatics,
-    findAll=function(name)return FindAllOf(name)end,
+    findAll=function(name)return FindAllOf(name)end,hp=GetHP,attack=ForceAttack,
+    inCombat=function(actor)
+        local sg=GetAIComp(actor)
+        if not sg then return nil end
+        local ok,tag=pcall(function()return FNameToString(sg.CurrentStateTag.TagName)end)
+        if not ok or type(tag)~='string' then return nil end
+        return tag:find('Combat',1,true)~=nil,tag
+    end,
+    engage=function(attacker,victim)return arenaSupport:engage(attacker,victim)end,
     destroy=function(actor)checked(actor);actor:K2_DestroyActor()end}) or nil
 -- The ground under a spot: a visibility trace from 3 m over the summon height down 30 m; nil when it hits nothing.
 -- The first few misses are logged with what the trace returned.
@@ -1603,7 +1615,59 @@ local function GroundZ(world,x,y,z,up)
     return nil,(type(distance)=='number' and distance<=0) and 'inside' or nil
 end
 onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,label=objectName,player=GetPlayerPawn,world=function()return UEHelpers.GetWorld()end,
+    anchor=function()return arenaSupport.spawnSpot and arenaSupport.spawnSpot:anchor() end,
     name=function(text)return FName(text)end})
+-- A straight line through the world: where it hits and which way that surface faces, for the summon spot and the view.
+-- Starting inside something solid reads as Distance 0.
+function arenaSupport:traceLine(world,from,to)
+    local lib=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
+    if not safeValid(lib) or not safeValid(world) then return nil end
+    local out,none={},{R=0,G=0,B=0,A=0}
+    local ok,hit=pcall(function()return lib:LineTraceSingle(world,from,to,0,false,{},0,out,true,none,none,0)end)
+    if not ok or hit~=true then return nil end
+    local distance=UEObserve.unwrap(out.Distance)
+    if type(distance)=='number' and distance<=0 then return {inside=true} end
+    local got,at=pcall(function()
+        local point=out.ImpactPoint
+        return {X=point.X,Y=point.Y,Z=point.Z}
+    end)
+    if not got or type(at.X)~='number' or type(at.Y)~='number' or type(at.Z)~='number' then
+        local time=UEObserve.unwrap(out.Time)
+        if type(time)~='number' then return nil end
+        at={X=from.X+(to.X-from.X)*time,Y=from.Y+(to.Y-from.Y)*time,Z=from.Z+(to.Z-from.Z)*time}
+    end
+    local okNormal,normal=pcall(function()
+        local face=out.ImpactNormal
+        return {X=face.X,Y=face.Y,Z=face.Z}
+    end)
+    -- A skeleton answers with the bone it was hit on; a wall, the ground or a capsule with None.
+    local okBone,bone=pcall(function()return out.BoneName:ToString() end)
+    return {at=at,normal=okNormal and normal or nil,distance=distance,bone=okBone and type(bone)=='string' and bone~='None' and bone~='' and bone or nil}
+end
+arenaSupport.spawnSpot=require('spawn_spot').new({log=log,ground=GroundZ,view=function()return freeCamera:view() end,
+    trace=function(world,from,to)return arenaSupport:traceLine(world,from,to) end})
+-- 镜头跟踪: the free camera follows a unit and keeps its opponent in the picture (camera_track.lua).
+arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,members=ArenaMembers,hp=GetHP,location=GetLocation,player=GetPlayerPawn,
+    view=function()return freeCamera:view() end,fov=function()return freeCamera:fieldOfView() end,
+    trace=function(world,from,to)return arenaSupport:traceLine(world,from,to) end,
+    isBoss=function(actor)
+        local asc=UEObserve.field(actor,'AbilitySystemComponent')
+        if not safeValid(asc) then return false end
+        local ok,count=pcall(function()return asc:GetGameplayTagCount({TagName=FName('CharacterType.AI.Boss')})end)
+        count=ok and UEObserve.unwrap(count) or 0
+        return type(count)=='number' and count>0
+    end,
+    -- The arena's opponent for blue and red; a companion or a unit with no team: whoever its AI is after, unless that is the player.
+    opponentOf=function(actor)
+        local who=arena:opponentOf(UEObserve.key(actor))
+        if safeValid(who) then return who end
+        local board=UEObserve.field(GetAIComp(actor),'BlackboardComponent')
+        if not safeValid(board) then return nil end
+        local ok,value=pcall(function()return board:GetValueAsObject(FName('TargetActor'))end)
+        value=ok and UEObserve.unwrap(value) or nil
+        local player=GetPlayerPawn()
+        if safeValid(value) and not (safeValid(player) and value:GetAddress()==player:GetAddress()) then return value end
+    end})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
     onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
@@ -1628,6 +1692,20 @@ bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDest
     destroy=function(actor)checked(actor);actor:K2_DestroyActor()end})
 local grabStudy=Config.EnableGrabStudy and GrabStudy.new({path=Config.RuntimePath,log=log,ready=function()return runtimeSession:status().game_ready==true end}) or nil
 arenaGrabs=ArenaGrabs.new({path=Config.RuntimePath,log=log,hp=GetHP,ready=function()return runtimeSession:status().game_ready==true end})
+-- Sends a unit that left combat back at its opponent: hatred entry and ForceIntoCombat. The faction
+-- relation and blackboard target written by ForceAttack at the start still hold.
+function arenaSupport:engage(attacker,victim)
+    local sg=GetAIComp(attacker)
+    if not sg or not safeValid(victim) then return false,'AI组件或目标无效' end
+    local hm=GetHatredComp(attacker)
+    local hatred='?';pcall(function()hatred=#hm.HatredList end)
+    AddHatred(attacker,victim)
+    local ok=pcall(function()sg:ForceIntoCombat(victim)end)
+    local state='?';pcall(function()state=FNameToString(sg.CurrentStateTag.TagName)end)
+    local a,b=GetLocation(attacker),GetLocation(victim)
+    local d=a and b and math.sqrt(DistSq(a,b))/100
+    return ok,state,'迎敌前仇恨数='..tostring(hatred)..' 距目标='..(d and string.format('%.1fm',d) or '?')
+end
 function arenaSupport:discover()
     for _,link in ipairs(summonLinks:scan(ArenaMembers(),function(ability)self.summonKeep:passive(ability)end)) do
         local result=arena:adoptSummon(link.actor,link.parent,link.class_path,link.evidence)
@@ -1667,9 +1745,10 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
     clock=function()local s=ArenaStatus();return s.battle_clock,s.battle_seconds end})
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
-combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,
+combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,hp=GetHP,label=objectName,
+    hates=HatredListContains,vehicles=function(members)return mounts and mounts:vehicles(members) or {} end,
     -- Called inside the game's transition; the send-back runs on the next game-thread tick instead.
-    onDropped=function(key)ExecuteInGameThread(function()arena:reengage(key)end)end,
+    onDropped=function(key)ExecuteInGameThread(function()if not (mounts and mounts:dropped(key)) then arena:reengage(key) end end)end,
     onSensed=function(key)ExecuteInGameThread(function()arena:holdSensed(key)end)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 -- 招式锁玩家（二）: while a fight runs, a skill of a blue or red unit that asks GameplayStatics for the player gets the
@@ -1710,8 +1789,18 @@ aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=Arena
 executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,
     getWorld=UEHelpers.GetWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
+-- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
+arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
+arenaSupport.phantom=require('phantom_break').new({log=log,members=ArenaMembers,rule=function(actor)return arenaSupport.unitRules:get(actor,'phantom') end})
+-- Read only: what a monster's grab did to the unit it hit (grab_probe.lua).
+arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log=log,members=ArenaMembers,location=GetLocation,
+    isPlayer=function(actor)
+        local player=GetPlayerPawn()
+        return safeValid(player) and safeValid(actor) and player:GetAddress()==actor:GetAddress()
+    end}) or nil
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
     companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
+    killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
@@ -1738,6 +1827,8 @@ local function supportSteps(self)
     if codexArt then step('codexArt',function()codexArt:tick()end) end
     if codexIcons then step('codexIcons',function()codexIcons:tick()end) end
     step('summonKeep',function()self.summonKeep:tick()end)
+    step('phantom',function()self.phantom:tick()end)
+    if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
@@ -1812,7 +1903,7 @@ RegisterKeyBind(Key.F9,{ModifierKey.SHIFT},function()
 end)
 end
 panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,
-    build=BUILD,log=log,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
+    build=BUILD,log=log,unitRules=arenaSupport.unitRules,track=arenaSupport.track,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
     router=keyRouter,camera={status=function()return {active=freeCamera:isActive(),pending=freeCamera:hasPending(),
             frozen=freeCamera:isFrozen(),settings=freeCamera:settings()}end,
         toggle=ToggleFreeCam,exit=ForceExitFreeCam,
@@ -1841,6 +1932,7 @@ if ModRef then
         combatLock:silence('Mod卸载')
         arenaSupport.stands:silence()
         arenaSupport.summonKeep:silence()
+        if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
         aiParams:silence()
         bossCombos:silence()

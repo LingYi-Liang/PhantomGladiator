@@ -917,6 +917,31 @@ function Exec.new(options)
             end
         end
     end
+    -- 打到死 (a unit's card, unit_rules.lua): a unit on its death lock dies there, without waiting for anyone. Any team: the
+    -- same lock stops the player and the companions. The way a level script ends it (SpawnerToDieNS): the lock off, GE_Kill.
+    local function endLocks(members)
+        if not options.killOnLock then return end
+        for _,member in ipairs(members)do
+            local target=member.actor
+            local key=U.key(target)
+            if key and not member.stand and options.killOnLock(target) and not (options.isImmortal and options.isImmortal(member.team)) then
+                local unit=units[key]
+                if not unit then unit=inspect(target);units[key]=unit end
+                local hp=read(target,'Health')
+                if unit.state~='done' and hp and hp>0 and onLock(target,unit,hp)
+                    and (read(target,'Health_Min') or 0)<=DEATH_LOCK*(read(target,'Health_Max') or 0)+1 then
+                    local asc,removed,after=unlock(target,unit)
+                    local ge=object(GE_KILL)
+                    local applied,err=false,'没有 GE_Kill'
+                    if ge then applied,err=call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{}) end
+                    if applied then self.kills=self.kills+1 end
+                    unit.state='done'
+                    say(string.format('到锁血线直接打死（卡面设置）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',className(target),table.concat(removed,' '),
+                        fmt(after),tostring(applied),applied and '' or '('..tostring(err)..')',fmt(read(target,'Health'))))
+                end
+            end
+        end
+    end
     function self:tick()
         local members=options.members() or {}
         local present={}
@@ -939,6 +964,7 @@ function Exec.new(options)
         if next(pendingBodies) then self.message='面部附着恢复待重试，请停止/清场';return end
         if active then watch();return end
         local t=now()
+        endLocks(members)
         if options.fighting and not options.fighting() then considerFoes(foes,t);return end
         for _,member in ipairs(members) do
             local target=member.actor
