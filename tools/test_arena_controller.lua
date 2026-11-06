@@ -112,6 +112,19 @@ local pet={alive=true,name='summon',hp=100}
 assert(not summons.arena:adoptSummon(pet,{alive=true},'/Catalog/BP_Pet.BP_Pet_C','fixture').ok,'unowned summoner must never claim a map actor')
 assert(summons.arena:adoptSummon(pet,summons.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture').ok)
 assert(summons.arena:status().blue_count==2 and summons.arena:status().summon_count==1)
+-- Its side's numbers go on a summon once, when it joins; a refusal costs the numbers, not the summon.
+do
+    local told={}
+    local tagged=fixture({summonAdopted=function(actor,path,team)told[#told+1]={actor,path,team};if actor.refuse then error('fixture refused') end end})
+    assert(tagged.arena:spawn('/Catalog/BP_Owner.BP_Owner_C','red',1).ok)
+    local minion={alive=true,name='minion',hp=100}
+    assert(tagged.arena:adoptSummon(minion,tagged.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture').ok)
+    assert(#told==1 and told[1][1]==minion and told[1][2]=='/Catalog/BP_Pet.BP_Pet_C' and told[1][3]=='red')
+    assert(tagged.arena:adoptSummon(minion,tagged.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture').existing and #told==1,'not again for one it already has')
+    local stubborn={alive=true,name='stubborn',hp=100,refuse=true}
+    assert(tagged.arena:adoptSummon(stubborn,tagged.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture').ok and #told==2)
+    assert(tagged.arena:status().summon_count==2)
+end
 local attacks=stageCount(summons,'attack')
 summons.arena:tickReinforcements()
 assert(stageCount(summons,'attack')==attacks+1,'new summon should be directed at the opposing team')

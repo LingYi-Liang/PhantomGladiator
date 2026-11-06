@@ -92,7 +92,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.4-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.5-game-26367565',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -119,11 +119,20 @@ assert(arenaOptions.activate(npc,known)==false,'unverified rollback still requir
 local whose={}
 statMatchInstance.onSpawn=function()whose[#whose+1]='arena';return {ok=true}end
 companionStatsInstance.onSpawn=function(_,actor,path)assert(actor==npc and path==known);whose[#whose+1]='companion';return {ok=true}end
+statMatchInstance.onSummon=function(_,actor,path)assert(actor==npc and path==known);whose[#whose+1]='arena-brought';return {ok=true}end
+companionStatsInstance.onSummon=function(_,actor,path)assert(actor==npc and path==known);whose[#whose+1]='companion-brought';return {ok=true}end
 arenaOptions.activate(npc,known,'blue')
 arenaOptions.activate(npc,known,'companion')
 arenaOptions.activate(npc,known,'companion',true)
 arenaOptions.activate(npc,known,'red',true)
-assert(table.concat(whose,',')=='arena,companion',table.concat(whose,','))
+assert(table.concat(whose,',')=='arena,companion,companion-brought,arena-brought',table.concat(whose,','))
+-- What a unit summons in a fight takes the set of its side.
+whose={}
+arenaOptions.summonAdopted(npc,known,'companion')
+arenaOptions.summonAdopted(npc,known,'blue')
+arenaOptions.summonAdopted(npc,known,'red')
+arenaOptions.summonAdopted(npc,known,'neutral')
+assert(table.concat(whose,',')=='companion-brought,arena-brought,arena-brought,arena-brought',table.concat(whose,','))
 -- A companion whose numbers the game refused is treated like an arena unit's: rolled back it stays and fights.
 companionStatsInstance.onSpawn=function()return {ok=false,rollback_verified=true,message='fixture'}end
 local stays,_,why=arenaOptions.activate(npc,known,'companion')

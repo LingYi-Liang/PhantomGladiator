@@ -304,6 +304,11 @@ function Arena.new(options)
         if not owner then return {ok=false,message='召唤者不在本擂台，未接管单位'} end
         units[#units+1]={actor=actor,team=owner.team,class_path=classPath,slot=next_slot(owner.team),summoner=owner.actor,needsJoin=true}
         local synced=notify_units()
+        -- The numbers the player set for this side go on what its units summon too.
+        if options.summonAdopted then
+            local wrote,why=invoke('summonAdopted',actor,classPath,owner.team)
+            if not wrote then log('召唤物数值未写入：'..tostring(why)) end
+        end
         log('接管原生召唤物：team='..owner.team..' parent='..actor_name(owner.actor)..' child='..actor_name(actor)..'；归属证据='..tostring(evidence)..'；登记读回='..tostring(synced))
         return {ok=synced,adopted=true}
     end

@@ -9,6 +9,8 @@
 -- rest stay. Never follows damage or heals on a tick.
 -- A second set (options.settings, options.request, options.tag, options.customOnly) holds the companions' own
 -- numbers in files of its own: only game or custom, since they never copy a first unit.
+-- What a unit brings in (its summons, its escorts) takes custom values too, through onSummon: they stay out of the counts and
+-- warnings the app shows, and out of matching, which is between the units the player summons.
 -- Damage comes from the level-1 values (character_stats.lua Stats.levelOne), so matching copies those too,
 -- and a custom HP, Sha-Chi, attack or Sha-Chi damage scales its level-1 value by the same ratio unless the
 -- player set that one as well.
@@ -25,6 +27,7 @@ local BOUND={Health='Health_Max',Shachi='Shachi_Max',Shield='Shield_Max',Ultimat
 local CORE={'Health_Max','Shachi_Max','Attack','ShachiAttack'}
 local MODES={GAME='game',MATCH='match',CUSTOM='custom'}
 local LABEL={Health_Max='血量上限',Shachi_Max='杀气上限',Attack='攻击',ShachiAttack='削杀气'}
+local SUMMON_LINES=30  -- log lines per setting; a unit that keeps summoning leaves the rest of the log readable
 Match.core=CORE
 
 function Match.new(options)
@@ -50,7 +53,7 @@ function Match.new(options)
         if field=='Health_Min' or field=='Shachi_Min' then return 4 end
         return bound[field] and 5 or 3
     end
-    local self={mode='game',custom={},enabled=false,baseline=nil,matched=0,customized=0,failures=0,owned=0,
+    local self={mode='game',custom={},enabled=false,baseline=nil,matched=0,customized=0,failures=0,summons=0,owned=0,
         rejected={},message='按游戏数值'}
     local function readFile(path)
         local f=fs.open(path,'r');if not f then return nil end
@@ -97,7 +100,7 @@ function Match.new(options)
         return #parts>0 and table.concat(parts,'、') or '无'
     end
     local function reset(reason)
-        self.baseline=nil;self.matched=0;self.customized=0;self.failures=0;self.rejected={}
+        self.baseline=nil;self.matched=0;self.customized=0;self.failures=0;self.summons=0;self.rejected={}
         self.message=self.mode=='match' and ('等待首只可用战斗单位作为基准；'..reason)
             or self.mode=='custom' and ('自定义数值：'..describe(self.custom)..'；只影响之后的召唤')
             or '按游戏数值；只影响之后的召唤'
@@ -237,7 +240,8 @@ function Match.new(options)
     -- Maxima, then the other fields, then the minimums, then current values. Each field is written, read back
     -- (field and native getter), and rolled back on its own if the game does not take it; a rolled-back
     -- maximum restores its current value as well.
-    local function applyCustom(actor,unitPath)
+    local function applyCustom(actor,unitPath,summon)
+        local quiet=summon and self.summons>SUMMON_LINES
         local targets,ordered,linked={},{},{}
         -- A custom value moves its level-1 value by the same ratio, so the unit takes and deals hits to match.
         for _,field in ipairs(customFields)do
@@ -291,10 +295,18 @@ function Match.new(options)
                 reject(field,'写入后读回='..tostring(actual and actual.current)..' 原生='..tostring(native));undo(field)
             end
         end
-        self.rejected={};for _,item in ipairs(rejected)do self.rejected[#self.rejected+1]=item.field end
-        for _,item in ipairs(rejected)do
+        if not summon then self.rejected={};for _,item in ipairs(rejected)do self.rejected[#self.rejected+1]=item.field end end
+        for _,item in ipairs(quiet and {} or rejected)do
             log(tag..' 自定义未生效 '..item.field..' 目标='..string.format('%.10g',targets[item.field])
                 ..' 方式='..(adapter.via and adapter:via(item.field) or '?')..' 原因='..item.reason..' unit='..tostring(unitPath))
+        end
+        if summon then
+            if not quiet then
+                log(tag..' 召唤物或随行单位 自定义应用并读回 unit='..tostring(unitPath)..' verified='..#verified..'/'..#ordered..' rejected='..#rejected
+                    ..' 回滚读回='..tostring(restored)..' '..describe(self.custom)..(#linked>0 and (' 联动1级值：'..table.concat(linked,'、')) or '')
+                    ..(self.summons==SUMMON_LINES and '；这个设定下之后的不再逐条记录' or ''))
+            end
+            return {ok=#verified>0,applied=#verified>0,rejected=rejected}
         end
         if #verified==0 then
             self.failures=self.failures+1
@@ -345,6 +357,12 @@ function Match.new(options)
             ..' HP='..targets.Health..' Shachi='..targets.Shachi..' Attack='..targets.Attack..' ShachiAttack='..targets.ShachiAttack
             ..' 1级值 HP='..tostring(targets.Health_Max_Lv1)..' Attack='..tostring(targets.Attack_Lv1))
         return {ok=true,applied=true,message=self.message}
+    end
+    -- A unit that comes with another or that one summons: the custom values if there are any, nothing else.
+    function self:onSummon(actor,unitPath)
+        if self.mode~='custom' or next(self.custom)==nil then return {ok=true,message='不写入'} end
+        self.summons=self.summons+1
+        return applyCustom(actor,unitPath,true)
     end
     function self:status()
         local values=self.baseline and self.baseline.values or {}

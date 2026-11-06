@@ -209,6 +209,39 @@ test('a second set keeps its own files, takes no matching and leaves the first a
     local writes=#h.writes
     assert(companions:onSpawn(h:actor(100,80,20),'D').ok and #h.writes==writes)
 end)
+test('what a unit brings in takes custom values only, and stays out of the counts the app shows',function()
+    local h=harness()
+    -- The game's numbers and matching leave them alone; no baseline comes from them.
+    local pet=h:actor(100,80,20)
+    assert(h.match:onSummon(pet,'Pet').ok and #h.writes==0)
+    assert(h.match:toggle().ok and h.match:onSummon(pet,'Pet').ok and #h.writes==0 and h.match:status().baseline_unit=='')
+    assert(h.match:toggle().ok)
+    h.files['memory/stat-custom-request.tsv']='StatCustomV1\tR1\nAttack\t40\nHealth_Max\t500\nResistance_Physical\t0.5\n'
+    assert(h.match:setMode('CUSTOM','R1').ok)
+    local before=h.match:status().message
+    local result=h.match:onSummon(pet,'Pet')
+    assert(result.ok and result.applied and pet.values.Attack.current==40 and pet.values.Health_Max.current==500)
+    assert(pet.values.Attack_Lv1.current==20,'the level-1 value moves by the same ratio, so its hits change too')
+    assert(pet.values.Health.current==500,'a new maximum comes with a full bar')
+    local s=h.match:status()
+    assert(s.customized==0 and s.failures==0 and s.message==before,'the card keeps talking about the units the player summoned')
+    assert(table.concat(h.logs,'\n'):find('[StatMatch] 召唤物或随行单位 自定义应用并读回 unit=Pet verified=',1,true),table.concat(h.logs,'\n'))
+    -- A field the game refuses on it is named in the log, not in the card; the unit keeps its own value for that field.
+    local odd=h:actor(100,80,20);odd.values.Resistance_Physical=nil
+    local partly=h.match:onSummon(odd,'Odd')
+    assert(partly.ok and odd.values.Attack.current==40 and #h.match:status().rejected==0)
+    assert(table.concat(h.logs,'\n'):find('自定义未生效 Resistance_Physical',1,true))
+    -- Nothing it can take: reported to the caller, no failure on the card.
+    local empty={values={},mods={}}
+    local none=h.match:onSummon(empty,'Empty')
+    assert(not none.ok and h.match:status().failures==0)
+    -- A unit that keeps summoning does not fill the log; the counter starts over with new settings.
+    local lines=#h.logs
+    for i=1,60 do h.match:onSummon(h:actor(100,80,20),'Many'..i) end
+    assert(#h.logs-lines<=30,'log lines '..(#h.logs-lines))
+    assert(table.concat(h.logs,'\n'):find('之后的不再逐条记录',1,true))
+    assert(h.match:setMode('CUSTOM','R1').ok and h.match.summons==0)
+end)
 test('the v1 switch file still reads as matching',function()
     local h=harness();h.files['memory/stat-match-settings.tsv']='StatMatchV1\t1\n'
     assert(Match.new(h.options):status().mode=='match')
