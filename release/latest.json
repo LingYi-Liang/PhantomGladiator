@@ -1,152 +1,146 @@
 {
-  "version": "0.40.4",
-  "date": "2026-11-06T22:47:40+08:00",
-  "size": 21027632,
-  "sha256": "e02ab6d66dfc3a49636b9fabe1fe2dc6121e73baeb3f463cb76663bb09711820",
+  "version": "0.40.5",
+  "date": "2026-11-06T23:43:58+08:00",
+  "size": 21029606,
+  "sha256": "7d6d52a110a2ac4f33b5e7d22d9ff0a64f59985e3670efd46c3210f5f646f5ee",
   "notes": {
     "zh": [
-      "修复自由观战时周围的地图怪消失：v0.40.3 关掉了玩家身体的全部碰撞，游戏因此认为玩家离开了刷怪区域，把这一带的怪移除，退出观战又重新刷出来。现在身体只是不挡单位、不被推开，玩家仍然算在区域里，怪不会再消失",
-      "新功能「随从数值」：在随从卡片里选「自定义」，可以单独改随从的血量、杀气、攻击、削杀气等全部属性。只影响之后召唤的随从，和蓝方、红方的数值设定分开",
-      "修复数值统一开着时，选随从队还提示「对齐第一只」（随从不参与统一）；修复在召唤等级框里打字后，应用自定义数值可能报错",
-      "上面这些都还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.3",
+      "自定义数值现在也写给单位叫出来的单位和随行单位：比如随从沐小葵的攻击填 50，她叫出来的玉妖、铁鬼也是 50。蓝方、红方和随从都一样。填了的每一项都相同，血量填 10 万，叫出来的小怪也是 10 万",
+      "数值统一（统一成第一只）没有变，还是只统一你亲手召唤的单位",
+      "这项改动还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.4",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Fixed map enemies disappearing around you in the free camera: v0.40.3 turned off all of your body's collision, so the game took it as you leaving the spawn area, removed the enemies there, and spawned them again when you exited. Now your body only stops blocking units and being pushed; you still count as inside the area, so the enemies stay",
-      "New Companion stats: choose Custom on the Companion card to set HP, Sha-Chi, attack, Sha-Chi damage and every other stat for companions alone. It applies to companions summoned afterwards and is separate from the stats for Blue and Red",
-      "Fixed choosing the companion team still saying it would match the first unit while equal stats was on (companions don't take part); fixed applying custom stats sometimes failing after typing in the summon level box",
-      "None of this has been tested in game yet. If something goes wrong, you can roll back to v0.40.3 from the release history",
+      "Custom stats now also go on the units a unit calls in and on its escorts: set a companion Mu Xiaokui's attack to 50 and the Yu Yao and Tie Gui she calls in have 50 too. Blue, Red and companions all work this way. Every filled field is the same value: with 100,000 HP, minions it calls in have 100,000 HP as well",
+      "Equal stats has not changed: it still only matches the units you summon yourself",
+      "This change has not been tested in game yet. If something goes wrong, you can roll back to v0.40.4 from the release history",
       "This version updates the mod in the game. Please follow the prompt in the app"
     ],
     "ja": [
-      "フリーカメラ中に周囲のマップの敵が消える問題を修正：v0.40.3 ではプレイヤーの体のコリジョンをすべて切っていたため、ゲームがプレイヤーは出現エリアを出たと判断して周囲の敵を消し、カメラを終了すると出現し直していました。今回から体はユニットを止めず押されないだけになり、プレイヤーはエリア内のままなので、敵は消えません",
-      "新機能「お供のステータス」：お供カードで「カスタム」を選ぶと、体力、殺気、攻撃、殺気削りなど全ステータスをお供だけ変更できます。これから召喚するお供に適用され、青チーム・赤チームの設定とは別です",
-      "ステータス統一がオンのとき、お供チームを選んでも「最初のユニットに揃える」と表示される問題を修正（お供は統一の対象外です）。召喚レベルの欄に入力したあとカスタム値を適用するとエラーになることがある問題を修正",
-      "ここに挙げた内容はまだゲーム内でテストしていません。問題があれば更新履歴から v0.40.3 に戻せます",
+      "カスタム値が、ユニットの呼び出すユニットと随行ユニットにも適用されるようになりました。たとえばお供の沐小葵の攻撃を 50 にすると、呼び出す玉妖と鉄鬼も 50 になります。青チーム、赤チーム、お供のどれも同じです。入力した項目はすべて同じ値になるので、体力を 10 万にすると呼び出す雑魚も 10 万になります",
+      "ステータス統一（1体目に統一）は変わらず、自分で召喚したユニットだけが対象です",
+      "この変更はまだゲーム内でテストしていません。問題があれば更新履歴から v0.40.4 に戻せます",
       "このバージョンはゲーム内のMODも更新します。アプリの案内に従ってください"
     ],
     "fr": [
-      "Correction des ennemis de la carte qui disparaissaient autour de vous en caméra libre : la v0.40.3 coupait toute la collision de votre corps, le jeu considérait donc que vous quittiez la zone d'apparition, retirait les ennemis et les faisait réapparaître à la sortie. Désormais, votre corps cesse seulement de bloquer les unités et d'être poussé ; vous restez dans la zone et les ennemis ne disparaissent plus",
-      "Nouveauté « Stats des compagnons » : choisissez « Perso » sur la carte Compagnon pour régler les PV, le Sha-Chi, l'attaque, les dégâts Sha-Chi et toutes les autres stats des compagnons seuls. Cela s'applique aux compagnons invoqués ensuite, indépendamment des stats des Bleus et des Rouges",
-      "Correction de l'équipe des compagnons qui annonçait encore l'alignement sur la première unité avec l'égalisation des stats active (les compagnons n'y participent pas) ; correction de l'application des stats perso qui pouvait échouer après une saisie dans le champ du niveau d'invocation",
-      "Rien de tout cela n'a encore été testé en jeu. En cas de problème, vous pouvez revenir à la v0.40.3 depuis l'historique des versions",
+      "Les stats perso s'appliquent désormais aussi aux unités qu'une unité appelle et à ses escortes : avec une attaque de 50 pour Mu Xiaokui en compagnon, le Yu Yao et le Tie Gui qu'elle appelle ont aussi 50. C'est pareil pour les Bleus, les Rouges et les compagnons. Chaque champ rempli donne la même valeur : avec 100 000 PV, les sbires appelés ont aussi 100 000 PV",
+      "L'égalisation des stats ne change pas : elle ne concerne toujours que les unités que vous invoquez vous-même",
+      "Ce changement n'a pas encore été testé en jeu. En cas de problème, vous pouvez revenir à la v0.40.4 depuis l'historique des versions",
       "Cette version met à jour le mod dans le jeu. Suivez les indications de l'application"
     ],
     "de": [
-      "Behoben: In der freien Kamera verschwanden Kartengegner in deiner Nähe. v0.40.3 schaltete die gesamte Kollision deines Körpers ab, das Spiel nahm deshalb an, du hättest das Spawn-Gebiet verlassen, entfernte die Gegner und ließ sie beim Beenden neu erscheinen. Jetzt blockiert dein Körper nur keine Einheiten mehr und wird nicht mehr geschoben; du bleibst im Gebiet, und die Gegner bleiben da",
-      "Neu „Begleiterwerte“: Wähle auf der Begleiter-Karte „Eigene“, um LP, Sha-Chi, Angriff, Sha-Chi-Schaden und alle anderen Werte nur für Begleiter festzulegen. Das gilt für danach beschworene Begleiter und ist von den Werten für Blau und Rot getrennt",
-      "Behoben: Bei aktivem Werteausgleich hieß es beim Begleiter-Team noch, es werde an die erste Einheit angeglichen (Begleiter nehmen nicht teil); behoben: Eigene Werte ließen sich nach einer Eingabe im Feld für die Beschwörungsstufe manchmal nicht übernehmen",
-      "Nichts davon wurde bisher im Spiel getestet. Bei Problemen kannst du im Versionsverlauf zu v0.40.3 zurückkehren",
+      "Eigene Werte gelten jetzt auch für Einheiten, die eine Einheit herbeiruft, und für ihr Gefolge: Setzt du den Angriff von Mu Xiaokui als Begleiter auf 50, haben auch der herbeigerufene Yu Yao und Tie Gui 50. Das gilt für Blau, Rot und Begleiter. Jedes ausgefüllte Feld bekommt denselben Wert: Bei 100.000 LP haben auch herbeigerufene Diener 100.000 LP",
+      "Der Werteausgleich bleibt unverändert: Er gleicht weiterhin nur Einheiten an, die du selbst beschwörst",
+      "Diese Änderung wurde noch nicht im Spiel getestet. Bei Problemen kannst du im Versionsverlauf zu v0.40.4 zurückkehren",
       "Diese Version aktualisiert die Mod im Spiel. Bitte folge dem Hinweis in der App"
     ],
     "es": [
-      "Corregido que los enemigos del mapa desaparecieran a tu alrededor en la cámara libre: la v0.40.3 desactivaba toda la colisión de tu cuerpo, así que el juego entendía que salías de la zona de aparición, retiraba a los enemigos y los hacía aparecer de nuevo al salir. Ahora tu cuerpo solo deja de bloquear unidades y de ser empujado; sigues dentro de la zona y los enemigos se quedan",
-      "Novedad «Estadísticas de compañeros»: elige «Propias» en la tarjeta de compañeros para ajustar la vida, el Sha-Chi, el ataque, el daño Sha-Chi y todas las demás estadísticas solo de los compañeros. Se aplica a los compañeros invocados después y va aparte de las estadísticas de Azul y Rojo",
-      "Corregido que el equipo de compañeros siguiera avisando de que se igualaría a la primera unidad con la igualación activa (los compañeros no participan); corregido que aplicar valores propios pudiera fallar después de escribir en la casilla del nivel de invocación",
-      "Nada de esto se ha probado aún en el juego. Si algo va mal, puedes volver a la v0.40.3 desde el historial de versiones",
+      "Los valores propios ahora también se aplican a las unidades que llama una unidad y a sus escoltas: con un ataque de 50 para Mu Xiaokui como compañera, el Yu Yao y el Tie Gui que llama también tienen 50. Vale igual para Azul, Rojo y compañeros. Cada campo rellenado da el mismo valor: con 100 000 de vida, los esbirros que llama también tienen 100 000",
+      "La igualación de estadísticas no cambia: sigue igualando solo las unidades que invocas tú",
+      "Este cambio aún no se ha probado en el juego. Si algo va mal, puedes volver a la v0.40.4 desde el historial de versiones",
       "Esta versión actualiza el mod del juego. Sigue las indicaciones de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.000",
+        "name": "PhantomGladiator-0.40.5-win64.zip.000",
         "size": 2097152,
-        "sha256": "bad0626e50847d6de75055813d8fa3d22046cb420938b4a23515d83187b5886f"
+        "sha256": "40a7ad083cc5c1bbccec7b51f358f3b05257fc584c4a196fa62bd5583b1e0f72"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.001",
+        "name": "PhantomGladiator-0.40.5-win64.zip.001",
         "size": 2097152,
-        "sha256": "b37f3d82bdc51b9e58cd50742a8dd7642702e784cb3eba3497f4aae2bb4e3985"
+        "sha256": "4a047ddc613c58e735d8cb7b582a81c275df3f1e14fcfb786732a7091c6d3309"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.002",
+        "name": "PhantomGladiator-0.40.5-win64.zip.002",
         "size": 2097152,
-        "sha256": "647ff182613dc53c84a2354a31c0e120af0eacdae8562d85921835ee2d6cb160"
+        "sha256": "40bca5deadb9eec8cc11624c98b9cf65536a2a9139b23853e3be19c46892a635"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.003",
+        "name": "PhantomGladiator-0.40.5-win64.zip.003",
         "size": 2097152,
-        "sha256": "3d0b66165243592bcd4afc00d48d2a0122690f32ef7657c7f65d6ca9c16c439c"
+        "sha256": "4ca663b5daefa5a7f2b059414a54ffb25138159269781e2191527b383d25165a"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.004",
+        "name": "PhantomGladiator-0.40.5-win64.zip.004",
         "size": 2097152,
-        "sha256": "f1f659b8bbcd8046ba75384621e4fe43c137cacd250ce89de75bb87d4eee4d3a"
+        "sha256": "47da5b4644832cb8f5655547d825a1c3c5fe1b6ffd18fda1329f047854893124"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.005",
+        "name": "PhantomGladiator-0.40.5-win64.zip.005",
         "size": 2097152,
-        "sha256": "8e4a1e3533898eaabdf0704601973cd82b43998bcb02b68b3e73a5f56fd5ec7e"
+        "sha256": "b0b8c13d17569353ac9c93066230d2142f30dda97f5a77ea058f2466c25d0cb4"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.006",
+        "name": "PhantomGladiator-0.40.5-win64.zip.006",
         "size": 2097152,
-        "sha256": "5b9a6effa003749fdfea72657a0dcbf1334b20c9095edf3781c3ecd92f787c83"
+        "sha256": "684a4c57ec3bc4cf2289faf71012024f61483de68d716e24e6fd8d15db9b3d65"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.007",
+        "name": "PhantomGladiator-0.40.5-win64.zip.007",
         "size": 2097152,
-        "sha256": "963ef5dea0e24462fbff54d8d07dc8b7a3fa8993302640f558ca4528fa63d954"
+        "sha256": "b800a6c72c59fe5d3b9262495f1d53d1d70d4ac28e9d25bc89f6196a51efda9d"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.008",
+        "name": "PhantomGladiator-0.40.5-win64.zip.008",
         "size": 2097152,
-        "sha256": "0c13919e631e05b2fa47a31266b56db4c4d6ebe78dfde3b3b6f90a22750f579d"
+        "sha256": "f6f9353430fa348120ac3c064c6ad07e04b5753c34522f3ca54193cb3e8b9529"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.009",
+        "name": "PhantomGladiator-0.40.5-win64.zip.009",
         "size": 2097152,
-        "sha256": "bad85c1f631e7166060d515c0342f8e3e95c6e079998c5b2e5c181ba82e146f6"
+        "sha256": "90dcdec26c42a3f365e2dfa1fe23f981b035f859029f6eb8701e5afd72cc246d"
       },
       {
-        "name": "PhantomGladiator-0.40.4-win64.zip.010",
-        "size": 56112,
-        "sha256": "9f9a1b25549aabc037896c114c406e6671f18a3e163066398f051569987e5027"
+        "name": "PhantomGladiator-0.40.5-win64.zip.010",
+        "size": 58086,
+        "sha256": "2d199d1aec14c99e6292b9f6c66acc65bb41ee724bbc656af57d0a0466d464c2"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
       }
     ]
   }
