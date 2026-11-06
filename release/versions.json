@@ -1,6 +1,115 @@
 {
   "versions": [
     {
+      "version": "0.40.4",
+      "date": "2026-11-06T22:47:40+08:00",
+      "size": 21027632,
+      "sha256": "e02ab6d66dfc3a49636b9fabe1fe2dc6121e73baeb3f463cb76663bb09711820",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.4/PhantomGladiator-0.40.4-win64.zip"
+        }
+      ],
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.000",
+            "size": 2097152,
+            "sha256": "bad0626e50847d6de75055813d8fa3d22046cb420938b4a23515d83187b5886f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.001",
+            "size": 2097152,
+            "sha256": "b37f3d82bdc51b9e58cd50742a8dd7642702e784cb3eba3497f4aae2bb4e3985"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.002",
+            "size": 2097152,
+            "sha256": "647ff182613dc53c84a2354a31c0e120af0eacdae8562d85921835ee2d6cb160"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.003",
+            "size": 2097152,
+            "sha256": "3d0b66165243592bcd4afc00d48d2a0122690f32ef7657c7f65d6ca9c16c439c"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.004",
+            "size": 2097152,
+            "sha256": "f1f659b8bbcd8046ba75384621e4fe43c137cacd250ce89de75bb87d4eee4d3a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.005",
+            "size": 2097152,
+            "sha256": "8e4a1e3533898eaabdf0704601973cd82b43998bcb02b68b3e73a5f56fd5ec7e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.006",
+            "size": 2097152,
+            "sha256": "5b9a6effa003749fdfea72657a0dcbf1334b20c9095edf3781c3ecd92f787c83"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.007",
+            "size": 2097152,
+            "sha256": "963ef5dea0e24462fbff54d8d07dc8b7a3fa8993302640f558ca4528fa63d954"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.008",
+            "size": 2097152,
+            "sha256": "0c13919e631e05b2fa47a31266b56db4c4d6ebe78dfde3b3b6f90a22750f579d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.009",
+            "size": 2097152,
+            "sha256": "bad85c1f631e7166060d515c0342f8e3e95c6e079998c5b2e5c181ba82e146f6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.4-win64.zip.010",
+            "size": 56112,
+            "sha256": "9f9a1b25549aabc037896c114c406e6671f18a3e163066398f051569987e5027"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.4/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.4/"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.3",
       "date": "2026-11-06T00:24:33+08:00",
       "size": 21021372,
