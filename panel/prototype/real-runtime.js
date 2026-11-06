@@ -31,6 +31,8 @@ const RealRuntime = (() => {
     spectatorPhase: "",
     // mode: game | match | custom (stat_match_mode); custom values: the core four here, all of them from /api/stat-settings.
     statMatch: { enabled: false, mode: "game", modeSupported: false, baseline: null, matched: 0, failures: 0, reset: false, customCount: 0, customized: 0, rejected: [], rejectedCount: 0, values: {} },
+    // companion_stats_*: the companions' own set; game | custom (stat_match.lua). All the values come from /api/companion-stats.
+    companionStats: { supported: false, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     // spawn_difficulty_*: the level new units take (FOLLOW = the game's), the game's own level, counts.
     // spawn_level: the level a summon gets (the highest map enemy near the player at the last look), and that enemy.
     difficulty: { level: "FOLLOW", game: "", supported: false, failures: 0, skipped: 0, aiFailed: 0, summonLevel: null, summonLevelUnit: "" },
@@ -281,6 +283,9 @@ const RealRuntime = (() => {
       s.clockHud = { supported: yes("clock_hud_supported"), on: yes("clock_hud"), state: v.clock_hud_state || "off" };
       s.executionCamera = { supported: yes("execution_camera_supported"), on: yes("execution_camera"), state: v.execution_camera_state || "off" };
       s.companionExec = { supported: yes("companion_executions_supported"), on: yes("companion_executions") };
+      Object.assign(s.companionStats, { supported: yes("companion_stats_supported"), mode: v.companion_stats_mode === "custom" ? "custom" : "game", customCount: num("companion_stats_count"),
+        customized: num("companion_stats_customized"), failures: num("companion_stats_failures"), rejectedCount: num("companion_stats_rejected"),
+        rejected: String(v.companion_stats_rejected_fields || "").split(",").filter(Boolean) });
       s.track = { supported: yes("track_supported"), on: yes("track_on"), framing: v.track_framing || "side", resume: num("track_resume"),
         target: v.track_target || "", targetClass: v.track_target_class || "", otherClass: v.track_other_class || "",
         targets: (v.track_targets || "").split(";").filter(Boolean).map(item => { const [key, cls, team] = item.split(":"); return { key, cls, team }; }) };
@@ -346,9 +351,9 @@ const RealRuntime = (() => {
     // Re-render only the parts whose data moved, so a 500 ms poll never resets what the player is doing.
     const sig = {
       topbar: [s.game, jobs.filter(j => j.status === "failed" || j.status === "uncertain").length],
-      sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom],
+      sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
-      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on],
+      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, JSON.stringify({ ...s.companionStats, values: undefined })],
       match: [s.game, JSON.stringify({ ...s.statMatch, values: undefined })],
       diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom],
       fun: [s.game, JSON.stringify(s.fun)],
@@ -411,7 +416,7 @@ const RealRuntime = (() => {
     else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };
     else if (action === "set_camera_track") { body = { action, framing: payload.framing, resume: payload.resume }; if (payload.target) body.unit_id = payload.target; }
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
-    else if (action === "set_stat_mode") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
+    else if (action === "set_stat_mode" || action === "set_companion_stats") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
     else if (action === "set_ai_params") body = { action, values: payload.values };
     else if (action === "configure_keys") { path = "/api/keybinds"; body = Object.fromEntries(KEY_NAMES.map(k => [k, wireKey(payload.bindings[k])])); }
     else body = { action };
@@ -450,9 +455,10 @@ const RealRuntime = (() => {
     if (action === "set_unit_rule" && done.status === "succeeded") (s.unitRules[payload.unit] ||= {})[payload.rule] = payload.value;
     if (action === "set_camera_track" && done.status === "succeeded") Object.assign(s.track, { framing: payload.framing, resume: payload.resume }, payload.target ? { target: payload.target } : {});
     if (action === "set_free_camera" && done.status === "succeeded") Object.assign(s.camSettings, { speed: payload.speed, turn: payload.turn, smooth: payload.smooth });
-    if (action === "set_stat_mode" && done.status === "succeeded") {
-      s.statMatch.mode = payload.mode;
-      if (payload.mode === "custom") { s.statMatch.values = { ...payload.values }; s.statMatch.customCount = Object.keys(payload.values).length; }
+    if ((action === "set_stat_mode" || action === "set_companion_stats") && done.status === "succeeded") {
+      const set = action === "set_stat_mode" ? s.statMatch : s.companionStats;
+      set.mode = payload.mode;
+      if (payload.mode === "custom") { set.values = { ...payload.values }; set.customCount = Object.keys(payload.values).length; }
     }
     return done;
   }
@@ -547,6 +553,12 @@ const RealRuntime = (() => {
     // The spawn stat mode and every custom value the mod saved (backend.py stat_settings).
     async statSettings() {
       const r = await fetch("/api/stat-settings", { cache: "no-store" });
+      if (!r.ok) throw fail("rejected");
+      return r.json();
+    },
+    // The companions' own set, from its own file.
+    async companionStats() {
+      const r = await fetch("/api/companion-stats", { cache: "no-store" });
       if (!r.ok) throw fail("rejected");
       return r.json();
     },

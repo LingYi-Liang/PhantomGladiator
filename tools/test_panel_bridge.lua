@@ -525,6 +525,15 @@ test("stat mode reaches its handler with the mode and the custom revision (backe
     assert(got and got.key_spawn == "CUSTOM" and got.key_start == "R0123456789AB", fs.files["runtime/ack.tsv"])
     assert(fs.files["runtime/ack.tsv"] == "s1\tok\tcustom\t0\n", fs.files["runtime/ack.tsv"])
 end)
+test("the companions' stat set reaches its handler the same way", function()
+    local fs, got = filesystem(), nil
+    deliver(fs, command("s1", "set_companion_stats", "", "blue", 1, { "CUSTOM", "R0123456789AB", "", "" }))
+    local bridge = create(fs, nil, { handlers = { set_companion_stats = function(c)
+        got = c return { ok = true, message = "companion", spawned_count = 0 } end } })
+    bridge:tick()
+    assert(got and got.key_spawn == "CUSTOM" and got.key_start == "R0123456789AB", fs.files["runtime/ack.tsv"])
+    assert(fs.files["runtime/ack.tsv"] == "s1\tok\tcompanion\t0\n", fs.files["runtime/ack.tsv"])
+end)
 
 if arg and arg[1] then
     test("real disk journal survives a new Bridge instance", function()

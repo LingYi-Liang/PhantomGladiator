@@ -91,6 +91,7 @@ const MockRuntime = (() => {
     clockHud: { supported: true, on: savedClockHud, state: savedClockHud ? "waiting" : "off" },  // off | waiting | shown | failed
     executionCamera: { supported: true, on: savedExecCam, state: savedExecCam ? "waiting" : "off" },  // off | waiting | running
     companionExec: { supported: true, on: savedCompanionExec },
+    companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     track: { supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
     unitRulesSupported: true,
@@ -198,6 +199,7 @@ const MockRuntime = (() => {
         }
         s[p.team] += p.count;
         job.spawned = p.count;
+        if (p.team === "companion") { if (s.companionStats.mode === "custom") s.companionStats.customized += p.count; return; }
         if (!m.enabled) return;
         if (outcome === "matchWarn") { m.failures += p.count; job.warning = "matchFailed"; return; }
         if (!m.baseline) { m.baseline = { id: p.unit_id, ...statsFor(p.unit_id) }; m.matched += p.count - 1; }
@@ -284,6 +286,12 @@ const MockRuntime = (() => {
         const m = s.statMatch;
         Object.assign(m, { mode: p.mode, enabled: p.mode !== "game", baseline: null, matched: 0, failures: 0, reset: false, customized: 0, rejected: [], rejectedCount: 0 });
         if (p.mode === "custom") Object.assign(m, { values: { ...p.values }, customCount: Object.keys(p.values).length });
+        return;
+      }
+      case "set_companion_stats": {
+        const c = s.companionStats;
+        Object.assign(c, { mode: p.mode, customized: 0, failures: 0, rejected: [], rejectedCount: 0 });
+        if (p.mode === "custom") Object.assign(c, { values: { ...p.values }, customCount: Object.keys(p.values).length });
         return;
       }
       case "set_ai_params":
@@ -578,6 +586,7 @@ const MockRuntime = (() => {
     setup,
     async aiParams() { await wait(150); return { values: { ...(s.aiParamValues || {}) } }; },
     async statSettings() { await wait(150); return { mode: s.statMatch.mode, values: { ...s.statMatch.values } }; },
+    async companionStats() { await wait(150); return { mode: s.companionStats.mode, values: { ...s.companionStats.values } }; },
     set(patch) { Object.assign(s, patch); emit({ type: "demo" }); },
   };
 })();

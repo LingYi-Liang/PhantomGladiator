@@ -103,6 +103,11 @@ function Runtime.new(options)
             if not options.statMatch then return {ok=false,message='数值设定模块未加载',spawned_count=0} end
             return options.statMatch:setMode(command.key_spawn,command.key_start)
         end,
+        -- The companions' own set: GAME or CUSTOM in key_spawn; for CUSTOM the revision of Runtime/companion-stats-request.tsv in key_start.
+        set_companion_stats=function(command)
+            if not options.companionStats then return {ok=false,message='随从数值模块未加载',spawned_count=0} end
+            return options.companionStats:setMode(command.key_spawn,command.key_start)
+        end,
         -- The revision of Runtime/ai-params-request.tsv in key_spawn.
         set_ai_params=function(command)
             if not options.aiParams then return {ok=false,message='AI 参数模块未加载',spawned_count=0} end
@@ -333,6 +338,16 @@ function Runtime.new(options)
         local rejected=matching.rejected or {}
         out.stat_custom_rejected=#rejected
         out.stat_custom_rejected_fields=table.concat(rejected,',',1,math.min(#rejected,12))
+        local companionStats=options.companionStats and options.companionStats:status() or {}
+        local companionRejected=companionStats.rejected or {}
+        out.companion_stats_supported=not not options.companionStats
+        out.companion_stats_mode=companionStats.mode or 'game'
+        out.companion_stats_count=companionStats.custom_count or 0
+        out.companion_stats_customized=companionStats.customized or 0
+        out.companion_stats_failures=companionStats.failures or 0
+        out.companion_stats_message=companionStats.message or ''
+        out.companion_stats_rejected=#companionRejected
+        out.companion_stats_rejected_fields=table.concat(companionRejected,',',1,math.min(#companionRejected,12))
         local difficulty=options.spawnDifficulty and options.spawnDifficulty:status() or {}
         out.spawn_difficulty_supported=not not options.spawnDifficulty
         out.spawn_difficulty=difficulty.level or ''

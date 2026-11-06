@@ -7,6 +7,8 @@
 -- One write per field at spawn, read back. Matching is all or nothing: any failure rolls the unit back to
 -- its own numbers. Custom goes field by field: a field the game does not take is rolled back and named, the
 -- rest stay. Never follows damage or heals on a tick.
+-- A second set (options.settings, options.request, options.tag, options.customOnly) holds the companions' own
+-- numbers in files of its own: only game or custom, since they never copy a first unit.
 -- Damage comes from the level-1 values (character_stats.lua Stats.levelOne), so matching copies those too,
 -- and a custom HP, Sha-Chi, attack or Sha-Chi damage scales its level-1 value by the same ratio unless the
 -- player set that one as well.
@@ -34,8 +36,10 @@ function Match.new(options)
     local isLevelOne={};for _,field in pairs(levelOne)do isLevelOne[field]=true end
     local log=options.log or function()end
     local fs=options.io or io
-    local settings=options.path..'/stat-match-settings.tsv'
-    local request=options.path..'/stat-custom-request.tsv'
+    local settings=options.path..'/'..(options.settings or 'stat-match-settings.tsv')
+    local request=options.path..'/'..(options.request or 'stat-custom-request.tsv')
+    local tag=options.tag or '[StatMatch]'
+    local customOnly=options.customOnly==true
     local allowed={};for _,field in ipairs(customFields)do allowed[field]=true end
     local bound,bounded={},{}
     for current,max in pairs(BOUND)do bound[current]=max;bounded[max]=current end
@@ -79,7 +83,7 @@ function Match.new(options)
         elseif type(text)=='string' then
             local mode,body=text:match('^StatMatchV2\t(%l+)\n(.*)$')
             local values=body and parse(body)
-            if mode and values and (mode=='game' or mode=='match' or mode=='custom') then self.mode,self.custom=mode,values end
+            if mode and values and (mode=='game' or (mode=='match' and not customOnly) or mode=='custom') then self.mode,self.custom=mode,values end
         end
         self.enabled=self.mode~='game'
         self.message=self.mode=='match' and '已开启，等待第一只可用战斗单位作为基准' or self.mode=='custom' and '自定义数值：之后召唤的单位按设定写入' or '按游戏数值'
@@ -97,7 +101,7 @@ function Match.new(options)
         self.message=self.mode=='match' and ('等待首只可用战斗单位作为基准；'..reason)
             or self.mode=='custom' and ('自定义数值：'..describe(self.custom)..'；只影响之后的召唤')
             or '按游戏数值；只影响之后的召唤'
-        log('[StatMatch] 设定重置：'..reason..' 模式='..self.mode)
+        log(tag..' 设定重置：'..reason..' 模式='..self.mode)
     end
     local function save(mode,custom)
         local text=encode(mode,custom)
@@ -110,7 +114,7 @@ function Match.new(options)
         if not save(mode,custom) then return {ok=false,message='数值设定保存未读回，未修改',spawned_count=0} end
         self.mode,self.custom=mode,custom;self.enabled=mode~='game'
         reset(reason)
-        log('[StatMatch] 设定读回 模式='..mode..' 自定义='..describe(custom))
+        log(tag..' 设定读回 模式='..mode..' 自定义='..describe(custom))
         return {ok=true,message=self.message,spawned_count=0}
     end
     -- Old switch (toggle_stat_match): between the game's numbers and the first unit's.
@@ -120,7 +124,8 @@ function Match.new(options)
     -- GAME, MATCH or CUSTOM; CUSTOM reads the backend's request file written under `revision`.
     function self:setMode(token,revision)
         local mode=MODES[token]
-        if not mode then return {ok=false,message='数值设定只接受 GAME、MATCH 或 CUSTOM',spawned_count=0} end
+        if customOnly and mode=='match' then mode=nil end
+        if not mode then return {ok=false,message='数值设定只接受 '..(customOnly and 'GAME 或 CUSTOM' or 'GAME、MATCH 或 CUSTOM'),spawned_count=0} end
         local custom=self.custom
         if mode=='custom' then
             local rev,body=(readFile(request) or ''):match('^StatCustomV1\t(%S+)\n(.*)$')
@@ -216,7 +221,7 @@ function Match.new(options)
             end
             local restored=rollback(actor,original,touched)
             self.failures=self.failures+1;self.message=label..'失败：'..tostring(failure)..'；回滚读回='..tostring(restored)
-            log('[StatMatch] '..self.message..' unit='..tostring(unitPath))
+            log(tag..' '..self.message..' unit='..tostring(unitPath))
             return {ok=false,message=self.message,rollback_verified=restored}
         end
         return nil
@@ -288,19 +293,19 @@ function Match.new(options)
         end
         self.rejected={};for _,item in ipairs(rejected)do self.rejected[#self.rejected+1]=item.field end
         for _,item in ipairs(rejected)do
-            log('[StatMatch] 自定义未生效 '..item.field..' 目标='..string.format('%.10g',targets[item.field])
+            log(tag..' 自定义未生效 '..item.field..' 目标='..string.format('%.10g',targets[item.field])
                 ..' 方式='..(adapter.via and adapter:via(item.field) or '?')..' 原因='..item.reason..' unit='..tostring(unitPath))
         end
         if #verified==0 then
             self.failures=self.failures+1
             self.message='自定义数值失败：'..(rejected[1] and (rejected[1].field..' '..rejected[1].reason) or '没有可写入的属性')..'；回滚读回='..tostring(restored)
-            log('[StatMatch] '..self.message..' unit='..tostring(unitPath))
+            log(tag..' '..self.message..' unit='..tostring(unitPath))
             return {ok=false,message=self.message,rollback_verified=restored}
         end
         self.customized=self.customized+1
         self.message='自定义数值已写入并读回 '..#verified..'/'..#ordered..' 项'..(#rejected>0 and ('；'..#rejected..' 项游戏没接受，已恢复原值') or '')
             ..'；已写入 '..self.customized..' 只'
-        log('[StatMatch] 自定义应用并读回 unit='..tostring(unitPath)..' verified='..#verified..'/'..#ordered
+        log(tag..' 自定义应用并读回 unit='..tostring(unitPath)..' verified='..#verified..'/'..#ordered
             ..' rejected='..#rejected..' 回滚读回='..tostring(restored)..' '..describe(self.custom)
             ..(#linked>0 and (' 联动1级值：'..table.concat(linked,'、')) or ''))
         return {ok=true,applied=true,message=self.message,rejected=self.rejected}
@@ -314,7 +319,7 @@ function Match.new(options)
         local original,why=adapter:snapshot(actor)
         if not original then
             self.message='未写入数值：'..tostring(why)
-            log('[StatMatch] '..self.message..' unit='..tostring(unitPath))
+            log(tag..' '..self.message..' unit='..tostring(unitPath))
             return {ok=false,message=self.message,rollback_verified=true}
         end
         local targets,ordered={},{}
@@ -324,7 +329,7 @@ function Match.new(options)
             for _,field in ipairs(levelOneFields)do snapshot[field]=original[field].current end
             self.baseline={unit=unitPath,values=snapshot}
             self.message='已读取首只单位的出生属性，后续召唤按此对齐'
-            log('[StatMatch] 基准已捕获 unit='..tostring(unitPath)..' HPmax='..snapshot.Health_Max..' ShachiMax='..snapshot.Shachi_Max
+            log(tag..' 基准已捕获 unit='..tostring(unitPath)..' HPmax='..snapshot.Health_Max..' ShachiMax='..snapshot.Shachi_Max
                 ..' Attack='..snapshot.Attack..' ShachiAttack='..snapshot.ShachiAttack..' fields='..#fields
                 ..' 1级值 HP='..tostring(snapshot.Health_Max_Lv1)..' Attack='..tostring(snapshot.Attack_Lv1))
             return {ok=true,baseline=true,message=self.message}
@@ -336,7 +341,7 @@ function Match.new(options)
         if failed then return failed end
         self.matched=self.matched+1
         self.message='后续单位出生属性已读回一致；已有单位不会跟随基准的残血变化'
-        log('[StatMatch] 应用并读回 unit='..tostring(unitPath)..' baseline='..self.baseline.unit..' verified='..#ordered..'/'..#ordered
+        log(tag..' 应用并读回 unit='..tostring(unitPath)..' baseline='..self.baseline.unit..' verified='..#ordered..'/'..#ordered
             ..' HP='..targets.Health..' Shachi='..targets.Shachi..' Attack='..targets.Attack..' ShachiAttack='..targets.ShachiAttack
             ..' 1级值 HP='..tostring(targets.Health_Max_Lv1)..' Attack='..tostring(targets.Attack_Lv1))
         return {ok=true,applied=true,message=self.message}

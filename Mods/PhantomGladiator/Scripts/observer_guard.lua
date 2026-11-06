@@ -6,7 +6,8 @@ local Guard={fields={'guard_started','guard_spectator_before','guard_spectator_o
     'guard_damage_before','guard_damage_owned','guard_hide_count','guard_lock_handle','guard_lock_intent','guard_effects_before',
     'guard_floor_handle','guard_floor_intent','guard_floor_effects_before','guard_floor_base','guard_floor_current','guard_floor_direct',
     'guard_audio_owned','guard_listener_override','guard_probe_before','guard_hp',
-    'guard_body_owned','guard_body_mode','guard_body_custom','guard_body_collision','guard_body_x','guard_body_y','guard_body_z'}}
+    'guard_body_owned','guard_body_mode','guard_body_custom','guard_body_collision','guard_body_channels','guard_body_push',
+    'guard_body_x','guard_body_y','guard_body_z'}}
 for _,name in ipairs({'guard_asc','guard_lock_class','guard_sound','guard_listener','guard_old_probe','guard_probe'})do
     Guard.fields[#Guard.fields+1]=name;Guard.fields[#Guard.fields+1]=name..'_key'
 end
@@ -17,6 +18,11 @@ local MOVE_NONE=0
 local PUT_BACK=50      -- cm: a body that started moving and got this far is carried back
 local BODY_STEP=10     -- cm of drift worth a log line
 local BODY_LINES=10
+-- Collision channels of other characters' capsules in this project's settings: Pawn and AIPawn. The game's own dash and
+-- execution abilities let bodies through by changing these two on the capsule.
+local BODY_CHANNELS={2,19}
+local ECR_IGNORE=0
+local TRIGGER_VOLUME='/Script/SGameAI.BaseSplineTriggerVolume'
 local function same(a,b)local k=U.key(a);return k~=nil and k==U.key(b)end
 local function call(obj,name,...)
     if not U.valid(obj) then return false,'invalid '..name end
@@ -53,6 +59,26 @@ local function homeOf(r)
     return x and y and z and {X=x,Y=y,Z=z} or nil
 end
 local function gap(a,b)return a and b and math.sqrt((a.X-b.X)^2+(a.Y-b.Y)^2+(a.Z-b.Z)^2) or nil end
+-- "2=2,19=2": the capsule's response to each of BODY_CHANNELS, or nil when one cannot be read.
+local function readChannels(capsule)
+    local out={}
+    for _,channel in ipairs(BODY_CHANNELS)do
+        local read,value=call(capsule,'GetCollisionResponseToChannel',channel)
+        value=read and tonumber(value) or nil
+        if not value then return nil end
+        out[#out+1]=channel..'='..math.floor(value)
+    end
+    return table.concat(out,',')
+end
+-- Spawner volumes and mob domains the body is inside, as the game sees it: they go by overlap alone, not by position.
+local function volumesAround(pawn)
+    local found,cls=pcall(StaticFindObject,TRIGGER_VOLUME)
+    if not found or not U.valid(cls) then return '?' end
+    local out={}
+    local read,value=call(pawn,'GetOverlappingActors',out,cls)
+    local list=read and (U.array(value) or U.array(out)) or nil
+    return list and #list or '?'
+end
 local function hp(pawn)
     return U.struct(U.field(U.field(pawn,'AttributeSetBase'),'Health'),'CurrentValue')
 end
@@ -162,38 +188,54 @@ function Guard.new(options)
             ..' health_floor_verified='..tostring(self.healthVerified)
             ..' hidden_actors='..#targets..' HP='..health..'；锁血/声音实际效果待实测')
     end
-    -- Hidden and unhurt is not gone: the capsule still stops whoever walks into it and whoever hits it can shove it, so the
-    -- body gets in the way of the fight and drifts while the camera is elsewhere. Without collision it has no floor and would
-    -- fall, so it stops moving first. Failing here costs only this; the camera still works.
+    -- Hidden and unhurt is not gone: the capsule still stops whoever walks into it, and whoever comes close shoves it through
+    -- soft collision (a root motion source on the movement component). So the body stops moving, the capsule ignores other
+    -- characters, and soft collision no longer pushes it. With its capsule not blocking AIPawn it stops pushing them too: the
+    -- soft collision tick only looks for object types its own capsule blocks.
+    -- The rest of the capsule's collision stays. SetActorEnableCollision(false) ends every overlap, and spawner volumes go by
+    -- overlap alone: BP_AISpawnerTriggerVolume takes that as the player leaving and despawns its groups, which come back when
+    -- collision does. Failing here costs only this; the camera still works.
     function self:enterBody(c)
         local r,pawn=c.record,c.pawn
         self.bodyAway,self.bodyLines=0,0
         local cmc=U.field(pawn,'CharacterMovement')
+        local capsule=U.field(pawn,'CapsuleComponent')
         local mode=tonumber((U.field(cmc,'MovementMode')))
         local custom=tonumber((U.field(cmc,'CustomMovementMode')))
-        local read,collision=call(pawn,'GetActorEnableCollision')
+        local channels=readChannels(capsule)
         local at=located(pawn)
-        if not mode or not read or type(collision)~='boolean' or not at then
-            log('[Observer] 玩家身体碰撞没有关：读不到 移动模式='..tostring(mode)..' 碰撞='..tostring(collision)..' 位置='..where(at))
+        if not mode or not channels or not at then
+            log('[Observer] 玩家身体没有改：读不到 移动模式='..tostring(mode)..' 胶囊通道='..tostring(channels)..' 位置='..where(at))
             return
         end
-        r.guard_body_mode=tostring(mode);r.guard_body_custom=tostring(custom or 0);r.guard_body_collision=collision and '1' or '0'
+        local push=U.field(cmc,'bReceiveSoftPush')
+        local volumes=volumesAround(pawn)
+        r.guard_body_mode=tostring(mode);r.guard_body_custom=tostring(custom or 0);r.guard_body_collision=''
+        r.guard_body_channels=channels;r.guard_body_push=type(push)=='boolean' and (push and '1' or '0') or ''
         r.guard_body_x,r.guard_body_y,r.guard_body_z=tostring(at.X),tostring(at.Y),tostring(at.Z)
         r.guard_body_owned='1';c.save()
         local stopped=call(cmc,'SetMovementMode',MOVE_NONE,0)
         local now=tonumber((U.field(cmc,'MovementMode')))
         if not stopped or now~=MOVE_NONE then
             if now==mode then r.guard_body_owned='0';c.save() end
-            log('[Observer] 玩家身体碰撞没有关：移动模式没能停住 调用='..tostring(stopped)..' 读回='..tostring(now))
+            log('[Observer] 玩家身体没有改：移动模式没能停住 调用='..tostring(stopped)..' 读回='..tostring(now))
             return
         end
-        local off=call(pawn,'SetActorEnableCollision',false)
-        local got,after=call(pawn,'GetActorEnableCollision')
-        log(string.format('[Observer] 玩家身体 移动模式 %d -> %s 碰撞 %s -> %s（调用=%s） 位置=%s',mode,tostring(now),tostring(collision),
-            got and tostring(after) or '?',tostring(off),where(at)))
+        local called=true
+        for channel,before in channels:gmatch('(%d+)=(%d+)')do
+            if tonumber(before)~=ECR_IGNORE then
+                called=call(capsule,'SetCollisionResponseToChannel',tonumber(channel),ECR_IGNORE) and called
+            end
+        end
+        if push==true then pcall(put,cmc,'bReceiveSoftPush',false) end
+        local after=volumesAround(pawn)
+        log(string.format('[Observer] 玩家身体 移动模式 %d -> %s 胶囊通道 %s -> %s（调用=%s） 被软碰撞推 %s -> %s 所在触发体 %s -> %s 位置=%s',mode,tostring(now),
+            channels,tostring(readChannels(capsule)),tostring(called),tostring(push),tostring((U.field(cmc,'bReceiveSoftPush'))),tostring(volumes),tostring(after),where(at)))
+        if type(volumes)=='number' and type(after)=='number' and after<volumes then
+            log('[Observer] 玩家身体离开了触发体：'..volumes..' -> '..after..'；这些区域的地图怪可能被游戏移除')
+        end
     end
-    -- Nothing should move it now; if something does, say so. Something that sets it moving again has it falling: with no
-    -- collision there is no floor.
+    -- Nothing should move it now; if something does, say so.
     function self:holdBody(c)
         local r,pawn=c.record,c.pawn
         local cmc=U.field(pawn,'CharacterMovement')
@@ -372,18 +414,31 @@ function Guard.new(options)
         attempt('body',function()
             local pawn=stored(c,'pawn')
             if r.guard_body_owned=='1' and pawn then
-                -- Collision first: walking looks for its floor the moment it is set.
-                local wanted=r.guard_body_collision~='0'
-                need(pawn,'SetActorEnableCollision',wanted)
-                local read,now=call(pawn,'GetActorEnableCollision')
-                assert(read and now==wanted,'player collision restore not verified')
+                -- A journal from the build that switched the whole actor's collision off. Before the movement mode: walking
+                -- looks for its floor the moment it is set.
+                if r.guard_body_collision=='0' or r.guard_body_collision=='1' then
+                    local wanted=r.guard_body_collision=='1'
+                    need(pawn,'SetActorEnableCollision',wanted)
+                    local read,now=call(pawn,'GetActorEnableCollision')
+                    assert(read and now==wanted,'player collision restore not verified')
+                end
+                local channels=r.guard_body_channels or ''
+                if channels~='' then
+                    local capsule=U.field(pawn,'CapsuleComponent');assert(U.valid(capsule),'player capsule unavailable')
+                    for channel,before in channels:gmatch('(%d+)=(%d+)')do
+                        need(capsule,'SetCollisionResponseToChannel',tonumber(channel),tonumber(before))
+                    end
+                    assert(readChannels(capsule)==channels,'player capsule channels restore not verified')
+                end
                 local cmc=U.field(pawn,'CharacterMovement');assert(U.valid(cmc),'player movement component unavailable')
+                if r.guard_body_push=='1' or r.guard_body_push=='0' then put(cmc,'bReceiveSoftPush',r.guard_body_push=='1') end
                 local mode=assert(tonumber(r.guard_body_mode),'player movement mode snapshot unavailable')
                 need(cmc,'SetMovementMode',mode,tonumber(r.guard_body_custom) or 0)
                 local after=tonumber((U.field(cmc,'MovementMode')))
                 assert(after==mode,'player movement mode restore not verified')
                 local away=gap(located(pawn),homeOf(r))
-                log(string.format('[Observer] 玩家身体恢复 移动模式=%d 碰撞=%s 离进入点=%s',after,tostring(now),away and string.format('%.0fcm',away) or '?'))
+                log(string.format('[Observer] 玩家身体恢复 移动模式=%d 胶囊通道=%s 被软碰撞推=%s 所在触发体=%s 离进入点=%s',after,channels,tostring((U.field(cmc,'bReceiveSoftPush'))),
+                    tostring(volumesAround(pawn)),away and string.format('%.0fcm',away) or '?'))
             end
             r.guard_body_owned='0';c.save()
         end)

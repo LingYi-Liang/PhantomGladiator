@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.3-game-26367565"
+local BUILD = "v0.40.4-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1402,19 +1402,20 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local checked,checkError=pcall(function()companions:afterActivate(actor,unitPath)end)
             if not checked then log('[Companion] 激活后读回失败: '..tostring(checkError)) end
         end
-        -- Equal stats is for the arena; companions keep their own numbers, and so does an escort (a 驯犬客's 狂犬):
+        -- Companions have a set of their own, separate from the arena's. An escort (a 驯犬客's 狂犬) keeps its numbers:
         -- it is part of the unit it came with, not a contestant to be matched.
         if escort and statMatch and statMatch.mode~='game' then
             log('[Escort] 随行单位不参与数值统一（'..tostring(statMatch.mode)..'），保持自身数值 unit='..objectName(actor)..' HP='..tostring(hp))
         end
-        if activationRequested==true and ai~=nil and type(hp)=='number' and hp>0 and team~='companion' and not escort then
-            local result=statMatch:onSpawn(actor,unitPath)
+        local stats=team=='companion' and arenaSupport.companionStats or statMatch
+        if activationRequested==true and ai~=nil and type(hp)=='number' and hp>0 and not escort then
+            local result=stats:onSpawn(actor,unitPath)
             if not result.ok then
                 if result.rollback_verified then return true,'初始化通过；数值统一失败已回滚',result.message..'；单位保留原生数值，可正常交战' end
                 return false,'单位已生成；'..result.message..'；保留对象供清理'
             end
             -- An experiment: whatever it does, the summon stands.
-            if fieldProbe then
+            if fieldProbe and team~='companion' then
                 local probed,probeError=pcall(function()fieldProbe:start(actor,unitPath)end)
                 if not probed then log('[StatProbe] 启动失败: '..tostring(probeError)) end
             end
@@ -1509,6 +1510,8 @@ local tickMembers,tickStatus
 local function ArenaMembers()return tickMembers or arena:members() end
 local function ArenaStatus()return tickStatus or arena:status() end
 statMatch=StatMatch.new({path=Config.RuntimePath,log=log})
+arenaSupport.companionStats=StatMatch.new({path=Config.RuntimePath,log=log,tag='[CompanionStats]',customOnly=true,
+    settings='companion-stats-settings.tsv',request='companion-stats-request.tsv'})
 spawnDifficulty=SpawnDifficulty.new({path=Config.RuntimePath,log=log,getWorld=UEHelpers.GetWorld,
     ready=function()return runtimeSession:status().game_ready==true end})
 statProbe=Config.EnableStatFormulaProbe and StatFormulaProbe.new({log=log}) or nil
@@ -1903,7 +1906,7 @@ RegisterKeyBind(Key.F9,{ModifierKey.SHIFT},function()
 end)
 end
 panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,
-    build=BUILD,log=log,unitRules=arenaSupport.unitRules,track=arenaSupport.track,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
+    build=BUILD,log=log,unitRules=arenaSupport.unitRules,track=arenaSupport.track,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,companionStats=arenaSupport.companionStats,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
     router=keyRouter,camera={status=function()return {active=freeCamera:isActive(),pending=freeCamera:hasPending(),
             frozen=freeCamera:isFrozen(),settings=freeCamera:settings()}end,
         toggle=ToggleFreeCam,exit=ForceExitFreeCam,

@@ -81,6 +81,11 @@
     roster: { blue: {}, red: {}, neutral: {}, companion: {} },
     lastSolo: null,           // { id, count } of the latest no-team summon, for "summon again"
     busy: new Set(),
+    // Per stat set ("arena", "companion"): the values being edited, the tab shown before Apply, whether the saved values were read.
+    statDrafts: {},
+    statTab: {},
+    statLoaded: {},
+    statDialogSet: "arena",
     capture: null,            // { kind: "global", action } | { kind: "unit", id }
     keyNote: null,            // { action, type: "err"|"conflict"|"ok", text, key, other }
     unitKeyError: "",
@@ -609,10 +614,12 @@
     else if (synced()) hint = `<span class="sync-ok">${icon("check-circle")}</span><span>${esc(t("sel.synced.nokey"))}</span><button class="btn-link" type="button" data-action="nav" data-page="hotkeys">${esc(t("sel.synced.setKey"))}</button>`;
     else hint = `<span class="spinner" style="width:12px;height:12px"></span><span>${esc(t("sel.syncing"))}</span>`;
     // Says what equal stats will do to this summon before the player clicks.
-    const m = S.statMatch, base = m.baseline && byId.get(m.baseline.id);
-    const matchLine = m.mode === "match" && RT.online() && !blocker
+    const m = S.statMatch, base = m.baseline && byId.get(m.baseline.id), own = S.companionStats;
+    const matchLine = RT.online() && !blocker && ui.team === "companion"
+      ? own.mode === "custom" && own.supported ? `<button class="match-line" type="button" data-action="companion-stats-focus">${icon("sliders")}<span>${esc(t("stats.next.custom", { n: own.customCount }))}</span></button>` : ""
+      : m.mode === "match" && RT.online() && !blocker
       ? `<button class="match-line" type="button" data-action="match-focus">${icon("scale")}<span>${esc(base ? t("match.next.match", { name: base.name }) : t("match.next.baseline"))}</span></button>`
-      : m.mode === "custom" && RT.online() && !blocker && ui.team !== "companion"
+      : m.mode === "custom" && RT.online() && !blocker
       ? `<button class="match-line" type="button" data-action="match-focus">${icon("sliders")}<span>${esc(t("stats.next.custom", { n: m.customCount }))}</span></button>`
       : "";
     // A no-team unit keeps the game's hostility, but spectator mode (or the F6 camera) stops it attacking the player.
@@ -714,6 +721,7 @@
     const warn = online && held && S.companionFailures
       ? `<div class="solo-warn">${icon("alert", "icon-sm")}<span>${esc(t("companion.followWarn"))}</span></div>`
       : "";
+    const restoreTyping = keepTyping(el);
     el.innerHTML = `<div class="dock-title"><span id="companion-title">${esc(teamName("companion"))}</span></div>
       ${held
         ? `<div class="side-chips companion-roster">${chips}</div>
@@ -721,11 +729,29 @@
         : `<p class="solo-desc">${esc(t("companion.desc"))}</p>`}
       ${warn}
       ${companionExecRow()}
+      ${companionStatsBlock()}
       <div class="solo-actions">${use}${guardHTML("companion")}
         ${held ? `<button class="btn btn-secondary btn-sm" type="button" data-action="recall-companions" ${online && alive && !recalling ? "" : "disabled"}>${recalling ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("zap", "icon-sm")}<span>${esc(t("companion.recall"))}</span>${keyCap(S.keys.recall_companions)}</button>` : ""}
         <button class="btn btn-ghost btn-sm solo-clear" type="button" data-action="dismiss-companions" ${online && held && !busy ? "" : "disabled"}>${busy ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("trash", "icon-sm")}<span>${esc(t("companion.dismiss"))}</span></button>
       </div>
       ${held ? `<p class="solo-note">${esc(t("companion.recallNote"))} ${esc(t("companion.note"))}</p>` : ""}`;
+    restoreTyping();
+  }
+  // The companions' own spawn stats (set_companion_stats): apart from the arena's, and the game's numbers or the player's only.
+  function companionStatsBlock() {
+    const m = S.companionStats, online = RT.online(), busy = ui.busy.has("set_companion_stats");
+    if (ui.statTab.companion && ui.statTab.companion === m.mode) ui.statTab.companion = null;
+    const tab = ui.statTab.companion || m.mode, usable = online && !busy && m.supported;
+    const desc = busy ? t("match.switching") : !online ? t("match.desc.offline") : !m.supported ? t("fun.old")
+      : t(tab === "custom" ? "companion.statsDesc.custom" : "companion.statsDesc.game");
+    if (tab === "custom" && online && m.supported && !ui.statLoaded.companion) loadStatValues("companion").then(renderCompanion);
+    return `<div class="companion-stats">
+        <div class="control-title" id="companion-stats-title">${esc(t("companion.statsTitle"))}</div>
+        <div class="seg stat-seg" role="radiogroup" aria-labelledby="companion-stats-title">${["game", "custom"].map(mode =>
+          `<button class="seg-btn" type="button" role="radio" aria-checked="${tab === mode}" data-action="stats-mode" data-set="companion" data-mode="${mode}" ${usable ? "" : "disabled"}>${esc(t("stats.mode." + mode))}</button>`).join("")}</div>
+        <p class="diff-desc">${esc(desc)}</p>
+        ${tab === "custom" && online && m.supported ? statForm("companion", busy, usable) : ""}
+      </div>`;
   }
   // Whether companions may execute bosses (set_companion_executions, companion_executions.lua); off, only the player does.
   function companionExecRow() {
@@ -908,19 +934,24 @@
   }
   // In its own family's group a row needs only the multiplier's name.
   const rowLabel = (field, g) => { const [head, own] = STAT_META.get(field); return head && head === groupHeading(g) ? t(own) : statLabel(field); };
+  // Two sets of spawn stats share this form: the arena's, and the companions' own.
+  const statSet = set => set === "companion"
+    ? { action: "set_companion_stats", state: S.companionStats, load: () => RT.companionStats(), render: renderCompanion, toasts: "toast.companionStats." }
+    : { action: "set_stat_mode", state: S.statMatch, load: () => RT.statSettings(), render: renderMatch, toasts: "toast.stats." };
   // The draft the player edits: every saved value, as text; empty means "keep the unit's own".
-  function statDraft() {
-    if (!ui.statDraft) ui.statDraft = Object.fromEntries(Object.entries(S.statMatch.values || {}).map(([k, v]) => [k, String(v)]));
-    return ui.statDraft;
+  function statDraft(set = "arena") {
+    if (!ui.statDrafts[set]) ui.statDrafts[set] = Object.fromEntries(Object.entries(statSet(set).state.values || {}).map(([k, v]) => [k, String(v)]));
+    return ui.statDrafts[set];
   }
-  async function loadStatValues() {
-    ui.statLoaded = true;
-    try { const saved = await RT.statSettings(); S.statMatch.values = saved.values || {}; ui.statDraft = null; } catch { /* keep what we have */ }
+  async function loadStatValues(set = "arena") {
+    ui.statLoaded[set] = true;
+    const st = statSet(set);
+    try { const saved = await st.load(); st.state.values = saved.values || {}; ui.statDrafts[set] = null; } catch { /* keep what we have */ }
   }
   // Numbers from the draft; null with a reason when a field cannot be sent.
-  function statValues() {
+  function statValues(set = "arena") {
     const values = {};
-    for (const [field, text] of Object.entries(statDraft())) {
+    for (const [field, text] of Object.entries(statDraft(set))) {
       const raw = String(text).trim();
       if (!raw) continue;
       const n = Number(raw);
@@ -931,35 +962,38 @@
     }
     return Object.keys(values).length ? [values] : [null, t("stats.empty")];
   }
-  async function setStatMode(mode) {
+  async function setStatMode(mode, set = "arena") {
+    const st = statSet(set);
     if (mode === "custom") {
       // Saved values switch at once; with none yet the form opens and Apply switches.
-      if (!S.statMatch.customCount) { ui.statTab = "custom"; await loadStatValues(); renderMatch(); return; }
-      await loadStatValues();
-      const [values] = statValues();
-      if (!values) { ui.statTab = "custom"; renderMatch(); return; }
-      return applyStats(values);
+      if (!st.state.customCount) { ui.statTab[set] = "custom"; await loadStatValues(set); st.render(); return; }
+      await loadStatValues(set);
+      const [values] = statValues(set);
+      if (!values) { ui.statTab[set] = "custom"; st.render(); return; }
+      return applyStats(values, set);
     }
-    ui.statTab = null;
-    run("set_stat_mode", { payload: { mode }, ok: () => ({ title: t("toast.stats." + mode), body: t("toast.stats.body") }) });
+    ui.statTab[set] = null;
+    run(st.action, { payload: { mode }, ok: () => ({ title: t(st.toasts + mode), body: t("toast.stats.body") }) });
   }
-  async function applyStats(values) {
+  async function applyStats(values, set = "arena") {
     if (!values) {
-      const [checked, why] = statValues();
+      const [checked, why] = statValues(set);
       if (!checked) { toast({ kind: "error", title: why }); return; }
       values = checked;
     }
-    const job = await run("set_stat_mode", { payload: { mode: "custom", values }, ok: () => ({ title: t("toast.stats.custom", { n: Object.keys(values).length }), body: t("toast.stats.body") }) });
-    if (job?.status === "succeeded") { ui.statTab = null; S.statMatch.values = values; ui.statDraft = null; renderMatch(); renderSelection(); }
+    const st = statSet(set);
+    const job = await run(st.action, { payload: { mode: "custom", values }, ok: () => ({ title: t(st.toasts + "custom", { n: Object.keys(values).length }), body: t("toast.stats.body") }) });
+    if (job?.status === "succeeded") { ui.statTab[set] = null; statSet(set).state.values = values; ui.statDrafts[set] = null; st.render(); renderSelection(); }
   }
-  function statsDialog() {
-    const draft = statDraft();
+  function statsDialog(set = "arena") {
+    ui.statDialogSet = set;
+    const draft = statDraft(set);
     const filled = f => String(draft[f] ?? "").trim() !== "";
     const groups = STAT_GROUPS.map(g => `<details class="stat-group" data-group="${g.key}" ${g.key === "core" || g.fields.some(filled) ? "open" : ""}>
       <summary><span class="stat-group-name">${esc(t(groupHeading(g)))}</span><span class="stat-group-count">${g.fields.filter(filled).length}/${g.fields.length}</span>${icon("chevron-down", "chev")}</summary>
       ${g.fields.map(field => `<label class="stat-row" data-search="${esc((statLabel(field) + " " + field).toLowerCase())}"><span class="stat-row-name">${esc(rowLabel(field, g))}<small class="mono">${esc(field)}</small></span>
         <input class="stat-input" type="text" inputmode="decimal" data-field="${field}" value="${esc(draft[field] ?? "")}" placeholder="${esc(t("stats.placeholder"))}" aria-label="${esc(statLabel(field))}"></label>`).join("")}</details>`).join("");
-    openDialog("stats", `<div class="dialog-head"><span class="row-icon">${icon("sliders")}</span><h2 id="dlg-title">${esc(t("stats.dialog.title"))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
+    openDialog("stats", `<div class="dialog-head"><span class="row-icon">${icon("sliders")}</span><h2 id="dlg-title">${esc(t(set === "companion" ? "companion.statsDialog" : "stats.dialog.title"))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
       <div class="dialog-body"><p class="stat-dialog-desc">${esc(t("stats.dialog.desc"))}</p>
         <input class="stat-filter" type="search" placeholder="${esc(t("stats.filter"))}" aria-label="${esc(t("stats.filter"))}">
         ${groups}<p class="stat-filter-none" hidden>${esc(t("stats.filter.none"))}</p></div>
@@ -1037,36 +1071,48 @@
         <button class="switch" type="button" role="switch" aria-checked="${!!S.combo?.on}" data-action="boss-combos" aria-label="${esc(t("ai.combo"))}" ${RT.online() && S.combo?.supported && !ui.busy.has("set_boss_combos") ? "" : "disabled"}></button>
       </div>`;
   }
+  // Status updates re-render a card; this keeps the field being typed in.
+  function keepTyping(el) {
+    const active = document.activeElement;
+    const typing = el.contains(active) && active.classList.contains("stat-input") ? { field: active.dataset.field, start: active.selectionStart, end: active.selectionEnd } : null;
+    return () => {
+      const again = typing && el.querySelector(`.stat-input[data-field="${typing.field}"]`);
+      if (again) { again.focus(); again.setSelectionRange(typing.start, typing.end); }
+    };
+  }
+  // The custom form of either set: the four main values, the rest in the dialog.
+  function statForm(set, busy, usable) {
+    const m = statSet(set).state, own = set === "companion", tag = own ? ' data-set="companion"' : "", draft = statDraft(set);
+    const others = Object.keys(draft).filter(f => !STAT_CORE.some(([c]) => c === f) && String(draft[f]).trim()).length;
+    const applied = m.customized ? t(own ? "companion.statsApplied" : "stats.applied", { n: m.customized }) : t(own ? "companion.statsApplied.none" : "stats.applied.none");
+    return `<div class="match-card stat-card">
+        <div class="stat-grid">${STAT_CORE.map(([field, key]) => `<label class="stat-field"><span>${esc(t("stats.core." + key))}</span>
+          <input class="stat-input" type="text" inputmode="decimal"${tag} data-field="${field}" value="${esc(draft[field] ?? "")}" placeholder="${esc(t("stats.placeholder"))}" ${busy ? "disabled" : ""}></label>`).join("")}</div>
+        <div class="stat-actions"><button class="btn-link" type="button" data-action="stats-all"${tag}>${icon("sliders", "icon-sm")}${esc(others ? t("stats.all.more", { n: others }) : t("stats.all"))}</button>
+          <button class="btn btn-primary btn-sm" type="button" data-action="stats-apply"${tag} ${usable ? "" : "disabled"}>${esc(t("stats.apply"))}</button></div>
+        ${m.mode === "custom" ? `<div class="match-foot">${icon("check-circle", "icon-sm")}<span>${esc(applied)}</span></div>` : ""}
+        ${m.rejected.length && m.mode === "custom" ? `<div class="match-warn">${icon("alert", "icon-sm")}<span>${esc(t("stats.rejected", { n: m.rejectedCount || m.rejected.length, names: m.rejected.slice(0, 4).map(statLabel).join("、") + (m.rejected.length > 4 ? "…" : "") }))}</span></div>` : ""}
+        ${m.failures && m.mode === "custom" ? `<div class="match-warn">${icon("alert", "icon-sm")}<span>${esc(t("match.failures", { n: m.failures }))}</span><button class="btn-link" type="button" data-action="open-history">${esc(t("history.open"))}</button></div>` : ""}
+        <p class="stat-note">${esc(t(own ? "companion.statsNote" : "stats.note"))}</p>
+      </div>`;
+  }
   function renderMatch() {
     renderAi();
     const el = $("#dock-match");
     if (!el) return;
     const m = S.statMatch, online = RT.online(), busy = ui.busy.has("set_stat_mode") || ui.busy.has("toggle_stat_match");
-    if (ui.statTab && ui.statTab === m.mode) ui.statTab = null;
-    const tab = ui.statTab || m.mode;
+    if (ui.statTab.arena && ui.statTab.arena === m.mode) ui.statTab.arena = null;
+    const tab = ui.statTab.arena || m.mode;
     const usable = online && !busy && m.modeSupported;
     const desc = busy ? t("match.switching") : !online ? t("match.desc.offline") : !m.modeSupported ? t("fun.old")
       : tab === "match" ? t("match.desc.on") : tab === "custom" ? t("stats.desc.custom") : t("stats.desc.game");
     const seg = `<div class="seg stat-seg" role="radiogroup" aria-labelledby="match-title">${["game", "match", "custom"].map(mode =>
       `<button class="seg-btn" type="button" role="radio" aria-checked="${tab === mode}" data-action="stats-mode" data-mode="${mode}" ${usable ? "" : "disabled"}>${esc(t("stats.mode." + mode))}</button>`).join("")}</div>`;
-    if (tab === "custom" && online && m.modeSupported && !ui.statLoaded) loadStatValues().then(renderMatch);
-    // Status updates re-render the card; keep the field being typed in.
-    const typing = el.contains(document.activeElement) && document.activeElement.classList.contains("stat-input")
-      ? { field: document.activeElement.dataset.field, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
+    if (tab === "custom" && online && m.modeSupported && !ui.statLoaded.arena) loadStatValues().then(renderMatch);
+    const restoreTyping = keepTyping(el);
     let card = "";
     if (tab === "custom" && online && m.modeSupported) {
-      const draft = statDraft();
-      const others = Object.keys(draft).filter(f => !STAT_CORE.some(([c]) => c === f) && String(draft[f]).trim()).length;
-      card = `<div class="match-card stat-card">
-          <div class="stat-grid">${STAT_CORE.map(([field, key]) => `<label class="stat-field"><span>${esc(t("stats.core." + key))}</span>
-            <input class="stat-input" type="text" inputmode="decimal" data-field="${field}" value="${esc(draft[field] ?? "")}" placeholder="${esc(t("stats.placeholder"))}" ${busy ? "disabled" : ""}></label>`).join("")}</div>
-          <div class="stat-actions"><button class="btn-link" type="button" data-action="stats-all">${icon("sliders", "icon-sm")}${esc(others ? t("stats.all.more", { n: others }) : t("stats.all"))}</button>
-            <button class="btn btn-primary btn-sm" type="button" data-action="stats-apply" ${usable ? "" : "disabled"}>${esc(t("stats.apply"))}</button></div>
-          ${m.mode === "custom" ? `<div class="match-foot">${icon("check-circle", "icon-sm")}<span>${esc(m.customized ? t("stats.applied", { n: m.customized }) : t("stats.applied.none"))}</span></div>` : ""}
-          ${m.rejected.length && m.mode === "custom" ? `<div class="match-warn">${icon("alert", "icon-sm")}<span>${esc(t("stats.rejected", { n: m.rejectedCount || m.rejected.length, names: m.rejected.slice(0, 4).map(statLabel).join("、") + (m.rejected.length > 4 ? "…" : "") }))}</span></div>` : ""}
-          ${m.failures && m.mode === "custom" ? `<div class="match-warn">${icon("alert", "icon-sm")}<span>${esc(t("match.failures", { n: m.failures }))}</span><button class="btn-link" type="button" data-action="open-history">${esc(t("history.open"))}</button></div>` : ""}
-          <p class="stat-note">${esc(t("stats.note"))}</p>
-        </div>`;
+      card = statForm("arena", busy, usable);
     } else if (m.mode === "match" && tab === "match" && online && !busy) {
       const base = m.baseline && byId.get(m.baseline.id);
       const failures = m.failures
@@ -1097,8 +1143,7 @@
       ${seg}
       <p class="diff-desc">${esc(desc)}</p>
       ${card}`;
-    const again = typing && el.querySelector(`.stat-input[data-field="${typing.field}"]`);
-    if (again) { again.focus(); again.setSelectionRange(typing.start, typing.end); }
+    restoreTyping();
   }
   function matchRulesDialog() {
     const rules = (prefix, n) => `<ol class="rule-list">${Array.from({ length: n }, (_, i) => `<li>${esc(t(prefix + (i + 1)))}</li>`).join("")}</ol>`;
@@ -1948,6 +1993,7 @@
       case "set_camera_track": return t("action.set_camera_track");
       case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
+      case "set_companion_stats": return t("action.set_companion_stats", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
       default: return t("action." + job.action);
     }
@@ -2282,15 +2328,16 @@
     },
     "ai-clear": () => { ui.aiDraft = {}; for (const input of document.querySelectorAll(".dialog .ai-input")) input.value = ""; },
     "ai-save": () => saveAi(),
-    "stats-mode": el => setStatMode(el.dataset.mode),
-    "stats-apply": () => applyStats(),
-    "stats-all": async () => { if (!ui.statDraft) await loadStatValues(); statsDialog(); },
-    "stats-save": () => { closeDialog(); applyStats(); },
-    "stats-clear": () => { ui.statDraft = {}; for (const input of document.querySelectorAll(".dialog .stat-input")) input.value = ""; },
+    "stats-mode": el => setStatMode(el.dataset.mode, el.dataset.set),
+    "stats-apply": el => applyStats(undefined, el.dataset.set),
+    "stats-all": async el => { const set = el.dataset.set || "arena"; if (!ui.statDrafts[set]) await loadStatValues(set); statsDialog(set); },
+    "stats-save": () => { closeDialog(); applyStats(undefined, ui.statDialogSet); },
+    "stats-clear": () => { ui.statDrafts[ui.statDialogSet] = {}; for (const input of document.querySelectorAll(".dialog .stat-input")) input.value = ""; },
     "clock-hud": () => toggleClockHud(),
     "execution-camera": () => toggleExecutionCamera(),
     "companion-executions": () => toggleCompanionExec(),
     "match-focus": () => { const el = $("#dock-match"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); el?.querySelector(".switch")?.focus({ preventScroll: true }); },
+    "companion-stats-focus": () => { const el = $(".companion-stats"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); (el?.querySelector(".stat-input") || el?.querySelector(".seg-btn"))?.focus({ preventScroll: true }); },
     "launch-game": () => { closePopover(); RT.launchGame(); toast({ kind: "info", title: t("toast.launching"), body: t("toast.launching.body") }); },
     "unitkey-capture": el => { if (ui.capture?.kind === "unit") cancelCapture(); else startCapture({ kind: "unit", id: el.dataset.id }); },
     "unitkey-remove": async el => {
@@ -2432,9 +2479,10 @@
     fn(el, e);
   });
   document.addEventListener("input", e => {
+    if (e.target.id === "level-custom") { ui.levelCustom = e.target.value; return; }
     if (e.target.classList?.contains("stat-input")) {
       if (e.target.classList.contains("ai-input")) ui.aiDraft[e.target.dataset.field] = e.target.value;
-      else statDraft()[e.target.dataset.field] = e.target.value;
+      else statDraft(e.target.closest(".dialog") ? ui.statDialogSet : e.target.dataset.set)[e.target.dataset.field] = e.target.value;
       const group = e.target.closest(".stat-group");
       if (group) {
         const inputs = [...group.querySelectorAll(".stat-input")];
@@ -2472,7 +2520,6 @@
     if (e.target.id === "count-input") setCount(Number(e.target.value));
     if (e.target.id === "diff-select") setDifficulty(e.target.value);
     if (e.target.id === "level-mode") setLevelMode(e.target.value);
-    if (e.target.id === "level-custom") ui.levelCustom = e.target.value;
     if (e.target.id === "home-level") setHomeLevel(e.target.dataset.id, e.target.value);
     if (e.target.id === "onb-lang") { setLanguage(e.target.value); }
     if (e.target.classList?.contains("cam-range") && e.target.dataset.cam) saveCamSettings(camSliderValues());

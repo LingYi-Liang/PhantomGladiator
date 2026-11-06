@@ -317,6 +317,37 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(revision=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": {"Attack": 1}, "revision": bad})
 
+    def test_companion_stats_are_a_set_of_their_own(self):
+        arena = self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": {"Attack": 999}})
+        command = self.bridge.enqueue({"action": "set_companion_stats", "mode": "custom", "values": {"Attack": 50, "ShachiAttack": 0}})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        revision = command["payload"]["revision"]
+        self.assertEqual(columns[1:8], ["set_companion_stats", "", "blue", "1", "CUSTOM", revision, ""])
+        request = (self.bridge.runtime / "companion-stats-request.tsv").read_text(encoding="utf-8")
+        self.assertEqual(request, f"StatCustomV1\t{revision}\nAttack\t50\nShachiAttack\t0\n")
+        arena_request = (self.bridge.runtime / "stat-custom-request.tsv").read_text(encoding="utf-8")
+        self.assertEqual(arena_request, f"StatCustomV1\t{arena['payload']['revision']}\nAttack\t999\n", "the arena's values stay where they were")
+        command = self.bridge.enqueue({"action": "set_companion_stats", "mode": "game"})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[5], "GAME")
+        for bad in ({"action": "set_companion_stats", "mode": "match"}, {"action": "set_companion_stats"},
+                    {"action": "set_companion_stats", "mode": "custom"},
+                    {"action": "set_companion_stats", "mode": "custom", "values": {}},
+                    {"action": "set_companion_stats", "mode": "custom", "values": {"Bogus": 5}},
+                    {"action": "set_companion_stats", "mode": "custom", "values": {"Attack": 0}},
+                    {"action": "set_companion_stats", "mode": "custom", "values": {"ShachiAttack": -1}},
+                    {"action": "set_companion_stats", "mode": "game", "unit_id": "BP_Monster_MoTian"}):
+            with self.assertRaises(backend.ValidationError, msg=str(bad)):
+                self.bridge.enqueue(bad)
+
+    def test_companion_stats_read_their_own_file(self):
+        self.assertEqual(self.bridge.stat_settings("companion-stats-settings.tsv")["mode"], "game")
+        (self.bridge.runtime / "stat-match-settings.tsv").write_text("StatMatchV2\tcustom\nAttack\t999\n", encoding="utf-8")
+        (self.bridge.runtime / "companion-stats-settings.tsv").write_text("StatMatchV2\tcustom\nAttack\t50\nHealth_Max\t2000.5\n", encoding="utf-8")
+        saved = self.bridge.stat_settings("companion-stats-settings.tsv")
+        self.assertEqual((saved["mode"], saved["values"]), ("custom", {"Attack": 50, "Health_Max": 2000.5}))
+        self.assertEqual(self.bridge.stat_settings()["values"], {"Attack": 999})
+
     def test_stat_settings_read_what_the_mod_saved(self):
         self.assertEqual(self.bridge.stat_settings()["mode"], "game")
         self.write("stat-match-settings.tsv", "StatMatchV1\t1\n")

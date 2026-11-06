@@ -175,6 +175,40 @@ test('equal stats copies the level-1 values, so matched units take and deal the 
         assert(b.values[field].current==a.values[field].current,field)
     end
 end)
+test('a second set keeps its own files, takes no matching and leaves the first alone',function()
+    local h=harness()
+    local logs={}
+    local options={path='memory',io=h.options.io,adapter=h.options.adapter,fields=Fields,tag='[CompanionStats]',customOnly=true,
+        settings='companion-stats-settings.tsv',request='companion-stats-request.tsv',log=function(s)logs[#logs+1]=s end}
+    local companions=Match.new(options)
+    assert(companions:status().mode=='game')
+    -- Each reads its own request: the same revision in the other file does not count.
+    h.files['memory/stat-custom-request.tsv']='StatCustomV1\tR1\nAttack\t999\n'
+    assert(not companions:setMode('CUSTOM','R1').ok and companions:status().mode=='game')
+    h.files['memory/companion-stats-request.tsv']='StatCustomV1\tR2\nAttack\t40\nShachiAttack\t5\n'
+    assert(not h.match:setMode('CUSTOM','R2').ok and h.match:status().mode=='game')
+    assert(companions:setMode('CUSTOM','R2').ok and companions:status().custom_count==2)
+    assert(h.files['memory/companion-stats-settings.tsv']=='StatMatchV2\tcustom\nAttack\t40\nShachiAttack\t5\n')
+    assert(h.files['memory/stat-match-settings.tsv']==nil,'the arena settings were not written')
+    assert(h.match:setMode('CUSTOM','R1').ok and h.match:status().custom.Attack==999 and companions:status().custom.Attack==40)
+    -- Their units get their numbers, with the level-1 value moved by the same ratio so damage follows; the log says whose.
+    local unit=h:actor(100,80,20)
+    local result=companions:onSpawn(unit,'C')
+    assert(result.ok and result.applied and unit.values.Attack.current==40 and unit.values.ShachiAttack.current==5)
+    assert(unit.values.Attack_Lv1.current==20 and unit.values.Health_Max.current==100,'attack doubled, empty fields kept')
+    assert(companions:status().customized==1 and h.match:status().customized==0)
+    assert(table.concat(logs,'\n'):find('[CompanionStats] 自定义应用并读回 unit=C',1,true),table.concat(logs,'\n'))
+    assert(not table.concat(logs,'\n'):find('[StatMatch]',1,true))
+    -- No first-unit matching here, from a command or from a stray file.
+    local refused=companions:setMode('MATCH','')
+    assert(not refused.ok and refused.message:find('GAME 或 CUSTOM',1,true) and companions:status().mode=='custom')
+    h.files['memory/companion-stats-settings.tsv']='StatMatchV2\tmatch\n'
+    assert(Match.new(options):status().mode=='game')
+    assert(companions:setMode('GAME','').ok and companions:status().custom_count==2,'the values are kept for next time')
+    -- Back to the game's numbers: nothing written.
+    local writes=#h.writes
+    assert(companions:onSpawn(h:actor(100,80,20),'D').ok and #h.writes==writes)
+end)
 test('the v1 switch file still reads as matching',function()
     local h=harness();h.files['memory/stat-match-settings.tsv']='StatMatchV1\t1\n'
     assert(Match.new(h.options):status().mode=='match')

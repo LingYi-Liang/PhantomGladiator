@@ -365,6 +365,22 @@ test("stat mode command passes mode and revision through and reports the custom 
     local missing=harness();missing.runtime:start();missing.inbox={action='set_stat_mode',key_spawn='GAME'};missing:tick()
     assert(not missing.result.ok)
 end)
+test("the companions' own stat set has its command and status beside the arena's",function()
+    local h=harness();local got,arena
+    local set={setMode=function(_,mode,revision)
+        assert(h.inGame);got={mode,revision};return {ok=true,message='fixture companion mode',spawned_count=0}
+    end,status=function()return {mode='custom',customized=2,custom_count=4,failures=1,message='已写入',
+        rejected={'Shield','A1','A2','A3','A4','A5','A6','A7','A8','A9','A10','A11','A12'}}end}
+    local matching={setMode=function()arena=true;return {ok=true,message='',spawned_count=0}end,status=function()return {mode='game'}end}
+    h.runtime=h.new({statMatch=matching,companionStats=set});h.runtime:start()
+    h.inbox={action='set_companion_stats',key_spawn='CUSTOM',key_start='R0A1B2C3D4E5F'};h:tick()
+    assert(h.result.ok and got[1]=='CUSTOM' and got[2]=='R0A1B2C3D4E5F' and not arena,'only the companions set takes it')
+    assert(h.reported.companion_stats_supported==true and h.reported.companion_stats_mode=='custom' and h.reported.stat_match_mode=='game')
+    assert(h.reported.companion_stats_count==4 and h.reported.companion_stats_customized==2 and h.reported.companion_stats_failures==1)
+    assert(h.reported.companion_stats_rejected==13 and h.reported.companion_stats_rejected_fields=='Shield,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11')
+    local missing=harness();missing.runtime:start();missing.inbox={action='set_companion_stats',key_spawn='GAME'};missing:tick()
+    assert(not missing.result.ok and missing.reported.companion_stats_supported==false)
+end)
 test("companions are dismissed on their own and reported apart from the arena",function()
     local h=harness()
     h.runtime=h.new({companions={status=function()return {follow=2,friendly=2,failures=1,message='m'}end}});h.runtime:start()

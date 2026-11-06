@@ -55,11 +55,15 @@ function player:GetActorForwardVector() return {X=1,Y=0,Z=0} end
 local world={IsValid=function() return true end,GetAddress=function() return 100 end}
 local pc={IsValid=function() return true end,Pawn=player}
 package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end}
-local arenaOptions,statMatchInstance,spectatorOptions,runtimeInstance
+local arenaOptions,statMatchInstance,companionStatsInstance,spectatorOptions,runtimeInstance
 local Arena=require('arena_controller');local realArenaNew=Arena.new
 Arena.new=function(options)arenaOptions=options;return realArenaNew(options)end
 local Match=require('stat_match');local realMatchNew=Match.new
-Match.new=function(options)statMatchInstance=realMatchNew(options);return statMatchInstance end
+Match.new=function(options)
+    local made=realMatchNew(options)
+    if options.customOnly then companionStatsInstance=made else statMatchInstance=made end
+    return made
+end
 local Spectator=require('spectator_mode');local realSpectatorNew=Spectator.new
 Spectator.new=function(options)spectatorOptions=options;return realSpectatorNew(options)end
 local Runtime=require('panel_runtime');local realRuntimeNew=Runtime.new
@@ -88,7 +92,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.3-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.4-game-26367565',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -111,6 +115,19 @@ assert(activated==true and warning and warning:find('保留原生数值',1,true)
     'verified stat rollback must preserve successful activation, HUD eligibility and combat')
 result.rollback_verified=false
 assert(arenaOptions.activate(npc,known)==false,'unverified rollback still requires cleanup')
+-- A companion takes its own set and never the arena's; an escort takes neither.
+local whose={}
+statMatchInstance.onSpawn=function()whose[#whose+1]='arena';return {ok=true}end
+companionStatsInstance.onSpawn=function(_,actor,path)assert(actor==npc and path==known);whose[#whose+1]='companion';return {ok=true}end
+arenaOptions.activate(npc,known,'blue')
+arenaOptions.activate(npc,known,'companion')
+arenaOptions.activate(npc,known,'companion',true)
+arenaOptions.activate(npc,known,'red',true)
+assert(table.concat(whose,',')=='arena,companion',table.concat(whose,','))
+-- A companion whose numbers the game refused is treated like an arena unit's: rolled back it stays and fights.
+companionStatsInstance.onSpawn=function()return {ok=false,rollback_verified=true,message='fixture'}end
+local stays,_,why=arenaOptions.activate(npc,known,'companion')
+assert(stays==true and why and why:find('保留原生数值',1,true))
 function npc:GetAddress()return 2001 end
 function npc:GetOuter()return world end
 function npc:IsActorBeingDestroyed()return false end
