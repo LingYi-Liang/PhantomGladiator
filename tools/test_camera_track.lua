@@ -119,7 +119,7 @@ do
     local _,swapped=h.run(3)
     assert(near(wrap(swapped.Yaw-later.Yaw),0,1.5),swapped.Yaw..' '..later.Yaw)
 end
--- Far apart: no further than the cap. Close together: not nearer than the height of the taller one needs.
+-- Far apart: no further than the cap, and the opponent pulls the look point no further than one 40 m away. Close together: not nearer than the height of the taller one needs.
 do
     local h=harness()
     local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',20000,0,100,'red')
@@ -133,7 +133,7 @@ do
     far.opponents[one]=two
     far.track:start(tostring(one.GetAddress()))
     local p=far.run(10)
-    local look={X=7000,Y=0,Z=130}
+    local look={X=1400,Y=0,Z=130}
     local d=math.sqrt((p.X-look.X)^2+(p.Y-look.Y)^2+(p.Z-look.Z)^2)
     assert(near(d,2500,5),d)
     local tall=harness()
@@ -439,5 +439,105 @@ do
         local fresh=Track.new({path='memory',io=filesystem({['memory/camera-track.tsv']=text}),members=function()return {} end})
         assert(fresh:status().framing=='side' and fresh:status().resume==3)
     end
+end
+-- Limits: however long the keys are held, with no return to automatic, the view stays within reach of the followed unit.
+do
+    local h=harness()
+    h.track:set('side',0)
+    local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',1000,0,100,'red');h.opponents[a]=b
+    h.track:start(tostring(a.GetAddress()))
+    local start=h.run(4)
+    local function fromStart(p)return math.sqrt((p.X-start.X)^2+(p.Y-start.Y)^2+(p.Z-start.Z)^2) end
+    local far=h.run(60,{up=-1,forward=1,right=1,fast=true,speed=900,smooth=40})
+    assert(fromStart(far)<=3000+5,fromStart(far))
+    assert(fromStart(far)>2900,'the hand does get there')
+    assert(h.all():find('平移到上限 30m 读回=30m',1,true),h.all())
+    -- Turning back answers at once, it does not first have to undo what pushed against the limit.
+    local back=h.run(0.25,{up=1,forward=-1,right=-1,speed=900,smooth=40})
+    assert(fromStart(back)<fromStart(far)-80,fromStart(far)-fromStart(back))
+    local settled=h.run(1,{speed=900,smooth=40})
+    local stay=h.run(5,{speed=900,smooth=40})
+    assert(near(fromStart(stay),fromStart(settled),5),'stays, resume 0')
+end
+-- The view also stays within 100 m of the unit with the wheel all the way out on top of it.
+do
+    local h=harness()
+    h.track:set('side',0)
+    local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',3400,0,100,'red');h.opponents[a]=b
+    h.track:start(tostring(a.GetAddress()))
+    h.run(8)
+    for _=1,120 do h.now=h.now+1/60;h.track:frame(1/60,h.now,{wheel=-5}) end
+    local p=h.run(30,{forward=-1,up=1,fast=true,speed=900,smooth=40})
+    local d=math.sqrt(p.X^2+p.Y^2+(p.Z-100)^2)
+    assert(d<=10000+1 and d>9500,d)
+    assert(h.all():find('镜头到距离上限 100m',1,true),h.all())
+end
+-- An opponent very far away, or deep under the map: the view keeps to the followed unit, it does not go after that one.
+do
+    for _,place in ipairs({{50000,0,100},{0,0,-60000},{30000,0,-40000}})do
+        local h=harness()
+        local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',1000,0,100,'red');h.opponents[a]=b
+        h.track:start(tostring(a.GetAddress()))
+        h.run(4)
+        b.at={X=place[1],Y=place[2],Z=place[3]}
+        local p=h.run(6)
+        local d=math.sqrt(p.X^2+p.Y^2+(p.Z-100)^2)
+        assert(d<=1400+2500+200,d)
+        assert(p.Z>100-1400-100,'not pulled underground '..p.Z)
+    end
+    -- With a wide view the distance is what the opponent's reach asks for, not what its real distance would.
+    do
+        local h=harness();h.fov=120
+        h.position,h.rotation={X=0,Y=-1600,Z=300},{Pitch=-12,Yaw=90,Roll=0}
+        local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',50000,0,100,'red');h.opponents[a]=b
+        h.track:start(tostring(a.GetAddress()))
+        local p=h.run(10)
+        local d=math.sqrt((p.X-1400)^2+p.Y^2+(p.Z-130)^2)
+        assert(near(d,1631,40),d)
+    end
+    -- The far opponent can come back: within reach nothing has changed.
+    local h=harness()
+    local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',50000,0,100,'red');h.opponents[a]=b
+    h.position,h.rotation={X=0,Y=-2500,Z=300},{Pitch=-12,Yaw=90,Roll=0}
+    h.track:start(tostring(a.GetAddress()))
+    h.run(4)
+    b.at={X=1000,Y=0,Z=100}
+    local p=h.run(8)
+    local dir=math.rad(90)
+    assert(near(p.X,350,40),'the look point is the old share of the way again '..p.X)
+end
+-- The keys do not take the view through the ground; from under it the wall check would find nothing to stop the camera.
+do
+    local floor=0
+    local function hitFloor(from,to)
+        if from.Z<=floor or to.Z>=floor then return nil end
+        local t=(from.Z-floor)/(from.Z-to.Z)
+        return {at={X=from.X+(to.X-from.X)*t,Y=from.Y+(to.Y-from.Y)*t,Z=floor},normal={X=0,Y=0,Z=1},distance=1}
+    end
+    local h=harness({trace=function(_,from,to)return hitFloor(from,to) end})
+    h.track:set('side',0)
+    local a=h.add('BP_A_C',0,0,100);local b=h.add('BP_B_C',1000,0,100,'red');h.opponents[a]=b
+    h.track:start(tostring(a.GetAddress()))
+    h.run(4,{world='WORLD'})
+    local p=h.run(20,{up=-1,fast=true,speed=900,smooth=40,world='WORLD'})
+    assert(p.Z>floor,'camera above the ground '..p.Z)
+    assert(h.all():find('平移碰到地面',1,true),h.all())
+    -- Without the check the same keys go 15 m under it.
+    local free=harness()
+    free.track:set('side',0)
+    local a1=free.add('BP_A_C',0,0,100);local b1=free.add('BP_B_C',1000,0,100,'red');free.opponents[a1]=b1
+    free.track:start(tostring(a1.GetAddress()))
+    free.run(4)
+    assert(free.run(20,{up=-1,fast=true,speed=900,smooth=40}).Z<-1500)
+    -- A wall in the way of the keys does not stop them; only ground under the view does.
+    local wall=harness({trace=function(_,from,to)
+        return {at={X=(from.X+to.X)/2,Y=(from.Y+to.Y)/2,Z=(from.Z+to.Z)/2},normal={X=1,Y=0,Z=0},distance=1}
+    end})
+    wall.track:set('side',0)
+    local a2=wall.add('BP_A_C',0,0,100);local b2=wall.add('BP_B_C',1000,0,100,'red');wall.opponents[a2]=b2
+    wall.track:start(tostring(a2.GetAddress()))
+    wall.run(4,{world='WORLD'})
+    wall.run(1,{up=-1,speed=900,smooth=40,world='WORLD'})
+    assert(not wall.all():find('平移碰到地面',1,true),wall.all())
 end
 print('camera_track: PASS')

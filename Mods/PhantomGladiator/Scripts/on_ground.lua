@@ -13,7 +13,7 @@
 --   state it was asked for.
 local U=require('ue_observe')
 local Ground={}
-local CLEARANCE,PLACE_MAX_DROP,MAX_DROP,BESIDE,MAX_RISE=3,800,1500,300,60
+local CLEARANCE,PLACE_MAX_DROP,MAX_DROP,BESIDE,MAX_RISE,PARK_STEP=3,800,1500,300,60,300
 local WALKING,FALLING,FLYING=1,3,5
 local BLOCK='AI.DisableCombatAI'
 local NO_FALL_DEATH=1e9
@@ -151,6 +151,37 @@ function Ground.new(options)
         say('free',string.format('%s %s：放到%s 从Z=%.1f 到Z=%.1f 传送=%s 改走路=%s；读回 模式=%s 封锁标签=%s Z=%s；累计=%d',mode==FLYING and '解除空中冻结' or '坠崖拉回',options.label(actor),how,here.Z,dest.Z,
             tostring(moved),tostring(walked),tostring((self:mode(actor))),tostring(self:blocked(actor)),at and string.format('%.1f',at.Z) or '?',self.freed))
         return true
+    end
+    -- A stand between moves (stand_keep.lua): on the ground, walking. Where it is if it may stay and the ground is in reach;
+    -- otherwise beside its summoner, or on the summoner's own spot when beside it is a wall or a drop. Says what it did.
+    function self:park(actor,owner,mayStay)
+        if not U.valid(actor) or not U.valid(owner) then return {why='对象失效'} end
+        self:keepFromFallDeath(actor)
+        local here,there,half,world=options.location(actor),options.location(owner),halfHeight(actor),options.world()
+        if not here or not there or not half or not U.valid(world) then return {why='读不到位置或胶囊'} end
+        local x,y,ground,how
+        if mayStay then
+            local feet=here.Z-half
+            local found=trace(world,here.X,here.Y,feet,10)
+            if found and feet-found<=MAX_DROP then x,y,ground,how=here.X,here.Y,found,'脚下地面' end
+        end
+        if not ground then
+            local dx,dy=here.X-there.X,here.Y-there.Y
+            local length=math.sqrt(dx*dx+dy*dy)
+            if length<1 then dx,dy,length=1,0,1 end
+            local ownerFeet=there.Z-(halfHeight(owner) or half)
+            x,y,how=there.X+dx/length*BESIDE,there.Y+dy/length*BESIDE,'召唤者身边'
+            ground=groundAt(world,x,y,there.Z)
+            if not ground or math.abs(ground-ownerFeet)>PARK_STEP then
+                x,y,how=there.X,there.Y,'召唤者脚下'
+                ground=groundAt(world,x,y,there.Z) or ownerFeet
+            end
+        end
+        local dest={X=x,Y=y,Z=ground+half+CLEARANCE}
+        local moved=teleport(actor,dest)
+        local _,cmc=self:mode(actor)
+        local walked=U.valid(cmc) and pcall(function()cmc:SetMovementMode(WALKING,0)end)
+        return {moved=moved==true,walked=walked==true,how=how,dest=dest}
     end
     return self
 end

@@ -88,12 +88,13 @@ function Stands.new(options)
         passive=passive or passives[U.key(actor)]
         local fade=U.field(passive,'NormalFade')
         local hp=U.field(U.field(actor,'AttributeSetBase'),'Health')
-        return string.format('%s Dead=%s Action=%s StandEnable=%s bHidden=%s AI=%s bAIStarted=%s HP=%s Enabled=%s EnableCount=%s OwnerBreak=%s ActivateAI=%s NormalFadeValid=%s NormalFade=%s',
+        return string.format('%s Dead=%s Action=%s StandEnable=%s bHidden=%s AI=%s bAIStarted=%s HP=%s Enabled=%s EnableCount=%s OwnerBreak=%s ActivateAI=%s NormalFadeValid=%s NormalFade=%s MoveMode=%s SpaceGround=%s',
             label(actor),tostring(tagCount(actor,'CharacterState.Dead')),tostring(tagCount(actor,'Ability.Action')),
             tostring(tagCount(actor,'CharacterType.Stand.Enable')),tostring((U.field(actor,'bHidden'))),name(U.struct(state,'TagName')),
             tostring((U.field(ai,'bAIStarted'))),tostring((U.struct(hp,'CurrentValue'))),tostring((U.field(passive,'Enabled'))),
             tostring((U.field(passive,'EnableCount'))),tostring((U.field(passive,'IsOwnerBreak'))),tostring((U.field(passive,'ActivateAI'))),
-            tostring(U.valid(fade)),tostring(call(fade,'IsActive')))
+            tostring(U.valid(fade)),tostring(call(fade,'IsActive')),
+            tostring((U.field(U.field(actor,'CharacterMovement'),'MovementMode'))),tostring(tagCount(actor,'CharacterState.Space.Ground')))
     end
     local function caster(context)
         local action=U.unwrap(context)

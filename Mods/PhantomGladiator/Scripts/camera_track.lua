@@ -28,6 +28,10 @@ local PITCH_MIN,PITCH_MAX=-70,40
 local MOVE_TAU,TURN_TAU=0.30,0.15        -- as the free camera, at smoothing 100
 local RETURN_TAU=0.33                    -- back to automatic in about a second
 local WHEEL_STEP,ZOOM_MIN,ZOOM_MAX=0.12,0.3,4
+local OPPONENT_REACH=4000                -- cm; a farther opponent pulls the view no more than one this far away
+local PAN_MAX=3000                       -- cm WASD/QE can take the view from the look point
+local VIEW_MAX=10000                     -- cm from the followed unit, whatever the wheel and the keys add up to
+local FLOOR_GAP=50                       -- cm kept above the ground the keys run into
 local HOLD_SECONDS=1.5                   -- on a fallen unit before moving on
 local CHECK_EVERY=0.25                   -- health and opponent
 local TRACE_EVERY=0.1                    -- the line from the look point to the camera
@@ -337,8 +341,10 @@ function Track.new(options)
             wantLook={X=a.X-math.sin(y)*side,Y=a.Y+math.cos(y)*side,Z=a.Z+LOOK_HIGH}
             auto=SHOULDER_DIST+r.targetRadius*3
         elseif b then
-            wantLook={X=a.X*MAIN_SHARE+b.X*(1-MAIN_SHARE),Y=a.Y*MAIN_SHARE+b.Y*(1-MAIN_SHARE),Z=a.Z*MAIN_SHARE+b.Z*(1-MAIN_SHARE)+LOOK_HIGH}
-            auto=(MAIN_SHARE*sep+math.max(r.targetRadius,r.otherRadius or 0)*1.5+MARGIN)/tanH
+            local gap=math.sqrt((b.X-a.X)^2+(b.Y-a.Y)^2+(b.Z-a.Z)^2)
+            local pull=(1-MAIN_SHARE)*(gap>OPPONENT_REACH and OPPONENT_REACH/gap or 1)
+            wantLook={X=a.X+(b.X-a.X)*pull,Y=a.Y+(b.Y-a.Y)*pull,Z=a.Z+(b.Z-a.Z)*pull+LOOK_HIGH}
+            auto=(MAIN_SHARE*math.min(sep,OPPONENT_REACH)+math.max(r.targetRadius,r.otherRadius or 0)*1.5+MARGIN)/tanH
         else
             wantLook={X=a.X,Y=a.Y,Z=a.Z+LOOK_HIGH}
             auto=SOLO_DIST
@@ -408,6 +414,15 @@ function Track.new(options)
         local v,pan=r.panVel,r.pan
         v.X,v.Y,v.Z=v.X+(want.X-v.X)*moveEase,v.Y+(want.Y-v.Y)*moveEase,v.Z+(want.Z-v.Z)*moveEase
         pan.X,pan.Y,pan.Z=pan.X+v.X*dt,pan.Y+v.Y*dt,pan.Z+v.Z*dt
+        -- As far as the hand can take it: at the limit, what still pushes outward is dropped, so turning back answers at once.
+        local panned=math.sqrt(pan.X*pan.X+pan.Y*pan.Y+pan.Z*pan.Z)
+        if panned>PAN_MAX then
+            local nx,ny,nz=pan.X/panned,pan.Y/panned,pan.Z/panned
+            pan.X,pan.Y,pan.Z=nx*PAN_MAX,ny*PAN_MAX,nz*PAN_MAX
+            local outward=v.X*nx+v.Y*ny+v.Z*nz
+            if outward>0 then v.X,v.Y,v.Z=v.X-outward*nx,v.Y-outward*ny,v.Z-outward*nz end
+            if not r.panLimitSeen then r.panLimitSeen=true;say(string.format('平移到上限 %.0fm 读回=%.0fm',PAN_MAX/100,math.sqrt(pan.X*pan.X+pan.Y*pan.Y+pan.Z*pan.Z)/100)) end
+        end
         if forward~=0 or right~=0 or up~=0 then r.panAt=now
         elseif r.panAt and resume>0 and now-r.panAt>=resume then
             local back=1-ease(dt,RETURN_TAU)
@@ -419,6 +434,20 @@ function Track.new(options)
         local look=r.look
         look.X,look.Y,look.Z=look.X+(wantLook.X-look.X)*follow,look.Y+(wantLook.Y-look.Y)*follow,look.Z+(wantLook.Z-look.Z)*follow
         local origin={X=look.X+pan.X,Y=look.Y+pan.Y,Z=look.Z+pan.Z}
+        -- The keys do not take the view through the ground: from under it, the wall check below finds nothing to stop the camera.
+        if options.trace and pan.Z<0 and (not r.floorAt or now-r.floorAt>=TRACE_EVERY) then
+            r.floorAt=now
+            local hit=options.trace(input.world,look,origin)
+            if hit and hit.at and not hit.inside and (not hit.normal or hit.normal.Z>0.5) and not isUnit(hit) then
+                local room=hit.at.Z+FLOOR_GAP-origin.Z
+                if room>0 then
+                    pan.Z=pan.Z+room
+                    if v.Z<0 then v.Z=0 end
+                    origin.Z=look.Z+pan.Z
+                    if not r.floorSeen then r.floorSeen=true;say(string.format('平移碰到地面 地面Z=%.0f 抬高=%.0fcm 读回Z=%.0f',hit.at.Z,room,origin.Z)) end
+                end
+            end
+        end
         local dir=direction(r.yaw,r.pitch)
         -- A wall between the look point and the camera: closer at once, back out slowly.
         if options.trace and (not r.traceAt or now-r.traceAt>=TRACE_EVERY) then
@@ -442,7 +471,14 @@ function Track.new(options)
             log(string.format('[CameraTrack] 读回 主目标=%s 对手=%s 两人距离=%.1fm 想要距离=%.1fm 实际距离=%.1fm 朝向=%.0f 手动=%s%s%s%s',className(r.target),className(r.other),
                 sep/100,r.baseDist*r.zoom/100,r.shown/100,r.yaw%360,r.mouseAt and '鼠标 ' or '',r.wheelAt and '滚轮 ' or '',r.panAt and '平移 ' or '',r.limit and '有墙' or ''))
         end
-        return {X=origin.X-dir.X*r.shown,Y=origin.Y-dir.Y*r.shown,Z=origin.Z-dir.Z*r.shown},{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0}
+        local camera={X=origin.X-dir.X*r.shown,Y=origin.Y-dir.Y*r.shown,Z=origin.Z-dir.Z*r.shown}
+        local fromUnit=math.sqrt((camera.X-a.X)^2+(camera.Y-a.Y)^2+(camera.Z-a.Z)^2)
+        if fromUnit>VIEW_MAX then
+            local share=VIEW_MAX/fromUnit
+            camera={X=a.X+(camera.X-a.X)*share,Y=a.Y+(camera.Y-a.Y)*share,Z=a.Z+(camera.Z-a.Z)*share}
+            if not r.viewLimitSeen then r.viewLimitSeen=true;say(string.format('镜头到距离上限 %.0fm 原本=%.0fm',VIEW_MAX/100,fromUnit/100)) end
+        end
+        return camera,{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0}
     end
     return self
 end

@@ -67,8 +67,19 @@ end
 local Spectator=require('spectator_mode');local realSpectatorNew=Spectator.new
 Spectator.new=function(options)spectatorOptions=options;return realSpectatorNew(options)end
 local Runtime=require('panel_runtime');local realRuntimeNew=Runtime.new
-Runtime.new=function(options)runtimeInstance=realRuntimeNew(options);return runtimeInstance end
+local supportLoop
+Runtime.new=function(options)supportLoop=options.support;runtimeInstance=realRuntimeNew(options);return runtimeInstance end
+local StandKeep=require('stand_keep');local realKeepNew=StandKeep.new
+local keepOptions,keepTicks=nil,0
+StandKeep.new=function(options)
+    keepOptions=options
+    local made=realKeepNew(options)
+    local tick=made.tick
+    made.tick=function(self)keepTicks=keepTicks+1;return tick(self)end
+    return made
+end
 assert(loadfile(scripts.."main.lua"))()
+assert(keepOptions and keepOptions.members and keepOptions.location and keepOptions.camera and keepOptions.ground and keepOptions.ground.park,'stands are kept on the ground')
 assert(next(keys)==nil,'fresh installation must not register fixed or developer shortcuts')
 assert(#loops==1,"boot should only install bounded panel polling")
 local configured={spawn='F9',start='F3',stop='F4',refresh_catalog='F1',toggle_camera='F6',exit_camera='F7',cycle_team='F2',toggle_spectator='F8'}
@@ -92,7 +103,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.5-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.6-game-26367565',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -147,6 +158,8 @@ FindAllOf=function(name)assert(inGame);return name=='PBZCharacter_NPC' and {npc,
 local scanned=spectatorOptions.getNPCs()
 assert(#scanned==1 and scanned[1]==npc,'spectator must ignore class templates/out-of-world objects')
 inGame=false
+inGame=true;supportLoop:tick();inGame=false
+assert(keepTicks==1,'the support loop looks after the stands')
 local queuedBefore=#queue
 ModRef.OnUnload()
 keys['120:0']()

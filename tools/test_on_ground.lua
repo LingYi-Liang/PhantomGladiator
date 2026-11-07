@@ -190,4 +190,44 @@ do -- over a drop, a spot moves toward the middle of the batch when there is one
     assert(placed and placed.closer==0.75 and t.Translation.X==300 and t.Translation.Y==0,'moved along the line to the anchor')
 end
 
+do -- a stand between moves: straight down when it may stay and ground is in reach, otherwise beside its summoner
+    local h=harness();h.floor=0
+    local owner,stand=h.unit(100,{X=0,Y=0,Z=100}),h.unit(90,{X=500,Y=0,Z=400},5)
+    local done=h.g:park(stand,owner,true)
+    assert(done.moved and done.walked and done.how=='脚下地面',done.how)
+    assert(h.at[stand].X==500 and h.at[stand].Z==93 and h.walked==1,h.at[stand].Z)
+    assert(stand.DeadDepth==1e9,'no death from the fall it was in')
+    h.at[stand]={X=20000,Y=0,Z=400}
+    done=h.g:park(stand,owner,false)
+    assert(done.how=='召唤者身边' and h.at[stand].X==300 and h.at[stand].Y==0 and h.at[stand].Z==93,h.at[stand].X)
+    -- Right on top of the summoner: any direction will do.
+    h.at[stand]={X=0,Y=0,Z=100}
+    done=h.g:park(stand,owner,false)
+    assert(done.how=='召唤者身边' and h.at[stand].X==300,h.at[stand].X)
+end
+
+do -- a ledge or a hole beside the summoner: its own spot; no ground read at all: its feet
+    local h=harness();h.floor=0
+    local owner,stand=h.unit(100,{X=0,Y=0,Z=100}),h.unit(90,{X=20000,Y=0,Z=400},5)
+    h.heights['300.0,0.0']=-2000
+    local done=h.g:park(stand,owner,false)
+    assert(done.how=='召唤者脚下' and h.at[stand].X==0 and h.at[stand].Z==93,done.how)
+    h.heights['300.0,0.0']=nil
+    h.floor=false
+    h.at[stand]={X=20000,Y=0,Z=400}
+    done=h.g:park(stand,owner,false)
+    assert(done.how=='召唤者脚下' and h.at[stand].X==0 and h.at[stand].Z==0+90+3,h.at[stand].Z)
+end
+
+do -- nothing to work with: says why, moves nothing; a dead object is not asked anything
+    local h=harness();h.floor=0
+    local owner,stand=h.unit(100,{X=0,Y=0,Z=100}),h.unit(90,{X=0,Y=0,Z=400},5)
+    h.at[owner]=nil
+    local done=h.g:park(stand,owner,false)
+    assert(done.why=='读不到位置或胶囊' and not h.teleports)
+    owner.alive=false
+    done=h.g:park(stand,owner,false)
+    assert(done.why=='对象失效' and not h.teleports)
+end
+
 print('on_ground: PASS')

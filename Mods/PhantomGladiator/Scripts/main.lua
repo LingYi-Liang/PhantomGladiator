@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.5-game-26367565"
+local BUILD = "v0.40.6-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1726,6 +1726,16 @@ function arenaSupport:discover()
     end
 end
 arenaSupport.stands=require('arena_stands').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
+function arenaSupport:cameraAt()
+    local lib,world=GetGameplayStatics(),UEHelpers.GetWorld()
+    if not safeValid(lib) or not safeValid(world) then return nil end
+    local ok,manager=pcall(function()return lib:GetPlayerCameraManager(world,0)end)
+    if not ok or not safeValid(manager) then return nil end
+    local okLocation,location=pcall(function()return manager:GetCameraLocation()end)
+    return okLocation and location or nil
+end
+arenaSupport.standKeep=require('stand_keep').new({log=log,members=ArenaMembers,clock=LiveSeconds,location=GetLocation,ground=onGround,label=objectName,
+    camera=function()return arenaSupport:cameraAt() end})
 arenaSupport.summonKeep=require('summon_keep').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
 companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
@@ -1767,14 +1777,7 @@ combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=
 -- 招式锁玩家（二）: while a fight runs, a skill of a blue or red unit that asks GameplayStatics for the player gets the
 -- unit's opponent instead; executions keep the player (player_aim.lua).
 fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=GetLocation,hp=GetHP,
-    camera=function()
-        local lib,world=GetGameplayStatics(),UEHelpers.GetWorld()
-        if not safeValid(lib) or not safeValid(world) then return nil end
-        local ok,manager=pcall(function()return lib:GetPlayerCameraManager(world,0)end)
-        if not ok or not safeValid(manager) then return nil end
-        local okLocation,location=pcall(function()return manager:GetCameraLocation()end)
-        return okLocation and location or nil
-    end,
+    camera=function()return arenaSupport:cameraAt() end,
     read=function(actor)
         local ai=GetAIComp(actor)
         local state
@@ -1844,6 +1847,7 @@ local function supportSteps(self)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
+    step('standKeep',function()self.standKeep:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.
