@@ -1,146 +1,146 @@
 {
-  "version": "0.40.5",
-  "date": "2026-11-06T23:43:58+08:00",
-  "size": 21029606,
-  "sha256": "7d6d52a110a2ac4f33b5e7d22d9ff0a64f59985e3670efd46c3210f5f646f5ee",
+  "version": "0.40.6",
+  "date": "2026-11-07T09:55:20+08:00",
+  "size": 21034899,
+  "sha256": "bd4eff44841564e990ada8d1c4fe52d2151ec72859b792afa9c7e66be2716b23",
   "notes": {
     "zh": [
-      "自定义数值现在也写给单位叫出来的单位和随行单位：比如随从沐小葵的攻击填 50，她叫出来的玉妖、铁鬼也是 50。蓝方、红方和随从都一样。填了的每一项都相同，血量填 10 万，叫出来的小怪也是 10 万",
-      "数值统一（统一成第一只）没有变，还是只统一你亲手召唤的单位",
-      "这项改动还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.4",
+      "修复沐小葵的玉妖只有音效、不出现：从 v0.40.2 起替身不再跟着随从走，离镜头超过 128 米后，游戏会把它定在空中，之后落不回地面。玉妖的招式要站在地上才能放，铁鬼的不用，所以只有玉妖不来。现在各队的替身没在出招时，如果悬在空中或离召唤者超过 60 米，就放回地面",
+      "修复镜头跟踪跑到地底或很高的地方：WASD/QE 平移最多 30 米，也不会穿到地面以下；对手超过 40 米不再继续拉走镜头；镜头离跟踪目标最多 100 米",
+      "这两项都还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.5",
       "这一版需要更新游戏内模组，请按助手提示操作"
     ],
     "en": [
-      "Custom stats now also go on the units a unit calls in and on its escorts: set a companion Mu Xiaokui's attack to 50 and the Yu Yao and Tie Gui she calls in have 50 too. Blue, Red and companions all work this way. Every filled field is the same value: with 100,000 HP, minions it calls in have 100,000 HP as well",
-      "Equal stats has not changed: it still only matches the units you summon yourself",
-      "This change has not been tested in game yet. If something goes wrong, you can roll back to v0.40.4 from the release history",
+      "Fixed Mu Xiaokui's Yu Yao playing only sounds and not appearing: since v0.40.2 the stands no longer follow a companion, and once one is over 128 m from the camera the game holds it in the air for good. Yu Yao's moves can only start on the ground and Tie Gui's can start anywhere, so only Yu Yao stopped coming. Now a stand on any team that isn't in a move goes back on the ground if it is in the air or more than 60 m from its summoner",
+      "Fixed Camera tracking ending up deep underground or high in the air: WASD/QE move the view at most 30 m and no longer through the ground, an opponent over 40 m away no longer pulls the camera further, and the camera stays within 100 m of the followed unit",
+      "These two changes have not been tested in game yet. If something goes wrong, you can roll back to v0.40.5 from the release history",
       "This version updates the mod in the game. Please follow the prompt in the app"
     ],
     "ja": [
-      "カスタム値が、ユニットの呼び出すユニットと随行ユニットにも適用されるようになりました。たとえばお供の沐小葵の攻撃を 50 にすると、呼び出す玉妖と鉄鬼も 50 になります。青チーム、赤チーム、お供のどれも同じです。入力した項目はすべて同じ値になるので、体力を 10 万にすると呼び出す雑魚も 10 万になります",
-      "ステータス統一（1体目に統一）は変わらず、自分で召喚したユニットだけが対象です",
-      "この変更はまだゲーム内でテストしていません。問題があれば更新履歴から v0.40.4 に戻せます",
+      "沐小葵の玉妖が音だけで出てこない問題を修正：v0.40.2 から替身はお供についていかなくなり、カメラから 128 m 以上離れるとゲームが空中に止めたままにします。玉妖の技は地上でしか出せず、鉄鬼の技はどこでも出せるため、玉妖だけが来なくなっていました。今はどのチームの替身も、技を出していないときに空中にいるか召喚者から 60 m 以上離れていれば地上に戻します",
+      "カメラ追従が地中深くや空高くに行ってしまう問題を修正：WASD/QE での移動は最大 30 m で、地面の下には入りません。相手が 40 m より遠くてもそれ以上カメラを引っ張らず、カメラは追従対象から最大 100 m までです",
+      "この 2 つの変更はまだゲーム内でテストしていません。問題があれば更新履歴から v0.40.5 に戻せます",
       "このバージョンはゲーム内のMODも更新します。アプリの案内に従ってください"
     ],
     "fr": [
-      "Les stats perso s'appliquent désormais aussi aux unités qu'une unité appelle et à ses escortes : avec une attaque de 50 pour Mu Xiaokui en compagnon, le Yu Yao et le Tie Gui qu'elle appelle ont aussi 50. C'est pareil pour les Bleus, les Rouges et les compagnons. Chaque champ rempli donne la même valeur : avec 100 000 PV, les sbires appelés ont aussi 100 000 PV",
-      "L'égalisation des stats ne change pas : elle ne concerne toujours que les unités que vous invoquez vous-même",
-      "Ce changement n'a pas encore été testé en jeu. En cas de problème, vous pouvez revenir à la v0.40.4 depuis l'historique des versions",
+      "Correction du Yu Yao de Mu Xiaokui qui ne faisait plus que du son sans apparaître : depuis la v0.40.2 les doublures ne suivent plus un compagnon, et à plus de 128 m de la caméra le jeu les fige en l'air pour de bon. Les techniques de Yu Yao ne partent que depuis le sol, celles de Tie Gui de partout, donc seul Yu Yao ne venait plus. Désormais, une doublure de n'importe quelle équipe qui n'est pas en pleine technique revient au sol si elle est en l'air ou à plus de 60 m de son invocateur",
+      "Correction du suivi de caméra qui finissait loin sous terre ou très haut : WASD/QE déplacent la vue de 30 m au plus, sans passer sous le sol ; un adversaire à plus de 40 m n'attire plus la caméra davantage ; la caméra reste à 100 m au plus de l'unité suivie",
+      "Ces deux changements n'ont pas encore été testés en jeu. En cas de problème, vous pouvez revenir à la v0.40.5 depuis l'historique des versions",
       "Cette version met à jour le mod dans le jeu. Suivez les indications de l'application"
     ],
     "de": [
-      "Eigene Werte gelten jetzt auch für Einheiten, die eine Einheit herbeiruft, und für ihr Gefolge: Setzt du den Angriff von Mu Xiaokui als Begleiter auf 50, haben auch der herbeigerufene Yu Yao und Tie Gui 50. Das gilt für Blau, Rot und Begleiter. Jedes ausgefüllte Feld bekommt denselben Wert: Bei 100.000 LP haben auch herbeigerufene Diener 100.000 LP",
-      "Der Werteausgleich bleibt unverändert: Er gleicht weiterhin nur Einheiten an, die du selbst beschwörst",
-      "Diese Änderung wurde noch nicht im Spiel getestet. Bei Problemen kannst du im Versionsverlauf zu v0.40.4 zurückkehren",
+      "Behoben: Yu Yao von Mu Xiaokui spielte nur noch Geräusche ab und erschien nicht. Seit v0.40.2 folgen die Doppelgänger einem Begleiter nicht mehr, und über 128 m von der Kamera entfernt hält das Spiel sie dauerhaft in der Luft fest. Die Angriffe von Yu Yao starten nur am Boden, die von Tie Gui überall, darum blieb nur Yu Yao aus. Jetzt kehrt ein Doppelgänger jedes Teams, der gerade nicht angreift, auf den Boden zurück, wenn er in der Luft oder über 60 m von seinem Beschwörer entfernt ist",
+      "Behoben: Die Kameraverfolgung landete tief unter der Erde oder hoch in der Luft. WASD/QE verschieben die Ansicht höchstens 30 m und nicht mehr unter den Boden, ein Gegner über 40 m Entfernung zieht die Kamera nicht weiter, und die Kamera bleibt höchstens 100 m von der verfolgten Einheit entfernt",
+      "Diese beiden Änderungen wurden noch nicht im Spiel getestet. Bei Problemen kannst du im Versionsverlauf zu v0.40.5 zurückkehren",
       "Diese Version aktualisiert die Mod im Spiel. Bitte folge dem Hinweis in der App"
     ],
     "es": [
-      "Los valores propios ahora también se aplican a las unidades que llama una unidad y a sus escoltas: con un ataque de 50 para Mu Xiaokui como compañera, el Yu Yao y el Tie Gui que llama también tienen 50. Vale igual para Azul, Rojo y compañeros. Cada campo rellenado da el mismo valor: con 100 000 de vida, los esbirros que llama también tienen 100 000",
-      "La igualación de estadísticas no cambia: sigue igualando solo las unidades que invocas tú",
-      "Este cambio aún no se ha probado en el juego. Si algo va mal, puedes volver a la v0.40.4 desde el historial de versiones",
+      "Corregido que el Yu Yao de Mu Xiaokui solo sonara y no apareciera: desde la v0.40.2 los dobles ya no siguen a un compañero, y a más de 128 m de la cámara el juego los deja quietos en el aire para siempre. Las técnicas de Yu Yao solo salen desde el suelo y las de Tie Gui desde cualquier sitio, así que solo faltaba Yu Yao. Ahora un doble de cualquier equipo que no esté en plena técnica vuelve al suelo si está en el aire o a más de 60 m de quien lo invocó",
+      "Corregido que el seguimiento de cámara acabara muy bajo tierra o muy alto: WASD/QE mueven la vista 30 m como mucho y ya no atraviesan el suelo, un rival a más de 40 m ya no arrastra más la cámara, y la cámara queda a 100 m como mucho de la unidad seguida",
+      "Estos dos cambios aún no se han probado en el juego. Si algo va mal, puedes volver a la v0.40.5 desde el historial de versiones",
       "Esta versión actualiza el mod del juego. Sigue las indicaciones de la aplicación"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.5/PhantomGladiator-0.40.5-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.000",
+        "name": "PhantomGladiator-0.40.6-win64.zip.000",
         "size": 2097152,
-        "sha256": "40a7ad083cc5c1bbccec7b51f358f3b05257fc584c4a196fa62bd5583b1e0f72"
+        "sha256": "d101212cd1be34e4b511040067906562a654d005104d8e5db7dea2364ceabaf3"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.001",
+        "name": "PhantomGladiator-0.40.6-win64.zip.001",
         "size": 2097152,
-        "sha256": "4a047ddc613c58e735d8cb7b582a81c275df3f1e14fcfb786732a7091c6d3309"
+        "sha256": "acc30ba4838615e424756b5152d0ba1de1739d5d260d2a53cc7a999e53279b72"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.002",
+        "name": "PhantomGladiator-0.40.6-win64.zip.002",
         "size": 2097152,
-        "sha256": "40bca5deadb9eec8cc11624c98b9cf65536a2a9139b23853e3be19c46892a635"
+        "sha256": "ba28d10f7921fbf797ac1902ee2a4a7ce8f13287ef7b20cf1ca229e1e60fdd2d"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.003",
+        "name": "PhantomGladiator-0.40.6-win64.zip.003",
         "size": 2097152,
-        "sha256": "4ca663b5daefa5a7f2b059414a54ffb25138159269781e2191527b383d25165a"
+        "sha256": "7a8258def0b99fa66d07a0c8d50f45647fcda3b2be58f7ec35a8c74c14308ffa"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.004",
+        "name": "PhantomGladiator-0.40.6-win64.zip.004",
         "size": 2097152,
-        "sha256": "47da5b4644832cb8f5655547d825a1c3c5fe1b6ffd18fda1329f047854893124"
+        "sha256": "f8804101f99f5cc3c7cc5c59b853e9f53cbf66d0b617155f3a8111fdfd77f8da"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.005",
+        "name": "PhantomGladiator-0.40.6-win64.zip.005",
         "size": 2097152,
-        "sha256": "b0b8c13d17569353ac9c93066230d2142f30dda97f5a77ea058f2466c25d0cb4"
+        "sha256": "69553a7ad1cd9bc0d9d4f51902a8fd4adaedca9b0cb7bd1897b061ec2898b3f3"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.006",
+        "name": "PhantomGladiator-0.40.6-win64.zip.006",
         "size": 2097152,
-        "sha256": "684a4c57ec3bc4cf2289faf71012024f61483de68d716e24e6fd8d15db9b3d65"
+        "sha256": "346c79ca9a33684fbeeac82f82f592d2d26afdb3622ea23e49738346c3c65265"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.007",
+        "name": "PhantomGladiator-0.40.6-win64.zip.007",
         "size": 2097152,
-        "sha256": "b800a6c72c59fe5d3b9262495f1d53d1d70d4ac28e9d25bc89f6196a51efda9d"
+        "sha256": "29dc295d983a6f8472638495c67f91063fcfced3a85e38f17a5a57ddce74cdc6"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.008",
+        "name": "PhantomGladiator-0.40.6-win64.zip.008",
         "size": 2097152,
-        "sha256": "f6f9353430fa348120ac3c064c6ad07e04b5753c34522f3ca54193cb3e8b9529"
+        "sha256": "5da7bdedd3f6cdfaf5feeff23a769e95b0c377db5dd781ba061758d07d310f25"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.009",
+        "name": "PhantomGladiator-0.40.6-win64.zip.009",
         "size": 2097152,
-        "sha256": "90dcdec26c42a3f365e2dfa1fe23f981b035f859029f6eb8701e5afd72cc246d"
+        "sha256": "6e0d6049f5b857a2095613de153a4d77e7ea89fa439c9e76764e12b123b33d7e"
       },
       {
-        "name": "PhantomGladiator-0.40.5-win64.zip.010",
-        "size": 58086,
-        "sha256": "2d199d1aec14c99e6292b9f6c66acc65bb41ee724bbc656af57d0a0466d464c2"
+        "name": "PhantomGladiator-0.40.6-win64.zip.010",
+        "size": 63379,
+        "sha256": "91c08ee6d9892744a4fe2ca307c89dfab09fb441e36760f811403a55ddb964a8"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.5/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.5/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
       }
     ]
   }
