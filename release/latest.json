@@ -1,146 +1,158 @@
 {
-  "version": "0.40.6",
-  "date": "2026-11-07T09:55:20+08:00",
-  "size": 21034899,
-  "sha256": "bd4eff44841564e990ada8d1c4fe52d2151ec72859b792afa9c7e66be2716b23",
+  "version": "0.40.7",
+  "date": "2026-11-08T14:08:45+08:00",
+  "size": 21074315,
+  "sha256": "8dc639c0c530f8148b23f94b3ece62915ee9f7cb793c62dfe257ca2deccba341",
   "notes": {
     "zh": [
-      "修复沐小葵的玉妖只有音效、不出现：从 v0.40.2 起替身不再跟着随从走，离镜头超过 128 米后，游戏会把它定在空中，之后落不回地面。玉妖的招式要站在地上才能放，铁鬼的不用，所以只有玉妖不来。现在各队的替身没在出招时，如果悬在空中或离召唤者超过 60 米，就放回地面",
-      "修复镜头跟踪跑到地底或很高的地方：WASD/QE 平移最多 30 米，也不会穿到地面以下；对手超过 40 米不再继续拉走镜头；镜头离跟踪目标最多 100 米",
-      "这两项都还没有在游戏里测过。有问题可以在更新记录里回退到 v0.40.5",
-      "这一版需要更新游戏内模组，请按助手提示操作"
+      "修复召唤的单位把剧情进度写进存档：有些单位自己会写剧情（雷当一族转阶段时、马车战的钩者和几种鬼差、雨夜左殇死亡时、沐小葵二阶段掉到 25% 血时、龙柱一的魔渊、冷荼第五阶段叫来的雷当），魔渊的特殊处决也会把龙柱第五战记成胜利。现在剧情还没打到那里时，不召唤这些单位、也不用这个处决，召唤失败的提示会写原因。冷荼因为第五阶段会叫来雷当，要在剧情里打过戏梦山庄的雷当才能召唤",
+      "设置页新增「修复存档」：检查以前版本造成的问题，能修的用游戏自己的流程补上：龙柱第五战打完什么都不弹、那根龙柱不塌；戏梦山庄雷当两个阶段同时出现；冷荼在剧情里一开打就是后面的阶段。修不了的剧情标记会列出来，说明到那段剧情时会怎样",
+      "冷荼召出的剧情帮手（彭猛、峨眉和华山弟子、风雪刀客、舞狮、雷当）和梦华召出的虚空不再出现在竞技场：它们原本是来帮玩家打召唤者的",
+      "修复冷荼召人、无敌时，对面一直锁着她本体打不动：开战时对面先锁上了她，后来改派去打她的召唤物，锁定却没跟着换。现在锁着她的单位会改锁她的召唤物，她一波波召人，最后亲自下场",
+      "修复在冷荼自己的地图（断魂山）里叫她时，召唤物出在几百米外她的剧情场地，战斗卡在第一波：地图上已有她的召唤点，模组就没放。现在离得远的召唤点会挪到她身边，她离场时放回原处",
+      "修复断魂山的银发左殇放一招时瞬移到世界原点、掉到地下，镜头也跟着跑远：缺了这招要用的两个落点"
     ],
     "en": [
-      "Fixed Mu Xiaokui's Yu Yao playing only sounds and not appearing: since v0.40.2 the stands no longer follow a companion, and once one is over 128 m from the camera the game holds it in the air for good. Yu Yao's moves can only start on the ground and Tie Gui's can start anywhere, so only Yu Yao stopped coming. Now a stand on any team that isn't in a move goes back on the ground if it is in the air or more than 60 m from its summoner",
-      "Fixed Camera tracking ending up deep underground or high in the air: WASD/QE move the view at most 30 m and no longer through the ground, an opponent over 40 m away no longer pulls the camera further, and the camera stays within 100 m of the followed unit",
-      "These two changes have not been tested in game yet. If something goes wrong, you can roll back to v0.40.5 from the release history",
-      "This version updates the mod in the game. Please follow the prompt in the app"
+      "Fixed summoned units writing story progress into your save: some units write it themselves (the Lei Dang family when they change phase, the horse cart fight's hook fighter and several Gui Chai, the rainy-night Zuo Shang when he dies, Mu Xiaokui's second phase at 25% health, Mo Yuan of the first dragon pillar, the Lei Dang that Lengtu calls in her fifth phase), and Mo Yuan's special finisher marked the fifth dragon pillar trial as won. Now these units are not summoned and that finisher is not used until the story has reached that point, and a failed summon says why. Since Lengtu calls Lei Dang in her fifth phase, she can only be summoned once Lei Dang in 戏梦山庄 is beaten in the story",
+      "New Repair save button on the Settings page: it checks for problems earlier versions caused and puts right what it can with the game's own steps: the fifth dragon pillar trial ending with nothing happening and that pillar not collapsing; both phases of Lei Dang appearing together in 戏梦山庄; Lengtu starting her story fight at a later phase. Story marks that cannot be undone are listed, with what will happen in that part of the story",
+      "Lengtu's story helpers (Peng Meng, the Emei and Huashan disciples, Fengxue Daoke, the lion dancer, Lei Dang) and the Xu Kong that Meng Hua calls no longer appear in the arena: in the story they come to help the player against their summoner",
+      "Fixed opponents staying locked on Lengtu while she is summoning and invulnerable: they locked her at the start of the fight, and when they were later sent at her summons the lock did not follow. A unit locked on her now locks her summons instead, so she brings out her rounds one after another and finally steps in herself",
+      "Fixed Lengtu's summons appearing hundreds of metres away in her story arena when she is summoned in her own map (断魂山), so the fight stuck at the first round: her map already had her summon points, so the mod placed none. Now points that are far off are moved beside her and put back when she leaves",
+      "Fixed the silver-haired Zuo Shang of 断魂山 warping to the world origin and falling under the map with one move, taking the camera with him: the two landing points that move uses were missing"
     ],
     "ja": [
-      "沐小葵の玉妖が音だけで出てこない問題を修正：v0.40.2 から替身はお供についていかなくなり、カメラから 128 m 以上離れるとゲームが空中に止めたままにします。玉妖の技は地上でしか出せず、鉄鬼の技はどこでも出せるため、玉妖だけが来なくなっていました。今はどのチームの替身も、技を出していないときに空中にいるか召喚者から 60 m 以上離れていれば地上に戻します",
-      "カメラ追従が地中深くや空高くに行ってしまう問題を修正：WASD/QE での移動は最大 30 m で、地面の下には入りません。相手が 40 m より遠くてもそれ以上カメラを引っ張らず、カメラは追従対象から最大 100 m までです",
-      "この 2 つの変更はまだゲーム内でテストしていません。問題があれば更新履歴から v0.40.5 に戻せます",
-      "このバージョンはゲーム内のMODも更新します。アプリの案内に従ってください"
+      "召喚したユニットがストーリーの進行をセーブに書き込む問題を修正：自分でストーリーを書き込むユニットがあります（段階が変わる時の雷当の一族、馬車戦の鉤使いと何種類かの鬼差、死亡時の雨夜の左殇、体力25%になった沐小葵の第二段階、龍柱一の魔渊、冷荼が第五段階で呼ぶ雷当）。魔渊の特殊処決も龍柱の第五戦を勝利と記録していました。今はストーリーがそこまで進むまで、これらのユニットは召喚せず、この処決も使いません。召喚できない時は理由を表示します。冷荼は第五段階で雷当を呼ぶので、ストーリーで戏梦山庄の雷当を倒すまで召喚できません",
+      "設定ページに「セーブ修復」を追加：以前のバージョンが起こした問題を確認し、直せるものはゲーム自身の手順で直します。龍柱の第五戦が終わっても何も起きず、その龍柱が崩れない。戏梦山庄で雷当の二つの段階が同時に出る。冷荼のストーリー戦が後の段階から始まる。元に戻せないストーリーの印は一覧にし、その場面で何が起きるかを書きます",
+      "冷荼が呼ぶストーリーの助っ人（彭猛、峨眉と華山の弟子、風雪刀客、舞獅、雷当）と梦华が呼ぶ虚空は、アリーナに出なくなりました。ストーリーではプレイヤーを助けて召喚者と戦う役です",
+      "冷荼が召喚中で無敵の間、相手が彼女の本体をロックし続けて攻撃が通らない問題を修正：戦闘開始時に相手が彼女をロックし、その後で召喚物へ向かわせてもロックが付いてきませんでした。今は彼女をロックしているユニットが召喚物へロックを移すので、彼女は一波ずつ召喚し、最後には自ら戦います",
+      "冷荼を彼女自身のマップ（断魂山）で召喚すると、召喚物が数百メートル先のストーリーの戦場に出て、戦闘が第一波で止まる問題を修正：マップに彼女の召喚地点がすでにあったため、Modは置いていませんでした。今は遠くにある地点を彼女のそばへ移し、彼女が去る時に元に戻します",
+      "断魂山の銀髪の左殇がある技でワールド原点へ瞬間移動し、地面の下へ落ちてカメラも遠くへ行く問題を修正：その技が使う二つの着地点が欠けていました"
     ],
     "fr": [
-      "Correction du Yu Yao de Mu Xiaokui qui ne faisait plus que du son sans apparaître : depuis la v0.40.2 les doublures ne suivent plus un compagnon, et à plus de 128 m de la caméra le jeu les fige en l'air pour de bon. Les techniques de Yu Yao ne partent que depuis le sol, celles de Tie Gui de partout, donc seul Yu Yao ne venait plus. Désormais, une doublure de n'importe quelle équipe qui n'est pas en pleine technique revient au sol si elle est en l'air ou à plus de 60 m de son invocateur",
-      "Correction du suivi de caméra qui finissait loin sous terre ou très haut : WASD/QE déplacent la vue de 30 m au plus, sans passer sous le sol ; un adversaire à plus de 40 m n'attire plus la caméra davantage ; la caméra reste à 100 m au plus de l'unité suivie",
-      "Ces deux changements n'ont pas encore été testés en jeu. En cas de problème, vous pouvez revenir à la v0.40.5 depuis l'historique des versions",
-      "Cette version met à jour le mod dans le jeu. Suivez les indications de l'application"
+      "Correction des unités invoquées qui écrivaient la progression de l'histoire dans votre sauvegarde : certaines l'écrivent elles-mêmes (la famille de Lei Dang en changeant de phase, le porteur de crochet et plusieurs Gui Chai du combat de la charrette, Zuo Shang de la nuit pluvieuse à sa mort, la seconde phase de Mu Xiaokui à 25 % de vie, Mo Yuan du premier pilier du dragon, le Lei Dang que Lengtu appelle dans sa cinquième phase), et l'exécution spéciale de Mo Yuan marquait la cinquième épreuve des piliers du dragon comme gagnée. Ces unités ne sont plus invoquées et cette exécution n'est plus utilisée tant que l'histoire n'en est pas là, et une invocation refusée dit pourquoi. Comme Lengtu appelle Lei Dang dans sa cinquième phase, elle ne peut être invoquée qu'une fois Lei Dang de 戏梦山庄 vaincu dans l'histoire",
+      "Nouveau bouton Réparer la sauvegarde dans les Paramètres : il cherche les problèmes causés par les versions précédentes et répare ce qu'il peut avec les propres étapes du jeu : la cinquième épreuve des piliers du dragon qui se termine sans rien et ce pilier qui ne s'effondre pas ; les deux phases de Lei Dang qui apparaissent ensemble à 戏梦山庄 ; Lengtu qui commence son combat d'histoire à une phase plus tardive. Les marques d'histoire irréversibles sont listées, avec ce qui se passera dans ce passage de l'histoire",
+      "Les alliés d'histoire de Lengtu (Peng Meng, les disciples d'Emei et de Huashan, Fengxue Daoke, le danseur du lion, Lei Dang) et le Xu Kong qu'appelle Meng Hua n'apparaissent plus dans l'arène : dans l'histoire, ils viennent aider le joueur contre celle ou celui qui les invoque",
+      "Correction des adversaires qui restaient verrouillés sur Lengtu pendant qu'elle invoque et qu'elle est invulnérable : ils la verrouillaient au début du combat, et quand ils étaient ensuite envoyés sur ses invocations, le verrouillage ne suivait pas. Une unité verrouillée sur elle se verrouille désormais sur ses invocations, elle fait venir ses vagues l'une après l'autre et finit par combattre elle-même",
+      "Correction des invocations de Lengtu qui apparaissaient à des centaines de mètres, dans son arène d'histoire, quand elle est invoquée sur sa propre carte (断魂山), ce qui bloquait le combat à la première vague : sa carte avait déjà ses points d'invocation, le mod n'en plaçait donc aucun. Les points éloignés sont maintenant déplacés près d'elle et remis en place quand elle part",
+      "Correction de Zuo Shang aux cheveux argentés de 断魂山 qui, avec une attaque, se téléportait à l'origine du monde et tombait sous la carte en emmenant la caméra : les deux points d'atterrissage de cette attaque manquaient"
     ],
     "de": [
-      "Behoben: Yu Yao von Mu Xiaokui spielte nur noch Geräusche ab und erschien nicht. Seit v0.40.2 folgen die Doppelgänger einem Begleiter nicht mehr, und über 128 m von der Kamera entfernt hält das Spiel sie dauerhaft in der Luft fest. Die Angriffe von Yu Yao starten nur am Boden, die von Tie Gui überall, darum blieb nur Yu Yao aus. Jetzt kehrt ein Doppelgänger jedes Teams, der gerade nicht angreift, auf den Boden zurück, wenn er in der Luft oder über 60 m von seinem Beschwörer entfernt ist",
-      "Behoben: Die Kameraverfolgung landete tief unter der Erde oder hoch in der Luft. WASD/QE verschieben die Ansicht höchstens 30 m und nicht mehr unter den Boden, ein Gegner über 40 m Entfernung zieht die Kamera nicht weiter, und die Kamera bleibt höchstens 100 m von der verfolgten Einheit entfernt",
-      "Diese beiden Änderungen wurden noch nicht im Spiel getestet. Bei Problemen kannst du im Versionsverlauf zu v0.40.5 zurückkehren",
-      "Diese Version aktualisiert die Mod im Spiel. Bitte folge dem Hinweis in der App"
+      "Behoben: Beschworene Einheiten schrieben Story-Fortschritt in deinen Spielstand. Manche Einheiten schreiben ihn selbst (die Lei-Dang-Familie beim Phasenwechsel, der Hakenkämpfer und mehrere Gui Chai aus dem Kutschenkampf, Zuo Shang der Regennacht bei seinem Tod, Mu Xiaokuis zweite Phase bei 25 % Leben, Mo Yuan der ersten Drachensäule, der Lei Dang, den Lengtu in ihrer fünften Phase ruft), und Mo Yuans Spezialhinrichtung markierte die fünfte Prüfung der Drachensäulen als gewonnen. Jetzt werden diese Einheiten nicht beschworen und diese Hinrichtung nicht genutzt, bis die Story so weit ist, und eine abgelehnte Beschwörung nennt den Grund. Da Lengtu in ihrer fünften Phase Lei Dang ruft, kann sie erst beschworen werden, wenn Lei Dang in 戏梦山庄 in der Story besiegt ist",
+      "Neu in den Einstellungen: Spielstand reparieren. Es sucht nach Problemen, die frühere Versionen verursacht haben, und behebt, was geht, mit den eigenen Schritten des Spiels: Die fünfte Prüfung der Drachensäulen endet, ohne dass etwas passiert, und die Säule stürzt nicht ein; beide Phasen von Lei Dang tauchen in 戏梦山庄 zusammen auf; Lengtu beginnt ihren Story-Kampf in einer späteren Phase. Story-Marken, die sich nicht rückgängig machen lassen, werden aufgelistet, mit dem, was an dieser Stelle der Story passieren wird",
+      "Lengtus Story-Helfer (Peng Meng, die Schüler von Emei und Huashan, Fengxue Daoke, der Löwentänzer, Lei Dang) und der Xu Kong, den Meng Hua ruft, erscheinen nicht mehr in der Arena: In der Story helfen sie dem Spieler gegen den, der sie ruft",
+      "Behoben: Gegner blieben auf Lengtu gesperrt, während sie beschwört und unverwundbar ist. Sie sperrten sie zu Kampfbeginn, und als sie später auf ihre Beschwörungen geschickt wurden, ging die Sperre nicht mit. Eine Einheit, die sie gesperrt hat, sperrt jetzt ihre Beschwörungen, sodass sie ihre Wellen nacheinander bringt und am Ende selbst kämpft",
+      "Behoben: Wurde Lengtu in ihrer eigenen Karte (断魂山) beschworen, erschienen ihre Beschwörungen Hunderte Meter entfernt in ihrer Story-Arena, und der Kampf blieb bei der ersten Welle hängen: Ihre Karte hatte ihre Beschwörungspunkte schon, also setzte der Mod keine. Weit entfernte Punkte werden jetzt neben sie gerückt und zurückgestellt, wenn sie geht",
+      "Behoben: Der silberhaarige Zuo Shang aus 断魂山 teleportierte sich mit einem Angriff zum Weltursprung und fiel unter die Karte, die Kamera mit ihm: Die zwei Landepunkte dieses Angriffs fehlten"
     ],
     "es": [
-      "Corregido que el Yu Yao de Mu Xiaokui solo sonara y no apareciera: desde la v0.40.2 los dobles ya no siguen a un compañero, y a más de 128 m de la cámara el juego los deja quietos en el aire para siempre. Las técnicas de Yu Yao solo salen desde el suelo y las de Tie Gui desde cualquier sitio, así que solo faltaba Yu Yao. Ahora un doble de cualquier equipo que no esté en plena técnica vuelve al suelo si está en el aire o a más de 60 m de quien lo invocó",
-      "Corregido que el seguimiento de cámara acabara muy bajo tierra o muy alto: WASD/QE mueven la vista 30 m como mucho y ya no atraviesan el suelo, un rival a más de 40 m ya no arrastra más la cámara, y la cámara queda a 100 m como mucho de la unidad seguida",
-      "Estos dos cambios aún no se han probado en el juego. Si algo va mal, puedes volver a la v0.40.5 desde el historial de versiones",
-      "Esta versión actualiza el mod del juego. Sigue las indicaciones de la aplicación"
+      "Corregido: las unidades invocadas escribían progreso de la historia en tu partida. Algunas lo escriben ellas mismas (la familia de Lei Dang al cambiar de fase, el luchador del gancho y varios Gui Chai del combate del carruaje, Zuo Shang de la noche lluviosa al morir, la segunda fase de Mu Xiaokui al 25 % de vida, Mo Yuan del primer pilar del dragón, el Lei Dang que Lengtu llama en su quinta fase), y la ejecución especial de Mo Yuan marcaba como ganada la quinta prueba de los pilares del dragón. Ahora estas unidades no se invocan y esa ejecución no se usa hasta que la historia llega a ese punto, y una invocación rechazada dice por qué. Como Lengtu llama a Lei Dang en su quinta fase, solo se puede invocar después de vencer a Lei Dang de 戏梦山庄 en la historia",
+      "Nuevo botón Reparar la partida en Ajustes: busca problemas causados por versiones anteriores y arregla lo que puede con los propios pasos del juego: la quinta prueba de los pilares del dragón que termina sin que pase nada y ese pilar que no se derrumba; las dos fases de Lei Dang apareciendo juntas en 戏梦山庄; Lengtu empezando su combate de historia en una fase posterior. Las marcas de historia que no se pueden deshacer se listan, con lo que pasará en esa parte de la historia",
+      "Los aliados de historia de Lengtu (Peng Meng, los discípulos de Emei y Huashan, Fengxue Daoke, el bailarín del león, Lei Dang) y el Xu Kong que llama Meng Hua ya no aparecen en la arena: en la historia vienen a ayudar al jugador contra quien los invoca",
+      "Corregido: los rivales se quedaban fijados en Lengtu mientras invoca y es invulnerable. La fijaban al empezar el combate y, cuando después los enviaban contra sus invocaciones, la fijación no cambiaba. Una unidad fijada en ella ahora fija sus invocaciones, así que ella saca sus oleadas una tras otra y al final pelea ella misma",
+      "Corregido: al invocar a Lengtu en su propio mapa (断魂山), sus invocaciones aparecían a cientos de metros, en su arena de historia, y el combate se quedaba en la primera oleada: su mapa ya tenía sus puntos de invocación, así que el mod no colocaba ninguno. Ahora los puntos lejanos se mueven a su lado y vuelven a su sitio cuando ella se va",
+      "Corregido: Zuo Shang de cabello plateado de 断魂山 se teletransportaba al origen del mundo con un ataque y caía bajo el mapa, llevándose la cámara: faltaban los dos puntos de aterrizaje de ese ataque"
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.7/PhantomGladiator-0.40.7-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.7/PhantomGladiator-0.40.7-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.6/PhantomGladiator-0.40.6-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.7/PhantomGladiator-0.40.7-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.000",
+        "name": "PhantomGladiator-0.40.7-win64.zip.000",
         "size": 2097152,
-        "sha256": "d101212cd1be34e4b511040067906562a654d005104d8e5db7dea2364ceabaf3"
+        "sha256": "34beab15404b6216ad5b048e0550edd77caf2b3114ff4e25639996e1c2b71fb9"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.001",
+        "name": "PhantomGladiator-0.40.7-win64.zip.001",
         "size": 2097152,
-        "sha256": "acc30ba4838615e424756b5152d0ba1de1739d5d260d2a53cc7a999e53279b72"
+        "sha256": "cc85d520715178e2dbe8264773e4e6a46ff27ad52f41c0ffa48ea50842f3bdf8"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.002",
+        "name": "PhantomGladiator-0.40.7-win64.zip.002",
         "size": 2097152,
-        "sha256": "ba28d10f7921fbf797ac1902ee2a4a7ce8f13287ef7b20cf1ca229e1e60fdd2d"
+        "sha256": "e23d38dd4e29ee7e8cdb266c801277b06c428d4c86c6ca253cb8077a2a477d35"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.003",
+        "name": "PhantomGladiator-0.40.7-win64.zip.003",
         "size": 2097152,
-        "sha256": "7a8258def0b99fa66d07a0c8d50f45647fcda3b2be58f7ec35a8c74c14308ffa"
+        "sha256": "0dd096ddabe23930399839230e2db93eabc408252b792098a3346c0470db7e86"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.004",
+        "name": "PhantomGladiator-0.40.7-win64.zip.004",
         "size": 2097152,
-        "sha256": "f8804101f99f5cc3c7cc5c59b853e9f53cbf66d0b617155f3a8111fdfd77f8da"
+        "sha256": "99df0029f5dcd8bbcca7e659b8115b7de79525b9fb3f5b15183aa2de32151754"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.005",
+        "name": "PhantomGladiator-0.40.7-win64.zip.005",
         "size": 2097152,
-        "sha256": "69553a7ad1cd9bc0d9d4f51902a8fd4adaedca9b0cb7bd1897b061ec2898b3f3"
+        "sha256": "a05365d32efba0ea3a318461bc0fe04c58acf38db27469ae02bf884998257d38"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.006",
+        "name": "PhantomGladiator-0.40.7-win64.zip.006",
         "size": 2097152,
-        "sha256": "346c79ca9a33684fbeeac82f82f592d2d26afdb3622ea23e49738346c3c65265"
+        "sha256": "fa5a79982a0874a917352a77bce82361cc22f00fede65d8c198232d3b6ca9705"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.007",
+        "name": "PhantomGladiator-0.40.7-win64.zip.007",
         "size": 2097152,
-        "sha256": "29dc295d983a6f8472638495c67f91063fcfced3a85e38f17a5a57ddce74cdc6"
+        "sha256": "af17aed94545340fbd907daa3999b1386f8404081fc46606bee188107456bf11"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.008",
+        "name": "PhantomGladiator-0.40.7-win64.zip.008",
         "size": 2097152,
-        "sha256": "5da7bdedd3f6cdfaf5feeff23a769e95b0c377db5dd781ba061758d07d310f25"
+        "sha256": "9ace8b10ee1570011aa11d0d353790e6d3d2152fba6d7a4f0ea9e4348ef3387b"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.009",
+        "name": "PhantomGladiator-0.40.7-win64.zip.009",
         "size": 2097152,
-        "sha256": "6e0d6049f5b857a2095613de153a4d77e7ea89fa439c9e76764e12b123b33d7e"
+        "sha256": "19ad072a9b85764a94a68fb364279775ebed3676497ccbf49adddd7317589a16"
       },
       {
-        "name": "PhantomGladiator-0.40.6-win64.zip.010",
-        "size": 63379,
-        "sha256": "91c08ee6d9892744a4fe2ca307c89dfab09fb441e36760f811403a55ddb964a8"
+        "name": "PhantomGladiator-0.40.7-win64.zip.010",
+        "size": 102795,
+        "sha256": "67e832130a6410047c0b0d7d7f08c380b64587640b32341d185a93febbd99204"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.7/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.7/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.7/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.6/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.7/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.7/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.7/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.6/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.7/"
       }
     ]
   }
