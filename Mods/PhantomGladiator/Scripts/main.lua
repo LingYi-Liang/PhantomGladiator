@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.6-game-26367565"
+local BUILD = "v0.40.7-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -521,6 +521,9 @@ local function SpawnViaAILib(cls, t, world, given)
     local classPath=className:match(" (/.+)$")
     local allowed,why=SpawnPolicy.check(classPath)
     if not allowed then return nil,why,"not_started" end
+    -- A unit that writes story progress itself only once the story holds what it would write (story_writes.lua).
+    local storyAllowed,storyWhy=arenaSupport.storyWrites:allowsUnit(classPath)
+    if not storyAllowed then return nil,storyWhy,"not_started" end
     local entry=given or npcCatalog:selected()
     if not entry or entry.path~=classPath or type(entry.isNPC)~='boolean' then return nil,'实体类型未读回','not_started' end
     local npc=entry.isNPC
@@ -589,6 +592,11 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     end)
     local audited=spawnAudit:record("finish_spawn_return",objectName(pawn),"call="..tostring(ok2).." valid="..tostring(safeValid(pawn)))
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
+    -- 冷荼 born under her old save ID (a checkpoint cleared for the save-repair button) moves to the mod's now.
+    if route=='npc' and bossStages then
+        local moved,moveError=pcall(function()bossStages:finished(pawn)end)
+        if not moved then log('[BossStage] 出生后失败: '..tostring(moveError)) end
+    end
     if onGround then onGround:settle(pawn,placedOnGround) end
     return safeValid(pawn),nil
 end
@@ -1355,6 +1363,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
     holdTarget=HoldSensedTarget,
+    releaseLock=function(actor,target)return arenaSupport.lockRelease~=nil and arenaSupport.lockRelease:release(actor,target)end,
     unstick=function(actor,target)return onGround~=nil and onGround:free(actor,target)end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
@@ -1684,6 +1693,10 @@ arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
     onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
+    saveData=function(id)return arenaSupport:actorSaveData(id)end,
+    -- The save-repair button asks for 冷荼's old checkpoint to be cleared (save_repair.lua).
+    checkpoint={wants=function(id)return arenaSupport.saveRepair~=nil and arenaSupport.saveRepair:wantsCheckpoint(id)end,
+        done=function(id,ok,read)if arenaSupport.saveRepair then arenaSupport.saveRepair:checkpointDone(id,ok,read) end end},
     findClass=function(path)return StaticFindObject(path)end,loadClass=function(path)return LoadAsset(path)end,
     statics=GetGameplayStatics,findAll=function(name)return FindAllOf(name)end,ground=GroundZ,
     -- How many actors of a targeting type are registered in this world (左殇's ground weapons, what CA_02 will find).
@@ -1719,10 +1732,35 @@ function arenaSupport:engage(attacker,victim)
     local d=a and b and math.sqrt(DistSq(a,b))/100
     return ok,state,'迎敌前仇恨数='..tostring(hatred)..' 距目标='..(d and string.format('%.1fm',d) or '?')
 end
+-- A summon sent to fight its own summoner's side (opposing: SummonCombatTargetMode EncounterSummons or Summoner, its
+-- faction set to the player's) is the player's help in that story fight: 冷荼's 彭猛, 峨眉/华山, 风雪刀客, 舞狮 and
+-- 雷当, 梦华's 虚空. In the arena it is taken out as it comes; true once it is gone or going.
+function arenaSupport:removeHelper(link)
+    local actor=link.actor
+    if not safeValid(actor) then return true end
+    local name=objectName(actor)
+    local called,callError=pcall(function()actor:K2_DestroyActor()end)
+    local okRead,going=pcall(actorIsDestroying,actor)
+    local gone=not safeValid(actor) or (okRead and going==true)
+    if gone then self.helpersRemoved=(self.helpersRemoved or 0)+1 end
+    self.helperLines=(self.helperLines or 0)+1
+    if self.helperLines<=30 then
+        log(string.format('[SummonLinks] 移除剧情帮手 %s（召唤者 %s；%s；原版是来帮玩家打召唤者的）调用=%s%s 读回 正在销毁=%s 累计=%d',
+            name,objectName(link.parent),tostring(link.evidence and link.evidence:match('SummonCombatTargetMode=[%w_]+') or '?'),tostring(called),
+            called and '' or '('..tostring(callError)..')',tostring(gone),self.helpersRemoved or 0))
+    end
+    return gone
+end
 function arenaSupport:discover()
     for _,link in ipairs(summonLinks:scan(ArenaMembers(),function(ability)self.summonKeep:passive(ability)end)) do
-        local result=arena:adoptSummon(link.actor,link.parent,link.class_path,link.evidence)
-        if not result.ok then log('[SummonLinks] 接管未确认：'..tostring(result.message)) end
+        if not (link.opposing and self:removeHelper(link)) then
+            -- A summon's own summon that writes story progress: its summoner was let in only with the story holding
+            -- that already; logged once here if not (story_writes.lua says it once per class).
+            if self.storyWrites then self.storyWrites:allowsUnit(link.class_path) end
+            -- A helper that could not be taken out joins the team it fights for (arena_controller.lua aid).
+            local result=arena:adoptSummon(link.actor,link.parent,link.class_path,link.evidence,link.opposing and 'opposing' or nil)
+            if not result.ok then log('[SummonLinks] 接管未确认：'..tostring(result.message)) end
+        end
     end
 end
 arenaSupport.stands=require('arena_stands').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
@@ -1736,7 +1774,52 @@ function arenaSupport:cameraAt()
 end
 arenaSupport.standKeep=require('stand_keep').new({log=log,members=ArenaMembers,clock=LiveSeconds,location=GetLocation,ground=onGround,label=objectName,
     camera=function()return arenaSupport:cameraAt() end})
+-- The loaded world's subsystem of a class (its outer chain reaches the world; the class default object's does not), kept per world.
+arenaSupport.subsystems={}
+function arenaSupport:worldSubsystem(name)
+    local world=UEHelpers.GetWorld()
+    local worldKey=safeValid(world) and UEObserve.key(world)
+    if not worldKey then return nil end
+    local kept=self.subsystems[name]
+    if kept and kept.world==worldKey and safeValid(kept.object) then return kept.object end
+    self.subsystems[name]=nil
+    local ok,list=pcall(FindAllOf,name)
+    if not ok or type(list)~='table' then return nil end
+    for _,object in ipairs(list)do
+        if safeValid(object) and UEObserve.inWorld(object,world) then
+            self.subsystems[name]={world=worldKey,object=object}
+            return object
+        end
+    end
+end
+-- A summoned phase-one 雷当 must not write the story's 雷当-killed tag, and a save that already has it does not keep phase one's spawner on (story_guard.lua).
+arenaSupport.storyGuard=require('story_guard').new({log=log,members=ArenaMembers,clock=LiveSeconds,label=objectName,
+    tagCount=function(actor,tag)return onGround:tagCount(actor,tag)end,
+    aiSubsystem=function()return arenaSupport:worldSubsystem('SGameAIWorldSubsystem')end,
+    pipeline=function()return arenaSupport:worldSubsystem('EventPipelineManager')end})
+-- Finishers and units that write story progress (story_writes.lua) and the fifth 龙柱 trial's ending (longzhu_check.lua).
+arenaSupport.storyWrites=require('story_writes').new({log=log,clock=LiveSeconds,
+    pipeline=function()return arenaSupport:worldSubsystem('EventPipelineManager')end})
+arenaSupport.longzhu=require('longzhu_check').new({log=log,clock=LiveSeconds,
+    pipeline=function()return arenaSupport:worldSubsystem('EventPipelineManager')end})
+-- Whether the save holds an entry under this actor ID (PBZLevelActorManager): true, false, or nil when unread.
+function arenaSupport:actorSaveData(id)
+    local manager=self:worldSubsystem('PBZLevelActorManager')
+    if not safeValid(manager) then return nil end
+    local ok,value=pcall(function()return manager:HasSaveDataByActorID(FName(id))end)
+    if ok then value=UEObserve.unwrap(value) else value=nil end
+    if type(value)=='boolean' then return value end
+    return nil
+end
+-- The app's save-repair button (save_repair.lua): arms the repairs above and 冷荼's, and reports what it found.
+arenaSupport.saveRepair=require('save_repair').new({log=log,longzhu=arenaSupport.longzhu,guard=arenaSupport.storyGuard,
+    has=function(text)return arenaSupport.storyWrites:has(text)end,
+    pipeline=function()return arenaSupport:worldSubsystem('EventPipelineManager')end,
+    hasSaveData=function(id)return arenaSupport:actorSaveData(id)end})
 arenaSupport.summonKeep=require('summon_keep').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
+-- A fighter locked on a boss the game keeps out of reach is moved to its opponent (lock_release.lua).
+arenaSupport.lockRelease=require('lock_release').new({log=log,
+    untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end})
 companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
 -- Read-only: which of a companion's attacks may hit the player, and why (companion_hit_probe.lua).
@@ -1819,6 +1902,7 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
+    storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
 -- A support tick slower than this is logged with the time of each step, to find the source of stutter.
 local SLOW_TICK_MS,slowTicks=10,0
@@ -1848,6 +1932,8 @@ local function supportSteps(self)
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
     step('standKeep',function()self.standKeep:tick()end)
+    step('storyGuard',function()self.storyGuard:tick()end)
+    step('longzhu',function()self.longzhu:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.

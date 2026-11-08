@@ -30,11 +30,16 @@ local STAGES={
             LENGTU..'Phase.Final',LENGTU..'IsInvulnerable',LENGTU..'OffCombat',LENGTU..'EnableMetaAI',LENGTU..'LeiDang',
             LENGTU..'FinishedQuest',LENGTU..'FirstTimeSummon','AI.Hatred.CanNotBeHatred','AI.Hatred.IgnoreByNPC',
             'CharacterState.Unselectable.Force.Perform'},
-        untargetable={'AI.Hatred.CanNotBeHatred','CharacterState.Unselectable.Force.Perform'},
+        -- From P4 (dolls, 舞狮) until P5 she has neither of the first two, only IsInvulnerable and
+        -- AI.Hatred.IgnoreByNPC, the mark the game's NPCs leave her alone by (read in a fight: 225.9 s to 283.1 s).
+        untargetable={'AI.Hatred.CanNotBeHatred','CharacterState.Unselectable.Force.Perform','AI.Hatred.IgnoreByNPC'},
         -- Her checkpoints (Save.P2..P4, written by BP_Monster_LengTu.UnlockTag, read in InitTags at BeginPlay) are kept
         -- in the save under her "Actor ID". The class default LengTu_Combat is the one her own fight in 断魂山 uses (its
         -- spawner sets none): a summoned 冷荼 moved the player's checkpoint (to P4). She gets the
         -- mod's own ID instead, cleared before she reads it so every fight starts at P1.
+        -- When the save-repair button asks for it (options.checkpoint), the old ID's checkpoint is cleared first with
+        -- her own ResetTags; she keeps that ID through BeginPlay, so what InitTags reads into UnLockTags is the read-back,
+        -- and moves to the mod's ID right after (finished).
         saveId='PhantomGladiator_LengTu'},
     -- Warp targets of special moves (MotionWarping, the marker's Arrow): 玉瓒 GA_YuZan_CA_P1/P2 and her black hole,
     -- 独眼弓客 GA_DuYan_Skill_02_Snap, 献祭之蛇 GA_ChiLian_P2_CA_03, 烟千岁 GA_YanQianSui_Skill_01, 左殇 GA_ZuoShang_CA_02,
@@ -61,8 +66,13 @@ local STAGES={
             {name='BP_ZuoShang_House',dir='House/',x=594,y=134,z=0,yaw=-175,hide={'ZhuLinGuWu_Break'}}},
         groups={weapons={label='地面武器',tag='Targeting.Target.ZuoshangSword',reveal='StaticMesh',
             revealOn=MOBS..'054_ZuoShang/Bullet/BP_ZuoShang_GroundWeapon_Base.BP_ZuoShang_GroundWeapon_Base_C:FlyUp'}}},
+    -- His ability pool (AbilityPool_ZuoShang_Ending) has GA_ZuoShang_CA_03 too. Without its two markers he warped to the
+    -- world origin and fell through the floor (FightWatch: 495 m in one second to (-11,-6,1977), then down to
+    -- Z=-17510). In 断魂山 they stand with 龙体左殇's, in cell 802NKFODLXIOJ3T67PDWNPKPN; these are from his own spawner.
     BP_Monster_ZuoShang_Ending={label='左殇（银发）',base=MOBS..'054_ZuoShang/',
-        props={{name='BP_ZuoShang_House',dir='House/',x=55,y=102,z=0,yaw=-175,hide={'ZhuLinGuWu_Break'}}}},
+        props={{name='BP_ZuoShang_House',dir='House/',x=55,y=102,z=0,yaw=-175,hide={'ZhuLinGuWu_Break'}},
+            {name='BP_ZuoShang_CA_03_LandingPoint',x=-494,y=-18,z=0,yaw=0},
+            {name='BP_ZuoShang_CA_03_SnapPoint',x=-2227,y=-18,z=1402,yaw=0}}},
     BP_Monster_ZuoShang_P2={label='龙体左殇',base=MOBS..'054_ZuoShang/',
         props={{name='BP_ZuoShang_CA_03_LandingPoint',x=275,y=-18,z=0,yaw=0},
             {name='BP_ZuoShang_CA_03_SnapPoint',x=-1459,y=-18,z=1402,yaw=0}}},
@@ -143,6 +153,10 @@ end
 -- The summon transform stands 50 cm over the player's capsule centre (arena_controller.lua): about 140 cm
 -- over the ground, used when the trace finds none.
 local GROUND_BELOW=140
+-- A marker of her own map within this (cm, flat) of where the mod's would stand is used where it is.
+local NEAR=5000
+-- Classes that only get the save ID (no markers): BP_Monster_LengTu_Preview is a BP_Monster_LengTu with the same default ID.
+local SAVE_ONLY={BP_Monster_LengTu_Preview={label='冷荼（预览）',saveId='PhantomGladiator_LengTu'}}
 
 local function short(text)return (text:gsub('^'..LENGTU:gsub('%.','%%.'),'')) end
 
@@ -153,7 +167,7 @@ end
 function Stages.new(options)
     local log=options.log or function()end
     local now=options.now or os.clock
-    local self={records={},placed=0,failures=0}
+    local self={records={},placed=0,failures=0,borrowed=0}
     local shared={}   -- prop name -> {actor=, users=}: the actors the mod placed, shared by every boss using them
     local revealHook
     local find=options.staticFind or function(path)return StaticFindObject(path)end
@@ -246,7 +260,35 @@ function Stages.new(options)
         return math.deg(math.atan(dy,dx))
     end
 
-    -- One marker: reused when the mod already placed it, left alone when her own map has one.
+    -- One of her own map's markers, far from where the mod's would stand: moved there (made movable first), put back
+    -- when the last boss using it leaves (release). Her abilities take the first actor of the class, so the mod's own
+    -- placed beside it might not be the one found.
+    local function borrow(id,prop,used,far,x,y,z,yaw,ground,world,cls,lib)
+        local at=where(used)
+        local okRot,rot=pcall(function()
+            local r=U.unwrap(used:K2_GetActorRotation())
+            return {Pitch=r.Pitch,Yaw=r.Yaw,Roll=r.Roll}
+        end)
+        local root=U.field(used,'RootComponent')
+        local mobility=U.field(root,'Mobility')
+        local was={location={X=at.X,Y=at.Y,Z=at.Z},rotation=okRot and rot or nil,mobility=type(mobility)=='number' and mobility or nil}
+        local movable=U.valid(root) and pcall(function()root:SetMobility(2)end)
+        local called=pcall(function()used:K2_SetActorLocationAndRotation({X=x,Y=y,Z=z},{Pitch=0,Yaw=yaw+prop.yaw,Roll=0},false,{},true)end)
+        local now=where(used)
+        local off=now and math.sqrt((now.X-x)^2+(now.Y-y)^2+(now.Z-z)^2)
+        local okFound,found=pcall(function()return lib:GetActorOfClass(world,cls)end)
+        local seen=okFound and U.key(U.unwrap(found))==U.key(used)
+        shared[id]={actor=used,users=1,borrowed=was}
+        local ok=called and off~=nil and off<100 and seen
+        if ok then self.borrowed=self.borrowed+1 else self.failures=self.failures+1 end
+        return string.format('%s=地图上那个在 %.0f 米外，借过来放到这里 可移动=%s 调用=%s 位置读回差=%s 地面=%s 她按类能找到=%s（她离场时放回原处）',
+            prop.name,far/100,tostring(movable),tostring(called),off and string.format('%.0fcm',off) or '?',
+            ground and string.format('%.0f',ground) or '没找到（按召唤高度估）',tostring(seen)),ok and 'borrowed' or 'failed'
+    end
+
+    -- One marker: reused when the mod already placed it. One of her own map's is used where it stands when that is
+    -- near (she is in her own arena), and borrowed when it stands far: in 断魂山 her summons came out in her own arena
+    -- some 380 m off and the fight there never ended.
     local function place(stage,prop,origin,yaw,world,owner)
         local id=prop.key or prop.name
         local mine=shared[id]
@@ -255,25 +297,39 @@ function Stages.new(options)
             return prop.name..'=沿用已放的（共用 '..mine.users..' 个）','shared'
         end
         shared[id]=nil
+        local turn=math.rad(yaw)
+        local c,s=math.cos(turn),math.sin(turn)
+        local x,y=origin.X+prop.x*c-prop.y*s,origin.Y+prop.x*s+prop.y*c
+        local path=stage.base..(prop.dir or '')..prop.name..'.'..prop.name..'_C'
+        local cls=options.findClass and options.findClass(path)
+        local lib=options.statics and options.statics()
         local okAll,list=pcall(options.findAll,prop.name..'_C')
         for _,actor in ipairs(okAll and type(list)=='table' and list or {})do
             local okName,own=pcall(function()return actor:GetFName():ToString()end)
             if not gone(actor) and not (okName and tostring(own):find('^Default__')) then
-                return prop.name..'=地图上已有一个，她会用地图上的','map'
+                -- The one her abilities will find: the first of the class.
+                local used=actor
+                if U.valid(cls) and U.valid(lib) and U.valid(world) then
+                    local okFound,found=pcall(function()return lib:GetActorOfClass(world,cls)end)
+                    found=okFound and U.unwrap(found) or nil
+                    if U.valid(found) and not gone(found) then used=found end
+                end
+                local at=where(used)
+                local far=at and math.sqrt((at.X-x)^2+(at.Y-y)^2)
+                if not far or far<=NEAR or prop.group or prop.q or not (U.valid(cls) and U.valid(lib) and U.valid(world)) then
+                    return prop.name..'=地图上已有一个'..(far and string.format('（离这里 %.0f 米）',far/100) or '')..'，她会用地图上的','map'
+                end
+                local okGround,ground=pcall(options.ground,world,x,y,origin.Z)
+                ground=okGround and type(ground)=='number' and ground or nil
+                return borrow(id,prop,used,far,x,y,(ground or origin.Z-GROUND_BELOW)+prop.z,yaw,ground,world,cls,lib)
             end
         end
-        local path=stage.base..(prop.dir or '')..prop.name..'.'..prop.name..'_C'
-        local cls=options.findClass and options.findClass(path)
         local loaded=false
         if not U.valid(cls) and options.loadClass then cls=options.loadClass(path);loaded=U.valid(cls) end
-        local lib=options.statics and options.statics()
         if not U.valid(cls) or not U.valid(lib) or not U.valid(world) then
             self.failures=self.failures+1
             return string.format('%s=没放（类=%s 函数库=%s World=%s）',prop.name,tostring(U.valid(cls)),tostring(U.valid(lib)),tostring(U.valid(world))),'failed'
         end
-        local turn=math.rad(yaw)
-        local c,s=math.cos(turn),math.sin(turn)
-        local x,y=origin.X+prop.x*c-prop.y*s,origin.Y+prop.x*s+prop.y*c
         local okGround,ground=pcall(options.ground,world,x,y,origin.Z)
         ground=okGround and type(ground)=='number' and ground or nil
         local z=(ground or origin.Z-GROUND_BELOW)+prop.z
@@ -326,11 +382,70 @@ function Stages.new(options)
             table.concat(hidden)),'placed'
     end
 
+    local pendingSave={}   -- actor address -> {stage=, id=, called=, error=}: an old ID cleared, the move waits for finished()
+    local function tagNames(container)
+        local list=U.array(U.struct(container,'GameplayTags'))
+        if not list then return nil end
+        local out={}
+        for _,tag in ipairs(list)do
+            local ok,t=pcall(function()return U.struct(tag,'TagName'):ToString()end)
+            out[#out+1]=ok and type(t)=='string' and t or '?'
+        end
+        return out
+    end
+    -- Her checkpoint goes under the mod's own ID, cleared there (her own ResetTags).
+    local function moveSave(actor,stage,note)
+        local before=idOf(actor)
+        local entry=before and options.saveData and select(2,pcall(options.saveData,before))
+        local wrote,writeError=pcall(function()actor['Actor ID']=fname(stage.saveId)end)
+        local after=idOf(actor)
+        local moved=after==stage.saveId
+        local reset,resetError=false,'没换成'
+        if moved then reset,resetError=pcall(function()actor:ResetTags()end) end
+        local ours=moved and options.saveData and select(2,pcall(options.saveData,stage.saveId))
+        if not moved or not reset then self.failures=self.failures+1 end
+        say(string.format('%s 存档 ID：原来=%s（原地图那场也用它，存档里有记录=%s）改成 %s 写入=%s 读回=%s；清空这条的阶段进度 调用=%s 存档里有记录=%s%s%s',
+            stage.label,tostring(before),tostring(entry==nil and '读不到' or entry),stage.saveId,tostring(wrote),tostring(after),tostring(reset),
+            tostring(ours==nil and '读不到' or ours),(wrote and '' or ' 写入错误='..tostring(writeError))..(reset and '' or ' 清空错误='..tostring(resetError)),
+            note or ''))
+    end
+    -- Before FinishSpawn: the old ID's checkpoint cleared (the save-repair button asked) and the move left for after
+    -- BeginPlay; otherwise the move now.
+    local function saveId(actor,stage)
+        local before=idOf(actor)
+        local check=options.checkpoint
+        if before and before~=stage.saveId and check and check.wants(before) then
+            local called,err=pcall(function()actor:ResetTags()end)
+            pendingSave[U.key(actor)]={actor=actor,stage=stage,id=before,called=called,error=err}
+            say(string.format('%s：按"修复存档"清掉存档里 %s 的阶段进度（模组以前写的）：ResetTags 调用=%s%s；她先用这个 ID 出生，出生时读到的进度就是读回，之后换成 %s',
+                stage.label,before,tostring(called),called and '' or '('..tostring(err)..')',stage.saveId))
+            return
+        end
+        moveSave(actor,stage)
+    end
+    -- After FinishSpawn (BeginPlay ran InitTags): the read-back of a cleared checkpoint, then the move.
+    function self:finished(actor)
+        local key=U.key(actor)
+        local pending=key and pendingSave[key]
+        if not pending then return nil end
+        pendingSave[key]=nil
+        local read=U.valid(actor) and tagNames(U.field(actor,'UnLockTags')) or nil
+        local ok=pending.called and read~=nil and #read==0
+        if options.checkpoint and options.checkpoint.done then pcall(options.checkpoint.done,pending.id,ok,read) end
+        if not U.valid(actor) then say(pending.stage.label..'：出生后对象失效，读不到清掉后的阶段进度');return {ok=false} end
+        moveSave(actor,pending.stage,string.format('；%s 清掉后出生时读到的阶段进度=[%s] %s',pending.id,read and table.concat(read,',') or '读不到',
+            ok and '已清空' or '没清空'))
+        return {ok=ok}
+    end
+
     -- Before FinishSpawn. Not a staged boss: nothing happens and nil comes back.
     function self:prepare(actor,transform,world)
         local name=className(actor):gsub('_C$','')
         local stage=STAGES[name]
-        if not stage then return nil end
+        if not stage then
+            if SAVE_ONLY[name] then saveId(actor,SAVE_ONLY[name]);return {ok=true} end
+            return nil
+        end
         local key=U.key(actor)
         local origin=transform and transform.Translation
         if not key or not origin or type(origin.X)~='number' then
@@ -360,20 +475,7 @@ function Stages.new(options)
         end
         self.records[key]={actor=actor,key=key,name=name,stage=stage,at=now(),tags=nil}
         say(string.format('%s：按原场地放场地物件，整体朝向玩家 %.0f°：%s',stage.label,yaw,table.concat(parts,'；')))
-        if stage.saveId then
-            local before=idOf(actor)
-            local entry=before and options.saveData and select(2,pcall(options.saveData,before))
-            local wrote,writeError=pcall(function()actor['Actor ID']=fname(stage.saveId)end)
-            local after=idOf(actor)
-            local moved=after==stage.saveId
-            local reset,resetError=false,'没换成'
-            if moved then reset,resetError=pcall(function()actor:ResetTags()end) end
-            local ours=moved and options.saveData and select(2,pcall(options.saveData,stage.saveId))
-            if not moved or not reset then self.failures=self.failures+1 end
-            say(string.format('%s 存档 ID：原来=%s（原地图那场也用它，存档里现在=%s）改成 %s 写入=%s 读回=%s；清空这条的阶段进度 调用=%s 存档里=%s%s',
-                stage.label,tostring(before),tostring(entry or '读不到'),stage.saveId,tostring(wrote),tostring(after),tostring(reset),
-                tostring(ours or '读不到'),(wrote and '' or ' 写入错误='..tostring(writeError))..(reset and '' or ' 清空错误='..tostring(resetError))))
-        end
+        if stage.saveId then saveId(actor,stage) end
         return {ok=true}
     end
 
@@ -391,6 +493,20 @@ function Stages.new(options)
                     shared[id]=nil
                     local result
                     if gone(mine.actor) then result='已不在'
+                    elseif mine.borrowed then
+                        -- Her own map's marker goes back where it stood, as it was.
+                        local b=mine.borrowed
+                        local okBack=pcall(function()
+                            if b.rotation then mine.actor:K2_SetActorLocationAndRotation(b.location,b.rotation,false,{},true)
+                            else mine.actor:K2_SetActorLocation(b.location,false,{},true) end
+                        end)
+                        if b.mobility and b.mobility~=2 then
+                            pcall(function()U.field(mine.actor,'RootComponent'):SetMobility(b.mobility)end)
+                        end
+                        local at=where(mine.actor)
+                        local off=at and math.sqrt((at.X-b.location.X)^2+(at.Y-b.location.Y)^2+(at.Z-b.location.Z)^2)
+                        if not (okBack and off and off<100) then self.failures=self.failures+1 end
+                        result=string.format('放回地图原处 调用=%s 位置读回差=%s',tostring(okBack),off and string.format('%.0fcm',off) or '?')
                     else
                         local ok=pcall(options.destroy,mine.actor)
                         result=gone(mine.actor) and '已移除' or '仍在'
@@ -438,6 +554,10 @@ function Stages.new(options)
 
     function self:tick()
         local t=now()
+        -- A move finished() did not get to (its caller failed): done here, so her checkpoints never go under the old ID.
+        for key,pending in pairs(pendingSave)do
+            if gone(pending.actor) then pendingSave[key]=nil else self:finished(pending.actor) end
+        end
         if revealed>revealedLogged then
             say('用时显现：本场已显现 '..revealed..' 个（这次 +'..(revealed-revealedLogged)..'）')
             revealedLogged=revealed
@@ -478,7 +598,7 @@ function Stages.new(options)
     function self:status()
         local props=0
         for _,mine in pairs(shared)do if not gone(mine.actor) then props=props+1 end end
-        return {stage_bosses=self:count(),stage_props=props,stage_placed=self.placed,stage_failures=self.failures,stage_revealed=revealed}
+        return {stage_bosses=self:count(),stage_props=props,stage_placed=self.placed,stage_borrowed=self.borrowed,stage_failures=self.failures,stage_revealed=revealed}
     end
     return self
 end

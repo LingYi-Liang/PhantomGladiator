@@ -30,7 +30,7 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level"}
+ACTIONS = {"spawn", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).

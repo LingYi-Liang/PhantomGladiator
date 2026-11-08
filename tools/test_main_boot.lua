@@ -78,6 +78,55 @@ StandKeep.new=function(options)
     made.tick=function(self)keepTicks=keepTicks+1;return tick(self)end
     return made
 end
+-- What the summon scan finds goes to the arena with its side (arena_summon_links.lua opposing -> 'opposing').
+local adoptCalls,fakeLinks={},{}
+local wrappedArenaNew=Arena.new
+Arena.new=function(options)
+    local made=wrappedArenaNew(options)
+    local adopt=made.adoptSummon
+    made.adoptSummon=function(self,...)adoptCalls[#adoptCalls+1]=table.pack(...);return adopt(self,...)end
+    return made
+end
+local Links=require('arena_summon_links');local realLinksNew=Links.new
+Links.new=function(options)
+    local made=realLinksNew(options)
+    local scan=made.scan
+    made.scan=function(self,members,onPassive)if #fakeLinks>0 then return fakeLinks end;return scan(self,members,onPassive)end
+    return made
+end
+-- Finishers ask story_writes before a move that writes story progress; the 龙柱 check runs in the support loop.
+local execOptions
+local Execs=require('arena_executions');local realExecsNew=Execs.new
+Execs.new=function(options)execOptions=options;return realExecsNew(options)end
+local Writes=require('story_writes');local realWritesNew=Writes.new
+local writesOptions,writesAsked
+Writes.new=function(options)
+    writesOptions=options
+    local made=realWritesNew(options)
+    local allows=made.allows
+    made.allows=function(self,ability)writesAsked=ability;return allows(self,ability)end
+    return made
+end
+local LongZhu=require('longzhu_check');local realLongZhuNew=LongZhu.new
+local longzhuOptions,longzhuTicks,longzhuInstance=nil,0,nil
+LongZhu.new=function(options)
+    longzhuOptions=options
+    local made=realLongZhuNew(options)
+    longzhuInstance=made
+    local tick=made.tick
+    made.tick=function(self)longzhuTicks=longzhuTicks+1;return tick(self)end
+    return made
+end
+local StoryGuard=require('story_guard');local realGuardNew=StoryGuard.new
+local guardOptions,guardTicks,guardInstance=nil,0,nil
+StoryGuard.new=function(options)
+    guardOptions=options
+    local made=realGuardNew(options)
+    guardInstance=made
+    local tick=made.tick
+    made.tick=function(self)guardTicks=guardTicks+1;return tick(self)end
+    return made
+end
 assert(loadfile(scripts.."main.lua"))()
 assert(keepOptions and keepOptions.members and keepOptions.location and keepOptions.camera and keepOptions.ground and keepOptions.ground.park,'stands are kept on the ground')
 assert(next(keys)==nil,'fresh installation must not register fixed or developer shortcuts')
@@ -103,7 +152,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.6-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.7-game-26367565',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -158,8 +207,57 @@ FindAllOf=function(name)assert(inGame);return name=='PBZCharacter_NPC' and {npc,
 local scanned=spectatorOptions.getNPCs()
 assert(#scanned==1 and scanned[1]==npc,'spectator must ignore class templates/out-of-world objects')
 inGame=false
+-- A helper sent to fight its own summoner's side (冷荼's 彭猛 and the rest) is taken out as it comes; one that cannot
+-- be taken out joins the other side; an ordinary summon is adopted as before.
+local function helper(name,throws)
+    local h={name=name,destroyed=false}
+    h.IsValid=function()return true end
+    h.GetFullName=function()return 'BP_Helper_NPC_C /Test/World.'..name end
+    h.K2_DestroyActor=function(self)if throws then error('refused') end;self.destroyed=true end
+    h.IsActorBeingDestroyed=function(self)return self.destroyed end
+    return h
+end
+local gone,stuck=helper('helper'),helper('stuck',true)
+fakeLinks={{actor=gone,parent={name='boss'},class_path='/Test/BP_Helper_NPC.BP_Helper_NPC_C',evidence='fixture；SummonCombatTargetMode=EncounterSummons',opposing=true},
+    {actor=stuck,parent={name='boss'},class_path='/Test/BP_Helper_NPC.BP_Helper_NPC_C',evidence='fixture',opposing=true},
+    {actor={name='minion'},parent={name='boss'},class_path='/Test/BP_Minion.BP_Minion_C',evidence='fixture',opposing=false}}
 inGame=true;supportLoop:tick();inGame=false
+assert(gone.destroyed and supportLoop.helpersRemoved==1,'the helper is taken out')
+assert(#adoptCalls==2 and adoptCalls[1][1]==stuck and adoptCalls[1][5]=='opposing' and adoptCalls[2][5]==nil,
+    'not adopted once gone; one that stays joins the other side; an ordinary summon is adopted')
+assert(table.concat(logs,'|'):find('移除剧情帮手 BP_Helper_NPC_C /Test/World.helper（召唤者',1,true)
+    and table.concat(logs,'|'):find('SummonCombatTargetMode=EncounterSummons；原版是来帮玩家打召唤者的）调用=true 读回 正在销毁=true 累计=1',1,true),'logged with its read-back')
+fakeLinks={}
 assert(keepTicks==1,'the support loop looks after the stands')
+assert(guardTicks==1,'the support loop runs the story guard')
+assert(guardOptions.aiSubsystem and guardOptions.pipeline and guardOptions.tagCount and guardOptions.members,'story guard wired')
+inGame=true;assert(guardOptions.aiSubsystem()==nil and guardOptions.pipeline()==nil,'no subsystem in the empty test world');inGame=false
+assert(longzhuTicks==1 and longzhuOptions.pipeline and writesOptions.pipeline,'the 龙柱 check runs in the support loop; both read the story system')
+assert(longzhuOptions.repair==nil and longzhuInstance.armed==false and guardInstance.armed==false,'nothing is repaired before the save-repair button')
+assert(runtimeInstance.handlers.repair_save,'the save-repair button reaches the game')
+do -- The button arms both repairs and reports; in the empty test world nothing can be read.
+    inGame=true
+    local report=supportLoop.saveRepair:run()
+    inGame=false
+    assert(report.ok==true and longzhuInstance.armed==true and guardInstance.armed==true,'the button arms the 龙柱 and 雷当 repairs')
+    assert(report.message:find('读不到：龙柱、雷当、冷荼',1,true) and #report.message<=512,report.message)
+end
+do -- A unit that writes story progress is not summoned while the story cannot say it holds that already.
+    local leidang='/PBZCombatAsset/ActorData/Mobs/047_LeiDang/BP_Monster_LeiDang.BP_Monster_LeiDang_C'
+    local unit={IsValid=function()return true end,GetFullName=function()return 'BlueprintGeneratedClass '..leidang end}
+    inGame=true
+    local pawn,why,outcome=arenaOptions.spawnClass(unit,{Translation={X=0,Y=0,Z=0}},world)
+    inGame=false
+    assert(pawn==nil and outcome=='not_started' and why:find('qsd.击杀.雷当',1,true),tostring(why))
+end
+assert(execOptions and type(execOptions.storyAllows)=='function','finishers are wired to story_writes')
+do
+    local probe={IsValid=function()return true end,GetFName=function()return {ToString=function()return 'GA_Hun_BEx_MoYuan_C' end}end}
+    inGame=true
+    local allowed,why=execOptions.storyAllows(probe)
+    inGame=false
+    assert(writesAsked==probe and allowed==false and type(why)=='string','a story move with nothing loaded is refused: '..tostring(why))
+end
 local queuedBefore=#queue
 ModRef.OnUnload()
 keys['120:0']()

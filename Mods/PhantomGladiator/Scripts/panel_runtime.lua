@@ -173,6 +173,14 @@ function Runtime.new(options)
             if options.support then options.support:discover() end
             return options.arena:clearCompanions()
         end,
+        -- The app's 修复存档 (save_repair.lua): arms the repairs of what earlier versions did to saves, and reports.
+        repair_save=function()
+            local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
+            local repair=options.support and options.support.saveRepair
+            if not repair then return {ok=false,message='存档修复模块未加载',spawned_count=0} end
+            local result=repair:run()
+            return {ok=result.ok==true,message=result.message,spawned_count=0}
+        end,
         -- The app's 召回到身边 and the function key of the same name.
         recall_companions=function()
             if not options.companions then return {ok=false,message='随从模块未加载',spawned_count=0} end

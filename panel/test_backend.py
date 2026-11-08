@@ -170,7 +170,7 @@ class BridgeTests(unittest.TestCase):
             self.bridge._wire({"id": 1, "payload": json.dumps({"action": "configure_keys", "bindings": {"spawn": "a" * 2050}})})
 
     def test_non_spawn_wire_fields_satisfy_the_lua_fixed_column_parser(self):
-        for action in ("start", "stop", "refresh_catalog", "configure_keys", "toggle_spectator", "toggle_stat_match", "dismiss_companions", "recall_companions", "toggle_time_stop"):
+        for action in ("start", "stop", "refresh_catalog", "configure_keys", "toggle_spectator", "toggle_stat_match", "dismiss_companions", "recall_companions", "toggle_time_stop", "repair_save"):
             payload = {"action": action}
             if action == "configure_keys":
                 payload["bindings"] = BINDINGS

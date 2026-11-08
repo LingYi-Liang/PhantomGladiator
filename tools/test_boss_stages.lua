@@ -72,7 +72,7 @@ local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()retur
     staticFind=function(path)return object({},'Function')end,
     registerHook=function(path,callback)hooks[path]=callback;return 7,8 end,
     unregisterHook=function(path,pre,post)assert(pre==7 and post==8);unhooked[#unhooked+1]=path;hooks[path]=nil end,
-    saveData=function(id)return saves[id] or '无' end,
+    saveData=function(id)return saves[id]~=nil end,
     targetsByTag=function(tag)assert(tag=='Targeting.Target.ZuoshangSword');local n=0;for _,s in ipairs(spawned)do if s.name:find('^BP_ZuoShang_GroundWeapon') and s.actor.alive and not s.actor.destroying then n=n+1 end end;return n end,
     destroy=function(a)a.destroying=true;destroyed[#destroyed+1]=a end})
 local function all()return table.concat(lines,'\n')end
@@ -110,7 +110,8 @@ test('her six markers stand around her as around her spawner, facing the player'
         'a class not loaded yet is loaded')
     assert(all():find('冷荼：按原场地放场地物件，整体朝向玩家 0°',1,true))
     assert(all():find('BP_LengTu_SummonSlot_01=放好 完成生成=true 位置读回差=0cm 地面=0 碰撞关=true 读回碰撞=false 她按类能找到=true',1,true))
-    assert(all():find('冷荼 存档 ID：原来=LengTu_Combat（原地图那场也用它，存档里现在={"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}）改成 PhantomGladiator_LengTu 写入=true 读回=PhantomGladiator_LengTu；清空这条的阶段进度 调用=true 存档里={"UnLockTags":[" "]}',1,true),all())
+    assert(all():find('冷荼 存档 ID：原来=LengTu_Combat（原地图那场也用它，存档里有记录=true）改成 PhantomGladiator_LengTu 写入=true 读回=PhantomGladiator_LengTu；清空这条的阶段进度 调用=true 存档里有记录=true',1,true),all())
+    assert(saves.PhantomGladiator_LengTu=='{"UnLockTags":[" "]}','cleared under the mod ID')
     assert(lengtu.reset and saves.LengTu_Combat:find('Save.P4',1,true),'the entry her own fight uses is only read, never written')
     assert(stage:status().stage_placed==6 and stage:status().stage_props==6 and stage:status().stage_failures==0)
 end)
@@ -144,7 +145,14 @@ test('her phase marks are logged when they change, and she is out of reach while
     assert(all():find('冷荼 阶段标签 3.0 秒：+[Phase.P2] -[Phase.P1] 现有=Phase.P2,AI.Hatred.CanNotBeHatred',1,true))
     tags['AI.Hatred.CanNotBeHatred']=0
     assert(stage:untargetable(lengtu)==false,'reachable once the game removes the mark')
+    -- P4 until P5: only IsInvulnerable and the mark the game's NPCs leave her alone by.
+    tags['CharacterState.AbilityState.LengTu.IsInvulnerable']=1;tags['AI.Hatred.IgnoreByNPC']=1
+    assert(stage:untargetable(lengtu)==true,'still out of reach while the NPCs are told to leave her alone')
+    tags['CharacterState.AbilityState.LengTu.IsInvulnerable']=0;tags['AI.Hatred.IgnoreByNPC']=0
+    assert(stage:untargetable(lengtu)==false,'reachable in P5, when the game takes that mark off too')
+    tags['AI.Hatred.IgnoreByNPC']=1
     assert(stage:untargetable(boss('BP_Monster_MengHua_C'))==false,'any other unit is never held back')
+    tags['AI.Hatred.IgnoreByNPC']=0
 end)
 
 test('a second one shares the markers, which leave with the last of them',function()
@@ -193,13 +201,23 @@ end)
 test('左殇 (silver hair) gets his house with its mesh hidden and no collision, gone when he leaves',function()
     local before=#spawned
     local zuoshang=boss('BP_Monster_ZuoShang_Ending_C')
-    assert(stage:prepare(zuoshang,transform,world).ok and #spawned==before+1)
+    assert(stage:prepare(zuoshang,transform,world).ok and #spawned==before+3)
     local house=placed('BP_ZuoShang_House')
     assert(house and house.actor.collision==false and house.actor.ZhuLinGuWu_Break.visible==false)
     assert(house.t.Translation.X==55 and house.t.Translation.Y==102)
+    -- His CA_03 goes up to the snap point and down on the landing point, as they stand from his spawner in 断魂山.
+    local mine={}
+    for i=before+1,#spawned do mine[spawned[i].name]=spawned[i] end
+    local land,snap=mine.BP_ZuoShang_CA_03_LandingPoint,mine.BP_ZuoShang_CA_03_SnapPoint
+    assert(land and land.t.Translation.X==-494 and land.t.Translation.Y==-18 and land.t.Translation.Z==0,'landing point 4.9 m behind him')
+    assert(snap and snap.t.Translation.X==-2227 and snap.t.Translation.Y==-18 and snap.t.Translation.Z==1402,'snap point 22 m behind, 14 m up')
+    assert(land.actor.collision==false and snap.actor.collision==false and land.actor.Owner==zuoshang)
+    assert(all():find('BP_ZuoShang_CA_03_LandingPoint=放好 完成生成=true 位置读回差=0cm 地面=0 碰撞关=true 读回碰撞=false 她按类能找到=true',1,true),all())
+    assert(all():find('BP_ZuoShang_CA_03_SnapPoint=放好 完成生成=true 位置读回差=0cm 地面=0 碰撞关=true 读回碰撞=false 她按类能找到=true',1,true),all())
     assert(all():find('BP_ZuoShang_House=放好 完成生成=true 位置读回差=0cm 地面=0 碰撞关=true 读回碰撞=false 她按类能找到=true 隐藏 ZhuLinGuWu_Break 调用=true 读回可见=false',1,true),all())
     zuoshang.alive=false;stage:tick()
     assert(house.actor.destroying and all():find('左殇（银发） 已不在场上，场地物件：BP_ZuoShang_House 调用=true 读回=已移除',1,true))
+    assert(land.actor.destroying and snap.actor.destroying and all():find('BP_ZuoShang_CA_03_SnapPoint 调用=true 读回=已移除',1,true),all())
 end)
 test('组织冥主：左殇 gets his 42 ground weapons, unseen until his move uses them, owned by him, tilted, gone with him',function()
     local before=#spawned
@@ -229,5 +247,124 @@ test('组织冥主：左殇 gets his 42 ground weapons, unseen until his move us
     zuoshang.alive=false;stage:tick()
     assert(all():find('地面武器 已移除=41 已不在（飞出去了或被游戏清掉）=1 仍在=0',1,true),all())
     assert(#unhooked==1 and unhooked[1]==FLYUP and all():find('摘除用时显现挂钩 调用=true 本场显现=2',1,true),'the hook leaves with the last of them')
+end)
+-- The save-repair button: 冷荼's old ID's checkpoint is cleared with her own ResetTags, she is born under it (what InitTags
+-- reads is the read-back), then moves to the mod's ID.
+local function checkpointStages(wants)
+    local asked,done={},{}
+    local s=Stages.new({log=function(m)lines[#lines+1]=m end,now=function()return now end,location=function(a)return locations[a] end,
+        isDestroying=function(a)return a.destroying==true end,player=function()return player end,
+        findClass=function(path)return classFor(path:match('/([%w_]+)%.[%w_]+_C$'))end,statics=function()return statics end,
+        findAll=function()return {} end,ground=function()return 0 end,tagCount=function()return 0 end,destroy=function()end,
+        fname=function(text)return {ToString=function()return text end}end,saveData=function(id)return saves[id]~=nil end,
+        checkpoint={wants=function(id)asked[#asked+1]=id;return wants end,done=function(id,ok,read)done[#done+1]={id=id,ok=ok,read=read} end}})
+    return s,asked,done
+end
+local function bornWith(actor,list)
+    local tags={}
+    for _,t in ipairs(list)do tags[#tags+1]={TagName={ToString=function()return t end}} end
+    actor.UnLockTags={GameplayTags=tags}
+end
+test('armed: the old ID is cleared first, she keeps it through BeginPlay, then moves; the read-back decides',function()
+    saves.LengTu_Combat='{"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}'
+    saves.PhantomGladiator_LengTu=nil
+    local s,asked,done=checkpointStages(true)
+    local preview=boss('BP_Monster_LengTu_Preview_C')
+    local r=s:prepare(preview,transform,world)
+    assert(r and r.ok and asked[1]=='LengTu_Combat','the preview class gets the save ID too, and asks')
+    assert(saves.LengTu_Combat=='{"UnLockTags":[" "]}' and preview['Actor ID']:ToString()=='LengTu_Combat','cleared, not moved yet')
+    assert(all():find('冷荼（预览）：按"修复存档"清掉存档里 LengTu_Combat 的阶段进度（模组以前写的）：ResetTags 调用=true',1,true),all())
+    bornWith(preview,{})
+    local f=s:finished(preview)
+    assert(f and f.ok==true and done[1].id=='LengTu_Combat' and done[1].ok==true and #done[1].read==0)
+    assert(preview['Actor ID']:ToString()=='PhantomGladiator_LengTu' and saves.PhantomGladiator_LengTu=='{"UnLockTags":[" "]}','moved and cleared there')
+    assert(all():find('LengTu_Combat 清掉后出生时读到的阶段进度=[] 已清空',1,true),all())
+    assert(s:finished(preview)==nil,'once')
+end)
+test('armed but she still read a checkpoint there: reported as not cleared, and she moves anyway',function()
+    saves.LengTu_Combat='{"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}'
+    local s,_,done=checkpointStages(true)
+    local preview=boss('BP_Monster_LengTu_Preview_C')
+    s:prepare(preview,transform,world)
+    bornWith(preview,{'CharacterState.AbilityState.LengTu.Save.P4'})
+    local f=s:finished(preview)
+    assert(f.ok==false and done[1].ok==false and done[1].read[1]=='CharacterState.AbilityState.LengTu.Save.P4')
+    assert(preview['Actor ID']:ToString()=='PhantomGladiator_LengTu' and all():find('=[CharacterState.AbilityState.LengTu.Save.P4] 没清空',1,true),all())
+end)
+test('armed and finished() never came: the next tick moves her, so no checkpoint goes under the old ID',function()
+    local s,_,done=checkpointStages(true)
+    local preview=boss('BP_Monster_LengTu_Preview_C')
+    s:prepare(preview,transform,world)
+    bornWith(preview,{})
+    s:tick()
+    assert(preview['Actor ID']:ToString()=='PhantomGladiator_LengTu' and #done==1)
+    local gone=boss('BP_Monster_LengTu_Preview_C')
+    s:prepare(gone,transform,world)
+    gone.alive=false
+    s:tick()
+    assert(#done==1,'one that left is dropped')
+end)
+test('not armed: moved before she starts, the old ID only read',function()
+    saves.LengTu_Combat='{"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}'
+    local s,asked,done=checkpointStages(false)
+    local preview=boss('BP_Monster_LengTu_Preview_C')
+    s:prepare(preview,transform,world)
+    assert(asked[1]=='LengTu_Combat' and preview['Actor ID']:ToString()=='PhantomGladiator_LengTu' and saves.LengTu_Combat:find('Save.P4',1,true))
+    assert(s:finished(preview)==nil and #done==0)
+end)
+-- A marker of her own map far from where she is summoned (断魂山: her arena 380 m off) is borrowed and put back.
+local function mapMarker(name,at,yaw)
+    local m=object({},name..'_C')
+    locations[m]=at
+    m.rot={Pitch=0,Yaw=yaw,Roll=0}
+    m.RootComponent=object({Mobility=0,SetMobility=function(self,v)self.Mobility=v end},'SceneComponent')
+    m.K2_GetActorRotation=function(self)return self.rot end
+    m.K2_SetActorLocationAndRotation=function(self,loc,rot,sweep,hit,teleport)
+        assert(self.RootComponent.Mobility==2 and sweep==false and teleport==true,'made movable first, teleported')
+        locations[self]={X=loc.X,Y=loc.Y,Z=loc.Z};self.rot=rot
+    end
+    return m
+end
+local function borrowingStages(markers,listed)
+    local lib=object({BeginDeferredActorSpawnFromClass=statics.BeginDeferredActorSpawnFromClass,FinishSpawningActor=statics.FinishSpawningActor,
+        GetActorOfClass=function(self,w,cls)
+            for name,m in pairs(markers)do if cls==classFor(name) then return m end end
+            return statics.GetActorOfClass(self,w,cls)
+        end},'Default__GameplayStatics')
+    return Stages.new({log=function(m)lines[#lines+1]=m end,now=function()return now end,location=function(a)return locations[a] end,
+        isDestroying=function(a)return a.destroying==true end,player=function()return player end,
+        findClass=function(path)return classFor(path:match('/([%w_]+)%.[%w_]+_C$'))end,statics=function()return lib end,
+        findAll=function(name)local short=name:gsub('_C$','');if listed and listed[short] then return listed[short] end
+            local m=markers[short];return m and {m} or {} end,ground=function()return 0 end,
+        tagCount=function()return 0 end,destroy=function(a)a.destroying=true end,fname=function(text)return {ToString=function()return text end}end})
+end
+test('a marker of her own map far off is borrowed: moved beside her, found by class, put back as it was when she leaves',function()
+    local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=40000,Y=0,Z=500},33)
+    local s=borrowingStages({BP_LengTu_SummonSlot_01=slot})
+    local b=boss('BP_Monster_LengTu_C')
+    assert(s:prepare(b,transform,world).ok)
+    local at=locations[slot]
+    assert(at.X==-163 and at.Y==-252 and at.Z==0 and slot.rot.Yaw==10,'where the mod would place its own')
+    assert(all():find('BP_LengTu_SummonSlot_01=地图上那个在 402 米外，借过来放到这里 可移动=true 调用=true 位置读回差=0cm 地面=0 她按类能找到=true（她离场时放回原处）',1,true),all())
+    assert(s:status().stage_borrowed==1)
+    b.alive=false
+    s:tick()
+    at=locations[slot]
+    assert(at.X==40000 and at.Y==0 and at.Z==500 and slot.rot.Yaw==33 and slot.RootComponent.Mobility==0,'back as it was')
+    assert(all():find('BP_LengTu_SummonSlot_01 放回地图原处 调用=true 位置读回差=0cm',1,true),all())
+end)
+test('a marker of her own map near where hers would stand is used where it is',function()
+    local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=837,Y=-252,Z=0},33)
+    local s=borrowingStages({BP_LengTu_SummonSlot_01=slot})
+    assert(s:prepare(boss('BP_Monster_LengTu_C'),transform,world).ok)
+    assert(locations[slot].X==837 and slot.rot.Yaw==33,'not moved')
+    assert(all():find('BP_LengTu_SummonSlot_01=地图上已有一个（离这里 10 米），她会用地图上的',1,true),all())
+end)
+test('of two in her map, the one her abilities find by class is the one borrowed',function()
+    local decoy=mapMarker('BP_LengTu_SummonSlot_01',{X=-30000,Y=0,Z=0},5)
+    local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=40000,Y=0,Z=500},33)
+    local s=borrowingStages({BP_LengTu_SummonSlot_01=slot},{BP_LengTu_SummonSlot_01={decoy,slot}})
+    assert(s:prepare(boss('BP_Monster_LengTu_C'),transform,world).ok)
+    assert(locations[slot].X==-163 and locations[decoy].X==-30000,'the first found by class moves, the other stays')
 end)
 print('test_boss_stages: all passed')

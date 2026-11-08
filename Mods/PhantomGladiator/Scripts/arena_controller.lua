@@ -183,7 +183,7 @@ function Arena.new(options)
     local function notify_units()
         if not options.onUnitsChanged then return true end
         local copy = {}
-        for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,summoner=unit.summoner } end
+        for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,summoner=unit.summoner,aid=unit.aid==true } end
         local ok, err = pcall(options.onUnitsChanged, copy)
         if not ok then log("参赛者同步失败: " .. tostring(err)) end
         return ok
@@ -287,12 +287,17 @@ function Arena.new(options)
         local copy={}
         for _,unit in ipairs(units) do
             copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,summoner=unit.summoner,
-                stand=stand(unit),reserve=unit.dormant==true or stand(unit),untargetable=unit.untargetable==true}
+                stand=stand(unit),reserve=unit.dormant==true or stand(unit),untargetable=unit.untargetable==true,aid=unit.aid==true}
         end
         return copy
     end
 
-    function instance:adoptSummon(actor,parent,classPath,evidence)
+    -- side 'opposing': the summon is there to fight its summoner's side (arena_summon_links.lua, 冷荼's _NPC helpers).
+    -- main.lua takes such a helper out as it comes; this is for one that could not be. In a blue/red fight it joins the other team as a helper (unit.aid): its attacks land on the summoner's side, the
+    -- game's own summon combat picks its targets, it is not sent at anyone nor sent at, and it does not count among
+    -- its team's survivors, so a side whose own units are all down has lost. With a companion summoner it stays
+    -- with the summoner as before.
+    function instance:adoptSummon(actor,parent,classPath,evidence,side)
         local childKey,parentKey=actor_key(actor),actor_key(parent)
         if not childKey or not parentKey or childKey==parentKey then return {ok=false,message='召唤关系对象无效'} end
         local owner
@@ -302,15 +307,18 @@ function Arena.new(options)
             if key==parentKey then owner=unit end
         end
         if not owner then return {ok=false,message='召唤者不在本擂台，未接管单位'} end
-        units[#units+1]={actor=actor,team=owner.team,class_path=classPath,slot=next_slot(owner.team),summoner=owner.actor,needsJoin=true}
+        local team,aid=owner.team,nil
+        if side=='opposing' and (owner.team=='blue' or owner.team=='red') then team=owner.team=='blue' and 'red' or 'blue';aid=true end
+        units[#units+1]={actor=actor,team=team,class_path=classPath,slot=next_slot(team),summoner=owner.actor,needsJoin=true,aid=aid}
         local synced=notify_units()
         -- The numbers the player set for this side go on what its units summon too.
         if options.summonAdopted then
-            local wrote,why=invoke('summonAdopted',actor,classPath,owner.team)
+            local wrote,why=invoke('summonAdopted',actor,classPath,team)
             if not wrote then log('召唤物数值未写入：'..tostring(why)) end
         end
-        log('接管原生召唤物：team='..owner.team..' parent='..actor_name(owner.actor)..' child='..actor_name(actor)..'；归属证据='..tostring(evidence)..'；登记读回='..tostring(synced))
-        return {ok=synced,adopted=true}
+        log('接管原生召唤物：team='..team..(aid and ('（召唤者在 '..owner.team..' 队；按原版它打召唤者这边，所以站对面，不计存活，目标由游戏自己选）') or '')
+            ..' parent='..actor_name(owner.actor)..' child='..actor_name(actor)..'；归属证据='..tostring(evidence)..'；登记读回='..tostring(synced))
+        return {ok=synced,adopted=true,team=team,aid=aid==true}
     end
 
     -- After a round of attacks a unit's AI can leave combat and walk back to where it spawned: 50 against
@@ -368,6 +376,14 @@ function Arena.new(options)
         if target and not targetable(unit_by_key(unit.assignedKey)) then target=nil end
         invoke('holdTarget',unit.actor,target,why)
     end
+    -- A lock (what its skills aim at) on a unit nobody is sent at goes to its opponent, or is dropped with none in reach
+    -- (options.releaseLock, lock_release.lua): a lock taken before her summons came stayed on 冷荼.
+    local function release_lock(unit)
+        if not options.releaseLock or stand(unit) or dormant(unit) then return end
+        local target=unit.assignedTarget
+        if target and not targetable(unit_by_key(unit.assignedKey)) then target=nil end
+        invoke('releaseLock',unit.actor,target)
+    end
     -- The unit a fighting unit acts against when one of its skills asks for "the player" (player_aim.lua): its
     -- assigned opponent while alive, else the nearest living, shown unit of the other side; nil when none.
     function instance:actorOf(key)
@@ -386,7 +402,7 @@ function Arena.new(options)
         here=okHere and vector(here) or nil
         local best,bestDistance
         for _,other in ipairs(units)do
-            if (other.team=='blue' or other.team=='red') and other.team~=me.team and fighting(other) then
+            if (other.team=='blue' or other.team=='red') and other.team~=me.team and not other.aid and fighting(other) then
                 local okThere,there=invoke('getLocation',other.actor)
                 there=okThere and vector(there) or nil
                 local d=here and there and ((here.X-there.X)^2+(here.Y-there.Y)^2) or math.huge
@@ -400,8 +416,8 @@ function Arena.new(options)
     function instance:holdSensed(key)
         if not battleActive or busy or not key then return false end
         for _,unit in ipairs(units)do
-            if unit.key==key and (unit.team=='blue' or unit.team=='red') and not stand(unit) and not dormant(unit) and alive_readback(unit)==true then
-                hold_target(unit,'感知更新后');return true
+            if unit.key==key and (unit.team=='blue' or unit.team=='red') and not unit.aid and not stand(unit) and not dormant(unit) and alive_readback(unit)==true then
+                hold_target(unit,'感知更新后');release_lock(unit);return true
             end
         end
         return false
@@ -418,7 +434,7 @@ function Arena.new(options)
                     local ok,ready=invoke('combatReady',unit.actor)
                     if isStand or (ok and ready==true) then
                         unit.key=unit.key or actor_key(unit.actor);participants[#participants+1]=unit
-                        if not isStand then unit.untargetable=untargetable(unit);active[#active+1]=unit end
+                        if not isStand and not unit.aid then unit.untargetable=untargetable(unit);active[#active+1]=unit end
                     end
                 end
             end
@@ -473,6 +489,7 @@ function Arena.new(options)
                 end
             end
             hold_target(unit,'定时检查')
+            release_lock(unit)
         end
         if not reengage.since then reengage.since=now end
         if now-reengage.since>=SUMMARY_SECONDS then
@@ -580,6 +597,7 @@ function Arena.new(options)
             local spawned, activated, failures = 0, 0, 0
             local escorted, escortsWanted = 0, 0
             local spawnWarning
+            local refusal   -- why a unit was not started (spawnClass outcome not_started), said in the reply
             local cleanupRequired=false
             -- One unit: spawn, take ownership, finish and activate it. Returns the actor once it is owned and
             -- whether the batch has to stop. escort = {parent=, parent_path=, entry=} for a unit that comes with another.
@@ -621,6 +639,7 @@ function Arena.new(options)
                 failures = failures + 1
                 log("生成未确认新有效实例: " .. (duplicate and "返回了已登记对象" or tostring(spawnError or actor)))
                 if okSpawn and outcome=='not_started' then
+                    if type(spawnError)=='string' and not refusal then refusal=spawnError end
                     local cleared=guard_call('complete')
                     if not cleared then unknownSpawn=true; return nil,true end
                     return nil,false
@@ -675,7 +694,8 @@ function Arena.new(options)
             end
             return response(spawned == count and failures == 0,
                 string.format("生成读回 %d/%d；激活确认=%d；失败/未验证=%d；已生成者保留，开战需蓝红双方", spawned, count, activated, failures)
-                    ..(escortsWanted>0 and string.format('；随行单位 %d/%d',escorted,escortsWanted) or '')..(spawnWarning and ('；提示：'..spawnWarning) or ''),
+                    ..(escortsWanted>0 and string.format('；随行单位 %d/%d',escorted,escortsWanted) or '')..(spawnWarning and ('；提示：'..spawnWarning) or '')
+                    ..(refusal and ('；没召唤：'..refusal) or ''),
                 { spawned_count = spawned, escort_count = escorted, activated_count = activated, failure_count = failures, remaining_count = #units })
         end)
     end
@@ -699,7 +719,7 @@ function Arena.new(options)
                 if alive==true and (isStand or not dormant(unit)) then
                     local list=relations[unit.team];list[#list+1]=unit.actor
                 end
-                if alive == true and not isStand and not dormant(unit) then
+                if alive == true and not isStand and not unit.aid and not dormant(unit) then
                     if unit.team=="blue" or unit.team=="red" then
                         if options.canBattle then
                             local allowed,battleAllowed,reason=invoke('canBattle',unit.class_path)
@@ -833,7 +853,7 @@ function Arena.new(options)
     function instance:status()
         prune()
         local blue, red, neutral, unreadable, dead,neutralOwned,summons = 0, 0, 0, 0, 0,0,0
-        local companions,companionOwned,reserve,stands=0,0,0,0
+        local companions,companionOwned,reserve,stands,aids=0,0,0,0,0
         local unread={}
         for _, unit in ipairs(units) do
             if unit.summoner then summons=summons+1 end
@@ -846,7 +866,9 @@ function Arena.new(options)
                 log((hidden and '备用召唤物（隐藏、AI 未启动），不计存活 team=' or '备用召唤物登场，计入存活 team=')..unit.team..' actor='..actor_name(unit.actor))
                 unit.dormant=hidden
             end
-            if isStand then stands=stands+1
+            if unit.aid then
+                if alive==true then aids=aids+1 elseif alive==false then dead=dead+1 end
+            elseif isStand then stands=stands+1
             elseif hidden then reserve=reserve+1
             elseif alive==true then
                 if unit.team == "blue" then blue = blue + 1 elseif unit.team == "red" then red = red + 1
@@ -854,7 +876,8 @@ function Arena.new(options)
             elseif alive==false then dead=dead+1
             else unreadable=unreadable+1;unread[unit.team]=(unread[unit.team] or 0)+1 end
             if unit.countedAlive~=alive and (alive==false or unit.countedAlive==false) then
-                log('存活人数更新 team='..unit.team..' actor='..actor_name(unit.actor)..'；读回='..proof..' alive='..tostring(alive)..'；保留所有权供清理')
+                log('存活人数更新 team='..unit.team..(unit.aid and '（对面召来的帮手，不计入）' or '')..' actor='..actor_name(unit.actor)
+                    ..'；读回='..proof..' alive='..tostring(alive)..'；保留所有权供清理')
             end
             unit.countedAlive=alive
         end
@@ -869,7 +892,7 @@ function Arena.new(options)
             fight.now=now
         end
         return { blue_count = blue, red_count = red, neutral_count = neutral, total = blue + red + neutral,
-            owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,stand_count=stands,battle_active=battleActive,current_unit = selected or "", current_team = team,
+            owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,stand_count=stands,aid_count=aids,battle_active=battleActive,current_unit = selected or "", current_team = team,
             current_count = count,team_revision=teamRevision, state = state, message = message, busy = busy,
             battle_clock=fight.started and (fight.ended and 'ended' or 'running') or '',
             battle_seconds=fight.started and math.max(0,(fight.ended or fight.now)-fight.started) or 0 }

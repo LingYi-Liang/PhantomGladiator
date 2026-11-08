@@ -196,6 +196,28 @@ assert(not fallback.arena:holdSensed('nobody'),'an unknown unit is ignored')
 fb.hp=0
 fallback.arena:tickReinforcements()
 assert(heldFor(fa).target==nil,'no opponent alive: nil, so it is only taken off the player')
+-- A fighter's lock on a unit nobody is sent at is handed its assigned opponent (lock_release.lua): every tick and
+-- after a perception event, nil while that opponent is out of reach.
+local locks={}
+local locking=fixture({untargetable=function(actor)return actor.outOfReach==true end,
+    releaseLock=function(actor,target)locks[#locks+1]={actor=actor,target=target};return true end})
+assert(locking.arena:spawn('/Catalog/BP_LengTu.BP_LengTu_C','blue',1).ok and locking.arena:spawn(nil,'red',1).ok and locking.arena:start().ok)
+local la,lb=locking.actors[1],locking.actors[2]
+local function lockFor(actor)
+    for i=#locks,1,-1 do if locks[i].actor==actor then return locks[i] end end
+end
+locking.arena:tickReinforcements()
+assert(lockFor(lb) and lockFor(lb).target==la and lockFor(la).target==lb,'each fighter, with its opponent')
+la.outOfReach=true
+local scav2={alive=true,name='scavenger2',hp=100}
+assert(locking.arena:adoptSummon(scav2,la,'/Catalog/BP_Scav.BP_Scav_C','fixture').ok)
+locking.arena:tickReinforcements()
+assert(lockFor(lb).target==scav2,'sent at her summon: that is where its lock goes')
+scav2.hp=0
+locking.arena:tickReinforcements()
+assert(lockFor(lb).target==nil,'nobody in reach: nil, so a lock on her is dropped')
+local n=#locks
+assert(locking.arena:holdSensed(tostring(lb)) and #locks==n+1,'after a perception event too')
 -- The opponent a unit's skill gets instead of the player (player_aim.lua): its assigned target while alive, else
 -- a living shown unit of the other side; nil for nobody of ours or with nobody left.
 local foes=fixture()
@@ -306,6 +328,7 @@ f.options.activate = function(actor)
 end
 local partial = f.arena:spawn(nil, "blue", 3)
 assert(not partial.ok and partial.spawned_count == 2 and partial.activated_count == 1)
+assert(partial.message:find('；没召唤：failed before native spawn',1,true),'why a unit was not started is in the reply: '..partial.message)
 assert(f.arena:status().total == 2)
 assert(f.arena:stop().ok)
 
@@ -853,4 +876,75 @@ do
     assert(bad.arena:spawn("/Catalog/BP_Test.BP_Test_C", "blue", 1).ok)
     assert(bad.transforms[1].Translation.X==600,'a failure is no reason not to summon')
 end
-print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands)")
+-- 冷荼's _NPC helpers fight her side (adoptSummon side 'opposing'): in a blue/red fight they join the other team
+-- with its relations, are neither sent at anyone nor sent at, do not count among survivors and are cleaned up with
+-- the rest. A side whose own units are down has lost though its helper lives.
+do
+    local holds,told={},{}
+    local f=fixture({holdTarget=function(actor,target,why)holds[#holds+1]=actor;return true end,
+        summonAdopted=function(actor,path,team)told[actor]=team;return true end})
+    assert(f.arena:spawn('/Catalog/BP_LengTu.BP_LengTu_C','red',1).ok and f.arena:spawn('/Catalog/BP_Enemy.BP_Enemy_C','blue',1).ok)
+    assert(f.arena:start().ok)
+    local lengtu,enemy=f.actors[1],f.actors[2]
+    local vessel={alive=true,name='vessel',hp=100}
+    local helper={alive=true,name='helper',hp=100}
+    local r=f.arena:adoptSummon(vessel,lengtu,'/Catalog/BP_Vessel.BP_Vessel_C','fixture')
+    assert(r.ok and r.team=='red' and not r.aid,'her own summon stays with her')
+    r=f.arena:adoptSummon(helper,lengtu,'/Catalog/BP_Helper_NPC.BP_Helper_NPC_C','fixture','opposing')
+    assert(r.ok and r.team=='blue' and r.aid==true)
+    assert(f.arena:adoptSummon(helper,lengtu,'/Catalog/BP_Helper_NPC.BP_Helper_NPC_C','fixture','opposing').existing)
+    assert(told[vessel]=='red' and told[helper]=='blue','each takes the numbers of the side it fights for')
+    local s=f.arena:status()
+    assert(s.red_count==2 and s.blue_count==1 and s.aid_count==1 and s.summon_count==2,'the helper is owned but not counted')
+    local seen=false
+    for _,m in ipairs(f.arena:members())do if m.actor==helper then seen=true;assert(m.team=='blue' and m.aid==true) end end
+    for _,u in ipairs(f.synced())do if u.actor==helper then assert(u.team=='blue' and u.aid==true) end end
+    assert(seen)
+    local before=#f.trace
+    f.arena:tickReinforcements()
+    local rel={}
+    for i=before+1,#f.trace do
+        local e=f.trace[i]
+        if type(e)=='table' and e[1]=='relation' and e[2]==helper then rel[e[3]]=e[4] end
+    end
+    assert(rel[lengtu]==2 and rel[vessel]==2 and rel[enemy]==0,'its attacks land on her side, not on the side it helps')
+    for _,e in ipairs(f.trace)do
+        if type(e)=='table' and e[1]=='attack' then assert(e[2]~=helper and e[3]~=helper,'the game picks its targets; nobody is sent at it') end
+    end
+    local foe=f.arena:opponentOf(tostring(helper))
+    assert(foe==lengtu or foe==vessel,'a skill of the helper asking for the player gets her side')
+    assert(not f.arena:holdSensed(tostring(helper)),'its AI keeps the target the game gave it')
+    for _,actor in ipairs(holds)do assert(actor~=helper,'nor is it held on one each tick') end
+    enemy.hp=0
+    local s2=f.arena:status()
+    assert(s2.blue_count==0 and s2.aid_count==1 and s2.red_count==2,'blue is down to nobody though the helper lives')
+    assert(f.arena:opponentOf(tostring(lengtu))==nil,'the helper is not handed to her side as the player')
+    assert(f.arena:stop().ok and not helper.alive and not vessel.alive,'helpers are cleaned up with the rest')
+end
+-- One already out when the fight starts: not sent, not sent at, given the other side's relations; and it is no
+-- fighter of that side, so a side made of a helper alone cannot start a fight.
+do
+    local f=fixture()
+    assert(f.arena:spawn('/Catalog/BP_LengTu.BP_LengTu_C','red',1).ok)
+    local lengtu=f.actors[1]
+    local helper={alive=true,name='early helper',hp=100}
+    assert(f.arena:adoptSummon(helper,lengtu,'/Catalog/BP_Helper_NPC.BP_Helper_NPC_C','fixture','opposing').aid)
+    assert(not f.arena:start().ok and stageCount(f,'attack')==0,'a helper alone is no blue side')
+    assert(f.arena:spawn('/Catalog/BP_Enemy.BP_Enemy_C','blue',1).ok)
+    assert(f.arena:start().ok)
+    local hostile=false
+    for _,e in ipairs(f.trace)do
+        if type(e)=='table' and e[1]=='attack' then assert(e[2]~=helper and e[3]~=helper,'not at the start either') end
+        if type(e)=='table' and e[1]=='relation' and e[4]==2 and ((e[2]==helper and e[3]==lengtu) or (e[2]==lengtu and e[3]==helper)) then hostile=true end
+    end
+    assert(hostile,'it gets the relations of the side it joined')
+end
+-- A companion has no side to take: its helper stays with it, as before.
+do
+    local f=fixture()
+    assert(f.arena:spawn('/Catalog/BP_LengTu.BP_LengTu_C','companion',1).ok)
+    local helper={alive=true,name='helper',hp=100}
+    local r=f.arena:adoptSummon(helper,f.actors[1],'/Catalog/BP_Helper_NPC.BP_Helper_NPC_C','fixture','opposing')
+    assert(r.ok and r.team=='companion' and not r.aid)
+end
+print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side)")

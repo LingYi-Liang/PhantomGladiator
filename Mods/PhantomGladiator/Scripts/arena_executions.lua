@@ -243,6 +243,11 @@ function Exec.new(options)
             end
         end
         if not (U.valid(execution) and U.valid(executed)) then info.state='nopair';return info end
+        -- A move that writes story progress (story_writes.lua) only when that progress is already there.
+        if options.storyAllows then
+            local allowed,why=options.storyAllows(execution)
+            if not allowed then info.state='story';info.storyWhy=why;info.pair={execution=execution,executed=executed,source=source};return info end
+        end
         info.timing=animationData(short(execution))
         if not info.timing then info.state='nodata';info.pair={execution=execution};return info end
         info.state='ready'
@@ -294,6 +299,7 @@ function Exec.new(options)
     end
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
     -- team: the target's arena team, or nil for a companion's foe, which only companions go for.
+    -- A helper the other side's boss brought out (member.aid, arena_controller.lua) does not finish anyone.
     local function opponent(target,team,reach,anyone,executionType)
         local best,bestDistance
         for _,member in ipairs(options.members() or {}) do
@@ -301,7 +307,7 @@ function Exec.new(options)
             local against
             if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
             else against=member.team=='companion' end
-            if against and not member.reserve and U.valid(other) then
+            if against and not member.reserve and not member.aid and U.valid(other) then
                 local hp=read(other,'Health')
                 local d=hp and hp>0 and distance(target,other)
                 if d and d<=reach and (not bestDistance or d<bestDistance) and (anyone or isHumanoid(other))
@@ -861,6 +867,11 @@ function Exec.new(options)
         end
         if not reason then return false end
         local selected=inspect(target,true,locked)
+        if selected.state=='story' then
+            unit.state='story';unit.storyWhy=selected.storyWhy
+            say('处决会改剧情，不用它：'..className(target)..' '..short(selected.pair.execution)..' '..tostring(selected.storyWhy))
+            return false
+        end
         local executor,d
         if selected.state=='ready' then executor,d=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type)end
         if executor then start(executor,target,selected,d,reason);return true end
@@ -969,12 +980,14 @@ function Exec.new(options)
         for _,member in ipairs(members) do
             local target=member.actor
             local key=U.key(target)
-            if key and (member.team=='blue' or member.team=='red') then
+            -- A helper the other side's boss brought out is left to that boss's script, not finished here.
+            if key and (member.team=='blue' or member.team=='red') and not member.aid then
                 local unit=units[key]
                 if not unit then
                     unit=inspect(target);units[key]=unit
                     if unit.state=='nopair' and #unit.locks>0 then say('锁血但没有成对的处决动作，不处决：'..className(target)) end
                     if unit.state=='nodata' then say('有处决动作但没有执行方动作数据，不处决：'..className(target)..' '..short(unit.pair.execution)) end
+                    if unit.state=='story' then say('处决会改剧情，不用它：'..className(target)..' '..short(unit.pair.execution)..' '..tostring(unit.storyWhy)) end
                     if unit.state=='ready' then say(string.format('登记 %s（%s）：锁血效果=%d 个 技能对=%s / %s（%s）',className(target),unit.rank,#unit.locks,
                         short(unit.pair.execution),short(unit.pair.executed),unit.pair.source)) end
                 end

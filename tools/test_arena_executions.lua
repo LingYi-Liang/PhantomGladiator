@@ -543,6 +543,66 @@ do
     assert(h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Monster_MoTian_0 at 0.0'))
 end
 
+-- A helper the boss's side brought out against it (member.aid) does not finish it, however close; the real
+-- opponent does once it comes within reach.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',10,10)
+    local helper=h.enemy({X=100,Y=0,Z=0},{class='BP_Monster_Helper'})
+    local enemy=h.enemy({X=5000,Y=0,Z=0})
+    h.members={{actor=boss,team='red'},{actor=helper,team='blue',aid=true},{actor=enemy,team='blue'}}
+    local exec=h.new()
+    h.run(exec,3)
+    assert(exec:status().started==0 and h.all():find('附近 20 米内没有对手',1,true),h.all())
+    enemy.at={X=400,Y=0,Z=0}
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and h.all():find('执行方=BP_Monster_GuiChai',1,true) and not h.all():find('执行方=BP_Monster_Helper',1,true),h.all())
+end
+-- A finisher whose move writes story progress (story_writes.lua) is not started while that progress is missing: the
+-- boss is registered as such, said once, and a locked one is ended the usual way after 20 s. Allowed, it runs as before.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',1,1)
+    local enemy=h.enemy({X=100,Y=0,Z=0})
+    h.members={{actor=boss,team='red'},{actor=enemy,team='blue'}}
+    local asked={}
+    local exec=h.new({storyAllows=function(ability)asked[#asked+1]=ability:GetFName():ToString();return false,'会给剧情加 [lz.龙柱.战斗胜利5]，剧情里还没有' end})
+    h.run(exec,3)
+    assert(exec:status().started==0 and asked[1]=='GA_Hun_BEx_MoYuan_C',h.all())
+    local _,said=h.all():gsub('处决会改剧情，不用它：BP_Monster_MoTian GA_Hun_BEx_MoYuan_C 会给剧情加 %[lz.龙柱.战斗胜利5%]，剧情里还没有','')
+    assert(said==1,h.all())
+    assert(not h.all():find('登记 BP_Monster_MoTian',1,true),h.all())
+    h.run(exec,20)
+    assert(exec:status().started==0 and h.has('apply GE_Kill_C level=0.0 context=table'),'ended the usual way: '..h.all())
+    local g=harness()
+    local boss2=g.boss('BP_Monster_MoTian',10,10)
+    local enemy2=g.enemy({X=100,Y=0,Z=0})
+    g.members={{actor=boss2,team='red'},{actor=enemy2,team='blue'}}
+    local exec2=g.new({storyAllows=function()return true end})
+    g.run(exec2,1.5)
+    assert(exec2:status().started==1 and g.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Monster_MoTian_0 at 0.0'),g.all())
+    -- Allowed when it was registered, refused when the finisher would start: not started, said once.
+    local k=harness()
+    local boss3=k.boss('BP_Monster_MoTian',10,10)
+    local enemy3=k.enemy({X=100,Y=0,Z=0})
+    k.members={{actor=boss3,team='red'},{actor=enemy3,team='blue'}}
+    local calls=0
+    local exec3=k.new({storyAllows=function()calls=calls+1;if calls==1 then return true end;return false,'读不到剧情系统' end})
+    k.run(exec3,3)
+    local _,again=k.all():gsub('处决会改剧情，不用它：BP_Monster_MoTian GA_Hun_BEx_MoYuan_C 读不到剧情系统','')
+    assert(exec3:status().started==0 and again==1 and k.all():find('登记 BP_Monster_MoTian',1,true),k.all())
+end
+-- Nor is such a helper finished when it sits on its own lock: its summoner's script takes it away.
+do
+    local h=harness()
+    local helper=h.boss('BP_Monster_MoTian',10,10)
+    local enemy=h.enemy({X=100,Y=0,Z=0})
+    h.members={{actor=helper,team='blue',aid=true},{actor=enemy,team='red'}}
+    local exec=h.new()
+    h.run(exec,3)
+    assert(exec:status().started==0 and not h.all():find('登记 BP_Monster_MoTian',1,true),h.all())
+end
+
 -- The call refused: counted, the body given back, the boss left locked. F4 mid-run gives the body back too.
 do
     local h=harness()

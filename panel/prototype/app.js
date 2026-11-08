@@ -94,6 +94,7 @@
     settings: { autoUpdate: store.get("autoUpdate", true), allUnits: store.get("allUnits", false), tech: store.get("tech", false) },
     gamePath: store.get("gamePath", "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PBZ"),
     detecting: false,
+    repairReport: null,       // the save-repair button's last report: lines, problems first
     installing: null,
     update: { phase: "idle", info: null, line: "auto", progress: null, error: null, lastChecked: store.get("lastChecked", 0) },
     onboarding: !store.get("onboarded", false),
@@ -1704,6 +1705,38 @@
     await pending;
     if (ui.page === "fun") renderPage();
   }
+  // The save-repair report (save_repair.lua) comes in Chinese, one part per "；". In Chinese the parts are shown as they
+  // come; in the other languages each known part is said in that language, unit and place names staying the game's.
+  const REPAIR_NAMES = { "龙柱": "repair.name.longzhu", "雷当": "repair.name.leidang", "冷荼": "repair.name.lengtu", "其他单位写的剧情标记": "repair.name.others" };
+  const repairList = text => text.split("、").map(name => {
+    const many = /^其他单位的标记 (\d+) 条$/.exec(name);
+    return many ? t("repair.name.othersN", { n: many[1] }) : REPAIR_NAMES[name] ? t(REPAIR_NAMES[name]) : name;
+  }).join(t("repair.sep"));
+  const REPAIR_LINES = [
+    [/^没发现模组造成的存档问题/, () => t("repair.none")],
+    [/^龙柱：卡在龙柱(\d+)（(.+)），走到它附近自动补上$/, m => t("repair.pillar.stuck", { n: m[1], map: m[2] })],
+    [/^龙柱：已补好/, () => t("repair.pillar.fixed")],
+    [/^龙柱：补写没成功/, () => t("repair.pillar.failed")],
+    [/^雷当：已被记成打过(（读不到这一战打完没有）)?，/, m => t("repair.leidang.pending", { note: m[1] ? t("repair.leidang.unread") : "" })],
+    [/^雷当：已关掉一阶段刷怪点/, () => t("repair.leidang.fixed")],
+    [/^冷荼：阶段进度可能是模组写的/, () => t("repair.lengtu.armedMaybe")],
+    [/^冷荼：阶段进度是模组写的/, () => t("repair.lengtu.armed")],
+    [/^冷荼：已清掉/, () => t("repair.lengtu.cleared")],
+    [/^冷荼：清阶段进度没成功/, () => t("repair.lengtu.failed")],
+    [/^沐小葵：/, () => t("repair.react.muxiaokui")],
+    [/^马车战：钩者/, () => t("repair.react.hookman")],
+    [/^马车战：两个枪鬼差/, () => t("repair.react.gunners")],
+    [/^没问题：(.+)$/, m => t("repair.fine", { list: repairList(m[1]) })],
+    [/^读不到：(.+)（进游戏世界几秒后再点）$/, m => t("repair.unread", { list: repairList(m[1]) })],
+  ];
+  function repairLine(line) {
+    if (I18N.lang === "zh") return line;
+    for (const [pattern, say] of REPAIR_LINES) {
+      const m = pattern.exec(line);
+      if (m) return say(m);
+    }
+    return line;
+  }
   function settingsHTML() {
     const opt = (action, value, checked, main, sub = "", extra = "") => `<button class="option ${extra}" type="button" role="radio" aria-checked="${checked}" data-action="${action}" data-value="${value}"><span class="radio"></span><span class="option-main"><span>${main}</span>${sub ? `<small>${sub}</small>` : ""}</span></button>`;
     const sw = (key, title, desc) => `<div class="row"><div class="row-main"><div class="row-title">${esc(title)}</div><div class="row-desc">${esc(desc)}</div></div><button class="switch" type="button" role="switch" aria-checked="${ui.settings[key]}" data-action="toggle-setting" data-setting="${key}" aria-label="${esc(title)}"></button></div>`;
@@ -1728,6 +1761,10 @@
           <div class="field-label" style="margin-top:16px">${esc(t("settings.game.components"))}</div>
           ${componentsHTML()}
         </div></section>
+      <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.repair"))}</h2>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="repair-save" ${ui.busy.has("repair_save") || !RT.online() ? "disabled" : ""}>${ui.busy.has("repair_save") ? '<span class="spinner"></span>' : icon("check", "icon-sm")}${esc(t("settings.repair.btn"))}</button></div>
+        <div class="card-body"><p class="muted" style="font-size:12.5px">${esc(t("settings.repair.desc"))}</p>
+          ${ui.repairReport ? `<ul class="repair-report" style="margin:10px 0 0;padding-left:18px;font-size:13px;line-height:1.6">${ui.repairReport.map(line => `<li>${esc(repairLine(line))}</li>`).join("")}</ul>` : ""}</div></section>
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.updates"))}</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t("about.check"))}</button></div>
         <div class="rows" style="margin-top:6px">${sw("autoUpdate", t("settings.updates.auto"), t("settings.updates.autoDesc"))}</div></section>
       <details class="advanced"><summary><span class="row-icon">${icon("sliders")}</span><div class="row-main"><div class="row-title">${esc(t("settings.advanced"))}</div><div class="row-desc">${esc(t("settings.advanced.desc"))}</div></div>${icon("chevron-down", "chev")}</summary>
@@ -2303,6 +2340,25 @@
     "stop-confirm": () => stopAll(),
     "stop-again": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); stopAll(); },
     rematch: () => rematch(),
+    // The report comes back as one message, its parts split by "；" (save_repair.lua).
+    "repair-save": async () => {
+      const pending = run("repair_save", { ok: j => {
+        ui.repairReport = String(j.message || "").split("；").filter(Boolean);
+        return t("toast.repair.done");
+      } });
+      // Redrawn where the player is on the page: the button shows it is working, then the report under it.
+      const redraw = () => {
+        if (ui.page !== "settings") return;
+        const y = $(".page-scroll")?.scrollTop || 0;
+        renderPage();
+        const page = $(".page-scroll");
+        if (page) page.scrollTop = y;
+      };
+      redraw();
+      const job = await pending;
+      redraw();
+      return job;
+    },
     "recall-companions": () => run("recall_companions", { ok: j => {
       const m = /^已召回 (\d+)\/(\d+)/.exec(j.message || "");
       return m ? t("toast.companion.recalled", { n: Number(m[1]) }) : t("toast.companion.recallNone");

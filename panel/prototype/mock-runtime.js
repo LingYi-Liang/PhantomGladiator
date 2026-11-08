@@ -257,6 +257,10 @@ const MockRuntime = (() => {
         Object.assign(s.track, { framing: p.framing, resume: p.resume }, chosen ? { target: chosen.key, targetClass: chosen.cls, otherClass: s.track.targets.find(u => u !== chosen)?.cls || "" } : {});
         return;
       }
+      case "repair_save":
+        // save_repair.lua run(): one message, parts split by "；".
+        job.message = "龙柱：卡在龙柱3（戏梦山庄），走到它附近自动补上；没问题：雷当、冷荼、其他单位写的剧情标记";
+        return;
       case "recall_companions":
         // companion.lua recall(): the live ones beside the player.
         job.message = s.companion ? `已召回 ${s.companion}/${s.companion} 个随从到身边` : "没有可召回的随从";
