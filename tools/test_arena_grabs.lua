@@ -115,4 +115,39 @@ test('only actual active native handles on two owned actors count as a paired ex
     assert(table.concat(h.logs,'\n'):find('active_count=0',1,true),'native completion must be observable')
     assert(h.blue.hp==100 and h.red.hp==100,'the mod must not synthesize grab damage')
 end)
+local RENEWAL='/Game/RenewalContent/Actors/Mobs/Normal/'
+-- Abilities granted to a unit, as its ability system lists them.
+local function grant(h,actor,root)
+    local ability=h:object(root..'Ability/GA_X.Default__GA_X_C')
+    actor.AbilitySystemComponent=h:object(actor.path..'.ASC',{ActivatableAbilities={Items={{Ability=ability}}}})
+end
+test('an opponent whose class is outside the data folders still opens the grabber events',function()
+    local h=harness();h.members[2].class_path=RENEWAL..'BP_Monster_MBoss.BP_Monster_MBoss_C'
+    assert(h.grabs:sync(h.members,true,true))
+    assert(h.own.NonPlayerGE==h.emptyClass,'魔渊 against 荒行子: the fight runs, so 魔渊 grabs')
+    assert(h.other.NonPlayerGE==h.original)
+end)
+test('a unit whose class is outside the data folders is found through its abilities',function()
+    local h=harness();local gamma=h:event('Grab',ROOT..'Gamma/',h.original)
+    h.members[1].class_path=RENEWAL..'BP_Monster_PowerMan.BP_Monster_PowerMan_C';grant(h,h.blue,ROOT..'Gamma/')
+    assert(h.grabs:sync(h.members,true,true))
+    assert(gamma.NonPlayerGE==h.emptyClass and h.own.NonPlayerGE==h.emptyClass,'力者 grabs, and so does the other side')
+    assert(h.grabs:restore() and gamma.NonPlayerGE==h.original)
+end)
+test('abilities granted after the first look are read again',function()
+    local h=harness();local gamma=h:event('Grab',ROOT..'Gamma/',h.original)
+    h.members[1].class_path=RENEWAL..'BP_Monster_PowerMan.BP_Monster_PowerMan_C'
+    h.grabs:sync(h.members,true,true);assert(gamma.NonPlayerGE==h.original)
+    grant(h,h.blue,ROOT..'Gamma/')
+    for _=1,10 do h.grabs:sync(h.members,true)end
+    assert(gamma.NonPlayerGE==h.emptyClass,'read again while nothing was found')
+end)
+test('units coming and going within the same folders neither restore nor rescan',function()
+    local h=harness();h.grabs:sync(h.members,true,true)
+    local scans,logs=h.scans,#h.logs
+    local summon=h:object('/Game/World:Summon',{hp=100})
+    h.members[3]={actor=summon,team='red',class_path=ROOT..'Alpha/BP_Summon.BP_Summon_C'}
+    h.grabs:sync(h.members,true);summon.hp=0;h.grabs:sync(h.members,true);h.members[3]=nil;h.grabs:sync(h.members,true)
+    assert(h.scans==scans and #h.logs==logs and h.own.NonPlayerGE==h.emptyClass,table.concat(h.logs,'\n',logs+1))
+end)
 print('arena_grabs: PASS ('..count..' scope, native observation and restoration regressions)')

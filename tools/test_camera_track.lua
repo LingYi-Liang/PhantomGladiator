@@ -356,15 +356,15 @@ do
     assert(not h.track:running() and h.all():find('结束（退出自由观战）',1,true))
     h.track:stop('again')
 end
--- A wall between the look point and the camera: closer at once, back out slowly when it is gone; a look point inside something is ignored.
+-- A wall between the look point and the camera: closer once it is there, back out slowly when it has been gone a while; a look point inside something is ignored.
 do
     local wall
     local traces=0
     local bone
     local body=unit('BP_Player_C',0,-100,100)
-    local h=harness({trace=function(world,from,to)
+    local h=harness({trace=function(world,from,to,channel)
         traces=traces+1
-        assert(world=='WORLD')
+        assert(world=='WORLD' and channel==1,'the wall check asks the camera channel')
         if wall=='inside' then return {inside=true} end
         if wall then return {at={X=from.X+(to.X-from.X)*wall,Y=from.Y+(to.Y-from.Y)*wall,Z=from.Z+(to.Z-from.Z)*wall},distance=1,bone=bone} end
     end,player=function()return body end})
@@ -383,7 +383,7 @@ do
     wall=nil
     h.run(0.2,input)
     assert(shown()<400,'comes back slowly')
-    h.run(3,input)
+    h.run(5,input)
     assert(near(shown(),500,5),shown())
     wall='inside'
     h.run(1,input)
@@ -401,7 +401,7 @@ do
     passer.at={X=0,Y=-196-71,Z=170}
     h.run(1,input)
     assert(shown()<300,'just past the capsule: a wall')
-    wall=nil;h.run(3,input);assert(near(shown(),500,5))
+    wall=nil;h.run(5,input);assert(near(shown(),500,5))
     wall=0.4;passer.at={X=9000,Y=0,Z=0};body.at={X=0,Y=-196,Z=170}
     h.run(1,input)
     assert(near(shown(),500,5),shown())
@@ -418,6 +418,43 @@ do
     wall=0.12
     h.run(2,input)
     assert(near(shown(),100,5),shown())
+end
+-- A branch the line sweeps past once does not pull the view in. A line that keeps flickering holds the view in instead
+-- of letting it jump out and back (the distance jumped between 1 m and 22 m every few seconds).
+do
+    local wall
+    local traces=0
+    local h=harness({trace=function(_,from,to)
+        traces=traces+1
+        if wall then return {at={X=from.X+(to.X-from.X)*wall,Y=from.Y+(to.Y-from.Y)*wall,Z=from.Z+(to.Z-from.Z)*wall},distance=1} end
+    end})
+    h.position,h.rotation={X=0,Y=-500,Z=300},{Pitch=-12,Yaw=90,Roll=0}
+    local a=h.add('BP_A_C',0,0,100,'blue',{radius=10})
+    h.track:start(tostring(a.GetAddress()))
+    local input={world='WORLD'}
+    local function shown()return math.sqrt(h.position.X^2+h.position.Y^2+(h.position.Z-130)^2) end
+    h.run(4,input)
+    assert(near(shown(),500,3),shown())
+    wall=0.4
+    local before=traces
+    repeat h.run(1/60,input) until traces>before
+    wall=nil
+    h.run(1,input)
+    assert(near(shown(),500,3),'one blocked trace leaves the view where it is: '..shown())
+    wall=0.4
+    h.run(0.5,input)
+    assert(shown()<200,shown())
+    local most=0
+    for i=1,10 do
+        if i%2==1 then wall=nil else wall=0.4 end
+        h.run(0.3,input)
+        most=math.max(most,shown())
+    end
+    assert(most<250,'a flickering line holds the view in: '..most)
+    wall=nil
+    h.run(5,input)
+    assert(near(shown(),500,5),shown())
+    assert(h.all():find('通道=相机',1,true) and h.all():find('墙拉近=1次',1,true),h.all())
 end
 -- Settings: saved and read back, refused when out of range or not saved; a damaged file means the defaults.
 do

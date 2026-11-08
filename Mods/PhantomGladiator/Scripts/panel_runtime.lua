@@ -494,8 +494,10 @@ function Runtime:start()
         if self.healthTicks%2==0 and self.options.support then self.options.support:tick() end
         self.bridge:tick()
     end
-    -- A whole pump slower than 15 ms is logged (at most 60 times per Lua lifetime) to find stutter.
+    -- A whole pump slower than 15 ms is logged (at most 60 times per Lua lifetime) to find stutter; every minute a summary
+    -- of all pumps keeps coming after that (perf_meter.lua). Pumps run every 250 ms: a gap of 400 ms is a stalled game thread.
     local slowPumps=0
+    local pumpMeter=require('perf_meter').new({label='面板轮询',log=function(line)self.log(line)end,slow=15,hitch=400})
     self.pumpCallback=function()
         if not self.alive or not self.pumpReady then return end
         local started=os.clock()
@@ -505,6 +507,7 @@ function Runtime:start()
             slowPumps=slowPumps+1
             self.log(string.format('[Perf] 面板轮询耗时 %.1fms',spent))
         end
+        pumpMeter:add(spent,started)
         if not ok and self.lastError~=tostring(err) then
             self.lastError=tostring(err); self.log("面板轮询失败: "..tostring(err))
         end

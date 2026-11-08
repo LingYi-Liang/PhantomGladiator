@@ -37,7 +37,14 @@ local CHECK_EVERY=0.25                   -- health and opponent
 local TRACE_EVERY=0.1                    -- the line from the look point to the camera
 local WALL_GAP,WALL_MIN=30,100           -- cm kept from a wall; closest the camera comes for one
 local UNIT_ROOM=20                       -- cm around a capsule within which a hit is that unit, not a wall
-local TAU_WALL_IN,TAU_WALL_OUT=0.06,0.3
+local TAU_WALL_IN,TAU_WALL_OUT=0.06,0.8
+-- The wall check pulled the view in for every branch and rock the line swept past and let it out a moment later, so
+-- the distance jumped between 1 m and 20 m. It now asks the camera channel (ETraceTypeQuery 1, ECC_Camera: what a game
+-- camera tests against; foliage and small props usually let it through, where the visibility channel stops), wants
+-- the line blocked twice in a row before pulling in, and the line clear for WALL_HOLD before backing out.
+local CAMERA_CHANNEL=1
+local WALL_CONFIRM=2                     -- traces in a row
+local WALL_HOLD=0.6                      -- s
 local LOG_EVERY,LOG_LINES,EVENT_LINES=2,30,60
 local TARGETS_MAX=24
 
@@ -449,27 +456,40 @@ function Track.new(options)
             end
         end
         local dir=direction(r.yaw,r.pitch)
-        -- A wall between the look point and the camera: closer at once, back out slowly.
+        -- A wall between the look point and the camera: closer once it is there twice in a row, back out slowly once it
+        -- has been gone for WALL_HOLD. A unit in the line changes nothing; a look point inside something counts as clear.
         if options.trace and (not r.traceAt or now-r.traceAt>=TRACE_EVERY) then
             r.traceAt=now
-            local hit=options.trace(input.world,origin,{X=origin.X-dir.X*r.distance,Y=origin.Y-dir.Y*r.distance,Z=origin.Z-dir.Z*r.distance})
+            local hit=options.trace(input.world,origin,{X=origin.X-dir.X*r.distance,Y=origin.Y-dir.Y*r.distance,Z=origin.Z-dir.Z*r.distance},CAMERA_CHANNEL)
             if hit and hit.at and not hit.inside then
                 if not isUnit(hit) then
                     local reach=math.sqrt((hit.at.X-origin.X)^2+(hit.at.Y-origin.Y)^2+(hit.at.Z-origin.Z)^2)
-                    r.limit=math.max(reach-WALL_GAP,WALL_MIN)
-                    if not r.wallSeen then r.wallSeen=true;say(string.format('视线被墙挡住 离注视点=%.0fcm 拉近到=%.0fcm',reach,r.limit)) end
+                    local limit=math.max(reach-WALL_GAP,WALL_MIN)
+                    r.blocked,r.clearAt=(r.blocked or 0)+1,nil
+                    if r.limit or r.blocked>=WALL_CONFIRM then
+                        if not r.limit then r.pulls=(r.pulls or 0)+1 end
+                        r.limit=limit
+                        if not r.wallSeen then r.wallSeen=true;say(string.format('视线被墙挡住 离注视点=%.0fcm 拉近到=%.0fcm 通道=相机',reach,r.limit)) end
+                    end
                 elseif not r.unitSeen then
                     r.unitSeen=true
                     say('视线被单位挡住，不算墙，距离不变 骨骼='..tostring(hit.bone))
                 end
-            else r.limit=nil end
+            else
+                r.blocked=0
+                if r.limit then
+                    r.clearAt=r.clearAt or now
+                    if now-r.clearAt>=WALL_HOLD then r.limit,r.clearAt=nil,nil end
+                end
+            end
         end
         local allowed=r.limit and math.min(r.distance,r.limit) or r.distance
         r.shown=r.shown+(allowed-r.shown)*ease(dt,allowed<r.shown and TAU_WALL_IN or TAU_WALL_OUT)
         if periodic<LOG_LINES and now-r.logAt>=LOG_EVERY then
             r.logAt=now;periodic=periodic+1
-            log(string.format('[CameraTrack] 读回 主目标=%s 对手=%s 两人距离=%.1fm 想要距离=%.1fm 实际距离=%.1fm 朝向=%.0f 手动=%s%s%s%s',className(r.target),className(r.other),
-                sep/100,r.baseDist*r.zoom/100,r.shown/100,r.yaw%360,r.mouseAt and '鼠标 ' or '',r.wheelAt and '滚轮 ' or '',r.panAt and '平移 ' or '',r.limit and '有墙' or ''))
+            log(string.format('[CameraTrack] 读回 主目标=%s 对手=%s 两人距离=%.1fm 想要距离=%.1fm 实际距离=%.1fm 朝向=%.0f 手动=%s%s%s%s 墙拉近=%d次',className(r.target),className(r.other),
+                sep/100,r.baseDist*r.zoom/100,r.shown/100,r.yaw%360,r.mouseAt and '鼠标 ' or '',r.wheelAt and '滚轮 ' or '',r.panAt and '平移 ' or '',r.limit and '有墙' or '',r.pulls or 0))
+            r.pulls=0
         end
         local camera={X=origin.X-dir.X*r.shown,Y=origin.Y-dir.Y*r.shown,Z=origin.Z-dir.Z*r.shown}
         local fromUnit=math.sqrt((camera.X-a.X)^2+(camera.Y-a.Y)^2+(camera.Z-a.Z)^2)

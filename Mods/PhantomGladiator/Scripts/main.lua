@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.7-game-26367565"
+local BUILD = "v0.40.8-game-26367565"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -114,7 +114,6 @@ local probe = CombatProbe.new({log=log, valid=safeValid, config=Config.Probe,
 local probeSampleGen = 0
 local attackProfile = AttackProfile.new({log=log,valid=safeValid})
 local arenaActors = {}
-local arenaOwned = {}
 local spawnRoutes={}
 local arena
 local panelRuntime
@@ -299,9 +298,10 @@ local function AddHatred(attacker, victim)
     local before = HatredListContains(hm, victim)
     if before == nil then return false, "成员读取失败" end
     if before then return true, "原本存在" end
+    -- A record whose objects are gone has nothing left to put back, whoever's unit it was. Kept, it would hold up every
+    -- later cleanup and summon: an adopted summon is engaged before the arena registers it as its own.
     battle:remember("hatred:" .. hm:GetAddress() .. ":" .. victim:GetAddress(), function()
-        if (arenaOwned[attacker] or arenaOwned[victim])
-            and (not engineValid(hm) or not engineValid(victim)) then
+        if not engineValid(hm) or not engineValid(victim) then
             return true,"参赛对象有效性读回=false，目标已不存在；丢弃过期成员记录"
         end
         checked(hm); checked(victim)
@@ -384,9 +384,8 @@ local function SetFactionRelation(a, b, relation)
     local beforeA,beforeB = ReadRelation(a,b),ReadRelation(b,a)
     if beforeA == nil or beforeB == nil then return false,beforeA,nil end
     local function rememberOne(source,target,fc,original)
-        local owned=arenaOwned[source] or arenaOwned[target]
         battle:remember("relation:" .. source:GetAddress() .. ":" .. target:GetAddress(), function()
-            if owned and (not engineValid(source) or not engineValid(target) or not engineValid(fc)) then
+            if not engineValid(source) or not engineValid(target) or not engineValid(fc) then
                 return true,"参赛对象有效性读回=false，目标已不存在；丢弃过期关系记录"
             end
             checked(source); checked(target); checked(fc)
@@ -746,18 +745,20 @@ local function ForceAttack(attacker, victim)
                     local key=handler["Target Key"]
                     local original=bb:GetValueAsObject(key)
                     local originalValid=safeValid(original)
-                    local owned=arenaOwned[attacker]
                     battle:remember("blackboard:" .. bb:GetAddress() .. ":" .. FNameToString(key),function()
-                        if owned and not engineValid(bb) then
+                        if not engineValid(bb) then
                             return true,"参赛黑板有效性读回=false，目标已不存在；丢弃过期记录"
                         end
                         checked(bb)
-                        if originalValid then checked(original); bb:SetValueAsObject(key,original)
+                        -- The old target is gone too: no target is the nearest there is to put back.
+                        local back=originalValid and engineValid(original)
+                        if back then bb:SetValueAsObject(key,original)
                         else bb:ClearValue(key) end
                         local actual=bb:GetValueAsObject(key)
-                        local restored=originalValid and safeValid(actual) and actual:GetAddress()==original:GetAddress()
-                            or (not originalValid and not safeValid(actual))
+                        local restored=back and safeValid(actual) and actual:GetAddress()==original:GetAddress()
+                            or (not back and not safeValid(actual))
                         return restored,"目标读回=" .. objectName(actual)
+                            .. ((originalValid and not back) and "；原目标已不存在，改为清空" or "")
                     end)
                     checked(victim)
                     bb:SetValueAsObject(key,victim)
@@ -1486,11 +1487,9 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         local routes={}
         for _,entry in ipairs(units) do
             arenaActors[#arenaActors+1]=entry.actor
-            arenaOwned[entry.actor]=true
             routes[entry.actor]=spawnRoutes[entry.actor]
         end
         spawnRoutes=routes
-        if #arenaActors==0 and battle:pendingCount()==0 then arenaOwned={} end
     end,
     onBattleStarted=function(a,b)
         StartDuelWatch(a,b)
@@ -1641,11 +1640,13 @@ onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,l
     name=function(text)return FName(text)end})
 -- A straight line through the world: where it hits and which way that surface faces, for the summon spot and the view.
 -- Starting inside something solid reads as Distance 0.
-function arenaSupport:traceLine(world,from,to)
+-- channel: ETraceTypeQuery, 0 = visibility (the default), 1 = camera.
+function arenaSupport:traceLine(world,from,to,channel)
     local lib=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
     if not safeValid(lib) or not safeValid(world) then return nil end
     local out,none={},{R=0,G=0,B=0,A=0}
-    local ok,hit=pcall(function()return lib:LineTraceSingle(world,from,to,0,false,{},0,out,true,none,none,0)end)
+    local query=channel==1 and 1 or 0
+    local ok,hit=pcall(function()return lib:LineTraceSingle(world,from,to,query,false,{},0,out,true,none,none,0)end)
     if not ok or hit~=true then return nil end
     local distance=UEObserve.unwrap(out.Distance)
     if type(distance)=='number' and distance<=0 then return {inside=true} end
@@ -1671,7 +1672,7 @@ arenaSupport.spawnSpot=require('spawn_spot').new({log=log,ground=GroundZ,view=fu
 -- 镜头跟踪: the free camera follows a unit and keeps its opponent in the picture (camera_track.lua).
 arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,members=ArenaMembers,hp=GetHP,location=GetLocation,player=GetPlayerPawn,
     view=function()return freeCamera:view() end,fov=function()return freeCamera:fieldOfView() end,
-    trace=function(world,from,to)return arenaSupport:traceLine(world,from,to) end,
+    trace=function(world,from,to,channel)return arenaSupport:traceLine(world,from,to,channel) end,
     isBoss=function(actor)
         local asc=UEObserve.field(actor,'AbilitySystemComponent')
         if not safeValid(asc) then return false end
@@ -1904,12 +1905,16 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
--- A support tick slower than this is logged with the time of each step, to find the source of stutter.
+-- A support tick slower than this is logged with the time of each step, to find the source of stutter (60 a session);
+-- every minute a summary of all ticks and their costliest steps (perf_meter.lua) keeps coming after that.
 local SLOW_TICK_MS,slowTicks=10,0
+local supportMeter=require('perf_meter').new({label='支持循环',log=log,slow=SLOW_TICK_MS,hitch=1000})
 local function supportSteps(self)
-    local started,parts=os.clock(),{}
+    local started,parts,costs=os.clock(),{},{}
     local function step(name,fn)
-        local t=os.clock();fn();parts[#parts+1]=string.format('%s=%.1f',name,(os.clock()-t)*1000)
+        local t=os.clock();fn()
+        local spent=(os.clock()-t)*1000
+        parts[#parts+1]=string.format('%s=%.1f',name,spent);costs[name]=spent
     end
     step('prune',function()
         local memberKeys={}
@@ -1960,6 +1965,7 @@ local function supportSteps(self)
         slowTicks=slowTicks+1
         log(string.format('[Perf] 支持循环耗时 %.1fms：%s',total,table.concat(parts,' ')))
     end
+    supportMeter:add(total,started,costs)
 end
 function arenaSupport:tick()
     tickMembers,tickStatus=arena:members(),arena:status()

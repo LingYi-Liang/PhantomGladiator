@@ -104,7 +104,7 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
-        assert(name=='key_router' or name=='function_keybinds')
+        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}

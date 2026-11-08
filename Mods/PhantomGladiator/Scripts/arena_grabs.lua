@@ -120,19 +120,42 @@ function Grabs.new(options)
         if not self.recovering then self.signature=nil;self.observed={};self.pairs={} end
         return pending==0 and saved
     end
-    -- Blue and Red count only while their fight runs with both sides alive; companions whenever they
-    -- are out, so their grabs work on the map's own enemies too.
+    -- A unit's grab events sit in its data folder. Most classes live there too; others (荒行子, 撕裂锯轮, 玉面郎君, 力者,
+    -- 铁杀, 残钢 in /Game/RenewalContent/Actors/Mobs/Normal/) keep their data in /PBZCombatAsset/ActorData/Mobs/0xx_*/,
+    -- where the abilities granted to them come from. Read once a unit, again every 10 looks while nothing is found;
+    -- forgotten when the unit is no longer listed, so a new object at the same address is read afresh.
+    local roots,looks={},0
+    local function rootsOf(unit,key)
+        local known=roots[key]
+        if known and known.class==unit.class_path and (next(known.found) or looks-known.at<10) then return known.found end
+        local found={}
+        local own=family(unit.class_path)
+        if own then found[own]=true end
+        local asc=U.field(unit.actor,'AbilitySystemComponent')
+        local specs=U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
+        for i,spec in ipairs(specs or {})do
+            if i>512 then break end
+            local root=family(path(U.struct(spec,'Ability')))
+            if root then found[root]=true end
+        end
+        roots[key]={found=found,at=looks,class=unit.class_path}
+        return found
+    end
+    -- Blue and Red count only while their fight runs with both sides alive, whatever folder their class is in;
+    -- companions whenever they are out, so their grabs work on the map's own enemies too. A change of units within
+    -- the same folders (summons coming and going) changes nothing here.
     local function scope(members,battleActive)
-        local families,owners,signature={}, {}, {};local blue,red=false,false
+        local families,owners,listed={}, {}, {};local blue,red=false,false
         local arena,companions={},{}
+        looks=looks+1
         for _,unit in ipairs(members)do
-            local root=family(unit.class_path)
             local team=unit.team
-            if root and (team=='blue' or team=='red' or team=='companion') and U.valid(unit.actor) then
+            if (team=='blue' or team=='red' or team=='companion') and U.valid(unit.actor) then
                 local ok,hp=pcall(options.hp,unit.actor)
                 local key=U.key(unit.actor)
                 if ok and type(hp)=='number' and hp>0 and key then
-                    local entry={actor=unit.actor,key=key,root=root}
+                    listed[key]=true
+                    local entry={actor=unit.actor,key=key,roots=rootsOf(unit,key)}
                     if team=='companion' then companions[#companions+1]=entry
                     else arena[#arena+1]=entry;blue=blue or team=='blue';red=red or team=='red' end
                 end
@@ -140,11 +163,15 @@ function Grabs.new(options)
         end
         local function add(list)
             for _,entry in ipairs(list)do
-                families[entry.root]=true;owners[entry.key]=entry.actor;signature[#signature+1]=entry.key..':'..entry.root
+                owners[entry.key]=entry.actor
+                for root in pairs(entry.roots)do families[root]=true end
             end
         end
         if battleActive and blue and red then add(arena) end
         add(companions)
+        for key in pairs(roots)do if not listed[key] then roots[key]=nil end end
+        local signature={}
+        for root in pairs(families)do signature[#signature+1]=root end
         table.sort(signature)
         return families,owners,table.concat(signature,'|'),next(families)~=nil
     end

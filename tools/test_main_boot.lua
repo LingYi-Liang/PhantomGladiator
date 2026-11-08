@@ -33,7 +33,8 @@ local cls={IsValid=function() return true end,IsAnyClass=function() return true 
     GetFullName=function() return "BlueprintGeneratedClass "..known end,GetSuperStruct=function() return base end}
 local loaded=false
 local genericCalls={}
-local genericActor={IsValid=function()return true end,IsActorBeingDestroyed=function()return false end,GetFullName=function()return 'BP_SequenceActor /Test/World.Actor' end}
+local genericActor={IsValid=function()return true end,IsActorBeingDestroyed=function()return false end,GetFullName=function()return 'BP_SequenceActor /Test/World.Actor' end,
+    GetAddress=function()return 77 end}
 local gameplay={IsValid=function()return true end,
     BeginDeferredActorSpawnFromClass=function(_,w,c,t,collision,owner,scale)
         assert(inGame and c==cls and collision==1 and owner==nil and scale==1)
@@ -152,7 +153,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.7-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.8-game-26367565',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -257,6 +258,59 @@ do
     local allowed,why=execOptions.storyAllows(probe)
     inGame=false
     assert(writesAsked==probe and allowed==false and type(why)=='string','a story move with nothing loaded is refused: '..tostring(why))
+end
+do -- An attack order's restore records: once what they would put back is gone, they do not hold up the cleanup, even
+   -- for a unit the arena never registered as its own (an adopted summon is engaged before it is registered).
+    local serial,logged=900,#logs
+    local function obj(fields)
+        serial=serial+1;local o=fields or {};o.alive=true;o.address=serial
+        o.IsValid=function(self)return self.alive end
+        o.GetAddress=function(self)assert(self.alive,'read of a destroyed object');return self.address end
+        o.GetFullName=function(self)return 'Object /Test/World.Object'..self.address end
+        return o
+    end
+    local overrides={}
+    local function unit()
+        local actor=obj()
+        local fc=obj({GetFactionRelation=function(self,other)assert(self.alive and other.alive)
+                return (overrides[actor] or {})[other] or 1 end,
+            SetFactionRelationOverride=function(self,other,relation,both)assert(self.alive and other.alive)
+                overrides[actor]=overrides[actor] or {};overrides[actor][other]=relation
+                if both then overrides[other]=overrides[other] or {};overrides[other][actor]=relation end end,
+            ClearFactionRelationOverride=function(self,other)assert(self.alive and other.alive)
+                if overrides[actor] then overrides[actor][other]=nil end end})
+        local hm=obj({HatredList={},AddActorToHatredList=function(self,other)assert(self.alive);table.insert(self.HatredList,other)end,
+            RemoveActorFromHatredList=function(self,other)assert(self.alive and other.alive)
+                for i=#self.HatredList,1,-1 do if self.HatredList[i]==other then table.remove(self.HatredList,i)end end end})
+        local value={}
+        local bb=obj({GetValueAsObject=function(self,k)assert(self.alive);return value[k.name] end,
+            SetValueAsObject=function(self,k,v)assert(self.alive and v.alive);value[k.name]=v end,
+            ClearValue=function(self,k)assert(self.alive);value[k.name]=nil end})
+        local ai=obj({BlackboardComponent=bb,ForceIntoCombat=function(self)assert(self.alive)end,CurrentStateTag={TagName='AI.State.Combat'}})
+        actor['Faction Component']=fc;actor.BP_PBZHatredManagerComponent=hm;actor.Controller=obj({SGameAIComponent=ai})
+        actor.parts={fc,hm,bb,ai,actor.Controller};actor.bb=bb;actor.value=value
+        return actor
+    end
+    local function destroy(actor)actor.alive=false;for _,part in ipairs(actor.parts)do part.alive=false end end
+    local key={name='TargetActor',ToString=function()return 'TargetActor' end}
+    local summon,victim,old=unit(),unit(),unit()
+    summon.value.TargetActor=old
+    local handlers={obj({Blackboard=summon.bb,['Target Key']=key})}
+    local findAll=FindAllOf
+    FindAllOf=function(name)assert(inGame);return name=='PBZ_TargetingHandler_AI_C' and handlers or {} end
+    inGame=true
+    arenaOptions.forceAttack(summon,victim)
+    assert(summon.value.TargetActor==victim and summon.BP_PBZHatredManagerComponent.HatredList[1]==victim,'the order was written')
+    destroy(old)
+    assert(arenaOptions.restore()==true,'the old target is gone: the blackboard is cleared, the rest put back')
+    assert(summon.value.TargetActor==nil and #summon.BP_PBZHatredManagerComponent.HatredList==0 and next(overrides[summon])==nil)
+    assert(table.concat(logs,'\n',logged+1):find('原目标已不存在，改为清空',1,true),'the cleared target is logged')
+    arenaOptions.forceAttack(summon,victim)
+    destroy(summon);destroy(victim)
+    assert(arenaOptions.restore()==true,'the units are gone: nothing is left to put back and the cleanup completes')
+    assert(arenaOptions.restore()==true,'and nothing is left over for the next one')
+    inGame=false
+    FindAllOf=findAll
 end
 local queuedBefore=#queue
 ModRef.OnUnload()

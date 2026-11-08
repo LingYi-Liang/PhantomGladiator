@@ -167,8 +167,9 @@ function Lock.new(options)
         local ok,hp=pcall(options.hp,actor)
         return ok and type(hp)=='number' and hp<=0
     end
-    -- Takes a fresh corpse off the list of every unit still fighting, through the game's own remove, and reads it back.
-    local function forget(corpse,living)
+    -- Takes a fresh corpse off the list of every living blue or red unit, through the game's own remove, and reads it
+    -- back. Logged only when some list held it, with whether the fight had ended on that tick.
+    local function forget(corpse,living,over)
         if not options.hatredOf or not options.hates then return end
         local held,removed,left=0,0,0
         for _,member in ipairs(living)do
@@ -179,32 +180,37 @@ function Lock.new(options)
                 if options.hates(manager,corpse)==false then removed=removed+1 else left=left+1 end
             end
         end
-        if corpseLines<LINES then
+        if held>0 and corpseLines<LINES then
             corpseLines=corpseLines+1
-            say(string.format('尸体移出仇恨表 尸体=%s 表里有它的单位=%d 移出=%d 读回仍在=%d 累计拒绝=%d',
-                options.label and options.label(corpse) or tostring(U.key(corpse)),held,removed,left,self.refused))
+            say(string.format('尸体移出仇恨表 尸体=%s 表里有它的单位=%d 移出=%d 读回仍在=%d 累计拒绝=%d%s',
+                options.label and options.label(corpse) or tostring(U.key(corpse)),held,removed,left,self.refused,over and ' 交战已结束' or ''))
         end
     end
     -- Support tick: index the fighting units and their components; install while a fight runs.
+    -- Corpses come off the lists with or without a fight running: the death of a side's last unit ends the fight on
+    -- that same tick, and that corpse stayed on the winners' lists, so they never left combat (the game ends combat
+    -- after an action only on an empty list) and went on casting, at a spectating player too for the moves that aim
+    -- at the player's position.
     function self:tick()
         if not self.alive then return end
         local now=clock()
         local ai,hatred,units,known,own,bodies,horses={},{},{},{},{},{},{}
         local fresh,living={},{}
-        if options.fighting() then
-            local members=options.members()
-            for _,member in ipairs(members)do
-                -- Stands keep their native AI/hatred answers. A summon held in reserve is not in the fight yet;
-                -- a unit out of reach by its own design
-                -- (member.untargetable, boss_stages.lua) still hates but keeps the game's answer as a target.
-                if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
-                    local key=U.key(member.actor)
-                    if key and dead(member.actor) then
-                        bodies[key]=member.team
-                        if not forgotten[key] then fresh[#fresh+1]=member end
-                    elseif key then
-                        forgotten[key]=nil
-                        living[#living+1]=member
+        local fighting=options.fighting()
+        local members=options.members() or {}
+        for _,member in ipairs(members)do
+            -- Stands keep their native AI/hatred answers. A summon held in reserve is not in the fight yet;
+            -- a unit out of reach by its own design
+            -- (member.untargetable, boss_stages.lua) still hates but keeps the game's answer as a target.
+            if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
+                local key=U.key(member.actor)
+                if key and dead(member.actor) then
+                    if fighting then bodies[key]=member.team end
+                    if not forgotten[key] then fresh[#fresh+1]=member end
+                elseif key then
+                    forgotten[key]=nil
+                    living[#living+1]=member
+                    if fighting then
                         local c=cache[key] or {ai=addr(options.aiOf(member.actor)),hatred=options.hatredOf and addr(options.hatredOf(member.actor))}
                         known[key]=c
                         if not member.untargetable then units[key]=member.team end
@@ -213,6 +219,8 @@ function Lock.new(options)
                     end
                 end
             end
+        end
+        if fighting then
             for _,vehicle in ipairs(options.vehicles and options.vehicles(members) or {})do
                 local key=U.key(vehicle.actor)
                 if key then
@@ -226,7 +234,7 @@ function Lock.new(options)
         end
         components,managers,teams,cache,owners,corpses,mounts=ai,hatred,units,known,own,bodies,horses
         for _,member in ipairs(fresh)do
-            forget(member.actor,living)
+            forget(member.actor,living,not fighting)
             local key=U.key(member.actor)
             if key then forgotten[key]=true end
         end

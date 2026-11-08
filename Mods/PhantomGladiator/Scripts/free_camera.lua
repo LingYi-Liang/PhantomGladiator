@@ -38,6 +38,9 @@ end
 function Camera.new(options)
     local self={alive=true,active=false,record=nil,session=nil,handle=nil,keys={},objects={}}
     local log=options.log or function()end
+    -- 卡顿测量: what each frame of the camera costs (with the observer guard and 镜头跟踪 in it) and the time from one frame
+    -- to the next, summed up once a minute (perf_meter.lua).
+    local meter=require('perf_meter').new({label='自由视角每帧',log=log,slow=8,hitch=50})
     local fs=options.io or io
     local filePath=options.path..'/free-camera.tsv'
     -- paused, moveable, full_tick: what 时停 changed (the game paused, the controller's paused-camera flags), undone on
@@ -215,6 +218,7 @@ function Camera.new(options)
     local function trackOf()return options.track and options.track() or nil end
     function self:stop(reason)
         self.active=false;self.session=nil
+        meter:pause()
         local track=trackOf()
         if track then pcall(track.stop,track,'退出自由观战') end
         if self.handle then
@@ -320,6 +324,7 @@ function Camera.new(options)
     function self:tick()
         local s=self.session
         if not self.alive or not self.active or not s then return end
+        local started,parts=os.clock(),{}
         local ok,err=pcall(function()
             local timed,now=call(s.lib,'GetRealTimeSeconds',s.world)
             assert(timed and number(now),'clock unavailable')
@@ -354,7 +359,9 @@ function Camera.new(options)
                     end
                 end
             end
-            if options.guard then options.guard:tick(guardContext(self.record)) end
+            if options.guard then
+                local t=os.clock();options.guard:tick(guardContext(self.record));parts.guard=(os.clock()-t)*1000
+            end
             -- Lent to the execution camera: it moves the camera, input waits.
             if s.borrowed then return end
             local mx,my=axis(s.pc,'MouseX'),axis(s.pc,'MouseY')
@@ -370,8 +377,10 @@ function Camera.new(options)
             local track=trackOf()
             if track and track:running() then
                 local readWheel,wheel=call(s.pc,'GetInputAnalogKeyState',key('MouseWheelAxis'))
+                local t=os.clock()
                 local framed,at,facing=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
                     wheel=readWheel and number(wheel) and wheel or 0,turn=tuning.turn,speed=tuning.speed,smooth=tuning.smooth,world=s.world})
+                parts.track=(os.clock()-t)*1000
                 if framed then position,rotation=at,facing
                 else
                     log('[FreeCamera] 镜头跟踪出错，退回自由视角：'..tostring(at))
@@ -430,6 +439,7 @@ function Camera.new(options)
             local restored,why=pcall(function()return self:stop('更新异常')end)
             if not restored then log('[FreeCamera] 异常恢复失败：'..tostring(why)) end
         end
+        if self.active then meter:add((os.clock()-started)*1000,started,parts) end
     end
     function self:enter()
         if not self.alive then return false end

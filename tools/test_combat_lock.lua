@@ -191,6 +191,27 @@ do
     assert(h.call('canHate',mateHatred,other)==true)
     assert(lock:status().refused==2,tostring(lock:status().refused))
 end
+-- The last unit of a side dies and the fight ends on that same tick: its corpse still comes off the winner's list, so the
+-- winner can leave combat (the game leaves it only on an empty list). With no list holding a corpse nothing is logged.
+do
+    local h=harness()
+    local health,lists={},{}
+    local lock=h.new({hp=function(actor)return health[actor] end,label=function()return 'Last' end,
+        hates=function(manager,actor)return lists[manager] and lists[manager][actor]==true end})
+    local loser=h.unit('red')
+    local winner,_,winnerHatred=h.unit('blue')
+    local idle=h.unit('blue')
+    health[loser],health[winner],health[idle]=100,100,100
+    lists[winnerHatred]={[loser]=true}
+    winnerHatred.RemoveActorFromHatredList=function(_,actor)lists[winnerHatred][actor]=nil end
+    h.fighting=true;lock:tick()
+    health[loser]=0;h.fighting=false;lock:tick()
+    assert(lists[winnerHatred][loser]==nil,'off the winner list although the fight is over')
+    assert(h.all():find('尸体移出仇恨表 尸体=Last 表里有它的单位=1 移出=1 读回仍在=0 累计拒绝=0 交战已结束',1,true),h.all())
+    local lines=#h.lines
+    health[idle]=0;lock:tick()
+    assert(#h.lines==lines,'a corpse no list held is not logged')
+end
 -- The list that keeps a corpse after the remove says so.
 do
     local h=harness()
