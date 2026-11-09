@@ -498,7 +498,29 @@ function Track.new(options)
             camera={X=a.X+(camera.X-a.X)*share,Y=a.Y+(camera.Y-a.Y)*share,Z=a.Z+(camera.Z-a.Z)*share}
             if not r.viewLimitSeen then r.viewLimitSeen=true;say(string.format('镜头到距离上限 %.0fm 原本=%.0fm',VIEW_MAX/100,fromUnit/100)) end
         end
-        return camera,{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0}
+        -- Pivot clearance and the debounced wall trace do not protect the camera's actual downward move.
+        local floorZ
+        if options.trace and options.view and (pan.Z<0 or dir.Z>0) then
+            local previous=vec(options.view())
+            if previous and camera.Z<previous.Z then
+                local hit=r.floorContact
+                if not hit or now-r.floorContactAt>=TRACE_EVERY
+                    or math.abs(hit.at.X-camera.X)>1 or math.abs(hit.at.Y-camera.Y)>1 then
+                    hit=options.trace(input.world,previous,camera)
+                    if hit and hit.at and hit.normal and type(hit.normal.Z)=='number' and hit.normal.Z>0.5
+                        and not hit.inside and not isUnit(hit) then
+                        r.floorContact,r.floorContactAt=hit,now
+                    else
+                        r.floorContact,hit=nil,nil
+                    end
+                end
+                if hit and camera.Z<hit.at.Z+FLOOR_GAP then
+                    floorZ=hit.at.Z
+                    camera={X=hit.at.X,Y=hit.at.Y,Z=floorZ+FLOOR_GAP}
+                end
+            end
+        end
+        return camera,{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0},floorZ
     end
     return self
 end

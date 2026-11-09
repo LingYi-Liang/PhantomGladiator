@@ -7,7 +7,7 @@ local function object(fields,name)
     fields.IsValid=function(self)return self.alive end
     fields.GetAddress=function()return a end
     fields.GetFName=function()return {ToString=function()return fields.objectName or name..'_'..a end}end
-    local class={GetFName=function()return {ToString=function()return name end}end}
+    local class={IsValid=function()return true end,GetFName=function()return {ToString=function()return name end}end}
     fields.GetClass=function()return class end
     return fields
 end
@@ -86,6 +86,31 @@ end
 local function placed(name)
     for _,s in ipairs(spawned)do if s.name==name then return s end end
 end
+
+test('the last dance leaves opponent selection during the protected pole phase',function()
+    local force='CharacterState.Unselectable.Force.Perform'
+    local pole='CharacterState.AbilityState.LionDancer.OnPole'
+    local lion=boss('BP_Monster_LionDancer_P2_C')
+    local native=boss('BP_Monster_LionDancer_P2_C')
+    local helper=boss('BP_Monster_LionDancer_P2_NPC_C')
+    local phase={}
+    local phaseLogs={}
+    local stages=Stages.new({tagCount=function(_,tag)return phase[tag] or 0 end,
+        log=function(line)phaseLogs[#phaseLogs+1]=line end})
+    local prepared=stages:prepare(lion,transform,world)
+    assert(prepared and prepared.ok,'register the spawned unit without placing props')
+    assert(not stages:untargetable(lion),'normal combat before the pole phase')
+    phase[pole],phase[force]=1,1
+    assert(stages:untargetable(lion),'do not aim opponents at the protected boss')
+    stages:tick()
+    assert(table.concat(phaseLogs):find(force,1,true),'the runtime readback includes the protection tag')
+    assert(not stages:untargetable(native) and not stages:untargetable(helper),'scope to the mod-spawned boss')
+    phase[force]=0
+    assert(not stages:untargetable(lion),'target resumes when the game clears the protection after the last summon')
+    stages:releaseActor(lion)
+    phase[force]=1
+    assert(not stages:untargetable(lion) and stages:count()==0,'registration is released with the spawn')
+end)
 
 test('only the listed bosses are staged',function()
     assert(Stages.isStaged('BP_Monster_LengTu_C') and Stages.isStaged('BP_Monster_LengTu') and Stages.isStaged('BP_Monster_GuiChai_Red_C'))

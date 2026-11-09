@@ -783,6 +783,48 @@ do
     local kills=exec:status().kills
     h.run(exec,25);assert(exec:status().kills==kills,'once')
 end
+-- The prologue boss reaches its final floor in the arena, but the story's finish never releases it there.
+do
+    local h=harness()
+    local finalLock=class('GE_ZuoShang_MinHealth_04_C')
+    h.found[MOBS_PATH..'054_ZuoShang/AIConfig/GE_ZuoShang_MinHealth_04.GE_ZuoShang_MinHealth_04_C']=finalLock
+    local boss=h.boss('BP_Monster_ZuoShang',320,320,{locks={},pairs={}})
+    local hp=h.attrs[boss]
+    hp.Health_Max=8000
+    local asc=boss.AbilitySystemComponent
+    local present=true
+    function asc:GetGameplayEffectCount(effect) return effect==finalLock and present and 1 or 0 end
+    function asc:RemoveActiveGameplayEffectBySourceEffect(effect)
+        assert(effect==finalLock,'only the prologue final lock may be removed')
+        h.calls[#h.calls+1]='release prologue lock'
+        present=false
+        hp.Health_Min=0
+    end
+    h.members={{actor=boss,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    local exec=h.new()
+    hp.Health,hp.Health_Min=3200,3200
+    h.run(exec,21)
+    assert(hp.Health_Min==3200,'preserve the 40 percent stage floor')
+    hp.Health,hp.Health_Min=320,320
+    present=false
+    h.run(exec,21)
+    assert(hp.Health_Min==320 and h.count('release prologue lock')==0,'another effect at 4 percent stays')
+    hp.Health=350
+    exec:tick()
+    hp.Health,present=320,true
+    h.run(exec,19)
+    assert(hp.Health_Min==320,'give the native phase time to play out')
+    h.fighting=false
+    h.run(exec,4)
+    h.fighting=true
+    h.run(exec,2)
+    assert(hp.Health_Min==320,'a later fight starts a new waiting period')
+    h.run(exec,19)
+    assert(hp.Health_Min==0 and hp.Health==320 and not present,'stalled prologue floor should release without dealing damage')
+    assert(h.all():find('血量下限=320.0→0.0 HP读回=320.0 验证=true',1,true),h.all())
+    h.run(exec,25)
+    assert(h.count('release prologue lock')==1)
+end
 -- 打到死 on a unit's card: on its death lock it dies at once, whatever team, with no execution. A phase floor stays, an
 -- immortal team stays, and a unit without the rule is executed as ever.
 do

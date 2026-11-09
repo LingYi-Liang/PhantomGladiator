@@ -577,4 +577,23 @@ do
     wall.run(1,{up=-1,speed=900,smooth=40,world='WORLD'})
     assert(not wall.all():find('平移碰到地面',1,true),wall.all())
 end
+-- Moving down with the camera tilted up can put its arm below the floor even when the pivot is protected.
+do
+    local h=harness({trace=function(_,from,to)
+        if from.Z<=0 or to.Z>=0 then return nil end
+        local t=from.Z/(from.Z-to.Z)
+        return {at={X=from.X+(to.X-from.X)*t,Y=from.Y+(to.Y-from.Y)*t,Z=0},normal={X=0,Y=0,Z=1}}
+    end})
+    h.track:set('orbit',0)
+    local a=h.add('BP_A_C',0,0,600)
+    h.track:start(tostring(a.GetAddress()))
+    h.run(4,{world='WORLD'})
+    h.run(1,{my=52,smooth=0,world='WORLD'})
+    local minimum=math.huge
+    for _=1,120 do
+        local p=h.run(1/60,{up=-1,fast=true,speed=900,smooth=0,world='WORLD'})
+        minimum=math.min(minimum,p.Z)
+    end
+    assert(minimum>=0,'tracked camera went below the floor at Z='..minimum)
+end
 print('camera_track: PASS')

@@ -15,8 +15,12 @@ local U=require('ue_observe')
 local Stages={}
 local MOBS='/PBZCombatAsset/ActorData/Mobs/'
 local LENGTU='CharacterState.AbilityState.LengTu.'
+local PERFORM_UNSELECTABLE='CharacterState.Unselectable.Force.Perform'
 -- Per boss: each marker's package and where it stands from the boss's spawner (yaw relative to the spawner's).
 local STAGES={
+    -- The pole ability adds this tag, and OnSummonsDead clears it after the last summon dies.
+    BP_Monster_LionDancer_P2={label='最后一舞',props={},untargetable={PERFORM_UNSELECTABLE},
+        tags={'CharacterState.AbilityState.LionDancer.OnPole',PERFORM_UNSELECTABLE}},
     BP_Monster_LengTu={label='冷荼',base=MOBS..'077_LengTu/',
         props={
             {name='BP_LengTu_SummonSlot_01',x=-163,y=-252,z=0,yaw=10},           -- round 1 (清道夫)
@@ -178,7 +182,10 @@ function Stages.new(options)
     local revealed,revealedLogged,revealLines=0,0,0
     local function say(text)log('[BossStage] '..text)end
     local function className(actor)
-        local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
+        if not U.valid(actor) then return '?' end
+        local got,cls=pcall(function()return actor:GetClass()end)
+        if not got or not U.valid(cls) then return '?' end
+        local ok,name=pcall(function()return cls:GetFName():ToString()end)
         return ok and type(name)=='string' and name or '?'
     end
     local function gone(actor)
@@ -447,6 +454,10 @@ function Stages.new(options)
             return nil
         end
         local key=U.key(actor)
+        if key and #stage.props==0 then
+            self.records[key]={actor=actor,key=key,name=name,stage=stage,at=now()}
+            return {ok=true}
+        end
         local origin=transform and transform.Translation
         if not key or not origin or type(origin.X)~='number' then
             self.failures=self.failures+1
@@ -482,6 +493,7 @@ function Stages.new(options)
     function self:release(record,why)
         if not record then return end
         self.records[record.key]=nil
+        if #record.stage.props==0 then return end
         local parts={}
         local removedGroup={}
         for _,prop in ipairs(record.stage.props)do
@@ -540,11 +552,11 @@ function Stages.new(options)
         if key then self:release(self.records[key],why or '已清理') end
     end
 
-    -- Out of reach by her own design while she carries one of these marks.
+    -- The arena suspends targeting while the boss carries a protected stage tag.
     function self:untargetable(actor)
         local key=U.key(actor)
         local record=key and self.records[key]
-        if not record then return false end
+        if not record or not U.valid(record.actor) then return false end
         for _,tag in ipairs(record.stage.untargetable or {})do
             local n=count(actor,tag)
             if n and n>0 then return true end

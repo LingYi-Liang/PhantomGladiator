@@ -57,6 +57,7 @@ local CONTEXTUAL={['Execution.Type.CombatRider']=true,['Execution.Type.Custom.Ho
 -- The player could execute it now (GA_CommonUtilitiesPassive).
 local EXECUTABLE={'CharacterState.CanWeakExecute.Weak','CharacterState.CanWeakExecute.LowHealth'}
 local GE_KILL='/Game/PBZContent/Blueprint/Ability/GameplayEffects/GE_Kill.GE_Kill_C'
+local PROLOGUE_FINAL_LOCK=MOBS..'054_ZuoShang/AIConfig/GE_ZuoShang_MinHealth_04.GE_ZuoShang_MinHealth_04_C'
 -- Locks applied outside configs (blueprints, skills, AI scripts, summons); taken off too when they are loaded.
 local GENERIC_LOCKS={GE_LOCK,'/PBZCombatAsset/Prototypes/GameplayEffects/GE_LockHealthButCanExecuted.GE_LockHealthButCanExecuted_C'}
 local DEATH_LOCK=0.01       -- a floor of unknown source counts as a lock up to this share of Health_Max (not a phase)
@@ -193,6 +194,8 @@ function Exec.new(options)
         local info={state='none',locks={}}
         local config=U.field(actor,'Actor Config')
         if not U.valid(config) then return info end
+        local actorClass=className(actor)
+        info.prologue=actorClass=='BP_Monster_ZuoShang'
         local rank=U.struct(U.field(config,'Difficulty Tag'),'TagName')
         local okRank,text=pcall(function()return rank:ToString()end)
         info.rank=okRank and type(text)=='string' and text:gsub('^CharacterType%.Difficulty%.','') or '?'
@@ -231,8 +234,8 @@ function Exec.new(options)
             end
             if execution then break end
         end
-        if not execution and missing and not PAIRS[className(actor)] then info.state='nodata';info.pair={execution=missing};return info end
-        local known=not execution and PAIRS[className(actor)] or nil
+        if not execution and missing and not PAIRS[actorClass] then info.state='nodata';info.pair={execution=missing};return info end
+        local known=not execution and PAIRS[actorClass] or nil
         if known then
             local why1,why2
             execution,why1=object(known.execution);executed,why2=object(known.executed)
@@ -508,6 +511,35 @@ function Exec.new(options)
             end
         end
         return asc,removed,read(actor,'Health_Min')
+    end
+    -- The prologue's grab can leave its final 4% floor active in the arena. Release only that effect after a stall.
+    local function releasePrologueFloor(actor,unit,t)
+        local hp,floor,max=read(actor,'Health'),read(actor,'Health_Min'),read(actor,'Health_Max')
+        if not hp or hp<=0 or not floor or floor<=0 or not max or max<=0
+            or math.abs(floor-max*0.04)>0.1 or math.abs(hp-floor)>0.1 then
+            unit.prologueSince=nil
+            return
+        end
+        unit.prologueSince=unit.prologueSince or t
+        if t-unit.prologueSince<STUCK_SECONDS then return end
+        unit.prologueSince=t
+        local effect=object(PROLOGUE_FINAL_LOCK)
+        local asc=ascOf(actor)
+        local got,before=false,nil
+        if U.valid(effect) then got,before=call(asc,'GetGameplayEffectCount',effect,nil,true) end
+        before=got and U.unwrap(before) or nil
+        local removed,afterCount=false,nil
+        if type(before)=='number' and before>0 then
+            removed=call(asc,'RemoveActiveGameplayEffectBySourceEffect',effect,nil,-1)
+            if U.valid(effect) then
+                local checked,count=call(asc,'GetGameplayEffectCount',effect,nil,true)
+                afterCount=checked and U.unwrap(count) or nil
+            end
+        end
+        local afterFloor=read(actor,'Health_Min')
+        local verified=afterCount==0 and afterFloor~=nil and afterFloor<floor-0.1
+        log(string.format('[Execution] 序章左殇 4%% 血线停滞 %d 秒：效果=%s 移除调用=%s 效果读回=%s 血量下限=%s→%s HP读回=%s 验证=%s',
+            STUCK_SECONDS,tostring(before),tostring(removed),tostring(afterCount),fmt(floor),fmt(afterFloor),fmt(read(actor,'Health')),tostring(verified)))
     end
     -- An actor's active instance of an (instanced) ability class.
     local function abilityOn(actor,cls)
@@ -976,7 +1008,10 @@ function Exec.new(options)
         if active then watch();return end
         local t=now()
         endLocks(members)
-        if options.fighting and not options.fighting() then considerFoes(foes,t);return end
+        if options.fighting and not options.fighting() then
+            for _,unit in pairs(units) do unit.prologueSince=nil end
+            considerFoes(foes,t);return
+        end
         for _,member in ipairs(members) do
             local target=member.actor
             local key=U.key(target)
@@ -992,6 +1027,13 @@ function Exec.new(options)
                         short(unit.pair.execution),short(unit.pair.executed),unit.pair.source)) end
                 end
                 local immortal=options.isImmortal and options.isImmortal(member.team)
+                if unit.prologue then
+                    if not (immortal or member.stand or member.reserve or member.untargetable) then
+                        releasePrologueFloor(target,unit,t)
+                    else
+                        unit.prologueSince=nil
+                    end
+                end
                 if unit.state~='ready' and unit.state~='done' and not immortal then
                     local hp=read(target,'Health')
                     if hp and hp>0 and onLock(target,unit,hp) then

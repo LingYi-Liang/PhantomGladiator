@@ -372,16 +372,16 @@ function Camera.new(options)
             local up=math.max(axis(s.pc,'E'),axis(s.pc,'SpaceBar'))-math.max(axis(s.pc,'Q'),axis(s.pc,'LeftControl'),axis(s.pc,'RightControl'))
             local fast=math.max(axis(s.pc,'LeftShift'),axis(s.pc,'RightShift'))>0
             local tuning=self.tuning
-            local position,rotation
+            local position,rotation,trackFloor
             -- 镜头跟踪 (camera_track.lua) says where the camera goes while it runs; a failure there only ends the following.
             local track=trackOf()
             if track and track:running() then
                 local readWheel,wheel=call(s.pc,'GetInputAnalogKeyState',key('MouseWheelAxis'))
                 local t=os.clock()
-                local framed,at,facing=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
+                local framed,at,facing,floor=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
                     wheel=readWheel and number(wheel) and wheel or 0,turn=tuning.turn,speed=tuning.speed,smooth=tuning.smooth,world=s.world})
                 parts.track=(os.clock()-t)*1000
-                if framed then position,rotation=at,facing
+                if framed then position,rotation,trackFloor=at,facing,floor
                 else
                     log('[FreeCamera] 镜头跟踪出错，退回自由视角：'..tostring(at))
                     pcall(track.stop,track,'出错')
@@ -420,13 +420,18 @@ function Camera.new(options)
             assert(moved and result~=false,'camera movement failed')
             s.position,s.rotation=position,rotation
             -- Read back the first move, then once a second.
-            if not s.verifiedAt or now-s.verifiedAt>=1 then
+            local verifyFloor=trackFloor~=nil and (not s.trackFloorAt or now-s.trackFloorAt>=2)
+            if verifyFloor or not s.verifiedAt or now-s.verifiedAt>=1 then
                 s.verifiedAt=now
                 local got,actual=call(s.camera,'K2_GetActorLocation')
                 actual=got and vec(actual)
                 assert(actual,'camera position readback unavailable')
                 assert(math.abs(actual.X-position.X)<0.5 and math.abs(actual.Y-position.Y)<0.5 and math.abs(actual.Z-position.Z)<0.5,'camera location did not follow input')
                 s.position=actual
+                if verifyFloor then
+                    s.trackFloorAt=now
+                    log(string.format('[FreeCamera] 跟踪镜头碰地：地面Z=%.1f 目标Z=%.1f 读回Z=%.1f',trackFloor,position.Z,actual.Z))
+                end
                 if not s.movementVerified then
                     s.movementVerified=true
                     log(string.format('[FreeCamera] 输入/相机位置读回：WASDQE/Mouse；position=%.1f,%.1f,%.1f 每帧更新=%s 速度=%d 转向=%d%% 平滑=%d%%',

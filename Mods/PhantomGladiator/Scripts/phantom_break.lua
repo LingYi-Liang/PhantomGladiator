@@ -1,9 +1,12 @@
--- 虚化. Four units take no physical, Shachi, fire or lightning damage (GA_*_Passive.ModifyHitDamage on
+-- 虚化. These units take no physical, Shachi, fire or lightning damage (GA_*_Passive.ModifyHitDamage on
 -- GameplayEvent.Damage.Pretake) unless the hit is chaos, or they carry GE_Chaos or Stand.Break, or it comes from the player's
 -- perfect dodge or their own orb deflected by the player (TrueDamage). No NPC does any of that, so in a fight between units
--- nobody could hurt them and the fight could not end.
+-- nobody could hurt them and the fight could not end. 玉簪's GA_YuZan_DeflectOrb_Passive is 烟千岁's check for physical and
+-- Shachi damage (the same TrueDamage tag, its counter made from the player's weapon on the player's deflect): once her
+-- posture is back, no NPC can hurt her or break it again.
 -- A unit of blue, red or the companions has it taken away once it is out, unless its card says keep (unit_rules.lua):
---   琴女人偶, 冰雪琴女, 烟千岁: the check is the passive itself, so the passive is cancelled and its effect removed.
+--   琴女人偶, 冰雪琴女, 烟千岁, 玉簪: the check is the passive itself, so the passive is cancelled and its effect removed
+--   (玉簪 has none of her own).
 --   骨婉约: her check asks for CharacterState.Phantom, which her effect gives; the passive also runs her fog and stays. In the
 --   fog (CharacterState.AbilityState.GuWanYue.Invulnerable, at most 25 s) she is still out of reach.
 -- A unit with no team is fought by the player, who can break it the game's way: left alone.
@@ -19,6 +22,7 @@ Break.KINDS={
         effect='/PBZCombatAsset/ActorData/Mobs/073_YanQianSui/GameplayEffects/GE_YanQianSui_Phantom.GE_YanQianSui_Phantom_C'},
     BP_Monster_GuWanYue={
         effect='/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/GameplayEffects/GE_GuWanYue_Invulnerable.GE_GuWanYue_Invulnerable_C'},
+    BP_Monster_FemaleVessel_YuZan={passive='GA_YuZan_DeflectOrb_Passive_C'},
 }
 local TEAMS={blue=true,red=true,companion=true}
 local TRIES=10   -- support ticks to wait for the passive or the effect's class
@@ -68,12 +72,12 @@ function Break.new(options)
         local asc=U.field(actor,'AbilitySystemComponent')
         if not U.valid(asc) then return false end
         local effect
-        do
+        if kind.effect then
             local ok,found=pcall(find,kind.effect)
             effect=ok and U.valid(found) and found or nil
         end
         local ability=kind.passive and passiveOf(actor,kind.passive) or nil
-        if (kind.passive and not ability or not effect) and record.tries<TRIES then return false end
+        if (kind.passive and not ability or kind.effect and not effect) and record.tries<TRIES then return false end
         local stopped='不用取消'
         if kind.passive then stopped=ability and tostring(cancel(ability)) or '没找到' end
         local before,removed,after='?',false,'?'
@@ -84,7 +88,7 @@ function Break.new(options)
         end
         self.broken=self.broken+1
         say(string.format('虚化解除 单位=%s 被动=%s 已停=%s 效果=%s 移除调用=%s 数量 %s -> %s 虚化标签=%s',name,tostring(kind.passive or '留着'),stopped,
-            effect and 'found' or '没找到',tostring(removed),tostring(before),tostring(after),tostring(tagCount(asc,'CharacterState.Phantom'))))
+            effect and 'found' or (kind.effect and '没找到' or '无'),tostring(removed),tostring(before),tostring(after),tostring(tagCount(asc,'CharacterState.Phantom'))))
         return true
     end
     function self:tick()

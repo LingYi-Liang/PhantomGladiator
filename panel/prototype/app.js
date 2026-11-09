@@ -439,6 +439,7 @@
     BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
     BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
+    BP_Monster_FemaleVessel_YuZan: "phantom",
   };
   const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"] };
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || UNIT_RULE_VALUES[rule][0];

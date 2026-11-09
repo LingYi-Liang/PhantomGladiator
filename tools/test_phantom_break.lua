@@ -143,4 +143,21 @@ do
     h.mod:tick()
     assert(doll.effects==0)
 end
+-- 玉簪 on a team: her passive is the check and she has no effect of her own, so it stops on the first look, without waiting
+-- for an effect. With her card on keep it stays.
+do
+    local h=harness()
+    local yuzan=h.unit('BP_Monster_FemaleVessel_YuZan','red')
+    local passive=h.passive(yuzan,'GA_YuZan_DeflectOrb_Passive_C')
+    h.mod:tick()
+    assert(passive.bIsActive==false and h.cancels==1 and #h.removed==0,h.all())
+    assert(h.all():find('虚化解除 单位=BP_Monster_FemaleVessel_YuZan 被动=GA_YuZan_DeflectOrb_Passive_C 已停=true 效果=无',1,true),h.all())
+    h.mod:tick();assert(h.cancels==1,'once')
+    local kept=harness()
+    local other=kept.unit('BP_Monster_FemaleVessel_YuZan','blue')
+    local hers=kept.passive(other,'GA_YuZan_DeflectOrb_Passive_C')
+    kept.rules[other]='keep'
+    kept.mod:tick()
+    assert(hers.bIsActive==true and kept.all():find('虚化保持原版 单位=BP_Monster_FemaleVessel_YuZan',1,true),kept.all())
+end
 print('phantom_break: PASS')
