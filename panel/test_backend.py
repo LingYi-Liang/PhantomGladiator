@@ -266,12 +266,15 @@ class BridgeTests(unittest.TestCase):
         revision = command["payload"]["revision"]
         self.assertRegex(revision, r"^R[0-9A-F]{12}$")
         self.assertEqual(columns[1:8], ["set_stat_mode", "", "blue", "1", "CUSTOM", revision, ""])
+        self.bridge.tick()
         request = (self.bridge.runtime / "stat-custom-request.tsv").read_text(encoding="utf-8")
         self.assertEqual(request, f"StatCustomV1\t{revision}\nHealth_Max\t50000.5\nAttack\t120\n", "fields in the mod's order")
+        self.write("ack.tsv", f"{command['id']}\tok\tfixture\t0\n")
         # Every attribute of the set can be sent, negative multipliers and resistances included.
         everything = {field: -0.5 for field in backend.STAT_FIELDS if field not in backend.STAT_POSITIVE | backend.STAT_NON_NEGATIVE}
         everything.update({field: 2 for field in backend.STAT_POSITIVE | backend.STAT_NON_NEGATIVE})
         command = self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": everything})
+        self.bridge.tick()
         rows = (self.bridge.runtime / "stat-custom-request.tsv").read_text(encoding="utf-8").splitlines()[1:]
         self.assertEqual([row.split("\t")[0] for row in rows], list(backend.STAT_FIELDS))
         self.assertEqual((len(rows), len(set(backend.STAT_FIELDS))), (227, 227))
@@ -317,12 +320,55 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(revision=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": {"Attack": 1}, "revision": bad})
 
+    def test_consecutive_saves_keep_their_own_values_until_ack(self):
+        cases = (
+            ("set_ai_params", "ai-params-request.tsv", "AIParamsV1", "近距离进攻概率", 0.25, 0.75),
+            ("set_stat_mode", "stat-custom-request.tsv", "StatCustomV1", "Attack", 90, 120),
+            ("set_companion_stats", "companion-stats-request.tsv", "StatCustomV1", "Attack", 90, 120),
+        )
+        inbox = self.bridge.runtime / "inbox.tsv"
+        for action, filename, header, field, before, after in cases:
+            request_file = self.bridge.runtime / filename
+            for already_sent in (False, True):
+                with self.subTest(action=action, already_sent=already_sent):
+                    self.bridge.clear_queue()
+                    request = {"action": action, "values": {field: before}}
+                    if action != "set_ai_params":
+                        request["mode"] = "custom"
+                    first = self.bridge.enqueue(request)
+                    if already_sent:
+                        self.bridge.tick()
+                    second = self.bridge.enqueue({**request, "values": {field: after}})
+
+                    def expect_delivery(command, value):
+                        fields = inbox.read_text(encoding="utf-8").split("\t")
+                        revision = command["payload"]["revision"]
+                        self.assertEqual(fields[:2], [str(command["id"]), action])
+                        self.assertEqual(fields[5 if action == "set_ai_params" else 6], revision)
+                        self.assertEqual(request_file.read_text(encoding="utf-8"), f"{header}\t{revision}\n{field}\t{value}\n")
+
+                    self.bridge.tick()
+                    expect_delivery(first, before)
+                    # Interrupted publication, with no game journal entry. Both files must be rebuilt from this job.
+                    inbox.unlink()
+                    request_file.unlink()
+                    self.bridge.tick()
+                    expect_delivery(first, before)
+                    self.write("ack.tsv", f"{first['id']}\tok\tfixture\t0\n")
+                    self.bridge.tick()
+                    expect_delivery(second, after)
+                    self.write("ack.tsv", f"{second['id']}\tok\tfixture\t0\n")
+                    self.bridge.tick()
+
     def test_companion_stats_are_a_set_of_their_own(self):
         arena = self.bridge.enqueue({"action": "set_stat_mode", "mode": "custom", "values": {"Attack": 999}})
         command = self.bridge.enqueue({"action": "set_companion_stats", "mode": "custom", "values": {"Attack": 50, "ShachiAttack": 0}})
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
         revision = command["payload"]["revision"]
         self.assertEqual(columns[1:8], ["set_companion_stats", "", "blue", "1", "CUSTOM", revision, ""])
+        self.bridge.tick()
+        self.write("ack.tsv", f"{arena['id']}\tok\tfixture\t0\n")
+        self.bridge.tick()
         request = (self.bridge.runtime / "companion-stats-request.tsv").read_text(encoding="utf-8")
         self.assertEqual(request, f"StatCustomV1\t{revision}\nAttack\t50\nShachiAttack\t0\n")
         arena_request = (self.bridge.runtime / "stat-custom-request.tsv").read_text(encoding="utf-8")
@@ -370,6 +416,7 @@ class BridgeTests(unittest.TestCase):
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
         self.assertEqual(columns[1], "set_ai_params")
         self.assertEqual(columns[5], revision)
+        self.bridge.tick()
         rows = (self.bridge.runtime / "ai-params-request.tsv").read_text(encoding="utf-8").splitlines()
         self.assertEqual(rows[0], "AIParamsV1\t" + revision)
         self.assertIn("近距离进攻概率\t1", rows)

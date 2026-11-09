@@ -6,7 +6,7 @@ manifests the app reads.
 jsDelivr serves files from a repository, not release assets, and only up to 20 MB each, so the parts go into tag
 dl-<version>: a commit of its own, unrelated to the project's history and pushed from a temporary repository, so it adds
 nothing to the project's branches or to a local checkout. Run it after manifest.py: it adds "parts" to the version's
-entry in release/versions.json and, for the latest version, to release/latest.json.
+entry in release/safe/versions.json and, for the latest version, to release/safe/latest.json.
 
 App versions before split downloads ignore "parts". For them the latest version's zip also goes into the tag while it
 fits jsDelivr's single-file limit, and its cn1 line in latest.json points there.
@@ -60,7 +60,7 @@ def main():
     assert re.fullmatch(r"\d+\.\d+\.\d+", version), version
     assert archive.name == f"PhantomGladiator-{version}-win64.zip", archive.name
     data = archive.read_bytes()
-    versions_path, latest_path = root / "release/versions.json", root / "release/latest.json"
+    versions_path, latest_path = root / "release/safe/versions.json", root / "release/safe/latest.json"
     versions = json.loads(versions_path.read_text(encoding="utf-8"))
     entry = next(v for v in versions["versions"] if v["version"] == version)
     assert entry["size"] == len(data) and entry["sha256"] == hashlib.sha256(data).hexdigest(), "the zip is not the listed one"

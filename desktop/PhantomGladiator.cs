@@ -233,6 +233,7 @@ namespace PhantomGladiator
     // ---------- Install ----------
     static class Installer
     {
+        static readonly object InstallGate = new object();
         static string Payload(params string[] parts) { return Path.Combine(new[] { Paths.Bundle, "payload" }.Concat(parts).ToArray()); }
 
         static bool SameFile(string a, string b)
@@ -301,7 +302,84 @@ namespace PhantomGladiator
         // signatures always; the mod replaced as a whole, keeping its Runtime data.
         public static void Install(GameInfo g, Action<string, double> progress)
         {
+            lock (InstallGate) InstallCore(g, progress);
+        }
+
+        static void InstallCore(GameInfo g, Action<string, double> progress)
+        {
             if (GameLocator.Running(g)) throw new HostError("gameRunning", "请先关闭游戏再安装：游戏运行时组件文件被占用。");
+            var source = Payload("mod", "PhantomGladiator", "Scripts");
+            if (!File.Exists(Path.Combine(source, "main.lua")) || !File.Exists(Path.Combine(source, "config.lua")))
+                throw new HostError("install", "安装包缺少 main.lua 或 config.lua。");
+
+            var scripts = Path.Combine(g.ModDir, "Scripts");
+            var work = Path.Combine(g.ModDir, ".pg-install-" + Guid.NewGuid().ToString("N"));
+            var prepared = Path.Combine(work, "Scripts");
+            var previous = Path.Combine(work, "previous");
+            var keepBackup = false;
+            try
+            {
+                CopyTree(source, prepared, t => true);
+                var config = Path.Combine(prepared, "config.lua");
+                var lua = File.ReadAllText(config, Encoding.UTF8);
+                var runtime = g.RuntimeDir.Replace('\\', '/').Replace("\"", "\\\"");
+                var patched = Regex.Replace(lua, "^Config\\.RuntimePath\\s*=\\s*\"[^\"\\r\\n]*\"", m => "Config.RuntimePath = \"" + runtime + "\"", RegexOptions.Multiline);
+                if (patched == lua && !lua.Contains("Config.RuntimePath = \"" + runtime + "\""))
+                    throw new HostError("install", "config.lua 里没有找到 Config.RuntimePath，模组可能已更新格式。");
+                File.WriteAllText(config, patched, new UTF8Encoding(false));
+
+                InstallLoaderAndConfig(g, progress);
+                progress("mod", 0.6);
+                Directory.CreateDirectory(g.RuntimeDir);
+                foreach (var seed in Directory.GetFiles(Payload("seed")))
+                {
+                    var target = Path.Combine(g.RuntimeDir, Path.GetFileName(seed));
+                    if (!File.Exists(target)) File.Copy(seed, target);
+                }
+                var modsTxt = Path.Combine(g.Ue4ssDir, "Mods", "mods.txt");
+                var lines = File.Exists(modsTxt) ? File.ReadAllLines(modsTxt).ToList() : new List<string>();
+                var at = lines.FindIndex(l => Regex.IsMatch(l, @"^\s*PhantomGladiator\s*:"));
+                if (at >= 0) lines[at] = "PhantomGladiator : 1"; else lines.Add("PhantomGladiator : 1");
+                var preparedMods = Path.Combine(work, "mods.txt");
+                File.WriteAllLines(preparedMods, lines, new UTF8Encoding(false));
+
+                progress("mod", 0.8);
+                if (GameLocator.Running(g)) throw new HostError("gameRunning", "请先关闭游戏再安装：游戏运行时组件文件被占用。");
+                var hadPrevious = Directory.Exists(scripts);
+                if (hadPrevious) Directory.Move(scripts, previous);
+                var installed = false;
+                try
+                {
+                    Directory.Move(prepared, scripts);
+                    installed = true;
+                    if (File.Exists(modsTxt)) File.Replace(preparedMods, modsTxt, null);
+                    else File.Move(preparedMods, modsTxt);
+                }
+                catch (Exception error)
+                {
+                    try
+                    {
+                        if (installed) Directory.Move(scripts, prepared);
+                        if (hadPrevious) Directory.Move(previous, scripts);
+                    }
+                    catch (Exception rollback)
+                    {
+                        keepBackup = true;
+                        throw new IOException("模组安装恢复未完成，文件已保留在 " + work, new AggregateException(error, rollback));
+                    }
+                    throw;
+                }
+            }
+            finally
+            {
+                if (!keepBackup && Directory.Exists(work))
+                    try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+            progress("mod", 1);
+        }
+
+        static void InstallLoaderAndConfig(GameInfo g, Action<string, double> progress)
+        {
             progress("loader", 0.05);
             if (!File.Exists(Path.Combine(g.Ue4ssDir, "UE4SS.dll")))
             {
@@ -314,31 +392,6 @@ namespace PhantomGladiator
                 CopyTree(Payload("ue4ss", "ue4ss", "Mods", "shared"), Path.Combine(g.Ue4ssDir, "Mods", "shared"), t => false);
             progress("config", 0.4);
             CopyTree(Payload("gameconfig"), g.Ue4ssDir, t => true);
-            progress("mod", 0.6);
-            var scripts = Path.Combine(g.ModDir, "Scripts");
-            if (Directory.Exists(scripts)) Directory.Delete(scripts, true);
-            CopyTree(Payload("mod", "PhantomGladiator"), g.ModDir, t => true);
-            // config.lua ships with the author's absolute Runtime path; point it at this game folder.
-            var config = Path.Combine(scripts, "config.lua");
-            var lua = File.ReadAllText(config, Encoding.UTF8);
-            var runtime = g.RuntimeDir.Replace('\\', '/').Replace("\"", "\\\"");
-            var patched = Regex.Replace(lua, "^Config\\.RuntimePath\\s*=\\s*\"[^\"\\r\\n]*\"", m => "Config.RuntimePath = \"" + runtime + "\"", RegexOptions.Multiline);
-            if (patched == lua && !lua.Contains("Config.RuntimePath = \"" + runtime + "\"")) throw new HostError("install", "config.lua 里没有找到 Config.RuntimePath，模组可能已更新格式。");
-            File.WriteAllText(config, patched, new UTF8Encoding(false));
-            progress("mod", 0.8);
-            var modsTxt = Path.Combine(g.Ue4ssDir, "Mods", "mods.txt");
-            var lines = File.Exists(modsTxt) ? File.ReadAllLines(modsTxt).ToList() : new List<string>();
-            var at = lines.FindIndex(l => Regex.IsMatch(l, @"^\s*PhantomGladiator\s*:"));
-            if (at >= 0) lines[at] = "PhantomGladiator : 1"; else lines.Add("PhantomGladiator : 1");
-            File.WriteAllLines(modsTxt, lines, new UTF8Encoding(false));
-            // The slim catalog lets the app list and spawn units before the first in-game scan.
-            Directory.CreateDirectory(g.RuntimeDir);
-            foreach (var seed in Directory.GetFiles(Payload("seed")))
-            {
-                var target = Path.Combine(g.RuntimeDir, Path.GetFileName(seed));
-                if (!File.Exists(target)) File.Copy(seed, target);
-            }
-            progress("mod", 1);
         }
     }
 
@@ -639,6 +692,7 @@ namespace PhantomGladiator
 
     sealed class UpdateClient
     {
+        const string FirstSafeSwapVersion = "0.40.10";
         readonly BuildInfo build;
         Dictionary<string, object> manifest;
         List<PartDownload.Part> partFiles;
@@ -691,10 +745,7 @@ namespace PhantomGladiator
             return Describe(lang);
         }
 
-        // Going back to an older version. release/versions.json, beside latest.json, lists every version a player can
-        // go back to with the fields latest.json has; once one is picked, the download, the SHA-256 check and the
-        // in-place install are the same as for an update. Its source that lists the version wins: a CDN's stale copy
-        // may not have the newest entries.
+        // versions.json beside each latest.json lists the rollback packages. A stale source may omit new entries.
         public Dictionary<string, object> SelectVersion(string version, string lang)
         {
             manifest = null;
@@ -714,6 +765,7 @@ namespace PhantomGladiator
             }
             var described = Describe(lang);
             described["rollback"] = true;
+            described["isolated"] = Newer(FirstSafeSwapVersion, version);
             return described;
         }
 
@@ -893,9 +945,7 @@ namespace PhantomGladiator
             }
         }
 
-        // Unpacks next to the app's data and swaps the app's files in place (AppSwap, desktop/AppUpdate.cs), then
-        // starts the new exe, which waits for this process to exit. The caller has stopped the backend first: its
-        // Python keeps files in app\ open.
+        // Older executables clean every .old entry at startup. Run them from a fresh directory on rollback.
         public void Install()
         {
             if (downloaded == null) throw new HostError("verify", "");
@@ -904,14 +954,32 @@ namespace PhantomGladiator
             ZipFile.ExtractToDirectory(downloaded, staging);
             var root = Directory.GetFiles(staging, "PhantomGladiator.exe", SearchOption.AllDirectories).Select(Path.GetDirectoryName).FirstOrDefault();
             if (root == null || !Directory.Exists(Path.Combine(root, "app"))) throw new HostError("verify", "更新包内容不完整。");
-            try { AppSwap.Apply(root, Paths.AppDir); }
-            catch (IOException e) { throw new HostError("install", "更新没有完成，原来的文件已恢复：" + e.Message + "\n\n可以到 GitHub 下载完整包手动替换。"); }
+            var version = (string)manifest["version"];
+            var metadata = Path.Combine(root, "app", "version.json");
+            var packaged = File.Exists(metadata) ? new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                File.ReadAllText(metadata, Encoding.UTF8)) : null;
+            object packagedVersion;
+            if (packaged == null || !packaged.TryGetValue("appVersion", out packagedVersion) || (packagedVersion as string) != version)
+                throw new HostError("verify", "更新包的版本与所选版本不一致。");
+            var installed = Paths.AppDir;
             try
             {
-                Process.Start(new ProcessStartInfo(Path.Combine(Paths.AppDir, "PhantomGladiator.exe"), "--wait-for " + Process.GetCurrentProcess().Id)
-                    { UseShellExecute = false, WorkingDirectory = Paths.AppDir });
+                if (Newer(FirstSafeSwapVersion, version))
+                {
+                    var versions = Paths.In("versions");
+                    Directory.CreateDirectory(versions);
+                    installed = Path.Combine(versions, "PhantomGladiator-" + string.Join(".", Ver(version)) + "-" + Guid.NewGuid().ToString("N"));
+                    Directory.Move(root, installed);
+                }
+                else AppSwap.Apply(root, installed);
             }
-            catch (Exception e) { throw new HostError("install", "新版本已装好，但没能自动打开，请关掉助手后再打开一次：" + e.Message); }
+            catch (IOException e) { throw new HostError("install", "更新没有完成。\n" + e.Message); }
+            try
+            {
+                Process.Start(new ProcessStartInfo(Path.Combine(installed, "PhantomGladiator.exe"), "--wait-for " + Process.GetCurrentProcess().Id)
+                    { UseShellExecute = false, WorkingDirectory = installed });
+            }
+            catch (Exception e) { throw new HostError("install", "版本已装好，但未能自动打开。可以从此目录运行 " + installed + "\n" + e.Message); }
         }
 
         // At start: what the last update set aside, and the updater.exe copy (with the DLLs it needed) that versions

@@ -21,11 +21,25 @@ namespace PhantomGladiator
                 ? Directory.GetFileSystemEntries(Paths.In("updates")).Select(Path.GetFileName).OrderBy(p => p, StringComparer.Ordinal)
                 : Enumerable.Empty<string>();
             return status + "\n" + string.Join("\n", entries) + "\nupdates=" + string.Join(",", updates)
-                + "\nversion=" + BuildInfo.Load().AppVersion;
+                + "\nversion=" + BuildInfo.Load().AppVersion + "\ndirectory=" + dir;
         }
 
         static int Main(string[] args)
         {
+            if (args.Length == 1 && args[0] == "--install-components")
+            {
+                try
+                {
+                    var game = new GameInfo { Root = Path.Combine(Paths.AppDir, "test-game") };
+                    Installer.Install(game, (step, ratio) => { });
+                    return 0;
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine(e.Message);
+                    return 1;
+                }
+            }
             var report = Environment.GetEnvironmentVariable("PG_TEST_REPORT");
             int pid;
             if (args.Length >= 2 && args[0] == "--wait-for" && int.TryParse(args[1], out pid))

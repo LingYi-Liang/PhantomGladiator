@@ -414,6 +414,7 @@ I18N.add("zh", {
   "update.rollback": "回退到此版本",
   "update.rollback.title": "回退到 v{v}",
   "update.rollback.body": "助手会换回这个版本，你的设置、快捷键和单位召唤键都会保留。换好后按提示更新游戏内模组。以后想升级，再点检查更新就行。",
+  "update.rollback.isolated": "旧版会在独立目录运行，避免清理当前助手目录里的备份。打开后可按提示安装对应的游戏内模组。",
   "update.rollback.confirm": "下载并回退",
   "update.note1": "新增「再来一局」：按上一局的阵容自动重新召唤并开战",
   "update.note2": "图鉴随助手内置，打开就能选怪，不用再扫描游戏",

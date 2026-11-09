@@ -334,9 +334,13 @@ test('recall brings every live companion beside the player at once, fanned out; 
     a2.K2_TeleportTo=function()return false end;locations[a2]={X=5000,Y=0,Z=0}
     local partial=here:recall()
     assert(not partial.ok and partial.message:find('已召回 1/2 个随从到身边；没到位：BP_Monster_MoTian_C(50.0m)',1,true),partial.message)
+    -- A failed teleport still fails when the companion was already beside the player.
+    locations[a2]={X=250,Y=0,Z=0}
+    local blocked=here:recall()
+    assert(not blocked.ok and blocked.message:find('已召回 1/2 个随从到身边；没到位：BP_Monster_MoTian_C(2.5m)',1,true),blocked.message)
     list={}
     local none=here:recall()
-    assert(none.ok and none.message=='没有可召回的随从' and here:status().recalls==3)
+    assert(none.ok and none.message=='没有可召回的随从' and here:status().recalls==4)
 end)
 test('a stand keeps the player\'s side but takes no follow, teleport, target or recall orders and is not counted',function()
     local boss,stand,standAI=unit(false),unit(false)

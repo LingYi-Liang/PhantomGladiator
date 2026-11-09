@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.9-game-26367565"
+local BUILD = "v0.40.10-fixes-2"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -413,16 +413,6 @@ local function SetFactionRelation(a, b, relation)
 end
 
 
--- ---------- 召唤物的"登场状态"：伏击/隐藏/免伤效果 ----------
--- 召唤物实测互相攻击但无敌、带半透明特效，且官方加仇恨被拒。怀疑是游戏刷怪时
--- 挂上的伏击/隐藏类效果（HiddenTagsCanNotBeHatred = 隐藏中不可被仇恨）没被解除：
--- 正常刷怪会走 ActivateAI，我们是直接造出来的。
--- 闪避无敌帧、格挡保护属于正常战斗机制，只诊断不移除。
-
-local GE_TO_REPORT = { "GE_IgnoreAllDamage_C", "GE_AmbushTags_C", "GE_HiddenTags_C",
-    "GE_HiddenTagsCanNotBeHatred_C", "GE_HiddenTags_DodgeInvunlerable_C",
-    "GE_ReadyToDeflectProtect_C" }
-
 local function GetASC(pawn)
     if not safeValid(pawn) then return nil end
     local ok, asc = pcall(function() return pawn.AbilitySystemComponent end)
@@ -431,41 +421,6 @@ local function GetASC(pawn)
         if okV and v then return asc end
     end
     return nil
-end
-
-local geClassCache = {}
-local function FindGEClass(name)
-    if geClassCache[name] then return geClassCache[name] end
-    local ok, cls = pcall(FindObject, "BlueprintGeneratedClass", name)
-    if ok and cls ~= nil then
-        local okV, v = pcall(function() return cls:IsValid() end)
-        if okV and v then
-            geClassCache[name] = cls
-            return cls
-        end
-    end
-    return nil
-end
-
-local function ListSuspectGEs(pawn)
-    local asc = GetASC(pawn)
-    if not asc then return "无ASC" end
-    local found, resolved, queried = {}, 0, 0
-    for _, name in ipairs(GE_TO_REPORT) do
-        local cls = FindGEClass(name)
-        if cls then
-            resolved = resolved + 1
-            local ok, n = pcall(function() return asc:GetGameplayEffectCount(cls, nil, true) end)
-            if ok and type(n) == "number" then
-                queried = queried + 1
-                if n > 0 then
-                    table.insert(found, string.format("%s×%d", name:gsub("_C$", ""), n))
-                end
-            end
-        end
-    end
-    local body = #found > 0 and table.concat(found, ", ") or "无"
-    return string.format("%s｜类找到%d/%d 查询成功%d", body, resolved, #GE_TO_REPORT, queried)
 end
 
 local aiLib = nil
@@ -602,7 +557,6 @@ end
 
 -- 请求原生登场并读回可见状态；不移除游戏效果。
 local function FinishEntrance(pawn)
-    local before = ListSuspectGEs(pawn)
     local activated = false
     local lib = GetAILib()
     local world = UEHelpers.GetWorld()
@@ -611,10 +565,8 @@ local function FinishEntrance(pawn)
         activated = pcall(function() lib:ActivateAI(pawn, world) end)
         spawnAudit:record("activate_return",objectName(pawn),"call="..tostring(activated).." valid="..tostring(safeValid(pawn)))
     end
-    -- 先观察原生登场状态，不再自动移除效果。
-    local after = ListSuspectGEs(pawn)
-    log(string.format("  登场处理: ActivateAI调用=%s（行为未验收） | 可疑效果 前[%s] 后[%s] | %s",
-        lib and tostring(activated) or "找不到函数库", before, after, DescribeCollision(pawn)))
+    log(string.format("  登场处理: ActivateAI调用=%s（行为未验收） | %s",
+        lib and tostring(activated) or "找不到函数库", DescribeCollision(pawn)))
     return activated
 end
 
@@ -962,8 +914,8 @@ local function TargetDiag()
             local okN, n = pcall(function()
                 return objectName(npcs[i]):match("([%w_]+)$")
             end)
-            log(string.format("  NPC[%d] %s 阵营=%s 对玩家=%s 可疑效果=[%s] %s", i,
-                okN and n or "?", ReadFactionTag(npcs[i]), rel, ListSuspectGEs(npcs[i]),
+            log(string.format("  NPC[%d] %s 阵营=%s 对玩家=%s %s", i,
+                okN and n or "?", ReadFactionTag(npcs[i]), rel,
                 DescribeCollision(npcs[i])))
         end
         if #npcs >= 2 then

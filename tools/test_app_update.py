@@ -43,10 +43,12 @@ def main():
         subprocess.run([str(CSC), "/nologo", "/target:exe", "/platform:x64", "/utf8output", "/codepage:65001", f"/out:{exe}",
                         str(ROOT / "tools" / "AppUpdateTest.cs"), str(ROOT / "desktop" / "AppUpdate.cs")], check=True)
 
-        # A normal update: the running exe and its loaded DLL are replaced, folders swapped whole, files the new
-        # version does not bring are kept, leftovers of an earlier update deleted, and the new exe cleans up.
+        # A normal update replaces the loaded exe and DLL, then cleans only its own completed backup.
         installed, new = work / "installed", work / "new"
-        version(installed, exe, "A", {"licenses/old.txt": "A", "my-notes.txt": "mine", "stale.old": "left by an earlier update"})
+        version(installed, exe, "A", {"licenses/old.txt": "A", "my-notes.txt": "mine",
+                                     "PhantomGladiator.exe.old": "user backup", "notes.old/notes.txt": "mine"})
+        incomplete = ".pg-app-swap-0123456789abcdef0123456789abcdef"
+        write(installed / incomplete / "previous.txt", "recoverable")
         version(new, exe, "B", {"licenses/new.txt": "B"})
         report = run(installed, new, work / "report-ok.txt")
         lines = report.splitlines()
@@ -54,7 +56,9 @@ def main():
         assert "version=B" in lines and "app/python/lib.txt" in lines and "licenses/new.txt" in lines, report
         assert "licenses/old.txt" not in lines, "a folder is replaced as a whole"
         assert "my-notes.txt" in lines, "files the new version does not bring are kept"
-        assert not any(line.endswith(".old") for line in lines), "nothing set aside is left once the new exe runs"
+        assert (installed / "PhantomGladiator.exe.old").read_text(encoding="utf-8") == "user backup"
+        assert (installed / "notes.old" / "notes.txt").read_text(encoding="utf-8") == "mine"
+        assert {p.name for p in installed.glob(".pg-app-swap-*")} == {incomplete}, "only the completed backup is removed"
         assert (installed / "app" / "python" / "lib.txt").read_text(encoding="utf-8") == "B"
         print("PASS update in place: running exe and loaded DLL replaced, old files cleaned up by the new exe")
 
@@ -67,7 +71,8 @@ def main():
         lines = report.splitlines()
         assert lines[0].startswith("failed: "), report
         assert "version=A" in lines and "licenses/old.txt" in lines and "Fake.dll" in lines and "PhantomGladiator.exe" in lines, report
-        assert not any(line.endswith(".old") for line in lines) and "licenses/new.txt" not in lines, report
+        assert not any(line.startswith(".pg-app-swap-") or line.endswith(".old") for line in lines)
+        assert "licenses/new.txt" not in lines, report
         assert (installed / "zz_locked.txt").read_text(encoding="utf-8") == "A"
         print("PASS failed swap: the old version is restored, nothing new or set aside is left")
     finally:

@@ -13,7 +13,16 @@ local function object(name,fields)
 end
 FName=function(text)return {name=text,ToString=function()return text end} end
 local function map(store,broken)
-    return {Add=function(_,key,value)if broken then error('no map write') end;store[key.name]=value end}
+    return {
+        Add=function(_,key,value)if broken then error('no map write') end;store[key.name]=value end,
+        Contains=function(_,key)return store[key.name]~=nil end,
+        Find=function(_,key)
+            local value=store[key.name]
+            if value==nil then error('missing map entry') end
+            return value
+        end,
+        Remove=function(_,key)store[key.name]=nil end,
+    }
 end
 local function harness(opts)
     opts=opts or {}
@@ -26,8 +35,19 @@ local function harness(opts)
             return {read=function()return text end,close=function()end}
         end
         if h.readOnly then return nil end
-        return {write=function(_,s)h.files[path]=s;return true end,close=function()end}
+        return {write=function(_,s)h.files[path]=s;return true end,close=function()return not h.closeError or nil end}
     end
+    h.fileOps={
+        remove=function(path)
+            h.files[path]=nil
+            return true
+        end,
+        rename=function(from,to)
+            if h.failRename==from or not h.files[from] or h.files[to] then return nil end
+            h.files[to],h.files[from]=h.files[from],nil
+            return true
+        end,
+    }
     h.restore=function()io.open=real.open end
     RegisterHook=function(path,pre,post)h.hooks[path]=pre;return #h.logs+1,2 end
     UnregisterHook=function(path)h.hooks[path]=nil end
@@ -53,7 +73,7 @@ local function harness(opts)
         FindBoolParameter=function(l,c,n)return ask('FindBoolParameter',l,c,n)end,FindIntParameter=function(l,c,n)return ask('FindIntParameter',l,c,n)end})
     h.tensionLib=object('Tension',{HasActiveSession=function()return true end,GetTensionReadout=function()return {Raw=12,Confidence=0.5,PeakLast10s=20} end})
     h.world=object('World')
-    h.params=Params.new({path='R',log=function(m)h.logs[#h.logs+1]=m end,clock=function()return h.now end,members=function()return h.members end,
+    h.params=Params.new({path='R',os=h.fileOps,log=function(m)h.logs[#h.logs+1]=m end,clock=function()return h.now end,members=function()return h.members end,
         aiComp=function(actor)return actor.comp end,lib=function()return h.library end,tension=function()return h.tensionLib,h.world end})
     function h.all()return table.concat(h.logs,'\n') end
     function h.step(seconds)h.now=h.now+(seconds or 1);h.params:tick() end
@@ -96,7 +116,33 @@ test('values that could not be saved say so, and still apply for now',function()
     h.readOnly=true
     local answer=h.send('R4','中距离进攻概率\t0.5\n')
     h.readOnly=false
-    assert(answer.ok==false and answer.message:find('没保存下来',1,true) and h.params:status().count==1,tostring(answer.message))
+    assert(answer.ok==false and answer.message:find('保存未确认',1,true) and h.params:status().count==1,tostring(answer.message))
+    h.restore()
+end)
+
+test('a close or replacement failure reports unsaved and preserves the last settings',function()
+    local h=harness()
+    local name='近距离进攻概率'
+    local path='R/ai-params-settings.tsv'
+    local original='AIParamsV1\n'..name..'\t0.25\n'
+    h.files[path]=original
+    h.closeError=true
+    assert(not h.send('R1',name..'\t1\n').ok,'buffered write success is not a saved file')
+    assert(h.files[path]==original and h.params.values[name]==1)
+    h.closeError=false
+    h.failRename=path..'.pending'
+    assert(not h.send('R2',name..'\t0.75\n').ok)
+    assert(h.files[path]==original and h.params.values[name]==0.75)
+    h.restore()
+end)
+
+test('a reload recovers the previous settings if replacement was interrupted',function()
+    local h=harness()
+    local path='R/ai-params-settings.tsv'
+    local text='AIParamsV1\n近距离进攻概率\t0.25\n'
+    h.files[path..'.previous']=text
+    local reloaded=Params.new({path='R',os=h.fileOps,members=function()return {} end,aiComp=function()end})
+    assert(reloaded.values['近距离进攻概率']==0.25 and h.files[path]==text)
     h.restore()
 end)
 
@@ -119,6 +165,68 @@ test('taking a value off puts back what the game gave that unit',function()
     h.send('R2','');h.step()
     assert(store['远距离进攻概率']==0.25,tostring(store['远距离进攻概率']))
     assert(h.params:status().count==0)
+    h.restore()
+end)
+
+test('clearing settings restores a false entry and removes a newly added one',function()
+    local h=harness()
+    local boolean,absent='减帧时允许格挡','远距离进攻概率'
+    local _,_,_,store=h.unit('BP_Monster_A_C',true,{[boolean]=false})
+    assert(h.send('R1',boolean..'\t1\n'..absent..'\t0.75\n').ok)
+    h.step()
+    assert(store[boolean]==true and store[absent]==0.75)
+    assert(h.send('R2','').ok)
+    h.step()
+    assert(store[boolean]==false and store[absent]==nil,'restore the original map entries')
+    h.restore()
+end)
+
+test('a failed restoration keeps the original for the next attempt',function()
+    local h=harness()
+    local key='减帧时允许格挡'
+    local _,comp,_,store=h.unit('BP_Monster_A_C',true,{[key]=false})
+    assert(h.send('R1',key..'\t1\n').ok)
+    h.step()
+    local map=comp.MergedParameterCollection.BoolParameters
+    local add=map.Add
+    map.Add=function()error('temporary map write failure')end
+    assert(h.send('R2','').ok)
+    h.step()
+    assert(store[key]==true)
+    map.Add=add
+    h.step()
+    assert(store[key]==false,'the retry restores the first snapshot')
+    h.restore()
+end)
+
+test('a map override is restored even after a later override needs the hook',function()
+    local h=harness()
+    local flag,chance='减帧时允许格挡','远距离进攻概率'
+    local _,comp,controller,store=h.unit('BP_Monster_A_C',true,{[flag]=false,[chance]=0.2})
+    assert(h.send('R1',flag..'\t1\n').ok)
+    h.step()
+    assert(store[flag]==true)
+    comp.MergedParameterCollection.FloatParameters.Add=function()error('map write blocked')end
+    assert(h.send('R2',flag..'\t1\n'..chance..'\t0.75\n').ok)
+    h.step()
+    assert(h.params:status().hooked and h.library:FindFloatParameter(controller,FName(chance))==0.75)
+    assert(h.send('R3','').ok)
+    h.step()
+    assert(store[flag]==false and h.library:FindFloatParameter(controller,FName(chance))==0.2)
+    h.restore()
+end)
+
+test('drift in a later configured parameter is detected',function()
+    local h=harness()
+    local a,b='近距离进攻概率','远距离进攻概率'
+    local _,_,_,store=h.unit('BP_Monster_A_C',true,{[a]=0.2,[b]=0.2})
+    assert(h.send('R1',a..'\t1\n'..b..'\t1\n').ok)
+    h.step()
+    local first=next(h.params.values)
+    local later=first==a and b or a
+    store[later]=0.2
+    h.step()
+    assert(store[later]==1 and h.params:status().rewritten==1,'the second key is checked as well')
     h.restore()
 end)
 

@@ -34,11 +34,11 @@ DEPS = {
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
 VERIFIED_GAME_BUILD = "26367565"
 REPO = "LingYi-Liang/PhantomGladiator"
-# latest.json is read from the repository through jsDelivr first (reachable from mainland China).
+# The legacy feed stays frozen so an old updater cannot offer an in-place migration to this series.
 MANIFESTS = [
-    f"cdn|https://cdn.jsdelivr.net/gh/{REPO}@main/release/latest.json",
-    f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/latest.json",
-    f"github|https://raw.githubusercontent.com/{REPO}/main/release/latest.json",
+    f"cdn|https://cdn.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
+    f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
+    f"github|https://raw.githubusercontent.com/{REPO}/main/release/safe/latest.json",
 ]
 UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js"]
 BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "unit_validation.json"]

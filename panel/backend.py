@@ -1005,13 +1005,6 @@ class Bridge:
                 raise ValidationError("未建立当前游戏会话；目录可浏览，指令未提交，请游戏连接后重新请求")
             payload = self._validate(request)
             self._wire({"id": 9223372036854775807, "payload": json.dumps(payload, ensure_ascii=False)})
-            if payload["action"] in STAT_SETS and payload["mode"] == "custom":
-                # The values travel in a file of their own; the command names the revision to read.
-                rows = "".join(f"{field}\t{payload['values'][field]!r}\n" for field in STAT_FIELDS if field in payload["values"])
-                atomic_text(self._path(STAT_SETS[payload["action"]]["request"]), f"StatCustomV1\t{payload['revision']}\n{rows}")
-            if payload["action"] == "set_ai_params":
-                rows = "".join(f"{name}\t{value!r}\n" for name, value in payload["values"].items())
-                atomic_text(self._path("ai-params-request.tsv"), f"AIParamsV1\t{payload['revision']}\n{rows}")
             with self.db:
                 cursor = self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
                     (payload["action"], json.dumps(payload, ensure_ascii=False), "pending", self.clock(), game["game_session"]))
@@ -1123,11 +1116,26 @@ class Bridge:
         # The game journals an id before it runs it: no record means it never saw the command, which goes out again.
         ids = self._journal_ids()
         if ids is not None and current["id"] not in ids and session and current["game_session"] == session:
-            atomic_text(self._path("inbox.session.tsv"), f"{current['id']}\t{session}\n")
-            atomic_text(self._path("inbox.tsv"), self._wire(current))
+            self._publish(current, session)
             self._problem("republished", "上一条指令没投递成功，游戏也没有收到；已重新投递")
             return
         self._problem("waiting_ack", "已投递指令的 inbox 不在；等待同序号 ACK，不自动重放")
+
+    def _publish(self, row, session):
+        # The game reads the sidecar named by this job's revision after it sees the inbox.
+        # Enqueue only persists the payload, so a later save cannot replace a delivered job's values.
+        wire = self._wire(row)
+        payload = json.loads(row["payload"])
+        action = payload["action"]
+        if action in STAT_SETS and payload["mode"] == "custom":
+            values = payload["values"]
+            rows = "".join(f"{field}\t{values[field]!r}\n" for field in STAT_FIELDS if field in values)
+            atomic_text(self._path(STAT_SETS[action]["request"]), f"StatCustomV1\t{payload['revision']}\n{rows}")
+        elif action == "set_ai_params":
+            rows = "".join(f"{name}\t{value!r}\n" for name, value in payload["values"].items())
+            atomic_text(self._path("ai-params-request.tsv"), f"AIParamsV1\t{payload['revision']}\n{rows}")
+        atomic_text(self._path("inbox.session.tsv"), f"{row['id']}\t{session}\n")
+        atomic_text(self._path("inbox.tsv"), wire)
 
     def clear_queue(self):
         """The app's 清理排队的指令: every waiting command is dropped and the delivery files go, whoever they belong to."""
@@ -1230,8 +1238,7 @@ class Bridge:
                     # uncertain command instead of replaying a potentially executed action.
                     with self.db:
                         self.db.execute("UPDATE commands SET state='inflight',sent=? WHERE id=?", (self.clock(), pending["id"]))
-                    atomic_text(self._path("inbox.session.tsv"), f"{pending['id']}\t{session}\n")
-                    atomic_text(inbox, self._wire(pending))
+                    self._publish(pending, session)
             except (OSError, UnicodeError, ValueError, sqlite3.Error) as error:
                 self._problem("error", str(error))
 

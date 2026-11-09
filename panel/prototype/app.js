@@ -1874,7 +1874,7 @@
           const notes = releaseNotes((window.PG_CHANGELOG || []).find(r => r.version === info.version));
           return head(t("update.title")) + `<div class="dialog-body">
             <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
-            <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t("update.rollback.body"))}</span></div></div>
+            <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t(info.isolated ? "update.rollback.isolated" : "update.rollback.body"))}</span></div></div>
             ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : ""}
             <div class="section-label">${esc(t("update.line"))}</div>
             <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>

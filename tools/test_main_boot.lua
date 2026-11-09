@@ -153,25 +153,38 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.9-game-26367565',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.10-fixes-2',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
 else assert(output:find("找不到函数库",1,true),"class resolution must reach the explicit mocked spawn boundary") end
 -- Exercise the real main.lua activation callback, not a replacement callback.
 local originalFind=StaticFindObject
+local originalFindObject=FindObject
 local aiLib={IsValid=function()return true end,ActivateAI=function()end}
 StaticFindObject=function(path)
     if path=='/SGameAI/BP_SGameAIFunctionLibrary.Default__BP_SGameAIFunctionLibrary_C' then return aiLib end
     return originalFind(path)
 end
+local diagnosticQueries=0
+local effectClass={IsValid=function()return true end}
+FindObject=function(kind,name,...)
+    if kind=='BlueprintGeneratedClass' and name=='GE_IgnoreAllDamage_C' then return effectClass end
+    if originalFindObject then return originalFindObject(kind,name,...) end
+end
 local npc={IsValid=function()return true end,GetFullName=function()return 'NPC /Test/World.Unit' end,
     Controller={IsValid=function()return true end,SGameAIComponent={IsValid=function()return true end}},
+    AbilitySystemComponent={IsValid=function()return true end,GetGameplayEffectCount=function()
+        diagnosticQueries=diagnosticQueries+1
+        return 0
+    end},
     AttributeSetBase={IsValid=function()return true end,Health={CurrentValue=12000}}}
 local result={ok=false,rollback_verified=true,message='数值统一失败；回滚读回=true'}
 statMatchInstance.onSpawn=function(_,actor,path)assert(actor==npc and path==known);return result end
 inGame=true
 local activated,_,warning=arenaOptions.activate(npc,known)
+FindObject=originalFindObject
+assert(diagnosticQueries==0,'normal spawn must not query gameplay effect classes for diagnostics')
 assert(activated==true and warning and warning:find('保留原生数值',1,true),
     'verified stat rollback must preserve successful activation, HUD eligibility and combat')
 result.rollback_verified=false

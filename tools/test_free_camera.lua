@@ -1,7 +1,7 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Camera=require('free_camera')
 local function harness()
-    local h={objects={},files={},timers={},time=1,input={},logs={},spawned=0,engineCalls=0,actions=0,inputActors={}}
+    local h={objects={},files={},timers={},time=1,input={},logs={},spawned=0,engineCalls=0,actions=0,inputActors={},clockCalls=0,sequenceCount=0}
     local serial=0
     local function object(path,fields)
         serial=serial+1
@@ -20,6 +20,11 @@ local function harness()
     h.player=object('/Test.LocalPlayer')
     h.pawn=object('/Test.World:PersistentLevel.Player')
     function h.pawn:GetOuter()assert(self.alive);return h.world end
+    h.pawn.AbilitySystemComponent=object('/Test.World:PersistentLevel.Player.ASC')
+    function h.pawn.AbilitySystemComponent:GetGameplayTagCount(tag)
+        assert(self.alive and tag.TagName=='CharacterState.InLevelSequence')
+        return h.sequenceCount
+    end
     h.pc=object('/Test.World:PersistentLevel.PC',{Pawn=h.pawn,Player=h.player,moveDepth=0,lookDepth=0,target=h.pawn,
         bShouldPerformFullTickWhenPaused=false})
     h.player.PlayerController=h.pc
@@ -50,7 +55,11 @@ local function harness()
     h.pc.PlayerCameraManager=h.manager
     h.lib=object('/Script/Engine.Default__GameplayStatics')
     object('/Script/Engine.CameraActor')
-    function h.lib:GetRealTimeSeconds(world)assert(world==h.world and world:IsValid());return h.time end
+    function h.lib:GetRealTimeSeconds(world)
+        h.clockCalls=h.clockCalls+1
+        assert(world==h.world and world:IsValid())
+        return h.time
+    end
     function h.lib:SetGlobalTimeDilation(world,value)
         assert(world==h.world and world:IsValid())
         h.worldSettings.TimeDilation=math.max(0.0001,math.min(20,value))
@@ -263,6 +272,41 @@ test('game-selected view target is not overwritten on stop',function()
     local h=harness();assert(h.cameraController:enter())
     h.pc.target=h.manager
     assert(h.cameraController:stop('F7') and h.pc.target==h.manager)
+end)
+test('a story sequence ends following and releases only the observer input',function()
+    for _,takesView in ipairs({false,true})do
+        local h=harness();local c=h.cameraController
+        local track={on=true,frames=0}
+        function track:running()return self.on end
+        function track:frame()self.frames=self.frames+1 end
+        function track:stop()self.on=false end
+        h.options.track=function()return track end
+        assert(c:enter());h:tick();assert(track.frames==1)
+        h.sequenceCount=1
+        h.pc.moveDepth=h.pc.moveDepth+1;h.pc.lookDepth=h.pc.lookDepth+1
+        if takesView then h.pc.target=h.manager end
+        h.time=h.time+0.25;h:tick()
+        assert(not c:isActive() and not c:hasPending() and not h.camera.alive,'story leaves no observer camera')
+        assert(not track.on and track.frames==1,'the story check runs before another follow update')
+        assert(h.pc.target==(takesView and h.manager or h.pawn),'restore the player view only while we own it')
+        assert(h.pc.moveDepth==1 and h.pc.lookDepth==1,'leave the story input lock in place')
+    end
+end)
+test('observation cannot start while a story sequence owns the player',function()
+    local h=harness();local c=h.cameraController
+    h.sequenceCount=1
+    assert(not c:enter() and h.spawned==0 and h.pc.target==h.pawn and not c:hasPending())
+    h.sequenceCount=0
+    assert(c:enter() and h.spawned==1,'observation is available again after the story')
+    assert(c:stop('F7'))
+end)
+test('a destroyed world is rejected before passing it to the native clock',function()
+    local h=harness();local c=h.cameraController
+    assert(c:enter());h:tick()
+    local before=h.clockCalls
+    h.world.alive=false;h:tick()
+    assert(h.clockCalls==before,'the dead world must never reach GetRealTimeSeconds')
+    assert(not c:isActive() and not c:hasPending())
 end)
 test('invalid original controller does not modify the replacement controller',function()
     local h=harness();assert(h.cameraController:enter())

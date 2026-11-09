@@ -1,9 +1,5 @@
-// Replacing the app's files with a new version while the app runs. A running exe and the DLLs it has loaded
-// can be renamed but not overwritten, so each top-level file or folder the new version brings is renamed to
-// <name>.old and the new one copied in; if anything fails, what was copied is removed and the .old ones are
-// renamed back, so the old version still starts. The new exe deletes the .old leftovers once this process has
-// exited (Cleanup). Nothing else is written or run: versions before 0.37.6 copied the exe to AppData as
-// updater.exe and ran that copy, which Windows Defender took for a trojan.
+// Keep the files replaced by one update in its own backup directory. The running exe and loaded DLLs can be
+// renamed on the same volume. Cleanup only retires backups marked complete after a successful swap.
 // C# 5 / .NET Framework 4.8; compiled into PhantomGladiator.exe and, for tools/test_app_update.py, a test exe.
 using System;
 using System.Collections.Generic;
@@ -13,38 +9,72 @@ namespace PhantomGladiator
 {
     static class AppSwap
     {
-        public const string Aside = ".old";
+        const string BackupPrefix = ".pg-app-swap-";
+        const string CompleteMarker = "PhantomGladiatorAppSwapV1";
 
         // from: the unpacked new version (the folder holding PhantomGladiator.exe); to: the app's folder.
         public static void Apply(string from, string to)
         {
-            Cleanup(to);
-            var moved = new List<string>();
+            to = Path.GetFullPath(to);
+            var backup = Path.Combine(to, BackupPrefix + Guid.NewGuid().ToString("N"));
+            var previous = Path.Combine(backup, "files");
+            Directory.CreateDirectory(previous);
+            var saved = new List<string>();
             var added = new List<string>();
             try
             {
                 foreach (var source in Directory.GetFileSystemEntries(from))
                 {
-                    var target = Path.Combine(to, Path.GetFileName(source));
-                    if (Directory.Exists(target)) { Directory.Move(target, target + Aside); moved.Add(target); }
-                    else if (File.Exists(target)) { File.Move(target, target + Aside); moved.Add(target); }
+                    var name = Path.GetFileName(source);
+                    var target = Path.Combine(to, name);
+                    if (Directory.Exists(target) || File.Exists(target))
+                    {
+                        Move(target, Path.Combine(previous, name));
+                        saved.Add(name);
+                    }
                     added.Add(target);
                     if (Directory.Exists(source)) CopyTree(source, target); else File.Copy(source, target);
                 }
+                var marker = Path.Combine(backup, "marking");
+                File.WriteAllText(marker, CompleteMarker);
+                File.Move(marker, Path.Combine(backup, "complete"));
             }
             catch (Exception e)
             {
-                foreach (var path in added) Remove(path);
-                foreach (var path in moved) Restore(path);
+                var errors = new List<Exception> { e };
+                foreach (var path in added)
+                    try { Remove(path); } catch (Exception failure) { errors.Add(failure); }
+                foreach (var name in saved)
+                    try { Move(Path.Combine(previous, name), Path.Combine(to, name)); }
+                    catch (Exception failure) { errors.Add(failure); }
+                if (errors.Count > 1)
+                    throw new IOException("助手更新恢复未完成，旧文件已保留在 " + backup, new AggregateException(errors));
+                try { Remove(backup); } catch (Exception) { }
                 throw new IOException(e.Message, e);
             }
         }
 
-        // Deletes what an earlier swap set aside; anything still in use stays for the next start.
+        // A missing completion marker can mean a swap was interrupted or its rollback failed.
         public static void Cleanup(string dir)
         {
-            foreach (var path in Directory.GetFileSystemEntries(dir))
-                if (path.EndsWith(Aside, StringComparison.OrdinalIgnoreCase)) Remove(path);
+            foreach (var path in Directory.GetDirectories(Path.GetFullPath(dir), BackupPrefix + "*"))
+            {
+                var name = Path.GetFileName(path);
+                Guid id;
+                if (!name.StartsWith(BackupPrefix, StringComparison.Ordinal) ||
+                    !Guid.TryParseExact(name.Substring(BackupPrefix.Length), "N", out id)) continue;
+                try
+                {
+                    if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+                    var marker = Path.Combine(path, "complete");
+                    if (!File.Exists(marker) || File.ReadAllText(marker) != CompleteMarker) continue;
+                    // Keep the marker until the old files can all be removed.
+                    Remove(Path.Combine(path, "files"));
+                    Remove(path);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
         }
 
         static void CopyTree(string from, string to)
@@ -58,22 +88,14 @@ namespace PhantomGladiator
 
         static void Remove(string path)
         {
-            try
-            {
-                if (Directory.Exists(path)) Directory.Delete(path, true);
-                else if (File.Exists(path)) File.Delete(path);
-            }
-            catch (Exception) { }
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+            else if (File.Exists(path)) File.Delete(path);
         }
 
-        static void Restore(string path)
+        static void Move(string from, string to)
         {
-            try
-            {
-                if (Directory.Exists(path + Aside)) Directory.Move(path + Aside, path);
-                else if (File.Exists(path + Aside)) File.Move(path + Aside, path);
-            }
-            catch (Exception) { }
+            if (Directory.Exists(from)) Directory.Move(from, to);
+            else File.Move(from, to);
         }
     }
 }

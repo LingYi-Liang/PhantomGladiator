@@ -34,6 +34,7 @@ local LIB='/Script/SGameAI.Default__SGameAIFunctionLibrary'
 local HOOKS='/Script/SGameAI.SGameAIFunctionLibrary:'
 local FIND={float='FindFloatParameter',bool='FindBoolParameter',int='FindIntParameter'}
 local MAP={float='FloatParameters',bool='BoolParameters',int='IntParameters'}
+local ABSENT={}
 local PROBE={'近距离进攻概率','中距离进攻概率','远距离进攻概率','目标在受击状态进攻概率','重新规划-进攻欲望','立回-退出立回距离','玩家开始近战攻击-格挡权重','受击-转格挡概率'}
 local SECONDS,TENSION_SECONDS,APPLY_LINES,CLASS_LINES,TENSION_LINES,RETRIES=1,15,30,30,8,5
 
@@ -69,6 +70,8 @@ function Params.new(options)
     local self={alive=true,values={},generation=0,applied=0,failures=0,rewritten=0,hooked=false,message='全部用游戏原值'}
     local settings=options.path and options.path..'/ai-params-settings.tsv'
     local request=options.path and options.path..'/ai-params-request.tsv'
+    local fileOps=options.os or os
+    local previousSettings=settings and settings..'.previous'
     local units,classes,hooks,controllers={},{},{},{}
     local lines,classLines,tensionLines,nextAt,tensionAt=0,0,0,0,0
     local function say(text)log('[AIParams] '..text)end
@@ -102,7 +105,41 @@ function Params.new(options)
     end
     if settings then
         local text=readFile(settings)
+        if not text then
+            text=readFile(previousSettings)
+            if text then
+                local restored=fileOps.rename(previousSettings,settings)
+                say('恢复上次设置 读回='..tostring(restored and readFile(settings)==text or false))
+            end
+        end
         if text and text:find('^AIParamsV1') then self.values=parse(text:gsub('^[^\n]*\n','',1)) end
+    end
+    local function saveSettings(text)
+        local staged=settings..'.pending'
+        local file=io.open(staged,'w')
+        if not file then return false end
+        local wrote=file:write(text)
+        local closed=file:close()
+        if not wrote or not closed or readFile(staged)~=text then
+            fileOps.remove(staged)
+            return false
+        end
+        local hadPrevious=readFile(settings)~=nil
+        if hadPrevious then
+            fileOps.remove(previousSettings)
+            if not fileOps.rename(settings,previousSettings) then
+                fileOps.remove(staged)
+                return false
+            end
+        end
+        if not fileOps.rename(staged,settings) then
+            if hadPrevious then fileOps.rename(previousSettings,settings) end
+            fileOps.remove(staged)
+            return false
+        end
+        local saved=readFile(settings)==text
+        if saved then fileOps.remove(previousSettings) end
+        return saved
     end
     local function count()
         local n=0
@@ -148,6 +185,33 @@ function Params.new(options)
         say('参数名读回 写='..sample..' 读='..tostring(text)..' 一致='..tostring(not namesBroken))
         if namesBroken then hook() end
     end
+    local function mapOf(unit,kind)
+        return U.struct(U.field(unit.comp,'MergedParameterCollection'),MAP[kind])
+    end
+    local function readEntry(unit,name)
+        local kind=KIND[name]
+        local ok,value=pcall(function()
+            local map,key=mapOf(unit,kind),fname(name)
+            local present=map:Contains(key)
+            if present==false and type(map.Remove)=='function' then return ABSENT end
+            if present~=true then return nil end
+            return U.unwrap(map:Find(key))
+        end)
+        if not ok then return nil end
+        if value==ABSENT then return value end
+        if kind=='bool' then
+            if type(value)=='boolean' or value==0 or value==1 then return value==true or value==1 end
+        elseif type(value)=='number' then return value end
+    end
+    local function writeEntry(unit,name,value)
+        return pcall(function()
+            local map,key=mapOf(unit,KIND[name]),fname(name)
+            if value==ABSENT then map:Remove(key) else map:Add(key,value) end
+        end)
+    end
+    local function describeEntry(value)
+        return value==ABSENT and '无条目' or tostring(value)
+    end
     local function write(unit,library,name,value)
         local kind=KIND[name]
         local wanted=wire(kind,value)
@@ -156,20 +220,18 @@ function Params.new(options)
             local back=find(library,unit.controller,name)
             return same(kind,back,wanted),back,false,'已改用挂钩'
         end
-        local ok,err=pcall(function()
-            local collection=unit.comp.MergedParameterCollection
-            collection[MAP[kind]]:Add(fname(name),wanted)
-        end)
+        if unit.original[name]==nil then
+            local before=readEntry(unit,name)
+            if before==nil then return false,nil,false,'原条目不可读' end
+            unit.original[name]=before
+        end
+        local ok,err=writeEntry(unit,name,wanted)
         local back=find(library,unit.controller,name)
         return same(kind,back,wanted),back,ok,err
     end
     local function apply(unit,library)
         local done,bad=0,0
         for name,value in pairs(self.values)do
-            if unit.original[name]==nil then
-                local before=gameValue(library,unit.controller,name)
-                unit.original[name]=before==nil and false or before
-            end
             local good,back,called,err=write(unit,library,name,value)
             if not good and not self.hooked then
                 hook()
@@ -181,15 +243,30 @@ function Params.new(options)
             if good then done=done+1 else bad=bad+1 end
             if lines<APPLY_LINES then
                 lines=lines+1
-                say(string.format('%s %s 原值=%s -> 目标=%s 写表=%s%s 读回=%s 结果=%s',unit.name,name,tostring(unit.original[name]),tostring(value),tostring(called),
+                local original=unit.original[name]
+                if original==nil and not namesBroken then original=gameValue(library,unit.controller,name) end
+                say(string.format('%s %s 原值=%s -> 目标=%s 写表=%s%s 读回=%s 结果=%s',unit.name,name,describeEntry(original),tostring(value),tostring(called),
                     called and '' or '('..tostring(err)..')',tostring(back),good and '生效' or '没生效'))
             end
         end
-        -- A value taken off again goes back to what the game gave this unit.
+        unit.restorePending=false
         for name,before in pairs(unit.original)do
             if self.values[name]==nil then
-                if before~=false then write(unit,library,name,before==true and 1 or (before==false and 0 or before)) end
-                unit.original[name]=nil
+                -- Restore the map even if a later override had to fall back to the hook.
+                local called=writeEntry(unit,name,before)
+                local back=readEntry(unit,name)
+                local verified=back==before or (back~=ABSENT and before~=ABSENT and same(KIND[name],back,before))
+                if verified then
+                    unit.original[name]=nil
+                else
+                    unit.restorePending=true
+                    bad=bad+1
+                end
+                if lines<APPLY_LINES then
+                    lines=lines+1
+                    say(string.format('%s %s 恢复原值=%s 调用=%s 读回=%s 已确认=%s',unit.name,name,describeEntry(before),
+                        tostring(called),describeEntry(back),tostring(verified)))
+                end
             end
         end
         self.applied=self.applied+done;self.failures=self.failures+bad
@@ -197,7 +274,7 @@ function Params.new(options)
     end
     local function drifted(unit,library)
         for name,value in pairs(self.values)do
-            return not same(KIND[name],find(library,unit.controller,name),wire(KIND[name],value))
+            if not same(KIND[name],find(library,unit.controller,name),wire(KIND[name],value)) then return true end
         end
         return false
     end
@@ -241,18 +318,13 @@ function Params.new(options)
         if settings then
             local out={'AIParamsV1'}
             for name,value in pairs(self.values)do out[#out+1]=name..'\t'..string.format('%.17g',value) end
-            local file=io.open(settings,'w')
-            saved=false
-            if file then
-                saved=file:write(table.concat(out,'\n')..'\n') and true or false
-                file:close()
-            end
+            saved=saveSettings(table.concat(out,'\n')..'\n')
         end
         lines=0
         self.message=count()>0 and ('已改 '..count()..' 项') or '全部用游戏原值'
-        say('收到 '..count()..' 项，场上和之后召唤的单位都会用（revision='..tostring(revision)..'）保存='..tostring(saved))
+        say('收到 '..count()..' 项，场上和之后召唤的单位都会用（revision='..tostring(revision)..'）保存读回='..tostring(saved))
         nextAt=0
-        return {ok=saved,message=saved and self.message or self.message..'，但没保存下来，下次启动会变回去',spawned_count=0}
+        return {ok=saved,message=saved and self.message or self.message..'，但保存未确认，重启后可能恢复上次设置',spawned_count=0}
     end
 
     function self:tick()
@@ -276,7 +348,12 @@ function Params.new(options)
                     units[key]=unit
                 end
                 local comp=unit.comp
-                if not U.valid(comp) then comp=options.aiComp(actor);unit.comp=comp end
+                if not U.valid(comp) then
+                    comp=options.aiComp(actor)
+                    unit.comp=comp
+                    unit.original={}
+                    unit.generation=-1
+                end
                 if U.valid(comp) and U.field(comp,'bAIStarted')==true then
                     local controller=U.field(comp,'AIController')
                     if U.valid(controller) then
@@ -284,8 +361,10 @@ function Params.new(options)
                         local caddr=addr(controller)
                         if caddr then controllers[caddr]=true end
                         probe(unit,library)
-                        if unit.generation~=self.generation then apply(unit,library)
-                        elseif next(self.values) and unit.retries<RETRIES and drifted(unit,library) then
+                        if unit.generation~=self.generation then
+                            unit.retries=0
+                            apply(unit,library)
+                        elseif unit.retries<RETRIES and (unit.restorePending or (next(self.values) and drifted(unit,library))) then
                             unit.retries=unit.retries+1;self.rewritten=self.rewritten+1
                             apply(unit,library)
                         end

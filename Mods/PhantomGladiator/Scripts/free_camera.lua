@@ -29,6 +29,12 @@ local function call(obj,name,...)
     local args=table.pack(...)
     return pcall(function()return obj[name](obj,table.unpack(args,1,args.n))end)
 end
+local function sequenceCount(pawn)
+    local asc=U.field(pawn,'AbilitySystemComponent')
+    local ok,count=call(asc,'GetGameplayTagCount',{TagName=FName('CharacterState.InLevelSequence')})
+    count=ok and U.unwrap(count)
+    return number(count) and count or nil
+end
 local function identity(obj)
     local ok,name=call(obj,'GetFullName')
     local path=ok and type(name)=='string' and name:match('^%S+ (/.+)$')
@@ -326,6 +332,7 @@ function Camera.new(options)
         if not self.alive or not self.active or not s then return end
         local started,parts=os.clock(),{}
         local ok,err=pcall(function()
+            assert(U.valid(s.world),'observer world no longer valid')
             local timed,now=call(s.lib,'GetRealTimeSeconds',s.world)
             assert(timed and number(now),'clock unavailable')
             local dt=math.min(0.1,math.max(0,now-s.lastTime));s.lastTime=now
@@ -335,6 +342,13 @@ function Camera.new(options)
                 assert(same(U.field(s.pc,'Player'),s.player) and same(U.field(s.player,'PlayerController'),s.pc)
                     and same(U.field(s.pc,'Pawn'),s.pawn),'player/controller changed')
                 assert(U.inWorld(s.pawn,s.world),'world changed')
+                -- The story can take control before a camera cut changes the view target.
+                local count=sequenceCount(s.pawn)
+                if count and count>0 then
+                    log('[FreeCamera] 原版剧情标记读回='..count..'，退出观战并释放输入')
+                    self:stop('原版剧情开始')
+                    return
+                end
                 local read,target=call(s.pc,'GetViewTarget')
                 assert(read and same(target,s.camera),'camera target replaced')
                 if s.frozen then
@@ -456,6 +470,8 @@ function Camera.new(options)
             assert(U.valid(pawn) and U.valid(player) and U.valid(world),'player/world unavailable')
             assert(same(U.field(player,'PlayerController'),pc),'local player association unavailable')
             assert(U.inWorld(pawn,world),'player world mismatch')
+            local count=sequenceCount(pawn)
+            assert(not count or count<=0,'原版剧情播放中，标记读回='..tostring(count))
             local manager=U.field(pc,'PlayerCameraManager');assert(U.valid(manager),'camera manager unavailable')
             local readLocation,location=call(manager,'GetCameraLocation');location=readLocation and vec(location)
             local readRotation,rotation=call(manager,'GetCameraRotation');rotation=readRotation and rot(rotation)

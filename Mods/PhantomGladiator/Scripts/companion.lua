@@ -518,6 +518,7 @@ function Companion.new(options)
         if self.teleports<=TELEPORT_LINES then
             say((why or '传送到玩家身边')..' '..className(actor)..' 原距离='..fmt(d)..' 调用='..tostring(called)..' 返回='..show(moved)..' 读回距离='..fmt(distance(actor,player)))
         end
+        return called and U.unwrap(moved)==true
     end
 
     local function engage(record,actor,ai,player,ours)
@@ -734,9 +735,13 @@ function Companion.new(options)
                     count=count+1
                     local key=U.key(actor)
                     local record=key and units[key] or {actor=actor}
-                    teleport(record,actor,player,distance(actor,player),now,'召回到玩家身边',count)
+                    local moved=teleport(record,actor,player,distance(actor,player),now,'召回到玩家身边',count)
                     local after=distance(actor,player)
-                    if after and after<=RECALL_NEAR_M then near=near+1 else missed[#missed+1]=className(actor)..'('..fmt(after)..')' end
+                    if moved and after and after<=RECALL_NEAR_M then
+                        near=near+1
+                    else
+                        missed[#missed+1]=className(actor)..'('..fmt(after)..')'
+                    end
                 end
             end
         end
