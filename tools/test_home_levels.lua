@@ -58,7 +58,7 @@ assert(levels:target('BP_Monster_YuCong_FirstTime').level==15)
 ctx={difficulty='Handicapped',cycle=0}
 assert(levels:target('BP_Monster_YuCong_FirstTime').level==14 and select(1,levels:choices('BP_Monster_Wanderer'))[1].level==1)
 ctx={difficulty='Hard',cycle=2}
-assert(levels:target('BP_Monster_YuCong_FirstTime').level==65-5 and levels:target('BP_Monster_Wanderer').level==53,'cycles add 25 each (capped at 60)')
+assert(levels:target('BP_Monster_YuCong_FirstTime').level==65 and levels:target('BP_Monster_Wanderer').level==53,'the save cycle adds 25 each without the fixed-level cap')
 assert(Levels.spawned(0,{difficulty='handicapped'})==1 and Levels.spawned(3,{difficulty='Nightmare'})==3)
 ctx={difficulty='Normal',cycle=0}
 
@@ -106,4 +106,23 @@ near=placed:nearest('PBZ_Test_WP',{X=0,Y=80000,Z=0},200)
 assert(near.level==9 and not near.near and math.abs(near.distance-300)<0.01,'none within: the nearest')
 assert(placed:nearest('PBZ_Test_WP',{X=0,Y=0,Z=0},200,{difficulty='Handicapped',cycle=1}).level==28,'the unit\'s difficulty and cycle')
 assert(placed:nearest('PBZ_Other_WP',{X=0,Y=0,Z=0},200)==nil and placed:nearest('PBZ_Test_WP',nil,200)==nil)
+
+ctx={difficulty='Normal',cycle=1}
+assert(again:status().cycle==0 and again:target('BP_Monster_YuCong_FirstTime').level==40,'old settings follow the save')
+for cycle=1,7 do
+    assert(again:configure('','CYCLE',tostring(cycle)).ok)
+    assert(again:target('BP_Monster_YuCong_FirstTime').level==15+25*(cycle-1))
+end
+assert(again:status().mode=='HOME' and again:status().cycle==7)
+assert(files[R..'/home-levels.tsv']:find('\nBP_Monster_YuCong_FirstTime\t165\tnative\t',1,true),'the preview also carries the selected cycle')
+local selected=make()
+assert(selected:status().cycle==7 and selected:target('BP_Monster_YuCong_FirstTime').level==165,'saved override read back')
+for _,bad in ipairs({'','-1','8','2.5'})do assert(not selected:configure('','CYCLE',bad).ok) end
+assert(selected:configure('BP_Monster_YuCong_FirstTime','UNIT','165').ok)
+assert(selected:configure('','CYCLE','1').ok and selected:target('BP_Monster_YuCong_FirstTime').level==165,'a fixed per-unit level stays exact')
+assert(selected:configure('','CUSTOM','12').ok and selected:target('BP_Monster_YuCong_FirstTime').level==12)
+assert(selected:configure('','CYCLE','0').ok and selected:status().mode=='CUSTOM')
+assert(make():status().cycle==0,'follow selection read back')
+assert(Levels.spawned(26,{cycle=8})==176 and Levels.spawned(26,{cycle=6,exempt=true})==26)
+
 print('home_levels: PASS (native levels with difficulty and cycle, home-map default, area fallback, prologue, modes, picks, app file, places)')

@@ -158,7 +158,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11-queue-test-1',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-cycle-test-1',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -172,6 +172,15 @@ do
     assert(wire:find('summon_queue_enabled\tfalse',1,true))
     assert(wire:find('summon_queue_epoch\tSQ_0',1,true))
     assert(wire:find('summon_queue_waiting\t0',1,true))
+    assert(wire:find('spawn_cycle\t0',1,true))
+    inGame=true
+    assert(runtimeInstance:dispatch('set_spawn_level',{key_spawn='CYCLE',key_start='7'}).ok)
+    runtimeInstance.bridge:_writeStatus()
+    inGame=false
+    statusFile=assert(io.open(root..'/status.tsv','rb'))
+    wire=statusFile:read('*a');statusFile:close()
+    assert(wire:find('spawn_cycle\t7',1,true) and wire:find('spawn_level_mode\tHOME',1,true))
+    originalPrint('summon cycle status readback: 0 -> 7, level mode HOME')
     originalPrint('summon queue status readback: off, epoch SQ_0, waiting 0')
 end
 

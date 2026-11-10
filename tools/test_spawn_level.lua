@@ -1,5 +1,6 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Level=require('spawn_level')
+local HomeLevels=require('home_levels')
 local address=0
 -- A character with the BP_RenewalNPC Level property (nil level: a class without it) and the AI spawner that put it
 -- out, as the game's own enemies have (`loose`: none, like a summon).
@@ -149,6 +150,40 @@ do
     local lost=harness({},nil,home,'PBZ_Unknown')
     local other=object('Unit',0,{X=0,Y=0,Z=0})
     assert(not lost.level:prepare(other,'Unit').applied and other.Level==0,'a world without spawner data and nothing remembered')
+end
+-- An explicit cycle replaces the save's contribution to the live map level, even when reducing it.
+do
+    local ctx={cycle=1,difficulty='Normal'}
+    local home=HomeLevels.new({context=function()return ctx end,cycleExempt=function(actor)return actor.exempt end,
+        native={},places={PBZ_Test_WP={{0,0,0,8}}}})
+    home.mode='HERE'
+    local mob=object('MapNPC',41,{X=10,Y=0,Z=0})
+    mob.exempt=false
+    local h=harness({mob},nil,home)
+    local first=object('Unit',0)
+    assert(h.level:prepare(first,'Unit').applied and first.Level==41,'follow uses the live level as read')
+
+    home.cycle=7
+    local seventh=object('Unit',0)
+    assert(h.level:prepare(seventh,'Unit').applied and seventh.Level==166,h.all())
+    local immune=object('Immune',0)
+    immune.exempt=true
+    assert(h.level:prepare(immune,'Immune').applied and immune.Level==16,'summon immunity skips the selected bonus')
+
+    home.cycle=1
+    local reduced=object('Unit',41)
+    assert(h.level:prepare(reduced,'Unit').applied and reduced.Level==16,'an explicit lower cycle can reduce the spawn level')
+    assert(first.Level==41 and seventh.Level==166 and mob.Level==41,'earlier summons and the reference are untouched')
+
+    home.cycle=7
+    mob.exempt=true
+    mob.Level=16
+    h.clock=h.clock+10
+    local other=object('Unit',0)
+    assert(h.level:prepare(other,'Unit').applied and other.Level==166,'do not subtract the save bonus from an exempt reference')
+    mob.exempt=nil
+    local fallback=object('Unit',0)
+    assert(h.level:prepare(fallback,'Unit').applied and fallback.Level==158,'unknown reference contribution falls back to the spawner data')
 end
 -- The map level is looked up for the log and remembered; logged when it changes. status() shows what the last
 -- summon got (the app's "上次召唤"), nothing before the first.

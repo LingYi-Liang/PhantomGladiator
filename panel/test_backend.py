@@ -247,7 +247,10 @@ class BridgeTests(unittest.TestCase):
                  ({"level_mode": "CUSTOM", "level": 12}, "", "CUSTOM", "12"),
                  ({"level_mode": "HOME", "level": 9}, "", "HOME", ""),
                  ({"level_mode": "UNIT", "unit_id": "BP_Monster_Thug", "level": 4}, "BP_Monster_Thug", "UNIT", "4"),
-                 ({"level_mode": "UNIT", "unit_id": "BP_Monster_Thug"}, "BP_Monster_Thug", "UNIT", ""))
+                 ({"level_mode": "UNIT", "unit_id": "BP_Monster_Thug"}, "BP_Monster_Thug", "UNIT", ""),
+                 ({"level_mode": "UNIT", "unit_id": "BP_Monster_Thug", "level": 173}, "BP_Monster_Thug", "UNIT", "173"),
+                 ({"level_mode": "CYCLE", "level": 0}, "", "CYCLE", "0"),
+                 ({"level_mode": "CYCLE", "level": 7}, "", "CYCLE", "7"))
         for request, unit, mode, level in cases:
             with self.subTest(request=request):
                 command = self.bridge.enqueue({"action": "set_spawn_level", **request})
@@ -259,6 +262,9 @@ class BridgeTests(unittest.TestCase):
                     {"action": "set_spawn_level", "level_mode": "CUSTOM", "level": 61},
                     {"action": "set_spawn_level", "level_mode": "CUSTOM", "level": "12"},
                     {"action": "set_spawn_level", "level_mode": "CUSTOM", "level": True},
+                    {"action": "set_spawn_level", "level_mode": "CYCLE"},
+                    {"action": "set_spawn_level", "level_mode": "CYCLE", "level": 8},
+                    {"action": "set_spawn_level", "level_mode": "CYCLE", "level": 2.5},
                     {"action": "set_spawn_level", "level_mode": "UNIT", "level": 3},
                     {"action": "set_spawn_level", "level_mode": "UNIT", "unit_id": UNIT, "level": 3},
                     {"action": "set_spawn_level", "level_mode": "HOME", "unit_id": "BP_Monster_Thug"},
@@ -275,7 +281,8 @@ class BridgeTests(unittest.TestCase):
                    "BP_Monster_Wanderer\t3\tnative\t悲泣溪谷\tC\t1\t0\t3\n"
                    "BP_Monster_Wanderer\t19\tnative\t梅谷湖\tB\t0\t1\t24\n"
                    "BP_Monster_Thug\t6\tarea\t血色森林\tC\t1\t0\t0\n"
-                   "BP_Monster_Thug\t70\tarea\t血色森林\tC\t0\t0\t0\n"
+                   "BP_Monster_Thug\t156\tarea\t血色森林\tC\t0\t0\t0\n"
+                   "BP_Monster_Thug\t211\tarea\t血色森林\tC\t0\t0\t0\n"
                    "BP_Monster_Thug\t5\tstory\t血色森林\t\t0\t0\t0\n"
                    "BP_Monster_Thug\t5\tarea\t血色森林\tB\t0\t0\tmany\n"
                    "../evil\t5\tarea\tX\t\t0\t0\t0\n"
@@ -285,7 +292,8 @@ class BridgeTests(unittest.TestCase):
                 {"level": 3, "source": "native", "map": "悲泣溪谷", "part": "C", "count": 3},
                 {"level": 19, "source": "native", "map": "梅谷湖", "part": "B", "count": 24}]},
             "BP_Monster_Thug": {"default": 0, "picked": None, "options": [
-                {"level": 6, "source": "area", "map": "血色森林", "part": "C", "count": 0}]},
+                {"level": 6, "source": "area", "map": "血色森林", "part": "C", "count": 0},
+                {"level": 156, "source": "area", "map": "血色森林", "part": "C", "count": 0}]},
             "BP_Monster_Intro": {"default": None, "picked": 0, "options": [
                 {"level": 30, "source": "picked", "map": "", "part": "", "count": 0}]}}})
 

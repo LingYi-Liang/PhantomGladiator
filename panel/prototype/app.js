@@ -822,6 +822,7 @@
   // Summon level (set_spawn_level, home_levels.lua): each unit's own level in the game (HOME, the default), the level
   // of the map enemies near the player (HERE), or one level for every summon (CUSTOM).
   const LEVEL_MODES = ["HOME", "HERE", "CUSTOM"];
+  const CYCLE_CHOICES = ["跟随当前存档", "一周目", "二周目", "三周目", "四周目", "五周目", "六周目", "七周目"];
   function levelBlock() {
     const L = S.level, online = RT.online(), busy = ui.busy.has("set_spawn_level");
     const mode = ui.levelDraft || L.mode, usable = online && L.supported && !busy;
@@ -832,10 +833,16 @@
         <input class="stat-input" id="level-custom" type="text" inputmode="numeric" value="${esc(ui.levelCustom ?? L.custom ?? "")}" placeholder="1–${LEVEL_MAX}" aria-label="${esc(t("level.custom"))}" ${usable ? "" : "disabled"}>
         <button class="btn btn-secondary btn-sm" type="button" data-action="level-apply" ${usable ? "" : "disabled"}>${esc(t("level.apply"))}</button>
       </div>` : "";
+    const cycle = L.cycle != null ? `<div class="dock-title level-title"><span id="spawn-cycle-title">召唤周目</span></div>
+      <select class="select diff-select" id="spawn-cycle" aria-labelledby="spawn-cycle-title" aria-describedby="spawn-cycle-help" ${usable && mode !== "CUSTOM" ? "" : "disabled"}>
+        ${CYCLE_CHOICES.map((name, i) => `<option value="${i}"${L.cycle === i ? " selected" : ""}>${name}</option>`).join("")}
+      </select>
+      <p class="diff-desc" id="spawn-cycle-help">${mode === "CUSTOM" ? "自定义等级直接用于召唤。" : "只影响新召唤的单位。手动固定的等级优先。"}</p>` : "";
     return `<div class="dock-title level-title"><span id="level-title">${esc(t("level.title"))}</span></div>
       <select class="select diff-select" id="level-mode" aria-labelledby="level-title" aria-describedby="level-desc" ${usable ? "" : "disabled"}>${LEVEL_MODES.map(v => `<option value="${v}"${v === mode ? " selected" : ""}>${esc(t("level.mode." + v))}</option>`).join("")}</select>
       ${custom}
       <p class="diff-desc" id="level-desc">${esc(desc)}</p>
+      ${cycle}
       ${last}
       ${ui.levelError ? `<div class="inline-error">${icon("alert")}<span>${esc(ui.levelError)}</span></div>` : ""}`;
   }
@@ -858,10 +865,16 @@
   }
   async function sendLevel(mode, level) {
     const job = await run("set_spawn_level", { payload: { mode, level },
-      ok: () => ({ title: t("toast.level.set", { name: mode === "CUSTOM" ? t("level.customN", { n: level }) : t("level.mode." + mode) }), body: t("toast.level.body") }) });
+      ok: () => ({ title: mode === "CYCLE" ? "召唤周目已设为" + CYCLE_CHOICES[level]
+        : t("toast.level.set", { name: mode === "CUSTOM" ? t("level.customN", { n: level }) : t("level.mode." + mode) }),
+        body: t("toast.level.body") }) });
     if (job?.status === "succeeded") ui.levelDraft = null;
     renderDifficulty();
     renderSelection();
+  }
+  function setSpawnCycle(cycle) {
+    if (!CYCLE_CHOICES[cycle] || S.level.cycle == null || cycle === S.level.cycle || S.level.mode === "CUSTOM") return;
+    sendLevel("CYCLE", cycle);
   }
   // One place's label: the map and its part, the level, and how many of the game's spawners put the unit there.
   const levelPlace = o => [o.map, o.part].filter(Boolean).join(" ") || t("level.somewhere");
@@ -2240,6 +2253,7 @@
       case "configure_unit_key": return t("action.configure_unit_key", { name: u?.name });
       case "set_spawn_difficulty": return t("action.set_spawn_difficulty", { name: diffName(p.difficulty) });
       case "set_spawn_level": {
+        if (p.level_mode === "CYCLE") return "召唤周目 · " + CYCLE_CHOICES[p.level];
         // The app's own payload says mode/unit; a job read back from backend.py says level_mode/unit_id.
         const mode = p.mode || p.level_mode, unit = byId.get(p.unit || p.unit_id);
         return mode === "UNIT" ? t("action.set_spawn_level.unit", { name: unit?.name || p.unit || p.unit_id, label: p.level == null ? t("level.backToDefault") : t("level.levelN", { n: p.level }) })
@@ -2822,6 +2836,7 @@
     if (e.target.id === "count-input") setCount(Number(e.target.value));
     if (e.target.id === "diff-select") setDifficulty(e.target.value);
     if (e.target.id === "level-mode") setLevelMode(e.target.value);
+    if (e.target.id === "spawn-cycle") setSpawnCycle(Number(e.target.value));
     if (e.target.id === "home-level") setHomeLevel(e.target.dataset.id, e.target.value);
     if (e.target.id === "onb-lang") { setLanguage(e.target.value); }
     if (e.target.classList?.contains("cam-range") && e.target.dataset.cam) saveCamSettings(camSliderValues());

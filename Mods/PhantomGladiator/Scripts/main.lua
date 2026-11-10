@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-queue-test-1"
+local BUILD = "v0.40.11-cycle-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1510,25 +1510,37 @@ statProbe=Config.EnableStatFormulaProbe and StatFormulaProbe.new({log=log}) or n
 fieldProbe=Config.EnableStatFieldProbe and StatFieldProbe.new({log=log}) or nil
 -- The game cycle (new game plus count): the game adds 25 levels per cycle to its own enemies (BP_RenewalNPC
 -- "Init Level"). Read with the same library call, at most every 10 s, logged when it changes.
-local cycleAt,cycleValue
+local cycleRead={}
 local function GameCycle()
-    if cycleAt and os.clock()-cycleAt<10 then return cycleValue end
-    cycleAt=os.clock()
-    local library=StaticFindObject('/Script/ProjectPBZ.Default__PBZBlueprintFunctionLibrary')
     local world=UEHelpers.GetWorld()
-    if not safeValid(library) or not safeValid(world) then return cycleValue end
+    local key=UEObserve.key(world)
+    if not key then cycleRead={};return nil end
+    local now=os.clock()
+    if cycleRead.world==key and now-cycleRead.at<10 then return cycleRead.value end
+    local library=StaticFindObject('/Script/ProjectPBZ.Default__PBZBlueprintFunctionLibrary')
+    if not safeValid(library) then return nil end
     local ok,value=pcall(function()return library:GetGameCycle(world)end)
     local cycle=ok and tonumber(UEObserve.unwrap(value)) or nil
-    if cycle~=cycleValue then log('[HomeLevels] 读游戏周目 调用='..tostring(ok)..' 读回='..tostring(cycle)..(ok and '' or ' 错误='..tostring(value))) end
-    cycleValue=cycle
+    if cycleRead.world~=key or cycle~=cycleRead.value then
+        log('[HomeLevels] 读游戏周目 调用='..tostring(ok)..' 读回='..tostring(cycle)..(ok and '' or ' 错误='..tostring(value)))
+    end
+    cycleRead={world=key,at=now,value=cycle}
     return cycle
 end
 -- Where a summon's level comes from: its home (default), the map enemies near the player, or one level (home_levels.lua).
--- A home level gets the difficulty the unit is summoned at (the app's, else the game's) and the game cycle.
-local homeLevels=HomeLevels.new({log=log,path=Config.RuntimePath,context=function(actor)
-    local slot=actor and spawnDifficulty and spawnDifficulty:levelOf(actor) or (spawnDifficulty and spawnDifficulty:status().game) or nil
-    return {difficulty=slot~='' and slot or nil,cycle=GameCycle()}
-end})
+local homeLevels=HomeLevels.new({log=log,path=Config.RuntimePath,
+    context=function(actor)
+        local slot=actor and spawnDifficulty and spawnDifficulty:levelOf(actor) or (spawnDifficulty and spawnDifficulty:status().game) or nil
+        return {difficulty=slot~='' and slot or nil,cycle=GameCycle()}
+    end,
+    cycleExempt=function(actor)
+        if not summonActorLive(actor) then return nil end
+        local asc=UEObserve.field(actor,'AbilitySystemComponent')
+        if not safeValid(asc) then return nil end
+        local ok,value=pcall(function()return asc:GetGameplayTagCount({TagName=FName('CharacterState.NotUpgradeLevel')})end)
+        local count=ok and tonumber(UEObserve.unwrap(value))
+        if count then return count>0 end
+    end})
 spawnLevel=SpawnLevel.new({log=log,path=Config.RuntimePath,getPlayer=GetPlayerPawn,getLocation=GetLocation,collect=CollectNPCs,homeLevels=homeLevels,
     -- The loaded world's name (PBZ_Xigu_WP): spawner places and the remembered level are per world.
     getWorldName=function()

@@ -150,7 +150,7 @@ function Runtime.new(options)
             if not options.immortal then return {ok=false,message='不倒下模块未加载',spawned_count=0} end
             return options.immortal:set(command.team,command.key_start)
         end,
-        -- HOME, HERE or CUSTOM in key_spawn with a level in key_start; UNIT with the unit in unit_id picks its level ('' = default).
+        -- HOME, HERE, CUSTOM, UNIT or CYCLE in key_spawn. CYCLE takes 0–7 in key_start.
         set_spawn_level=function(command)
             if not options.homeLevels then return {ok=false,message='召唤等级模块未加载',spawned_count=0} end
             return options.homeLevels:configure(command.unit_id,command.key_spawn,command.key_start)
@@ -327,6 +327,7 @@ function Runtime.new(options)
         local home=options.homeLevels and options.homeLevels:status() or {}
         out.spawn_level_mode=home.mode or ''
         out.spawn_level_custom=home.custom or ''
+        out.spawn_cycle=home.cycle or ''
         local support=options.support and options.support:status() or {}
         out.boss_hud_registered=support.registered or 0
         out.boss_hud_visible=support.visible or 0

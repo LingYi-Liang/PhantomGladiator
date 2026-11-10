@@ -36,9 +36,11 @@ TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
 SPAWN_DIFFICULTIES = ("FOLLOW", "EASY", "NORMAL", "HARD", "NIGHTMARE")
 # Where a summon's level comes from (home_levels.lua): its home (default), the map enemies near the player, or one
-# level for all; UNIT picks one unit's level. Levels are whole numbers up to SPAWN_LEVEL_MAX.
-SPAWN_LEVEL_MODES = ("HOME", "HERE", "CUSTOM", "UNIT")
+# level for all; UNIT fixes one unit's level. CYCLE takes 0 (follow) or 1–7.
+SPAWN_LEVEL_MODES = ("HOME", "HERE", "CUSTOM", "UNIT", "CYCLE")
 SPAWN_LEVEL_MAX = 60
+SPAWN_CYCLE_MAX = 7
+SPAWN_HOME_MAX = SPAWN_LEVEL_MAX + 25 * (SPAWN_CYCLE_MAX - 1)
 # native: where the game itself puts the unit (native_levels.lua); area/extra/prologue: the areas of the codex home
 # map, for units no spawner places; picked: a level the player picked that is none of those.
 HOME_LEVEL_SOURCES = {"native", "area", "extra", "prologue", "picked"}
@@ -928,11 +930,12 @@ class Bridge:
             mode, level = request.get('level_mode'), request.get('level')
             if mode not in SPAWN_LEVEL_MODES:
                 raise ValidationError('level_mode must be one of ' + ', '.join(SPAWN_LEVEL_MODES))
-            if level is not None and (type(level) is not int or not 0 <= level <= SPAWN_LEVEL_MAX):
-                raise ValidationError('level must be a whole number from 0 to %d' % SPAWN_LEVEL_MAX)
-            if mode == 'CUSTOM' and level is None:
-                raise ValidationError('CUSTOM needs a level')
-            payload.update(level_mode=mode, level=level if mode in ('CUSTOM', 'UNIT') else None)
+            limit = {'CYCLE': SPAWN_CYCLE_MAX, 'UNIT': SPAWN_HOME_MAX}.get(mode, SPAWN_LEVEL_MAX)
+            if level is not None and (type(level) is not int or not 0 <= level <= limit):
+                raise ValidationError('level must be a whole number from 0 to %d' % limit)
+            if mode in ('CUSTOM', 'CYCLE') and level is None:
+                raise ValidationError(mode + ' needs a value')
+            payload.update(level_mode=mode, level=level if mode in ('CUSTOM', 'UNIT', 'CYCLE') else None)
             if mode == 'UNIT':
                 unit = request.get('unit_id')
                 if not (isinstance(unit, str) and UNIT_SHORT_ID.fullmatch(unit)):
@@ -1422,7 +1425,8 @@ class Bridge:
             if len(cols) != 8 or not UNIT_SHORT_ID.fullmatch(cols[0]) or cols[2] not in HOME_LEVEL_SOURCES:
                 continue
             unit, level, source, map_name, part, default, picked, count = cols
-            if (not level.isdigit() or int(level) > SPAWN_LEVEL_MAX or len(map_name) > 64 or len(part) > 4
+            if (not level.isascii() or not level.isdigit() or len(level) > 3 or int(level) > SPAWN_HOME_MAX
+                    or len(map_name) > 64 or len(part) > 4
                     or not count.isdigit() or len(count) > 6):
                 continue
             entry = units.setdefault(unit, {"options": [], "default": None, "picked": None})

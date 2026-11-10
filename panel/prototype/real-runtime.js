@@ -41,7 +41,7 @@ const RealRuntime = (() => {
     difficulty: { level: "FOLLOW", game: "", supported: false, failures: 0, skipped: 0, aiFailed: 0, summonLevel: null, summonLevelUnit: "" },
     // spawn_level_mode / spawn_level_custom (home_levels.lua): where a summon's level comes from, HOME | HERE | CUSTOM;
     // homes: each unit's places in the game with the default and the player's pick (backend.py /api/home-levels).
-    level: { supported: false, mode: "HOME", custom: null, homes: {} },
+    level: { supported: false, mode: "HOME", custom: null, cycle: null, homes: {} },
     // boss_combos*: the 连携技 switch (boss_combos.lua).
     combo: { supported: false, on: false },
     // fun_*: the player-only switches saved by fun_features.lua and what each one reads back.
@@ -279,6 +279,7 @@ const RealRuntime = (() => {
       L.supported = ["HOME", "HERE", "CUSTOM"].includes(v.spawn_level_mode);
       if (L.supported) L.mode = v.spawn_level_mode;
       L.custom = v.spawn_level_custom ? num("spawn_level_custom") : null;
+      L.cycle = /^[0-7]$/.test(v.spawn_cycle) ? Number(v.spawn_cycle) : null;
       const f = s.fun;
       s.combo.supported = yes("boss_combos_supported");
       s.combo.on = yes("boss_combos");
@@ -367,11 +368,11 @@ const RealRuntime = (() => {
     // Re-render only the parts whose data moved, so a 500 ms poll never resets what the player is doing.
     const sig = {
       topbar: [s.game, jobs.filter(j => j.status === "failed" || j.status === "uncertain").length],
-      sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom],
+      sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
       companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, JSON.stringify({ ...s.companionStats, values: undefined })],
       match: [s.game, JSON.stringify({ ...s.statMatch, values: undefined })],
-      diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom],
+      diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       fun: [s.game, JSON.stringify(s.fun)],
       battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, JSON.stringify([s.keys.start, s.keys.stop]),
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
@@ -460,7 +461,8 @@ const RealRuntime = (() => {
     // The mod saved and read the choice back; show it before the next poll does.
     if (action === "set_spawn_difficulty" && done.status === "succeeded") s.difficulty.level = payload.difficulty;
     if (action === "set_spawn_level" && done.status === "succeeded") {
-      if (payload.mode !== "UNIT") s.level.mode = payload.mode;
+      if (payload.mode === "CYCLE") s.level.cycle = payload.level;
+      else if (payload.mode !== "UNIT") s.level.mode = payload.mode;
       if (payload.mode === "CUSTOM") s.level.custom = payload.level;
       await loadHomeLevels().catch(() => {});
     }

@@ -83,7 +83,7 @@ const MockRuntime = (() => {
     difficulty: { level: savedDiff, game: "Easy", supported: true, failures: 0, skipped: 0, aiFailed: 0, summonLevel: 18, summonLevelUnit: "BP_Monster_BaiheDisciple_Knife" },
     // Where a summon's level comes from (HOME | HERE | CUSTOM) and each unit's places in the game, as the mod writes them.
     combo: { supported: true, on: false },
-    level: { supported: true, mode: savedLevel.mode || "HOME", custom: savedLevel.custom ?? null, homes: mockHomes(savedLevel.picks || {}) },
+    level: { supported: true, mode: savedLevel.mode || "HOME", custom: savedLevel.custom ?? null, cycle: savedLevel.cycle ?? 0, homes: mockHomes(savedLevel.picks || {}) },
     // shachiState: off | locked | failed; guardState: off | waiting | ready | failed; deflects/dodges pressed so far
     fun: { supported: true, shachi: !!savedFun.shachi, deflect: !!savedFun.deflect, dodge: !!savedFun.dodge,
       shachiState: savedFun.shachi ? "locked" : "off", guardState: savedFun.deflect || savedFun.dodge ? "waiting" : "off", deflects: 0, dodges: 0 },
@@ -145,7 +145,7 @@ const MockRuntime = (() => {
   function saveLevel() {
     const picks = {};
     for (const [id, h] of Object.entries(s.level.homes)) if (h.picked != null) picks[id] = h.options[h.picked].level;
-    try { localStorage.setItem(LEVEL_KEY, JSON.stringify({ mode: s.level.mode, custom: s.level.custom, picks })); } catch { /* ignore */ }
+    try { localStorage.setItem(LEVEL_KEY, JSON.stringify({ mode: s.level.mode, custom: s.level.custom, cycle: s.level.cycle, picks })); } catch { /* ignore */ }
   }
 
   async function command(action, payload = {}) {
@@ -333,6 +333,8 @@ const MockRuntime = (() => {
           for (const [id, h] of Object.entries(s.level.homes)) if (h.picked != null) picks[id] = h.options[h.picked].level;
           if (p.level == null) delete picks[p.unit]; else picks[p.unit] = p.level;
           s.level.homes = mockHomes(picks);
+        } else if (p.mode === "CYCLE") {
+          s.level.cycle = p.level;
         } else {
           s.level.mode = p.mode;
           if (p.mode === "CUSTOM") s.level.custom = p.level;

@@ -3,8 +3,8 @@
 -- A summoned unit skips the spawner and keeps Level 0; the player found summoned bosses taking damage
 -- like mobs while the map's own NPCs were normal. v0.36.5 raised the Level *attribute* after
 -- activation and nothing changed (docs/REVERSE_ENGINEERING.md), so now the property is written
--- before FinishSpawn, the way the spawner would, to the highest Level among the map's own NPCs near
--- the player. It is never lowered. After activation the unit and that map NPC are logged side by side
+-- before FinishSpawn, the way the spawner would. The nearby rule follows the highest Level among the
+-- map's own NPCs unless a cycle is selected. After activation the unit and its reference are logged side by side
 -- (property, GetCombatLevel, the Level attribute, health and defence attributes) to show what the
 -- level changes. v0.36.7 confirmed it: a summoned 阿花 written to 18 came out with 104652 HP instead
 -- of 9000, and the player found it normal. Where no map NPC is loaded (an empty field, right after a load) the
@@ -148,12 +148,14 @@ function Level.new(options)
         say(string.format('出生前 unit=%s 自身等级=%s %s地图怪=%d只 最高=%s(%s) 样本=[%s] 不是刷怪点刷出的=%d只',tostring(unitPath),fmt(own),
             area.scope,area.count,area.best and fmt(area.best.level) or 'nil',area.best and area.best.name or '-',area.sample,area.loose))
         -- HOME and CUSTOM (home_levels.lua) give the level outright, lower than the map's too; HERE goes on below.
-        local chosen=options.homeLevels and options.homeLevels:target(short(actor),actor)
+        local levels=options.homeLevels
+        local chosen=levels and levels:target(short(actor),actor)
         if chosen then
             local why=CHOICES[chosen.source] or chosen.source
             if chosen.source=='area' or chosen.source=='native' then
                 why=why..'（'..tostring(chosen.map)..(chosen.part and chosen.part~='' and ' '..chosen.part or '')
-                    ..(chosen.count and ' 刷怪点'..chosen.count..'个' or '')..' 难度='..tostring(chosen.difficulty)..' 周目='..tostring(chosen.cycle)..'）'
+                    ..(chosen.count and ' 刷怪点'..chosen.count..'个' or '')..' 难度='..tostring(chosen.difficulty)..' 周目='..tostring(chosen.cycle)
+                    ..(chosen.exempt and ' 免周目加成' or '')..'）'
             end
             if math.abs(chosen.level-own)<=EPS then
                 self.kept=self.kept+1;self.message='已是'..why;summoned={level=own,unit=short(actor)}
@@ -168,23 +170,34 @@ function Level.new(options)
             say(string.format('按%s写入等级 %s→%s 调用=%s 读回=%s %s',why,fmt(own),fmt(chosen.level),tostring(ok),fmt(after),err and ('错误='..tostring(err)) or ''))
             return {applied=good}
         end
+        local cycle=levels and levels.cycle or 0
         local target=area.best and area.best.level
+        if target and cycle>0 then
+            local why
+            target,why=levels:mapTarget(target,area.best.actor,actor)
+            say('指定周目='..cycle..' 参照等级='..fmt(area.best.level)..' 换算='..fmt(target)..(why and '；'..why or ''))
+        end
         local world=worldName()
-        if not target and options.homeLevels and options.homeLevels.nearest then
-            local place=options.homeLevels:nearest(world,area.origin,NEAR_METRES,actor)
+        if not target and levels and levels.nearest then
+            local place=levels:nearest(world,area.origin,NEAR_METRES,actor)
             if place then
                 target=place.level
                 say(string.format('附近没有地图怪，按%s的游戏刷怪点 %s 级（%.0f 米外，%s）',place.near and '玩家附近' or '离玩家最近',
                     fmt(place.level),place.distance,tostring(world)))
             end
         end
-        if not target and last and last.world and last.world==world then
+        if not target and cycle>0 then
+            target=levels:withoutPlace(actor)
+            say('没有可换算的地点等级，按基础 1 级计算指定周目='..cycle..' 目标='..fmt(target))
+        elseif not target and last and last.world and last.world==world then
             target=last.level
             say(string.format('附近没有地图怪，沿用这张图上次记录的等级 %s（来自 %s）',fmt(last.level),tostring(last.name)))
         end
         if not target then self.kept=self.kept+1;self.message='附近没有地图怪可参照';return {applied=false} end
-        if target<=own+EPS then
-            self.kept=self.kept+1;self.message='召唤单位等级不低于地图怪，未调整';summoned={level=own,unit=short(actor)}
+        if math.abs(target-own)<=EPS or (cycle==0 and target<own) then
+            self.kept=self.kept+1
+            self.message=cycle>0 and '已是指定周目算出的等级' or '召唤单位等级不低于地图怪，未调整'
+            summoned={level=own,unit=short(actor)}
             say('不调整：自身等级已不低于地图怪')
             return {applied=false}
         end
