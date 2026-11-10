@@ -1,0 +1,153 @@
+{
+  "version": "0.40.10",
+  "date": "2026-11-10T22:15:00+08:00",
+  "size": 21091011,
+  "sha256": "c1326e02b1891f0874e4256dff20e8bd16c806bffbebe69877243b02e62a5ad2",
+  "notes": {
+    "zh": [
+      "移除普通召唤时可能触发闪退的旧诊断查询。进入剧情时退出观战跟随并交还镜头，召回随从时会核对传送结果。",
+      "修复普通左殇转入二阶段时被打断后卡住的问题。即使没有开启蓝红对战，队伍 NPC 的投技也能对随从生效。",
+      "AI 参数保存后会读回确认，写入失败时保留上一次保存的设置。",
+      "组件安装先校验文件，失败时恢复原组件。助手更新只清理自己创建的临时备份，回退至 v0.40.9 或更早版本时从独立目录打开。",
+      "从 v0.40.9 或更早版本首次升级时，请下载 ZIP，解压到新目录并启动新版，然后按提示更新游戏内模组。"
+    ],
+    "en": [
+      "Removed an old diagnostic query that could crash during a regular summon. Story scenes now end camera follow and return control to the game. Companion recall checks whether the teleport succeeded.",
+      "Fixed normal Zuo Shang getting stuck when his transition to phase two was interrupted. Team NPCs can now grab companions even with Blue vs Red disabled.",
+      "The app reads AI settings back after saving. If writing fails, it keeps the last saved settings.",
+      "Component installation checks files first and restores the previous components on failure. The updater cleans up only its own temporary backups. Versions v0.40.9 and earlier open in a separate folder when rolled back.",
+      "To upgrade from v0.40.9 or earlier, download the ZIP and extract it to a new folder. Open the new app and follow the prompt to update the in-game mod."
+    ],
+    "ja": [
+      "通常召喚でクラッシュを起こすことがあった古い診断処理を削除しました。イベントシーンが始まると観戦カメラの追従を解除してゲームにカメラを戻します。随行ユニットの呼び戻しでは、瞬間移動の結果を確認します。",
+      "通常の左殤が第2段階への移行中に中断されると動かなくなる問題を修正しました。青対赤の対戦が無効でも、チーム所属のNPCの投げ技が随行ユニットに効くようになりました。",
+      "AI設定は保存後に読み戻して確認します。書き込みに失敗した場合は前回の保存内容を保持します。",
+      "コンポーネントは確認してからインストールし、失敗時は元に戻します。更新時に削除するのは更新処理が作った一時バックアップだけです。v0.40.9以前に戻すときは別のフォルダーから起動します。",
+      "v0.40.9以前から更新する場合は、ZIPをダウンロードして新しいフォルダーに展開してください。新しいアプリを起動し、案内に従ってゲーム内Modを更新してください。"
+    ],
+    "fr": [
+      "Suppression d’un ancien diagnostic qui pouvait faire planter le jeu lors d’une invocation ordinaire. Une scène du jeu arrête désormais le suivi de la caméra et rend la main au jeu. Le rappel d’un compagnon vérifie que la téléportation a réussi.",
+      "Correction du blocage de Zuo Shang standard si son passage en phase 2 était interrompu. Les prises des PNJ d’une équipe fonctionnent sur les compagnons même lorsque Bleu contre Rouge est désactivé.",
+      "L’application relit les paramètres de l’IA après leur enregistrement. En cas d’échec, elle conserve la dernière configuration enregistrée.",
+      "L’installation vérifie les composants et restaure les fichiers précédents en cas d’échec. La mise à jour efface uniquement ses propres sauvegardes temporaires. Le retour à la v0.40.9 ou à une version antérieure ouvre cette version dans un dossier séparé.",
+      "Pour passer de la v0.40.9 ou d’une version antérieure à celle-ci, téléchargez le ZIP et extrayez-le dans un nouveau dossier. Lancez la nouvelle application et suivez l’invite de mise à jour du mod en jeu."
+    ],
+    "de": [
+      "Eine alte Diagnoseabfrage wurde entfernt, die bei normalen Beschwörungen einen Absturz auslösen konnte. Zwischensequenzen beenden die Kameraverfolgung und geben die Kamera an das Spiel zurück. Beim Rückruf eines Begleiters wird der Teleport überprüft.",
+      "Der normale Zuo Shang bleibt nicht mehr hängen, wenn sein Wechsel in Phase 2 unterbrochen wird. Team-NPCs können Begleiter nun auch bei deaktiviertem Blau-gegen-Rot-Modus greifen.",
+      "Die App liest die KI-Einstellungen nach dem Speichern zur Kontrolle ein. Schlägt das Schreiben fehl, bleibt der zuletzt gespeicherte Stand erhalten.",
+      "Die Installation prüft die Komponenten und stellt bei Fehlern die bisherigen Dateien wieder her. Das Update entfernt nur seine eigenen temporären Sicherungen. Bei einer Rückkehr zu v0.40.9 oder älter startet diese Version in einem separaten Ordner.",
+      "Für ein Upgrade von v0.40.9 oder älter lade die ZIP-Datei herunter und entpacke sie in einen neuen Ordner. Starte die neue App und folge dem Hinweis, um den Mod im Spiel zu aktualisieren."
+    ],
+    "es": [
+      "Se eliminó una consulta de diagnóstico antigua que podía provocar un cierre al invocar una unidad. Al empezar una escena, la cámara deja de seguir al objetivo y vuelve al juego. La llamada de un compañero comprueba que el teletransporte se haya realizado.",
+      "Se corrigió el bloqueo de Zuo Shang normal si se interrumpía su paso a la fase 2. Los agarres de los PNJ de equipo ya funcionan contra compañeros aunque Azul contra Rojo esté desactivado.",
+      "La aplicación vuelve a leer los ajustes de la IA después de guardarlos. Si la escritura falla, conserva los últimos ajustes guardados.",
+      "La instalación comprueba los componentes y restaura los anteriores si algo falla. El actualizador limpia solo sus propias copias temporales. Al volver a la v0.40.9 o anterior, esa versión se abre en una carpeta independiente.",
+      "Para actualizar desde la v0.40.9 o anterior, descarga el ZIP y extráelo en una carpeta nueva. Abre la nueva aplicación y sigue el aviso para actualizar el mod del juego."
+    ]
+  },
+  "downloads": [
+    {
+      "id": "cn1",
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+    },
+    {
+      "id": "cn2",
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+    },
+    {
+      "id": "github",
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+    }
+  ],
+  "parts": {
+    "files": [
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.000",
+        "size": 2097152,
+        "sha256": "88a7da20843e376d80b2fed1abe68e82a438cb2a77387ad36649a0f272402e29"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.001",
+        "size": 2097152,
+        "sha256": "1fb754bce6d169651e9a2c421f8728a795cf5d293b160c3160597a0c5b47b258"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.002",
+        "size": 2097152,
+        "sha256": "88865acf557e156ddc8bd0060602ae4c98b8d45a836b41fde1c277b4bde201d8"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.003",
+        "size": 2097152,
+        "sha256": "18dd91fa68a74a16642c3d127e0981ead33651e49fdd46027c93c0e42e0266ab"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.004",
+        "size": 2097152,
+        "sha256": "5d40d7526c4b8fc92f30f76bbb11a199d53d87c3e4672150ceceebc97d16abda"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.005",
+        "size": 2097152,
+        "sha256": "dd737c0f9c11a1a288ab5c0b77bd4c6406eb241f183e5c188f18a4d3168dadd4"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.006",
+        "size": 2097152,
+        "sha256": "c21914e46612e92bfe8bdf21ece3158754551bc195a690d96fd2878c5414a016"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.007",
+        "size": 2097152,
+        "sha256": "4f6afbca9ff5dde7619b3e284f93e0676a6968cd085e846aeb36f40de504cd3b"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.008",
+        "size": 2097152,
+        "sha256": "75e0730c9728e922a68c445dff6823367a079f8ebf9bfe4a117a945bcf2b6132"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.009",
+        "size": 2097152,
+        "sha256": "064602915ce31daf6ff7bc236ab5e1cc2a00cf848f0cef70405e8bf42b7dea5d"
+      },
+      {
+        "name": "PhantomGladiator-0.40.10-win64.zip.010",
+        "size": 119491,
+        "sha256": "58c596e0171a792c6862843c7a319c0e169863544080449f7b7e9d1381b798dc"
+      }
+    ],
+    "sources": [
+      {
+        "id": "fastly",
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+      },
+      {
+        "id": "gcore",
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+      },
+      {
+        "id": "testingcf",
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+      },
+      {
+        "id": "cdn",
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+      },
+      {
+        "id": "ghfast",
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+      },
+      {
+        "id": "ghproxy",
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+      },
+      {
+        "id": "github",
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+      }
+    ]
+  }
+}
