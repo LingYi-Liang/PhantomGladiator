@@ -19,6 +19,9 @@
 
   const REPO = "https://github.com/LingYi-Liang/PhantomGladiator";
   const BILI = "https://space.bilibili.com/10010098";
+  // The Nexus Mods build (S.channel "nexus") checks and downloads no updates: new versions come from this page.
+  const NEXUS = "https://www.nexusmods.com/phantombladezero/mods/363";
+  const fromNexus = () => S.channel === "nexus";
   // The eight function keys backend.py accepts (BINDING_NAMES); all of them start unbound.
   const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
   const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions"]]];
@@ -336,6 +339,7 @@
     $("#btn-theme").setAttribute("aria-label", t(toDark ? "header.themeDark" : "header.themeLight"));
     $("#btn-theme").title = t(toDark ? "header.themeDark" : "header.themeLight");
     $("#update-dot").hidden = !(ui.update.info && !ui.update.info.latest && !ui.update.info.rollback && ui.update.phase !== "done");
+    $("#btn-update .btn-update-label").textContent = t(fromNexus() ? "about.checkNexus" : "header.update");
     const failures = RT.jobs.filter(j => j.status === "failed" || j.status === "uncertain").length - ui.seenFailures;
     $("#history-badge").hidden = failures <= 0 || ui.historyOpen;
     $("#history-badge").textContent = failures;
@@ -1766,8 +1770,9 @@
           <button class="btn btn-secondary btn-sm" type="button" data-action="repair-save" ${ui.busy.has("repair_save") || !RT.online() ? "disabled" : ""}>${ui.busy.has("repair_save") ? '<span class="spinner"></span>' : icon("check", "icon-sm")}${esc(t("settings.repair.btn"))}</button></div>
         <div class="card-body"><p class="muted" style="font-size:12.5px">${esc(t("settings.repair.desc"))}</p>
           ${ui.repairReport ? `<ul class="repair-report" style="margin:10px 0 0;padding-left:18px;font-size:13px;line-height:1.6">${ui.repairReport.map(line => `<li>${esc(repairLine(line))}</li>`).join("")}</ul>` : ""}</div></section>
-      <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.updates"))}</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t("about.check"))}</button></div>
-        <div class="rows" style="margin-top:6px">${sw("autoUpdate", t("settings.updates.auto"), t("settings.updates.autoDesc"))}</div></section>
+      <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.updates"))}</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t(fromNexus() ? "about.checkNexus" : "about.check"))}</button></div>
+        ${fromNexus() ? `<div class="card-body"><p class="muted" style="font-size:12.5px">${esc(t("settings.updates.nexus"))}</p></div>`
+          : `<div class="rows" style="margin-top:6px">${sw("autoUpdate", t("settings.updates.auto"), t("settings.updates.autoDesc"))}</div>`}</section>
       <details class="advanced"><summary><span class="row-icon">${icon("sliders")}</span><div class="row-main"><div class="row-title">${esc(t("settings.advanced"))}</div><div class="row-desc">${esc(t("settings.advanced.desc"))}</div></div>${icon("chevron-down", "chev")}</summary>
         <div class="rows">
           <div class="row"><div class="row-main"><div class="row-title">${esc(t("settings.scan"))}</div><div class="row-desc">${esc(t("settings.scan.desc"))}</div>
@@ -1786,15 +1791,15 @@
   const QQ_GROUP = "1038314448";
   function aboutHTML() {
     const u = ui.update;
-    const status = u.phase === "checking" ? `<span class="spinner"></span>${esc(t("update.checking"))}`
+    const status = fromNexus() ? "" : u.phase === "checking" ? `<span class="spinner"></span>${esc(t("update.checking"))}`
       : u.info && !u.info.latest && u.phase !== "done" ? `<span class="chip chip-blue">${icon("sparkles")}${esc(t("about.newVersion", { v: u.info.version }))}</span>`
       : u.lastChecked ? esc(t("about.lastChecked", { time: fmtAgo(u.lastChecked) })) : "";
     return `<div class="stack">
       <section class="card about-hero">
         <span class="seal seal-lg" aria-hidden="true">斗</span>
         <div style="min-width:0"><h2>Phantom Gladiator</h2><p>${esc(t("app.tagline"))}</p>
-          <div class="about-version"><span class="chip chip-outline">${esc(t("about.version", { v: S.appVersion }))}</span><span class="chip chip-amber">${esc(t("about.channel"))}</span></div></div>
-        <div class="about-hero-side"><button class="btn btn-primary" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t("about.check"))}</button><small class="muted" style="display:flex;align-items:center;gap:6px;font-size:12px">${status}</small></div>
+          <div class="about-version"><span class="chip chip-outline">${esc(t("about.version", { v: S.appVersion }))}</span><span class="chip chip-amber">${esc(t("about.channel"))}</span>${fromNexus() ? `<span class="chip chip-outline">${esc(t("about.nexusBuild"))}</span>` : ""}</div></div>
+        <div class="about-hero-side"><button class="btn btn-primary" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t(fromNexus() ? "about.checkNexus" : "about.check"))}</button><small class="muted" style="display:flex;align-items:center;gap:6px;font-size:12px">${status}</small></div>
       </section>
       <section class="card">
         <div class="author"><span class="author-avatar" aria-hidden="true">泠</span>
@@ -1836,7 +1841,7 @@
     const items = list.map(r => {
       const notes = releaseNotes(r);
       const current = compareVersions(r.version, S.appVersion) === 0 ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
-      const back = compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
+      const back = !fromNexus() && compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
         ? `<button class="btn btn-secondary btn-sm release-rollback" type="button" data-action="update-rollback" data-value="${esc(r.version)}">${esc(t("update.rollback"))}</button>` : "";
       return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}${back}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul></div>`;
     }).join("");
@@ -1854,6 +1859,9 @@
     const u = ui.update, info = u.info;
     const head = title => `<div class="dialog-head"><h2 id="dlg-title">${esc(title)}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>`;
     const state = (badge, title, body, extra = "") => `<div class="update-state">${badge}<h3>${esc(title)}</h3><p>${esc(body)}</p>${extra}</div>`;
+    if (fromNexus())
+      return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge">${icon("package")}</span>`, t("update.nexus.title"), t("update.nexus.body"))}${releaseHistoryHTML()}</div>
+          <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.close"))}</button><a class="btn btn-primary" href="${NEXUS}?tab=files" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.nexus.open"))}</a></div>`;
     switch (u.phase) {
       case "checking":
         return head(t("update.title")) + `<div class="dialog-body">${state('<span class="state-badge"><span class="spinner spinner-lg"></span></span>', t("update.checking"), t("update.checking.sub"))}</div>`;
@@ -1919,6 +1927,7 @@
   }
   async function checkUpdate({ silent = false } = {}) {
     const u = ui.update;
+    if (fromNexus()) return;
     if (u.phase === "checking" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "installing") return;
     if (silent && (u.info?.rollback || dlg?.kind === "update")) return;
     u.phase = "checking";
@@ -1933,6 +1942,8 @@
     } catch (error) {
       u.phase = "error";
       u.error = { tried: error.tried || [] };
+      // The Nexus Mods build refuses without connecting; the page learns its channel here if "info" never answered.
+      if (error.code === "updatesOff") { S.channel = "nexus"; u.phase = "idle"; renderPage(); }
       if (silent) u.phase = "idle";
     }
     u.lastChecked = Date.now();
@@ -1944,6 +1955,7 @@
   // Asks for the older version's download lines; the dialog then confirms it and goes on like an update.
   async function rollbackTo(version) {
     const u = ui.update;
+    if (fromNexus()) return;
     if (u.phase === "checking" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "installing") return;
     u.phase = "checking";
     setDialog(updateHTML());
@@ -1962,6 +1974,7 @@
   }
   function openUpdate() {
     const u = ui.update;
+    if (fromNexus()) { openDialog("update", updateHTML()); return; }
     if (["idle", "latest", "error", "done"].includes(u.phase) || !u.info || (u.phase === "available" && u.info.rollback)) {
       openDialog("update", "");
       checkUpdate();
@@ -2254,7 +2267,7 @@
   }
   // A background check never interrupts the first-run guide; it runs once the guide is closed.
   function scheduleAutoUpdate() {
-    if (!ui.settings.autoUpdate || ui.onboarding || ui.autoChecked) return;
+    if (fromNexus() || !ui.settings.autoUpdate || ui.onboarding || ui.autoChecked) return;
     ui.autoChecked = true;
     setTimeout(() => checkUpdate({ silent: true }), 2600);
   }
@@ -2694,11 +2707,12 @@
         if (dlg?.kind === "update") setDialog(updateHTML());
         break;
       case "host":
-        // Version, game folder and components arrived from the native window.
+        // Version, channel, game folder and components arrived from the native window.
         renderTopbar();
         if (ui.page === "arena") renderBanner();
         if (ui.onboarding) renderOnboarding();
         else if (ui.page === "settings" || ui.page === "about") renderPage();
+        if (dlg?.kind === "update") setDialog(updateHTML());
         break;
       case "state": {
         // RealRuntime names the parts whose data changed, so polling never re-renders what the player is using.

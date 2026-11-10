@@ -62,6 +62,8 @@ const MockRuntime = (() => {
     game: "ready",              // offline | connecting | notInMap | ready | mismatch
     gameRunning: true,          // the updater refuses to replace mod files while the game runs
     appVersion: "0.26.2",
+    // ?channel=nexus previews the Nexus Mods build, which has no update check or download.
+    channel: typeof location !== "undefined" && new URLSearchParams(location.search).get("channel") === "nexus" ? "nexus" : "github",
     modVersion: "0.26.2",
     blue: 0, red: 0, neutral: 0,  // alive (HP above 0), like blue_count / red_count / neutral_count
     companion: 0,               // companions follow the player and stay through "stop and clear" (companion_count)

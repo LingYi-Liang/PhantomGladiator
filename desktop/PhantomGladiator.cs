@@ -1,7 +1,8 @@
 // Native window of the packaged app. It shows the app UI (panel/prototype, served by panel/backend.py
 // with the bundled Python) in WebView2 and does what a web page cannot: find and prepare the game
 // folder, launch the game, export a diagnostic report and install updates.
-// C# 5 / .NET Framework 4.8, compiled by tools/package/build.py with the framework's own csc.
+// C# 5 / .NET Framework 4.8, compiled by tools/package/build.py with the framework's own csc. The Nexus Mods build
+// (/define:NEXUS) has no update check or download: see UpdateClient.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -47,7 +48,9 @@ namespace PhantomGladiator
                     return;
                 }
                 UpdateClient.CleanUp();
+#if !NEXUS
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+#endif
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new MainForm());
@@ -74,6 +77,11 @@ namespace PhantomGladiator
     // What this build installs: app/version.json, written by the build script.
     sealed class BuildInfo
     {
+#if NEXUS
+        public const string Channel = "nexus";
+#else
+        public const string Channel = "github";
+#endif
         public string AppVersion = "0.0.0", ModBuild = "", VerifiedGameBuild = "", Repo = "";
         public List<string> Manifests = new List<string>();
 
@@ -499,6 +507,7 @@ namespace PhantomGladiator
     }
 
     // ---------- Updates ----------
+#if !NEXUS
     // Downloads a package split into small files (a manifest's "parts", tools/release/parts.py) from whichever listed
     // source is fastest right now. A short speed test says little about a congested mirror, so the ranking comes from the
     // parts themselves: the first parts go to different sources, later ones to the fastest so far, and a part running far
@@ -689,9 +698,22 @@ namespace PhantomGladiator
             lastDone = done;
         }
     }
+#endif
 
     sealed class UpdateClient
     {
+#if NEXUS
+        // Nexus Mods does not allow uploaded files that download updates, so this build has no update check, download
+        // or install: new versions come from the mod page. The calls keep their shape and refuse without connecting.
+        public UpdateClient(BuildInfo b) { }
+        static HostError Off() { return new HostError("updatesOff", "这个版本不联网检查或下载更新。"); }
+        public Dictionary<string, object> Check(string lang) { throw Off(); }
+        public Dictionary<string, object> SelectVersion(string version, string lang) { throw Off(); }
+        public void Download(string line, Action<long, long, double> progress) { throw Off(); }
+        public void Cancel() { }
+        public void Verify() { throw Off(); }
+        public void Install() { throw Off(); }
+#else
         const string FirstSafeSwapVersion = "0.40.10";
         readonly BuildInfo build;
         Dictionary<string, object> manifest;
@@ -981,6 +1003,7 @@ namespace PhantomGladiator
             }
             catch (Exception e) { throw new HostError("install", "版本已装好，但未能自动打开。可以从此目录运行 " + installed + "\n" + e.Message); }
         }
+#endif
 
         // At start: what the last update set aside, and the updater.exe copy (with the DLLs it needed) that versions
         // before 0.37.6 ran from AppData. Anything still in use is left for the next start.
@@ -1163,7 +1186,7 @@ namespace PhantomGladiator
                     await StartBackend();
                     return null;
                 case "info":
-                    return new Dictionary<string, object> { { "appVersion", build.AppVersion }, { "modBuild", build.ModBuild }, { "gamePath", game != null ? game.Root : "" }, { "gameRunning", gameRunning } };
+                    return new Dictionary<string, object> { { "appVersion", build.AppVersion }, { "modBuild", build.ModBuild }, { "channel", BuildInfo.Channel }, { "gamePath", game != null ? game.Root : "" }, { "gameRunning", gameRunning } };
                 case "detectGame":
                 {
                     var found = await Task.Run(() => GameLocator.Detect());
@@ -1265,7 +1288,7 @@ namespace PhantomGladiator
                 add(Paths.In("logs", "backend.log"), "backend.log");
                 zip.CreateEntry("app.txt");
                 using (var w = new StreamWriter(zip.GetEntry("app.txt").Open(), new UTF8Encoding(false)))
-                    w.Write("app " + build.AppVersion + "\r\nmod " + build.ModBuild + "\r\ngame " + (game != null ? game.Root + " build " + game.Build : "not found") + "\r\nwindows " + Environment.OSVersion + "\r\n");
+                    w.Write("app " + build.AppVersion + " " + BuildInfo.Channel + "\r\nmod " + build.ModBuild + "\r\ngame " + (game != null ? game.Root + " build " + game.Build : "not found") + "\r\nwindows " + Environment.OSVersion + "\r\n");
                 if (game != null)
                 {
                     add(Path.Combine(game.Ue4ssDir, "UE4SS.log"), "UE4SS.log");

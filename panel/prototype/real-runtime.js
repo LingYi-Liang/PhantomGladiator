@@ -18,6 +18,7 @@ const RealRuntime = (() => {
     game: "offline",            // offline | connecting | notInMap | ready | mismatch
     gameRunning: false,
     appVersion: "",
+    channel: "github",          // "nexus": the Nexus Mods build, which has no update check or download
     modVersion: "",             // build the running mod reports
     expectedBuild: "",          // build this app installs
     gamePath: "",
@@ -521,6 +522,7 @@ const RealRuntime = (() => {
 
   host("info").then(info => {
     s.appVersion = info.appVersion;
+    s.channel = info.channel || "github";
     s.expectedBuild = info.modBuild;
     s.gamePath = info.gamePath || "";
     s.gameRunning = !!info.gameRunning;

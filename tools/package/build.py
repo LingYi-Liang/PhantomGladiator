@@ -1,10 +1,14 @@
 """Builds the player package: dist/PhantomGladiator-<version>/ and its zip.
 
-usage: python tools/package/build.py --deps <folder> [--seed <Runtime folder>] [--version 0.30.0]
+usage: python tools/package/build.py --deps <folder> [--seed <Runtime folder>] [--version 0.30.0] [--channel nexus]
 
 --deps holds the three third-party downloads pinned below (fetched once, by hand, from the listed
 URLs). --seed is a Runtime folder whose codex export becomes the slim catalog shipped with the app;
 it defaults to the author's game install. Nothing here touches the game or the player's data.
+
+--channel nexus builds the Nexus Mods upload, PhantomGladiator-<version>-nexus: the app is compiled without
+its update check and download (Nexus Mods does not allow files that download updates), and the embeddable
+Python's standard library is unpacked from its zip (an archive inside the upload is turned away).
 """
 from __future__ import annotations
 
@@ -34,6 +38,7 @@ DEPS = {
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
 VERIFIED_GAME_BUILD = "26367565"
 REPO = "LingYi-Liang/PhantomGladiator"
+NEXUS_PAGE = "https://www.nexusmods.com/phantombladezero/mods/363"
 # The legacy feed stays frozen so an old updater cannot offer an in-place migration to this series.
 MANIFESTS = [
     f"cdn|https://cdn.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
@@ -170,6 +175,29 @@ Phantom Gladiator — NPC battles for Phantom Blade Zero  v{version}
 Unzip the whole folder, run PhantomGladiator.exe, and follow the first-run guide.
 Steam build {game_build} only. Delete the folder to uninstall.
 """
+# The Nexus Mods build checks and downloads nothing, so its readme says where new versions come from.
+README_NEXUS = """【更新】
+这个版本来自 Nexus Mods，助手不会联网检查或下载更新。新版本请到 {page} 下载，解压后运行新的 PhantomGladiator.exe（设置会保留），再按提示一键安装游戏里的组件。
+
+"""
+README_NEXUS_EN = """This Nexus Mods build does not check for or download updates. Get new versions from {page}:
+unzip, run the new PhantomGladiator.exe (your settings are kept) and install the game components when the app asks.
+"""
+
+
+def unpack_stdlib(python: Path) -> None:
+    """The embeddable Python keeps its standard library (compiled .pyc files) in pythonXY.zip, listed in pythonXY._pth.
+    Unpacks it to Lib and lists Lib instead, for the Nexus Mods upload."""
+    pth = next(python.glob("python3*._pth"))
+    stdlib = python / f"{pth.stem}.zip"
+    lines = pth.read_bytes().decode("utf-8").splitlines(keepends=True)
+    listed = [i for i, line in enumerate(lines) if line.strip() == stdlib.name]
+    if len(listed) != 1 or not stdlib.is_file() or (python / "Lib").exists():
+        sys.exit(f"{pth.name}: expected {stdlib.name} listed once, present, and no Lib folder yet")
+    extract(stdlib, python / "Lib")
+    stdlib.unlink()
+    lines[listed[0]] = lines[listed[0]].replace(stdlib.name, "Lib")
+    pth.write_bytes("".join(lines).encode("utf-8"))
 
 
 def mod_build() -> str:
@@ -185,9 +213,11 @@ def main() -> None:
     parser.add_argument("--seed", type=Path, required=True)
     parser.add_argument("--version", default="0.30.0")
     parser.add_argument("--out", type=Path, default=ROOT / "dist")
+    parser.add_argument("--channel", choices=["github", "nexus"], default="github")
     args = parser.parse_args()
+    nexus = args.channel == "nexus"
 
-    name = f"PhantomGladiator-{args.version}"
+    name = f"PhantomGladiator-{args.version}" + ("-nexus" if nexus else "")
     out = args.out / name
     build = args.out / "build"
     if out.exists():
@@ -200,6 +230,8 @@ def main() -> None:
 
     # Third-party pieces, each checked against its pinned hash.
     extract(dependency(args.deps, "python"), app / "python")
+    if nexus:
+        unpack_stdlib(app / "python")
     extract(dependency(args.deps, "webview2"), build / "webview2", ["lib/net462/", "runtimes/win-x64/native/", "LICENSE"])
     extract(dependency(args.deps, "ue4ss"), app / "payload" / "ue4ss", strip=UE4SS_IN_PACKAGE)
 
@@ -237,6 +269,8 @@ def main() -> None:
     (ui / "index.html").write_text(html, encoding="utf-8", newline="\n")
 
     info = {"appVersion": args.version, "modBuild": mod_build(), "verifiedGameBuild": VERIFIED_GAME_BUILD, "repo": REPO, "manifests": MANIFESTS}
+    if nexus:
+        info.update(channel="nexus", manifests=[])
     (app / "version.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # Native window, compiled with the .NET Framework's own compiler.
@@ -249,6 +283,7 @@ def main() -> None:
         shutil.copy2(wv / dll, out / Path(dll).name)
     refs = [f"/r:{r}" for r in FRAMEWORK_REFS] + [f"/r:{out / 'Microsoft.Web.WebView2.Core.dll'}", f"/r:{out / 'Microsoft.Web.WebView2.WinForms.dll'}"]
     subprocess.run([str(CSC), "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/utf8output", "/codepage:65001",
+                    *(["/define:NEXUS"] if nexus else []),
                     f"/out:{out / 'PhantomGladiator.exe'}", f"/win32icon:{icon}", f"/win32manifest:{build / 'app.manifest'}", *refs,
                     str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs")], check=True)
     (out / "PhantomGladiator.exe.config").write_text(EXE_CONFIG, encoding="utf-8")
@@ -256,7 +291,10 @@ def main() -> None:
     for lic in wv.glob("LICENSE*"):
         shutil.copy2(lic, out / "licenses" / "WebView2-LICENSE.txt")
     shutil.copy2(ROOT / "LICENSE", out / "licenses" / "PhantomGladiator-LICENSE.txt")
-    (out / "使用说明.txt").write_text(README.format(version=args.version, repo=REPO, game_build=VERIFIED_GAME_BUILD, python="3.11.9").replace("\n", "\r\n"), encoding="utf-8-sig")
+    readme = README.format(version=args.version, repo=REPO, game_build=VERIFIED_GAME_BUILD, python="3.11.9")
+    if nexus:
+        readme = readme.replace("【第三方组件】", README_NEXUS.format(page=NEXUS_PAGE) + "【第三方组件】", 1) + README_NEXUS_EN.format(page=NEXUS_PAGE)
+    (out / "使用说明.txt").write_text(readme.replace("\n", "\r\n"), encoding="utf-8-sig")
 
     # The zip plus the manifest entry a release needs.
     archive = args.out / f"{name}-win64.zip"
@@ -272,11 +310,12 @@ def main() -> None:
                 z.writestr(entry, path.read_bytes(), compresslevel=9)
     digest = sha256(archive)
     (args.out / f"{name}-win64.zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
-    url = f"https://github.com/{REPO}/releases/download/v{args.version}/{archive.name}"
-    latest = {"version": args.version, "date": "", "size": archive.stat().st_size, "sha256": digest,
-              "notes": {"zh": [], "en": []},
-              "downloads": [{"id": "cn1", "url": "https://ghfast.top/" + url}, {"id": "cn2", "url": "https://gh-proxy.com/" + url}, {"id": "github", "url": url}]}
-    (args.out / "latest.json").write_text(json.dumps(latest, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not nexus:  # the update feed only lists the GitHub release
+        url = f"https://github.com/{REPO}/releases/download/v{args.version}/{archive.name}"
+        latest = {"version": args.version, "date": "", "size": archive.stat().st_size, "sha256": digest,
+                  "notes": {"zh": [], "en": []},
+                  "downloads": [{"id": "cn1", "url": "https://ghfast.top/" + url}, {"id": "cn2", "url": "https://gh-proxy.com/" + url}, {"id": "github", "url": url}]}
+        (args.out / "latest.json").write_text(json.dumps(latest, ensure_ascii=False, indent=2), encoding="utf-8")
     shutil.rmtree(build)
     print(f"{archive} ({archive.stat().st_size / 1048576:.1f} MB)\nsha256 {digest}")
 
