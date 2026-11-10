@@ -11,7 +11,8 @@ function section(start, end) {
   return app.slice(first, last);
 }
 
-const units = ["alpha", "beta", "blocked"].map(id => ({ id, name: id, zhName: id }));
+const units = [{ id: "alpha", ch: 1, boss: false }, { id: "beta", ch: 1, boss: true }, { id: "blocked", ch: 2, boss: false }]
+  .map(u => ({ ...u, name: u.id, zhName: u.id }));
 const ui = { legacyPool: ["alpha"], poolQuery: "alp", count: 3, team: "red", busy: new Set() };
 const S = { summonLimits: { alpha: 100, beta: 1 }, gameRunning: false,
   monsterPools: { revision: 0, pools: [] }, poolStatus: { scope: "fixture", keys: {} } };
@@ -45,10 +46,37 @@ vm.runInContext(section("  function poolList()", "  function settingsHTML()"), c
   assert.equal(context.selectedPool().unit_ids.join(), "alpha", "the prior single list is imported");
   context.createPool();
   context.updatePool({ name: "随从池", team: "companion", count: 1, key_code: 81, modifiers: 2 });
-  assert.equal(context.poolMatches().map(u => u.id).join(), "alpha,beta,blocked");
+  // The "add units" dialog: type, chapter and search narrow the list; ticked units go in together, once each.
+  ui.poolPick = { type: "all", chapter: "all", query: "", checked: new Set() };
+  assert.equal(context.poolPickUnits().map(u => u.id).join(), "alpha,beta,blocked");
+  ui.poolPick.type = "boss";
+  assert.equal(context.poolPickUnits().map(u => u.id).join(), "beta");
+  ui.poolPick.type = "minion"; ui.poolPick.chapter = "2";
+  assert.equal(context.poolPickUnits().map(u => u.id).join(), "blocked");
+  ui.poolPick.chapter = "all"; ui.poolPick.query = "ALP";
+  assert.equal(context.poolPickUnits().map(u => u.id).join(), "alpha");
   context.changePool("beta", true);
   context.changePool("beta", true);
   assert.equal(context.selectedPool().unit_ids.join(), "beta");
+  context.changePool(["blocked", "beta", "alpha", "blocked", "missing"], true);
+  assert.equal(context.selectedPool().unit_ids.join(), "beta,blocked,alpha", "several at once, no repeats, unknown ids skipped");
+  // Each unit is drawn on its own; a member leaves the draw at its own limit and one that cannot be summoned never enters.
+  context.RT.demo = false;
+  // Members beta (one per summon), blocked (not summonable), alpha: the draws take alpha, beta, then alpha for the rest.
+  const rolls = [0.9, 0, 0, 0, 0];
+  assert.equal(JSON.stringify(context.poolDraw({ ...context.selectedPool(), count: 5 }, () => rolls.shift())), '[["alpha",4],["beta",1]]');
+  assert.equal(JSON.stringify(context.poolDraw({ unit_ids: ["beta", "blocked"], count: 3 }, () => 0)), '[["beta",1]]', "short when the limits run out");
+  context.RT.demo = true;
+  context.changePool("blocked", false);
+  context.changePool("alpha", false);
+  assert.equal(context.selectedPool().unit_ids.join(), "beta");
+  // A copy keeps members, team and count, and takes no key.
+  context.createPool(context.selectedPool());
+  const copy = context.selectedPool();
+  assert.equal(copy.name, "随从池 副本");
+  assert.equal([copy.team, copy.count, copy.key_code, copy.modifiers, copy.unit_ids.join()].join(), "companion,1,0,0,beta");
+  context.deletePool();
+  ui.poolId = context.poolList().find(p => p.name === "随从池").id;
   context.renderPoolSummon();
   assert.equal(button.disabled, true);
   await context.summonFromPool();

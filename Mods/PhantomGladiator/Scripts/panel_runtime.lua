@@ -19,6 +19,12 @@ function Runtime.new(options)
     self.summonQueue=SummonQueue.new({log=self.log,
         session=function()return options.session and options.session:status() end,
         spawn=function(path,team,count)return self:summon(path,team,count)end})
+    -- Monster pool keys while the summon queue above is off: every press is kept here instead of being dropped as a
+    -- held key would be (queueSummon). It is always on, and takes turns with the other summon shortcuts.
+    self.poolQueue=SummonQueue.new({log=function(line)self.log((line:gsub('^%[SummonQueue%]','[PoolQueue]')))end,
+        session=function()return options.session and options.session:status() end,
+        spawn=function(path,team,count)return self:summon(path,team,count)end})
+    self.poolQueue.enabled=true
     self.router=options.router or KeyRouter.new({log=self.log})
     local function unitOwner(vk,mask)
         local unit=options.unitKeys and options.unitKeys:owner(vk,mask)
@@ -36,14 +42,14 @@ function Runtime.new(options)
             local unit=unitOwner(vk,mask)
             if unit then return '单位「'..unit..'」' end
         end,
-        eligible=function(path,count)
+        -- How many of this unit one summon may hold; 0 when it cannot be summoned.
+        capacity=function(path)
             local policy=options.spawnPolicy
-            if not policy or not policy.check(path) then return false end
+            if not policy or not policy.check(path) then return 0 end
             local limit=policy.limits(path)
-            return not limit or count<=limit.max_count
+            return limit and limit.max_count or 100
         end,
-        queue=function(callback,path,team,count)return self:queueSummon(callback,path,team,count)end,
-        spawn=function(path,team,count)return self:summon(path,team,count)end})
+        queue=function(path,team,count)return self:queuePoolSummon(path,team,count)end})
     self.router.dispatch=function(vk,mask)
         if not self.alive or self.functionKeys:press(vk,mask) then return end
         if options.unitKeys and options.unitKeys:dispatch(vk,mask) then return end
@@ -201,6 +207,7 @@ function Runtime.new(options)
         end,
         stop=function()
             if self.summonQueue.enabled then self.summonQueue:cancel('停止并清理') end
+            if #self.poolQueue.jobs>0 then self.poolQueue:cancel('停止并清理') end
             if options.support then options.support:discover() end
             return options.arena:stop()
         end,
@@ -283,12 +290,14 @@ function Runtime.new(options)
         out.monster_pool_keys_schema=1
         local queue=self.summonQueue
         if queue.enabled then queue:sync(session) end
+        self.poolQueue:sync(session)
         out.summon_queue_enabled=queue.enabled
         out.summon_queue_epoch=queue:epoch()
         out.summon_queue_waiting=#queue.jobs
         out.summon_queue_running=queue.running==true
         out.summon_queue_completed=queue.completed
         out.summon_queue_message=queue.message
+        out.monster_pool_queue_waiting=#self.poolQueue.jobs
         local policy=options.spawnPolicy and options.spawnPolicy.status() or {}
         out.spawn_trial_policy=policy.version or ''
         out.spawn_trial_count=policy.count or 0
@@ -489,6 +498,7 @@ function Runtime:setSummonQueue(enabled)
         self.summonLoopToken,self.summonLoop=token,handle
         self.summonPending=nil
         queue.enabled=true
+        if #self.poolQueue.jobs>0 then self.poolQueue:cancel('排队召唤已开启') end
         if self.nextSummonAt and (not queue.nextAt or self.nextSummonAt>queue.nextAt) then queue.nextAt=self.nextSummonAt end
         queue.completed=0
         queue:cancel('排队召唤已开启')
@@ -540,6 +550,31 @@ function Runtime:queueSummon(callback,path,team,count)
         self.summonPending=nil
         self.log('[SummonKey] 无法排入游戏线程: '..tostring(queueError))
     end
+end
+
+-- A monster pool key. With the summon queue on it joins that queue; otherwise it waits in poolQueue, which runs one
+-- summon at a time from the game thread: at once when nothing is in the way, then from the panel pump.
+function Runtime:queuePoolSummon(path,team,count)
+    if not self.alive then return end
+    if self.summonQueue.enabled then return self.summonQueue:enqueue(path,team,count) end
+    -- Called from the key thread: the session is not read here. The status pump keeps poolQueue's session current
+    -- and tick() reads it again in the game thread before each summon.
+    local queue=self.poolQueue
+    local result=queue:enqueue(path,team,count)
+    if result.ok and #queue.jobs==1 and not self.poolKick then
+        self.poolKick=true
+        local queued=pcall(ExecuteInGameThread,function()
+            self.poolKick=nil
+            self:tickPoolQueue()
+        end)
+        if not queued then self.poolKick=nil end
+    end
+    return result
+end
+function Runtime:tickPoolQueue()
+    if not self.alive or self.summonQueue.enabled or self.summonPending then return end
+    if self.nextSummonAt and os.clock()<self.nextSummonAt then return end
+    self.poolQueue:tick()
 end
 
 function Runtime:dispatch(action,command)
@@ -613,6 +648,7 @@ function Runtime:start()
             self.options.references:tick()
         end
         if self.options.spectator then self.options.spectator:tick() end
+        self:tickPoolQueue()
         self.healthTicks=(self.healthTicks or 0)+1
         if self.healthTicks%4==0 and self.options.arena.sampleHealth then self.options.arena:sampleHealth() end
         if self.healthTicks%2==0 and self.options.support then self.options.support:tick() end
@@ -650,6 +686,7 @@ end
 function Runtime:silence()
     self.alive=false
     if self.summonQueue.enabled then self:setSummonQueue(false) end
+    self.poolQueue.enabled=false;self.poolQueue.jobs={}
     self.functionKeys:silence();self.router:silence()
     if self.options.unitKeys then self.options.unitKeys:silence() end
     self.pumpReady=false

@@ -342,11 +342,6 @@ a.btn, a.menu-item { text-decoration: none; }
 .nav-item:hover { background: var(--bg-hover); color: var(--text); }
 .nav-item[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border); font-weight: 650; }
 .nav-item[aria-current="page"] .icon { color: var(--seal); }
-.arena-extra { min-width: 0; }
-.arena-extra summary { cursor: pointer; list-style: none; }
-.arena-extra summary::-webkit-details-marker { display: none; }
-.arena-extra-items .nav-item { width: 100%; }
-.arena-extra-items { padding-left: 6px; }
 .rail-spacer { flex: 1; }
 .rail-credit {
   display: flex;
@@ -620,6 +615,16 @@ mark { background: rgba(244, 196, 80, .38); color: inherit; border-radius: 3px; 
 /* ---------- Dock ---------- */
 .dock { background: var(--surface); border-left: 1px solid var(--border); min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .dock-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* The dock's tabs (app.js DOCK_TABS): sections carry data-tab and only the chosen tab's are shown. */
+.dock-tabs { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 14px 22px 0; padding: 3px; background: var(--surface-3); border: 1px solid var(--border); border-radius: 11px; }
+.dock-tabs .seg-btn { justify-content: center; }
+.dock-tabs .seg-btn[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 650; }
+.dock-tabs .count { font-size: 11.5px; color: var(--amber); font-weight: 600; }
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.dock[data-tab="summon"] .dock-section:not([data-tab="summon"]),
+.dock[data-tab="rules"] .dock-section:not([data-tab="rules"]),
+.dock[data-tab="view"] .dock-section:not([data-tab="view"]) { display: none; }
+.dock-scroll > .dock-section:last-of-type { border-bottom: 0; }
 /* Battle controls stay pinned so "Start" never scrolls away on a laptop-height window. */
 .dock-footer { flex: none; padding: 14px 22px 18px; border-top: 1px solid var(--border); background: var(--surface); box-shadow: 0 -12px 24px -18px rgba(30, 26, 20, .28); position: relative; z-index: 2; }
 .dock-footer .dock-title { margin-bottom: 10px; }
@@ -942,6 +947,67 @@ mark { background: rgba(244, 196, 80, .38); color: inherit; border-radius: 3px; 
 
 /* ---------- Settings ---------- */
 .option-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+/* ---------- Monster pools (app.js poolPageHTML) ---------- */
+.pool-page { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.pool-cols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; align-items: start; }
+.pool-savebar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; border-radius: var(--r); background: var(--amber-soft); font-size: 13px; position: sticky; top: 0; z-index: 3; }
+.pool-savebar[hidden] { display: none; }
+.pool-savebar > span { flex: 1; min-width: 0; color: var(--text); }
+.pool-savebar.is-error { background: var(--red-soft); }
+.pool-list { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; }
+.pool-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 9px 12px; text-align: left; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface); color: var(--text); transition: border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast); }
+.pool-item:hover:not(:disabled) { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.pool-item.is-selected { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.pool-item .team-dot { flex: none; }
+.pool-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pool-item-name { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-item-meta { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-item-nokey { font-size: 12px; color: var(--text-3); flex: none; }
+.pool-item-new { justify-content: center; gap: 6px; min-height: 44px; border-style: dashed; background: transparent; color: var(--text-2); font-weight: 600; font-size: 13px; }
+.pool-item-new:disabled { opacity: .5; }
+.pool-detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pool-head { display: flex; align-items: center; gap: 6px; padding: 16px 16px 0 20px; }
+.pool-name { flex: 1; min-width: 0; height: 38px; padding: 0 10px; margin-left: -10px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 18px; font-weight: 700; }
+.pool-name:hover:not(:disabled) { border-color: var(--border-strong); }
+.pool-name:focus { border-color: var(--focus); box-shadow: 0 0 0 3px rgba(47, 111, 222, .16); outline: none; background: var(--surface); }
+.pool-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; padding: 14px 20px 4px; }
+.pool-fields .field:last-child { grid-column: 1 / -1; }
+.pool-key { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.pool-key .btn .kbd { margin-right: 2px; }
+.pool-key-status { font-size: 12.5px; color: var(--text-3); }
+.pool-try { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 20px 16px; border-top: 1px solid var(--border); }
+.card-title .chip { margin-left: 8px; vertical-align: 1px; }
+.pool-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 8px; padding: 14px 20px 20px; }
+.pool-member { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 4px 5px 5px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.pool-member .avatar, .pool-pick-item .avatar { width: 30px; aspect-ratio: 1; border-radius: 8px; flex: none; }
+.pool-member .avatar-initial, .pool-pick-item .avatar-initial { font-size: 16px; }
+.pool-member .avatar-art, .pool-pick-item .avatar-art { object-fit: cover; object-position: 50% 0; }
+.pool-member-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-member.is-boss .avatar { box-shadow: inset 0 0 0 2px rgba(244, 205, 120, .85); }
+.pool-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 24px 36px; text-align: center; color: var(--text-3); font-size: 13px; }
+.pool-empty .icon { width: 26px; height: 26px; }
+.pool-empty p { max-width: 340px; }
+/* The "add units" dialog */
+.dialog.dialog-wide { width: min(780px, 100%); }
+.pool-pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 24px 12px; }
+.pool-pick-bar .search { flex: 1; min-width: 180px; }
+.pool-pick-list { flex: 1; min-height: 120px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; align-content: start; padding: 2px 24px 16px; }
+.pool-pick-item { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 10px 6px 6px; text-align: left; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); transition: border-color var(--t-fast), background var(--t-fast); }
+.pool-pick-item:hover:not(:disabled) { border-color: var(--border-strong); }
+.pool-pick-item[aria-selected="true"]:not(:disabled) { border-color: var(--blue); background: var(--blue-soft); box-shadow: inset 0 0 0 1px var(--blue); }
+.pool-pick-item:disabled { opacity: .55; }
+.pool-pick-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pool-pick-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-pick-meta { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pool-pick-state { flex: none; display: grid; place-items: center; min-width: 18px; height: 18px; font-size: 11.5px; color: var(--text-3); }
+.pool-pick-state .icon { width: 18px; height: 18px; padding: 2px; border-radius: 50%; border: 1.5px solid var(--border-strong); color: transparent; stroke-width: 3; }
+.pool-pick-item[aria-selected="true"] .pool-pick-state .icon { background: var(--blue); border-color: var(--blue); color: #fff; }
+.pool-pick-none { grid-column: 1 / -1; padding: 28px 0; text-align: center; color: var(--text-3); }
+@media (max-width: 900px) {
+  .pool-cols { grid-template-columns: minmax(0, 1fr); }
+  .pool-list { position: static; }
+  .pool-fields { grid-template-columns: minmax(0, 1fr); }
+}
 .option {
   display: flex;
   align-items: center;
@@ -1296,9 +1362,6 @@ body.has-dock.has-dialog .toasts { right: 20px; }
   .rail-spacer, .rail-credit { display: none; }
   .nav-item { flex: 1; height: 50px; flex-direction: column; gap: 2px; font-size: 11px; }
   .nav-item span { display: block; }
-  .arena-extra { position: relative; flex: 1; }
-  .arena-extra-items { position: absolute; bottom: 100%; left: 0; min-width: 108px; padding: 3px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .topbar { gap: 8px; padding: 0 8px; }
   .topbar-actions { gap: 2px; }
   /* Phones keep the essentials in the bar; the theme switch is still in Settings. */

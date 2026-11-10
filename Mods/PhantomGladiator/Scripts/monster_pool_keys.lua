@@ -106,24 +106,32 @@ function Keys.new(options)
         local slot=Router.slot(vk,mask)
         local pool=self.active[slot]
         if not pool then return false end
-        local choices={}
+        -- Each of the pool's `count` units is drawn on its own. A member leaves the draw once it has as many as one
+        -- summon of it allows (options.capacity), so the draw can end short of `count`.
+        local choices,room={},{}
         for _,path in ipairs(pool.paths)do
-            if options.eligible(path,pool.count) then choices[#choices+1]=path end
+            local most=options.capacity(path)
+            if most>0 then choices[#choices+1]=path;room[path]=most end
         end
-        if #choices==0 then log('[PoolKeys] '..pool.id..'；读回=没有符合数量的可召唤单位');return true end
-        local path=choices[math.random(#choices)]
-        local expectedSession=self.session
-        local result=options.queue(function()
-            if self.active[slot]~=pool then return end
-            local session=options.session()
-            if session.game_ready~=true or session.game_session~=expectedSession then
-                log('[PoolKeys] '..pool.id..'；读回=游戏未就绪或已换图，未召唤');return
-            end
-            local outcome=options.spawn(path,pool.team,pool.count)
-            log('[PoolKeys] 召唤 pool='..pool.id..' path='..path..'；读回='..tostring(outcome and outcome.message))
-        end,path,pool.team,pool.count)
-        if result then
-            log('[PoolKeys] 排队 pool='..pool.id..' path='..path..'；读回='..tostring(result.message))
+        if #choices==0 then log('[PoolKeys] '..pool.id..'；读回=池里没有可召唤的单位');return true end
+        local order,drawn,total={},{},0
+        for _=1,pool.count do
+            if #choices==0 then break end
+            local at=math.random(#choices)
+            local path=choices[at]
+            if not drawn[path] then drawn[path]=0;order[#order+1]=path end
+            drawn[path]=drawn[path]+1;total=total+1
+            if drawn[path]>=room[path] then table.remove(choices,at) end
+        end
+        if total<pool.count then
+            log('[PoolKeys] '..pool.id..'；读回=成员的单次召唤上限不够，只抽出 '..total..'/'..pool.count)
+        end
+        -- One queued summon per kind drawn; every press is kept (panel_runtime.lua queuePoolSummon).
+        for _,path in ipairs(order)do
+            local result=options.queue(path,pool.team,drawn[path])
+            log('[PoolKeys] 排队 pool='..pool.id..' path='..path..' count='..drawn[path]
+                ..'；读回='..tostring(result and result.message))
+            if not result or result.ok~=true then break end
         end
         return true
     end

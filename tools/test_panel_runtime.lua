@@ -288,6 +288,60 @@ test("two pool keys dispatch their own members and team, obey queueing and drop 
     assert(h.files['memory/monster-pools-state.tsv']=='MonsterPoolKeysV1\t2\tnext-map\npool-small\t1\t\n')
 end)
 
+test("pool keys keep every press with the summon queue off, one summon at a time, and stop clears them",function()
+    local h=harness()
+    local now=10
+    h.env.os.clock=function() return now end
+    local a='/Game/BP_A.BP_A_C'
+    h.files['memory/monster-pools.tsv']='MonsterPoolsV1\t1\npool-gift\tGift\tneutral\t1\t81\t1\t'..a..'\n'
+    h.runtime=h.new({spawnPolicy={check=function()return true end,limits=function()end,status=function()return {}end}})
+    assert(h.runtime:start());h:tick()
+    for _=1,5 do h.keys['Q:1']() end
+    assert(#h.runtime.poolQueue.jobs==5 and #h.queue==1 and count(h,'spawn')==0,'five presses wait; one game-thread kick')
+    h:drain()
+    assert(count(h,'spawn')==1 and #h.runtime.poolQueue.jobs==4,'the first runs at once')
+    h:tick();assert(count(h,'spawn')==1,'the gap after a summon is kept')
+    for n=2,5 do now=now+0.3;h:tick();assert(count(h,'spawn')==n) end
+    assert(#h.runtime.poolQueue.jobs==0 and h.reported.monster_pool_queue_waiting==0)
+    -- Stop and clear empties the pool queue.
+    now=now+0.3
+    for _=1,3 do h.keys['Q:1']() end
+    h:drain();assert(count(h,'spawn')==6)
+    h.inbox={action='stop'};h:tick()
+    assert(#h.runtime.poolQueue.jobs==0,'stop and clear drops waiting pool presses')
+    now=now+1;h:tick();assert(count(h,'spawn')==6)
+    -- The queue holds 100; the press after that is refused, not run twice.
+    for _=1,101 do h.keys['Q:1']() end
+    assert(#h.runtime.poolQueue.jobs==100)
+end)
+
+test("a pool key draws each unit on its own and never beyond a member's own limit",function()
+    local h=harness()
+    local a,b,c='/Game/BP_A.BP_A_C','/Game/BP_B.BP_B_C','/Game/BP_C.BP_C_C'
+    h.files['memory/monster-pools.tsv']='MonsterPoolsV1\t1\npool-mix\tMix\tcompanion\t5\t81\t1\t'..a..';'..b..';'..c..'\n'
+    -- b is a boss that may only come one at a time; c cannot be summoned here.
+    h.runtime=h.new({spawnPolicy={check=function(path)return path~=c end,
+        limits=function(path)if path==b then return {max_count=1}end end,status=function()return {}end}})
+    -- The draws ask for the 2nd, then the 1st of what is left: b, then a for the rest once b is used up.
+    local asks={2,1,1,1,1}
+    h.env.math=setmetatable({random=function(n)local want=table.remove(asks,1);assert(want<=n,'draw beyond the choices left');return want end},{__index=math})
+    assert(h.runtime:start());h:tick()
+    h.keys['Q:1']()
+    local jobs=h.runtime.poolQueue.jobs
+    assert(#jobs==2,'one queued summon per kind drawn')
+    assert(jobs[1].path==b and jobs[1].count==1 and jobs[1].team=='companion')
+    assert(jobs[2].path==a and jobs[2].count==4)
+    -- Only the boss left to draw: the summon comes out short instead of breaking its limit.
+    h.files['memory/monster-pools.tsv']='MonsterPoolsV1\t2\npool-mix\tMix\tred\t3\t81\t1\t'..b..';'..c..'\n'
+    h.runtime.poolQueue.jobs={};asks={1}
+    h:tick();h.keys['Q:1']()
+    jobs=h.runtime.poolQueue.jobs
+    assert(#jobs==1 and jobs[1].path==b and jobs[1].count==1)
+    local short=false
+    for _,line in ipairs(h.logs)do if line:find('只抽出 1/3',1,true)then short=true end end
+    assert(short,'a short draw is logged')
+end)
+
 test("new bindings activate only after persisted readback; old keys stop dispatching",function()
     local h=harness();h.runtime:start()
     local checkedReadback=false

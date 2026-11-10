@@ -25,7 +25,7 @@ const context = {
   },
   byId: new Map([["unit-a", { name: "甲" }]]),
   cleanupBlocker: () => "", renderSelection() {}, renderDock() {},
-  toast: event => notices.push(event), t: key => key, teamName: team => team, matchNote: () => "",
+  toast: event => notices.push(event), icon: () => "", t: key => key, teamName: team => team, matchNote: () => "",
 };
 vm.createContext(context);
 vm.runInContext(section("  function summonQueueSettingsHTML()", "  function renderSummonQueueSettings()") +
@@ -44,10 +44,13 @@ vm.runInContext(section("  function summonQueueSettingsHTML()", "  function rend
   assert.match(context.summonQueueSettingsHTML(), /进入可操作的地图后可开启。/);
   assert.match(context.summonQueueSettingsHTML(), /disabled/);
   S.summonQueue.ready = true;
-  assert.match(section("  function queuePageHTML()", "  function poolList()"), /id="summon-queue-settings"/);
-  assert.doesNotMatch(section("  function settingsHTML()", "  function aboutHTML()"), /id="summon-queue-settings"/);
+  // The switch lives in the arena dock's rules tab; the rail has no queue page and no folding group.
+  assert.match(section("  function arenaHTML()", "  function renderSearchEnd()"), /data-tab="rules" id="dock-queue"/);
+  assert.match(section("  function renderSummonQueueSettings()", "  async function changeSummonQueue("), /#dock-queue/);
+  assert.doesNotMatch(section("  function settingsHTML()", "  function aboutHTML()"), /summonQueueSettingsHTML/);
   const rail = readFileSync(path.join(__dirname, "prototype", "index.html"), "utf8");
-  assert.match(rail, /<details id="arena-extra"[\s\S]*data-page="queue"[\s\S]*data-page="pool"/);
+  assert.match(rail, /data-page="pool"/);
+  assert.doesNotMatch(rail, /arena-extra|data-page="queue"/);
 
   await context.summon();
   assert.equal(calls[0].action, "spawn");
