@@ -277,6 +277,16 @@ function LionStage.new(options)
         return true
     end
 
+    function self:areaFor(actor, world)
+        if gone(actor) or not U.inWorld(actor, world) then return nil end
+        if active and active.ready and not active.closing and sameActor(active.world, world)
+            and not gone(active.area) and overlaps(actor, active.area) == true then
+            return active.area
+        end
+        local area, checked = nearbyArea(actor, world)
+        return checked and area or nil
+    end
+
     function self:releaseActor(actor)
         local key = U.key(actor)
         if not active or not key or not active.bosses[key] then return end

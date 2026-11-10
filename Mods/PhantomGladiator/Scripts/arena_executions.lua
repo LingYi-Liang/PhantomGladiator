@@ -324,7 +324,8 @@ function Exec.new(options)
             local against
             if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
             else against=member.team=='companion' end
-            if against and not member.reserve and not member.aid and U.valid(other) then
+            if against and not member.reserve and not member.aid and U.valid(other)
+                and not (options.onPole and options.onPole(other)) then
                 local hp=read(other,'Health')
                 local d=hp and hp>0 and distance(target,other)
                 if d and d<=reach and (not bestDistance or d<bestDistance) and (anyone or isHumanoid(other))
@@ -492,6 +493,33 @@ function Exec.new(options)
         local destroyed=call(body.comp,'K2_DestroyComponent',body.comp)
         local settled=U.valid(body.executor) and settle(partsOf(body.executor)) or '执行方已失效'
         return string.format('还原跟随=%d/%d 补回=%d 移除借来的骨架=%s %s',back,#body.followers,swept,tostring(destroyed),settled)
+    end
+
+    -- Temporary presentation for the pole controller. Combat, targeting and input remain on the NPC.
+    function self:borrowPolePose(actor,clip)
+        if active or grabPose or next(pendingBodies) then return nil end
+        local mesh=U.field(actor,'Mesh')
+        if not U.valid(mesh) or U.valid(weak(U.field(mesh,'LeaderPoseComponent'))) then return nil end
+        local body,why=borrowBody(actor,{clip=clip,same_skeleton=true})
+        if not body then return nil end
+        if why or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key then
+            returnBody(body)
+            return nil
+        end
+        local pose={}
+        function pose:position()
+            if not body or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key then return nil end
+            local ok,value=call(body.comp,'GetPosition')
+            return ok and type(value)=='number' and value or nil
+        end
+        function pose:stop()
+            if not body then return true end
+            if U.valid(body.comp) then returnBody(body) end
+            if pendingBodies[body.key] then return false end
+            body=nil
+            return true
+        end
+        return pose
     end
 
     local function brainPaused(brain)
@@ -1109,6 +1137,7 @@ function Exec.new(options)
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     local function tryExecute(target,unit,t,team)
+        if options.onPole and options.onPole(target) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
         local locked=onLock(target,unit,hp)

@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-lion-pole-test-1"
+local BUILD = "v0.40.11-lion-npc-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1348,7 +1348,9 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return HoldSensedTarget(actor,target,why)
     end,
     releaseLock=function(actor,target)return arenaSupport.lockRelease~=nil and arenaSupport.lockRelease:release(actor,target)end,
-    unstick=function(actor,target)return onGround~=nil and onGround:free(actor,target)end,
+    unstick=function(actor,target)
+        return onGround~=nil and not (arenaSupport.lionNPC and arenaSupport.lionNPC:holds(actor)) and onGround:free(actor,target)
+    end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
     spawnClass=SpawnViaAILib,
@@ -1488,6 +1490,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     destroy=function(actor)
         checked(actor)
+        if arenaSupport.lionNPC and not arenaSupport.lionNPC:releaseActor(actor) then error('下桩清理未读回') end
         if arenaSupport.lionStage then arenaSupport.lionStage:releaseActor(actor) end
         checked(actor); actor:K2_DestroyActor()
         if mounts then mounts:releaseActor(actor,'随单位清理') end
@@ -1499,10 +1502,11 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         probe:stop("停止参赛者")
         local guillotineRestored=not arenaSupport.guillotine or arenaSupport.guillotine:stop()
         if arenaExecutions then arenaExecutions:stop('停止参赛者') end
+        local polesRestored=not arenaSupport.lionNPC or arenaSupport.lionNPC:stop('停止并清理')
         if bossHUD then bossHUD:clear(true) end
         local grabRestored=not arenaGrabs or arenaGrabs:restore()
         local battleRestored=battle:reset("停止参赛者")
-        return guillotineRestored and grabRestored and battleRestored
+        return guillotineRestored and polesRestored and grabRestored and battleRestored
     end,
     onUnitsChanged=function(units)
         if statMatch then statMatch:roster(units) end
@@ -1733,6 +1737,24 @@ arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,
     end})
 arenaSupport.lionStage=require('lion_stage').new({log=log,location=GetLocation,player=GetPlayerPawn,
     world=UEHelpers.GetWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics})
+arenaSupport.lionNPC=require('lion_npc').new({log=log,location=GetLocation,ground=GroundZ,
+    world=UEHelpers.GetWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics,
+    area=function(actor,world)return arenaSupport.lionStage:areaFor(actor,world)end,
+    opponent=function(actor)return arena:opponentOf(UEObserve.key(actor))end,
+    busy=function(actor)
+        return arenaExecutions and (arenaExecutions:executing(actor) or arenaExecutions:guillotineHeld(actor)) or false
+    end,
+    carrier=function(actor)if mounts then return mounts:carrierOf(actor) end;return actor end,
+    library=function()return StaticFindObject('/Script/ProjectPBZ.Default__PBZAbilityBlueprintLibrary')end,
+    combat=require('lion_pole_combat').new({log=log,location=GetLocation,hp=GetHP,isDestroying=actorIsDestroying,
+        pose=function(actor,clip)if arenaExecutions then return arenaExecutions:borrowPolePose(actor,clip) end end}),
+    range=function(actor)
+        local controller=UEObserve.field(GetAIComp(actor),'AIController')
+        local library=StaticFindObject('/Script/SGameAI.Default__SGameAIFunctionLibrary')
+        if not safeValid(library) or not safeValid(controller) then return nil end
+        local ok,value=pcall(function()return library:FindFloatParameter(controller,FName('立回-近距离分界线'))end)
+        return ok and type(value)=='number' and value>0 and value or nil
+    end})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,hp=GetHP,
     onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
@@ -1944,6 +1966,7 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
+    onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
@@ -2003,6 +2026,7 @@ local function supportSteps(self)
     step('longzhu',function()self.longzhu:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
+    step('lionNPC',function()self.lionNPC:tick(tickMembers,tickStatus)end)
     if self.lionStage then step('lionStage',function()self.lionStage:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.
     step('immortal',function()immortalTeams:tick()end)
@@ -2124,6 +2148,7 @@ if ModRef then
         if arenaSupport.lionStage and arenaSupport.lionStage:count()>0 then
             log('[LionStage] 卸载前还有召唤舞狮场地，请先停止并清理')
         end
+        if arenaSupport.lionNPC:count()>0 then log('[LionNPC] 卸载前还有NPC独立桩，请先停止并清理') end
         if bossStages and bossStages:count()>0 then
             log('[BossStage] 卸载时仍有 '..bossStages:count()..' 个 BOSS 的场地物件记录；重载后这些物件不会随清理移除')
         end

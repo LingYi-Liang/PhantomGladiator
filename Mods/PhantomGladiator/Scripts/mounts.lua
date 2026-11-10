@@ -199,6 +199,19 @@ function Mounts.new(options)
         local current=U.field(U.field(record.rider,'BP_SGameDriverComponent'),'DrivingVehicle')
         return U.valid(current) and U.key(current)==U.key(record.mount) and record.mount or nil
     end
+    -- Move the physical carrier, and wait while a rider's initial mount is unresolved.
+    function self:carrierOf(rider)
+        if gone(rider) then return nil end
+        local record=self.records[U.key(rider) or '']
+        if not record or record.anchorOnly then return rider end
+        local mount=riding(record)
+        if mount then return mount end
+        if not record.mount and not record.gaveUp then return nil end
+        local driver=U.field(rider,'BP_SGameDriverComponent')
+        local current,read=U.field(driver,'DrivingVehicle')
+        if read and not U.valid(current) then return rider end
+        return nil
+    end
     local function sayFight(text)
         if fightLines<FIGHT_LINES then fightLines=fightLines+1;say(text) end
     end
