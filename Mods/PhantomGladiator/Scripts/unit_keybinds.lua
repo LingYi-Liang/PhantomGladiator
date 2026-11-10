@@ -40,27 +40,29 @@ function Keys.new(options)
         end
         return out
     end
-    function self:isBound(vk)return self.active[vk]~=nil end
-    function self:owner(vk)
-        for unit,e in pairs(self.entries)do if e.key_code==vk then return unit end end
+    function self:isBound(vk,mask)return self.active[KeyRouter.slot(vk,mask or 0)]~=nil end
+    function self:owner(vk,mask)
+        for unit,e in pairs(self.entries)do if e.key_code==vk and e.modifiers==(mask or 0) then return unit end end
     end
     function self:dispatch(vk,mask)
         if not self.alive then return end
-        local binding=self.active[vk]
-        if not binding or binding.modifiers~=mask then return end
+        local slot=KeyRouter.slot(vk,mask)
+        local binding=self.active[slot]
+        if not binding then return end
         local revision=self.revision;local unit=binding.unit_id
         local function run()
-            if not self.alive or revision~=self.revision or not self.active[vk] or self.active[vk].unit_id~=unit then return end
+            if not self.alive or revision~=self.revision or not self.active[slot] or self.active[slot].unit_id~=unit then return end
             self.event=self.event+1;self.lastUnit=unit
             local ok,ready,reason=pcall(options.ready)
             if not ok or ready~=true then self.message='未召唤：'..tostring(reason or '游戏未就绪');log('[UnitKeys] '..self.message);return end
-            local current=self.active[vk]
+            local current=self.active[slot]
             local called,result=pcall(options.spawn,unit,current.team,current.count)
             self.message=called and type(result)=='table' and tostring(result.message) or '召唤返回未确认'
             log('[UnitKeys] 单位快捷键 vk='..vk..' modifiers='..mask..' unit='..unit..' team='..tostring(current.team or '跟随当前')
                 ..' count='..tostring(current.count or '跟随当前')..'；读回='..self.message)
         end
         if options.queue then queue(run,unit,binding.team,binding.count) else queue(run) end
+        return true
     end
     local function ensure(binding)
         local vk,mask=binding.key_code,binding.modifiers
@@ -68,7 +70,7 @@ function Keys.new(options)
         local reserved=options.reserved and options.reserved(vk,mask)
         local system=KeyRouter.reserved(vk,mask)
         if RESERVED[vk] or system then return false,'该键已被「'..(system or '系统')..'」占用' end
-        if reserved then return false,'该键已被功能「'..tostring(reserved)..'」占用' end
+        if reserved then return false,'该键已被「'..tostring(reserved)..'」占用' end
         if options.router then return options.router:ensure(vk,mask)end
         local mods=modifiers(mask);if not mods then return false,'当前修饰键不可用' end
         if type(register)~='function' or type(occupied)~='function' then return false,'按键注册接口不可用' end
@@ -98,7 +100,7 @@ function Keys.new(options)
         local lines={'UnitKeyStateV1\t'..self.revision..'\t'..self.epoch};local paths={}
         for unit in pairs(self.entries)do paths[#paths+1]=unit end;table.sort(paths)
         for _,unit in ipairs(paths)do
-            local entry=self.entries[unit];local active=self.active[entry.key_code]
+            local entry=self.entries[unit];local active=self.active[KeyRouter.slot(entry.key_code,entry.modifiers)]
             local ok=active and active.unit_id==unit and active.modifiers==entry.modifiers
             lines[#lines+1]=unit..'\t'..(ok and '1' or '0')..'\t'..clean(self.errors[unit])
         end
@@ -108,7 +110,7 @@ function Keys.new(options)
         self.active,self.errors={},{}
         for unit,entry in pairs(self.entries)do
             local ok,reason=ensure(entry)
-            if ok then self.active[entry.key_code]={unit_id=unit,key_code=entry.key_code,modifiers=entry.modifiers,team=entry.team,count=entry.count}
+            if ok then self.active[KeyRouter.slot(entry.key_code,entry.modifiers)]={unit_id=unit,key_code=entry.key_code,modifiers=entry.modifiers,team=entry.team,count=entry.count}
             else self.errors[unit]=reason end
         end
         publish()
@@ -128,8 +130,8 @@ function Keys.new(options)
                     if team=='' then team=nil end
                     count=tonumber(count)
                     if not pathOK(unit) or not integer(key,1,255) or not integer(mask,0,7) or not teamOK(team) or not countOK(count)
-                        or parsed[unit] or seen[key] then valid=false;break end
-                    parsed[unit]={key_code=key,modifiers=mask,team=team,count=count};seen[key]=true
+                        or parsed[unit] or seen[KeyRouter.slot(key,mask)] then valid=false;break end
+                    parsed[unit]={key_code=key,modifiers=mask,team=team,count=count};seen[KeyRouter.slot(key,mask)]=true
                 end
             end
             if valid then self.entries=parsed;self.revision=tonumber(rev)
@@ -145,9 +147,9 @@ function Keys.new(options)
         proposal[unit]=nil
         if vk>0 then
             for path,entry in pairs(proposal)do
-                if entry.key_code==vk then
+                if entry.key_code==vk and entry.modifiers==mask then
                     local name=(path:match('%.([^%.]+)$') or path):gsub('_C$','')
-                    return {ok=false,message='这个主键已被单位「'..name..'」占用，请先解除该单位的绑定',spawned_count=0}
+                    return {ok=false,message='这个组合键已被单位「'..name..'」占用，请先解除该单位的绑定',spawned_count=0}
                 end
             end
             local entry={key_code=vk,modifiers=mask,team=team,count=count};local ok,reason=ensure(entry)

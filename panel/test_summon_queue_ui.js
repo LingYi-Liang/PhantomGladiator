@@ -12,11 +12,12 @@ function section(start, end) {
 }
 
 const calls = [], notices = [];
-const S = { summonQueue: { supported: true, on: false }, statMatch: {} };
+let connected = true;
+const S = { summonQueue: { supported: true, ready: true, on: false }, statMatch: {} };
 const ui = { busy: new Set(), selectedId: "unit-a", team: "blue", count: 1, roster: { blue: {} } };
 const context = {
   S, ui, esc: text => String(text ?? ""),
-  RT: { ready: () => true, online: () => true,
+  RT: { ready: () => true, online: () => connected,
     command: async (action, payload) => {
       calls.push({ action, payload });
       return action === "queue_spawn" ? { status: "pending" } : { status: "succeeded", spawned: 1 };
@@ -32,8 +33,18 @@ vm.runInContext(section("  function summonQueueSettingsHTML()", "  function rend
 
 (async () => {
   assert.match(context.summonQueueSettingsHTML(), /aria-checked="false"/);
-  assert.doesNotMatch(context.summonQueueSettingsHTML(), /取消待执行/);
-  assert.match(section("  function queuePageHTML()", "  function poolMatches()"), /id="summon-queue-settings"/);
+  assert.doesNotMatch(context.summonQueueSettingsHTML(), /取消待执行|disabled/);
+  connected = false;
+  assert.match(context.summonQueueSettingsHTML(), /启动游戏并进入地图后可开启。/);
+  connected = true;
+  S.summonQueue.supported = false;
+  assert.match(context.summonQueueSettingsHTML(), /请更新并重载模组。/);
+  S.summonQueue.supported = true;
+  S.summonQueue.ready = false;
+  assert.match(context.summonQueueSettingsHTML(), /进入可操作的地图后可开启。/);
+  assert.match(context.summonQueueSettingsHTML(), /disabled/);
+  S.summonQueue.ready = true;
+  assert.match(section("  function queuePageHTML()", "  function poolList()"), /id="summon-queue-settings"/);
   assert.doesNotMatch(section("  function settingsHTML()", "  function aboutHTML()"), /id="summon-queue-settings"/);
   const rail = readFileSync(path.join(__dirname, "prototype", "index.html"), "utf8");
   assert.match(rail, /<details id="arena-extra"[\s\S]*data-page="queue"[\s\S]*data-page="pool"/);

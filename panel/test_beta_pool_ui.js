@@ -12,13 +12,16 @@ function section(start, end) {
 }
 
 const units = ["alpha", "beta", "blocked"].map(id => ({ id, name: id, zhName: id }));
-const ui = { monsterPool: [], poolQuery: "alp", poolCount: 3, poolTeam: "red", busy: new Set() };
-const S = { summonLimits: { alpha: 100, beta: 1 }, gameRunning: false };
+const ui = { legacyPool: ["alpha"], poolQuery: "alp", count: 3, team: "red", busy: new Set() };
+const S = { summonLimits: { alpha: 100, beta: 1 }, gameRunning: false,
+  monsterPools: { revision: 0, pools: [] }, poolStatus: { scope: "fixture", keys: {} } };
 const values = new Map(), calls = [], button = { disabled: true };
 let code = "", nexus = false;
 const context = {
   ui, S, UNITS: units, byId: new Map(units.map(u => [u.id, u])),
-  RT: { ready: () => true, beta: {
+  RT: { ready: () => true, online: () => false, demo: true, poolUnitId: id => id, poolUnitPath: id => id,
+    async saveMonsterPools(pools, revision) { S.monsterPools = { revision: revision + 1, pools }; },
+    beta: {
     installation: async () => { calls.push("installation"); return "test-installation"; },
     check: async invite => {
       calls.push(["check", invite]);
@@ -29,33 +32,40 @@ const context = {
   } },
   store: { get: (key, fallback) => values.get(key) ?? fallback, set: (key, value) => values.set(key, value) },
   $: id => id === "#pool-summon" ? button : id === "#manual-beta-code" ? { value: code } : null,
-  cleanupBlocker: () => "", renderPage() {}, summon: async (...args) => calls.push(args),
+  cleanupBlocker: () => "", renderPage() {}, toast() {}, summon: async (...args) => calls.push(args),
   dlg: null, openDialog: kind => { context.dlg = { kind }; },
   setDialog: html => { context.dialog = html; }, fromNexus: () => nexus,
   esc: value => String(value ?? ""), icon: () => "", fmtBytes: value => String(value),
   reasonText: (key, detail) => detail || key,
 };
 vm.createContext(context);
-vm.runInContext(section("  function poolMatches()", "  function settingsHTML()"), context);
+vm.runInContext(section("  function poolList()", "  function settingsHTML()"), context);
 
 (async () => {
-  assert.equal(context.poolMatches().map(u => u.id).join(), "alpha");
-  context.changePool("alpha", true);
-  context.changePool("alpha", true);
+  assert.equal(context.selectedPool().unit_ids.join(), "alpha", "the prior single list is imported");
+  context.createPool();
+  context.updatePool({ name: "随从池", team: "companion", count: 1, key_code: 81, modifiers: 2 });
+  assert.equal(context.poolMatches().map(u => u.id).join(), "alpha,beta,blocked");
   context.changePool("beta", true);
-  context.changePool("blocked", true);
-  context.changePool("unknown", true);
-  assert.equal(values.get("monsterPool").join(), "alpha,beta,blocked");
+  context.changePool("beta", true);
+  assert.equal(context.selectedPool().unit_ids.join(), "beta");
   context.renderPoolSummon();
-  assert.equal(button.disabled, false);
-  await context.summonFromPool();
-  assert.deepEqual(calls.shift(), ["alpha", "red", 3]);
-  context.changePool("alpha", false);
-  context.renderPoolSummon();
-  assert.equal(values.get("monsterPool").join(), "beta,blocked");
   assert.equal(button.disabled, true);
   await context.summonFromPool();
   assert.equal(calls.length, 0);
+  await context.savePoolList();
+  context.renderPoolSummon();
+  assert.equal(button.disabled, false);
+  assert.equal(S.monsterPools.pools.length, 2);
+  assert.equal(S.monsterPools.pools[1].modifiers, 2);
+  await context.summonFromPool();
+  assert.deepEqual(calls.shift(), ["beta", "companion", 1]);
+  ui.poolId = "pool-default";
+  await context.summonFromPool();
+  assert.deepEqual(calls.shift(), ["alpha", "red", 3]);
+  context.deletePool();
+  await context.savePoolList();
+  assert.equal(S.monsterPools.pools[0].name, "随从池");
 
   assert.doesNotMatch(section("  function scheduleAutoUpdate()", "  // ---------- Events"), /[Bb]eta/);
   await context.openManualBeta();

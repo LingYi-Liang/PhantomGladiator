@@ -35,8 +35,9 @@ function Keys.new(options)
             local vk,mask=entry.key_code,entry.key_code==0 and 0 or entry.modifiers
             if vk>0 then
                 local blocked=Router.reserved(vk,mask);if blocked then return nil,Router.label(vk,mask)..' 已被「'..blocked..'」占用'end
-                if seen[vk] then return nil,Router.label(vk,mask)..' 的主键同时用于「'..Keys.labels[seen[vk]]..'」和「'..Keys.labels[name]..'」'end
-                seen[vk]=name
+                local slot=Router.slot(vk,mask)
+                if seen[slot] then return nil,Router.label(vk,mask)..' 同时用于「'..Keys.labels[seen[slot]]..'」和「'..Keys.labels[name]..'」'end
+                seen[slot]=name
             end
             out[name]={key_code=vk,modifiers=mask}
         end
@@ -102,8 +103,11 @@ function Keys.new(options)
         end
         write(fs,statePath,table.concat(lines,'\n')..'\n')
     end
-    function self:owner(vk)
-        for _,name in ipairs(Keys.actions)do if self.entries[name].key_code==vk and vk>0 then return name,Keys.labels[name]end end
+    function self:owner(vk,mask)
+        for _,name in ipairs(Keys.actions)do
+            local e=self.entries[name]
+            if vk>0 and e.key_code==vk and e.modifiers==(mask or 0) then return name,Keys.labels[name] end
+        end
     end
     function self:start()
         self.active,self.errors={},{}
@@ -123,8 +127,10 @@ function Keys.new(options)
         for _,name in ipairs(Keys.actions)do
             local e=checked[name]
             if e.key_code>0 then
-                local unit=options.unitOwner and options.unitOwner(e.key_code)
+                local unit=options.unitOwner and options.unitOwner(e.key_code,e.modifiers)
                 if unit then return {ok=false,message=Router.label(e.key_code,e.modifiers)..' 已被单位「'..unit..'」占用',spawned_count=0}end
+                local pool=options.poolOwner and options.poolOwner(e.key_code,e.modifiers)
+                if pool then return {ok=false,message=Router.label(e.key_code,e.modifiers)..' 已被怪物池「'..pool..'」占用',spawned_count=0}end
                 local ok,reason=options.router:ensure(e.key_code,e.modifiers)
                 if not ok then return {ok=false,message=Keys.labels[name]..'：'..tostring(reason),spawned_count=0}end
             end
@@ -139,7 +145,7 @@ function Keys.new(options)
         return {ok=true,message=self.message,spawned_count=0}
     end
     function self:press(vk,mask)
-        local action=self:owner(vk)
+        local action=self:owner(vk,mask)
         if not action or not self.active[action] or self.entries[action].modifiers~=mask then return false end
         local revision=self.revision
         local queue=(action=='spawn' and options.queueSpawn) or options.queue or ExecuteInGameThread

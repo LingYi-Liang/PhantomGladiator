@@ -1,4 +1,4 @@
--- One native callback per chord, shared by function and per-unit bindings.
+-- One native callback per chord, shared by all Mod bindings.
 -- Unassigned/retired callbacks are inert; no undocumented unregister API is used.
 local Router={}
 local names={[8]='Backspace',[9]='Tab',[13]='Enter',[19]='Pause',[20]='CapsLock',[32]='Space',
@@ -11,6 +11,7 @@ function Router.valid(vk,mask)
     return integer(vk,0,255) and integer(mask,0,7) and (vk==0 or names[vk]~=nil
         or (vk>=48 and vk<=57) or (vk>=65 and vk<=90) or (vk>=96 and vk<=135))
 end
+function Router.slot(vk,mask)return vk..':'..mask end
 function Router.label(vk,mask)
     if vk==0 then return '未绑定' end
     local base=names[vk] or (vk>=65 and vk<=90 and string.char(vk)) or (vk>=48 and vk<=57 and string.char(vk))
@@ -75,10 +76,10 @@ function Router.new(options)
             if modifiers(otherMask) then
                 local used,read=taken(vk,otherMask)
                 if not read then return false,'无法读取按键占用状态' end
-                if used and not self.installed[vk..':'..otherMask] then return false,Router.label(vk,otherMask)..' 已被其它Mod或UE4SS占用' end
+                if used and not self.installed[Router.slot(vk,otherMask)] then return false,Router.label(vk,otherMask)..' 已被其它Mod或UE4SS占用' end
             end
         end
-        local slot=vk..':'..mask;local values=modifiers(mask)
+        local slot=Router.slot(vk,mask);local values=modifiers(mask)
         if not values then return false,'当前修饰键不可用' end
         if self.installed[slot] then local used,read=taken(vk,mask);return read and used,'按键注册读回未确认' end
         local callback=function()if self.alive and self.dispatch then self.dispatch(vk,mask)end end

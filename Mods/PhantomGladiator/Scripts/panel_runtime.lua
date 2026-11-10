@@ -3,6 +3,7 @@ local Bridge = require("panel_bridge")
 local KeyRouter=require('key_router')
 local FunctionKeys=require('function_keybinds')
 local SummonQueue=require("summon_queue")
+local PoolKeys=require("monster_pool_keys")
 local Runtime = {}
 Runtime.__index = Runtime
 local ACTIONS = FunctionKeys.actions
@@ -19,15 +20,34 @@ function Runtime.new(options)
         session=function()return options.session and options.session:status() end,
         spawn=function(path,team,count)return self:summon(path,team,count)end})
     self.router=options.router or KeyRouter.new({log=self.log})
+    local function unitOwner(vk,mask)
+        local unit=options.unitKeys and options.unitKeys:owner(vk,mask)
+        return unit and ((unit:match('%.([^%.]+)$') or unit):gsub('_C$',''))
+    end
+    local function sessionStatus()return options.session and options.session:status() or {} end
     self.functionKeys=FunctionKeys.new({path=options.path,router=self.router,log=self.log,
-        unitOwner=function(vk)
-            local unit=options.unitKeys and options.unitKeys:owner(vk)
-            return unit and ((unit:match('%.([^%.]+)$') or unit):gsub('_C$',''))
-        end,queueSpawn=function(callback)self:queueSummon(callback)end,
+        unitOwner=unitOwner,poolOwner=function(vk,mask)return self.poolKeys:owner(vk,mask)end,
+        queueSpawn=function(callback)self:queueSummon(callback)end,
         dispatch=function(action)self:dispatch(action,{})end})
+    self.poolKeys=PoolKeys.new({path=options.path,router=self.router,log=self.log,session=sessionStatus,
+        conflict=function(vk,mask)
+            local _,label=self.functionKeys:owner(vk,mask)
+            if label then return '功能「'..label..'」' end
+            local unit=unitOwner(vk,mask)
+            if unit then return '单位「'..unit..'」' end
+        end,
+        eligible=function(path,count)
+            local policy=options.spawnPolicy
+            if not policy or not policy.check(path) then return false end
+            local limit=policy.limits(path)
+            return not limit or count<=limit.max_count
+        end,
+        queue=function(callback,path,team,count)return self:queueSummon(callback,path,team,count)end,
+        spawn=function(path,team,count)return self:summon(path,team,count)end})
     self.router.dispatch=function(vk,mask)
-        if not self.alive then return end
-        if not self.functionKeys:press(vk,mask) and options.unitKeys then options.unitKeys:dispatch(vk,mask)end
+        if not self.alive or self.functionKeys:press(vk,mask) then return end
+        if options.unitKeys and options.unitKeys:dispatch(vk,mask) then return end
+        self.poolKeys:dispatch(vk,mask)
     end
     local function readyError()
         if not options.session then return "未配置游戏会话校验" end
@@ -236,6 +256,7 @@ function Runtime.new(options)
         end,
         configure_unit_key=function(command)
             if not options.unitKeys then return {ok=false,message='单位快捷键模块未加载',spawned_count=0} end
+            self.poolKeys:refresh(self.poolKeys.session)
             local key=command.key_spawn=='UNBOUND' and 0 or tonumber((command.key_spawn or ''):match('^VK_(%d+)$'))
             local mask=tonumber((command.key_start or ''):match('^MOD_(%d+)$'))
             -- FIXED in the key_stop column: the row's team and count belong to this unit's key.
@@ -257,7 +278,9 @@ function Runtime.new(options)
             catalog_paths_total=catalog.paths_total,catalog_truncated=catalog.truncated,
             catalog_started_at=catalog.started_at,
             catalog_coverage=catalog.coverage,catalog_candidates=catalog.candidates}
-        local session=options.session and options.session:status() or {}
+        local session=sessionStatus()
+        self.poolKeys:refresh(session.game_session)
+        out.monster_pool_keys_schema=1
         local queue=self.summonQueue
         if queue.enabled then queue:sync(session) end
         out.summon_queue_enabled=queue.enabled
@@ -435,13 +458,16 @@ function Runtime.new(options)
     end})
     return self
 end
-function Runtime:unitKeyReserved(vk)
-    local _,label=self.functionKeys:owner(vk);return label
+function Runtime:unitKeyReserved(vk,mask)
+    local _,label=self.functionKeys:owner(vk,mask)
+    local pool=self.poolKeys:owner(vk,mask)
+    return label or (pool and ('怪物池：'..pool))
 end
 function Runtime:unitKeyShared(vk)
     return self.router.installed[vk..':0']~=nil
 end
 function Runtime:configure(proposal)
+    self.poolKeys:refresh(self.poolKeys.session)
     local result=self.functionKeys:configure(proposal)
     if result.ok and self.options.unitKeys then self.options.unitKeys:refresh()end
     return result

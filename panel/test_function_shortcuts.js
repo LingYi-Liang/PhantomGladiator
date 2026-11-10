@@ -2,10 +2,10 @@ const assert=require('node:assert/strict');
 global.UnitShortcuts=require('./static/unit_shortcuts.js');
 const keys=require('./static/function_shortcuts.js');
 const empty=()=>Object.fromEntries(Object.keys(UnitShortcuts.functionNames).map(name=>[name,{key_code:0,modifiers:0}]));
-const duplicate=empty();duplicate.toggle_camera={key_code:117,modifiers:0};duplicate.exit_camera={key_code:117,modifiers:4};
+const duplicate=empty();duplicate.toggle_camera={key_code:117,modifiers:0};duplicate.exit_camera={key_code:117,modifiers:0};
 assert(keys.conflict(duplicate).includes('自由观战')&&keys.conflict(duplicate).includes('退出自由观战'));
-assert.equal(keys.conflict(empty()),'');
-const unit={id:'u',display_name:'测试暴徒',unit_shortcut:{key_code:117,modifiers:1}};
+assert.equal(keys.conflict({...duplicate,exit_camera:{key_code:117,modifiers:4}}),'');
+const unit={id:'u',display_name:'测试暴徒',unit_shortcut:{key_code:117,modifiers:0}};
 assert(keys.conflict({...empty(),toggle_camera:{key_code:117,modifiers:0}},[unit]).includes('测试暴徒'));
 
 class Element{

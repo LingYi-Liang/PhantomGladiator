@@ -25,7 +25,9 @@ const RealRuntime = (() => {
     gamePath: "",
     blue: 0, red: 0, neutral: 0, companion: 0,
     down: { blue: 0, red: 0, neutral: 0, companion: 0 },
-    summonQueue: { supported: false, on: false, waiting: 0, transit: 0, completed: 0, running: false, message: "" },
+    summonQueue: { supported: false, ready: false, on: false, waiting: 0, transit: 0, completed: 0, running: false, message: "" },
+    monsterPools: null,
+    poolStatus: { scope: "", revision: 0, supported: false, keys: {}, error: "" },
     companionFailures: 0,       // companions whose follow state or side did not read back (companion.lua)
     unreadable: 0,
     freeCam: false,
@@ -82,7 +84,7 @@ const RealRuntime = (() => {
   const jobs = [], jobById = new Map(), waiters = new Map();
   let csrf = "", owned = 0, launching = 0, failedPolls = 0;
   let teamRev = null, session = "", catalogKey = "", lastSig = {}, iconsAt = 0, homesAt = 0;
-  let toGame = new Map(), toShort = new Map();
+  let toGame = new Map(), toShort = new Map(), poolRead = null;
 
   // ---------- Native host ----------
   let rpcSeq = 0;
@@ -116,6 +118,55 @@ const RealRuntime = (() => {
     if (!id) throw fail("unknownUnit");
     return id;
   }
+  const poolUnitId = member => member.startsWith("/") ? shortOf(member) : member;
+  async function loadMonsterPools() {
+    const scope = s.poolStatus.scope;
+    const revision = s.poolStatus.revision;
+    if (!scope || s.poolStatus.error || (poolRead?.scope === scope && (!poolRead.retryAt ||
+        (poolRead.revision === revision && poolRead.retryAt > Date.now())))) return;
+    const request = { scope, revision };
+    poolRead = request;
+    try {
+      const r = await fetch("/api/monster-pools", { cache: "no-store" });
+      const reply = await r.json();
+      if (s.poolStatus.scope !== scope) return;
+      if (!r.ok) throw fail("rejected", reply.error || "怪物池读取失败");
+      if (!s.monsterPools || reply.revision >= s.monsterPools.revision) {
+        s.monsterPools = reply;
+        emit({ type: "state", parts: new Set(["poolConfig"]) });
+      }
+    } catch (error) {
+      if (s.poolStatus.scope === scope) {
+        request.error = error.detail || "怪物池读取失败";
+        request.retryAt = Date.now() + 5000;
+        s.poolStatus.error = request.error;
+        emit({ type: "state", parts: new Set(["poolStatus"]) });
+      }
+    } finally {
+      if (poolRead === request && !request.retryAt) poolRead = null;
+    }
+  }
+
+  async function saveMonsterPools(pools, revision) {
+    const scope = s.poolStatus.scope;
+    const body = { revision, pools: pools.map(pool => ({ ...pool,
+      unit_ids: pool.unit_ids.map(member => {
+        const path = member.startsWith("/") ? member : toGame.get(member);
+        if (!path) throw fail("rejected", "当前目录找不到单位 " + member + "，请检查目录或先从池里移除它。");
+        return path;
+      }),
+    })) };
+    const r = await fetch("/api/monster-pools", { method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
+    const reply = await r.json().catch(() => ({}));
+    if (!r.ok) throw fail("rejected", reply.error || "怪物池保存失败");
+    if (s.poolStatus.scope === scope && (!s.monsterPools || reply.revision >= s.monsterPools.revision)) {
+      s.monsterPools = reply;
+      emit({ type: "state", parts: new Set(["poolConfig"]) });
+    }
+    return reply;
+  }
+
   async function loadCatalog() {
     const r = await fetch("/api/catalog", { cache: "no-store" });
     if (!r.ok) return;
@@ -222,6 +273,7 @@ const RealRuntime = (() => {
     s.game = game;
     s.summonQueue = {
       supported: online && typeof v.summon_queue_enabled === "string",
+      ready: online && g.ready === true,
       on: online && yes("summon_queue_enabled"),
       waiting: online ? num("summon_queue_waiting") : 0,
       transit: Number(data.summon_queue_transit) || 0,
@@ -229,6 +281,16 @@ const RealRuntime = (() => {
       running: online && yes("summon_queue_running"),
       message: online ? (v.summon_queue_message || "") : "",
     };
+
+    if (data.monster_pools && data.runtime_dir) {
+      if (s.poolStatus.scope !== data.runtime_dir) s.monsterPools = null;
+      s.poolStatus = { ...data.monster_pools, scope: data.runtime_dir };
+      if (!s.monsterPools || s.monsterPools.revision < s.poolStatus.revision) loadMonsterPools();
+      if (poolRead?.scope === data.runtime_dir && poolRead.revision === s.poolStatus.revision &&
+          poolRead.retryAt > Date.now() && !s.poolStatus.error) s.poolStatus.error = poolRead.error;
+    } else {
+      s.poolStatus = { ...s.poolStatus, supported: false, keys: {} };
+    }
 
     if (online) {
       s.blue = num("blue_count");
@@ -383,6 +445,7 @@ const RealRuntime = (() => {
       grid: [s.unitRulesSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
       summonQueue: [s.game, JSON.stringify(s.summonQueue)],
+      poolStatus: [JSON.stringify(s.poolStatus)],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
     const parts = new Set(Object.keys(sig).filter(k => JSON.stringify(sig[k]) !== JSON.stringify(lastSig[k])));
@@ -561,6 +624,9 @@ const RealRuntime = (() => {
     owned: () => owned,
     command,
     clearQueue,
+    poolUnitId,
+    poolUnitPath: id => toGame.get(id) || id,
+    saveMonsterPools,
     launchGame,
     setup,
     update,

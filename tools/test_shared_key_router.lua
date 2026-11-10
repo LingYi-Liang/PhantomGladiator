@@ -9,10 +9,10 @@ local router=Router.new({keys=keyTable,modifiers=modifiers,
     register=function(vk,mods,fn)if type(mods)=='function'then fn=mods;mods={}end;slots[slot(vk,mods)]=fn end})
 local functions
 local units=Units.new({path=root,keys=keyTable,modifiers=modifiers,router=router,
-    reserved=function(vk)if functions then local _,name=functions:owner(vk);return name end end,
+    reserved=function(vk,mask)if functions then local _,name=functions:owner(vk,mask);return name end end,
     queue=function(fn)queue[#queue+1]=fn end,ready=function()assert(inGame);return true end,
     spawn=function(unit)assert(inGame);unitCalls[#unitCalls+1]=unit;return {ok=true,message='fixture'}end})
-functions=Functions.new({path=root,router=router,unitOwner=function(vk)return units:owner(vk)end,
+functions=Functions.new({path=root,router=router,unitOwner=function(vk,mask)return units:owner(vk,mask)end,
     queue=function(fn)queue[#queue+1]=fn end,dispatch=function(action)assert(inGame);functionCalls[#functionCalls+1]=action end})
 router.dispatch=function(vk,mask)if not functions:press(vk,mask)then units:dispatch(vk,mask)end end
 functions:start();units:start();assert(next(slots)==nil)
@@ -26,8 +26,11 @@ local p=proposal();p.toggle_camera='F6'
 assert(not functions:configure(p).ok,'an occupied unit key must block function assignment')
 assert(units:configure(a,0,0).ok and functions:configure(p).ok)
 slots['117:0']();drain();assert(#unitCalls==1 and functionCalls[1]=='toggle_camera')
-assert(not units:configure(b,117,4).ok,'an occupied function primary key must block unit assignment')
-assert(functions:configure(proposal()).ok and units:configure(b,117,4).ok)
+assert(not units:configure(b,117,0).ok,'an identical function chord must block unit assignment')
+assert(units:configure(b,117,4).ok,'Shift+F6 can coexist with F6')
+slots['117:0']();slots['117:4']();drain();assert(unitCalls[2]==b and #functionCalls==2)
+assert(functions:configure(proposal()).ok)
 slots['117:0']();assert(#queue==0,'the old unmodified chord is inert')
-slots['117:4']();drain();assert(unitCalls[2]==b and #functionCalls==1)
-print('shared_key_router: PASS (unit/function ownership transfer, cross-modifier conflicts, inert old chords, no duplicate actions)')
+assert(units:configure(a,81,1).ok and units:configure(b,81,2).ok,'Ctrl+Q and Alt+Q must both save')
+slots['81:1']();slots['81:2']();drain();assert(unitCalls[3]==a and unitCalls[4]==b and #functionCalls==2)
+print('shared_key_router: PASS (exact-chord ownership, inert old chords, independent Ctrl and Alt)')

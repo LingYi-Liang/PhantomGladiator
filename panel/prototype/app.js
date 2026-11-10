@@ -80,8 +80,8 @@
     type: "all",
     chapter: "all",
     selectedId: store.get("selected", null),
-    monsterPool: Array.isArray(savedPool) ? [...new Set(savedPool.filter(id => typeof id === "string"))] : [],
-    poolQuery: "", poolTeam: null, poolCount: null,
+    legacyPool: Array.isArray(savedPool) ? [...new Set(savedPool.filter(id => typeof id === "string"))] : [],
+    poolQuery: "", poolId: "", poolDraft: null, poolKeyError: "",
     manualBeta: null,
     team: "blue",
     count: 1,
@@ -168,13 +168,17 @@
     if (code === 46 && (mods & 3) === 3) return "cad";
     return "";
   }
-  // A main key belongs to one function or one unit at a time, whatever the modifiers (backend.py rule).
-  function keyOwner(code, { action, unitId } = {}) {
-    const fn = Object.keys(S.keys).find(a => a !== action && S.keys[a]?.code === code);
+  function keyOwner(code, mods, { action, unitId, poolId } = {}) {
+    const same = k => k?.code === code && (k.mods || 0) === mods;
+    const fn = Object.keys(S.keys).find(a => a !== action && same(S.keys[a]));
     if (fn) return { kind: "action", action: fn };
-    const unit = Object.entries(S.unitKeys).find(([id, k]) => id !== unitId && k.code === code);
-    return unit ? { kind: "unit", id: unit[0] } : null;
+    const unit = Object.entries(S.unitKeys).find(([id, k]) => id !== unitId && same(k));
+    if (unit) return { kind: "unit", id: unit[0] };
+    const pools = ui.page === "pool" ? poolList() : S.monsterPools?.pools || [];
+    const pool = pools.find(p => p.id !== poolId && p.key_code === code && p.modifiers === mods);
+    return pool ? { kind: "pool", pool } : null;
   }
+  const poolClash = pool => `${vkLabel(pool.key_code, pool.modifiers)} 已被怪物池「${pool.name}」占用，请先解除该池的绑定。`;
   function readCapture(e) {
     if (e.metaKey) return { error: t("keys.err.win") };
     const code = vkFromEvent(e);
@@ -183,10 +187,8 @@
     const owner = systemOwner(code, mods);
     return owner ? { error: t("keys.err.system", { key: vkLabel(code, mods), owner: t("keys.sys." + owner) }) } : { code, mods };
   }
-  // "Shift+F9 vs F9" reads as a bug unless the message says the two share one main key.
   function clashText(key, theirs, owner) {
-    const same = keyLabel(key) === keyLabel(theirs);
-    return t(same ? "keys.clash.same" : "keys.clash.main", { key: keyLabel(key), theirs: keyLabel(theirs), owner });
+    return t("keys.clash.same", { key: keyLabel(key), theirs: keyLabel(theirs), owner });
   }
 
   // ---------- Filters ----------
@@ -1579,6 +1581,7 @@
     ui.capture = target;
     ui.keyNote = null;
     ui.unitKeyError = "";
+    ui.poolKeyError = "";
     rerenderCaptureHost();
   }
   function cancelCapture() {
@@ -1590,6 +1593,7 @@
   function rerenderCaptureHost(host = ui.capture) {
     if (!host) return;
     if (host.kind === "unit") renderSelection();
+    else if (host.kind === "pool" && ui.page === "pool") renderPage();
     else if (host.host === "view") renderView();
     else if (ui.page === "hotkeys") renderPage();
   }
@@ -1626,7 +1630,8 @@
     if (got.error) { refuse(got.error); return; }
     const label = vkLabel(got.code, got.mods), mine = S.keys[action];
     if (mine && mine.code === got.code && mine.mods === got.mods) { cancelCapture(); return; }
-    const owner = keyOwner(got.code, { action });
+    const owner = keyOwner(got.code, got.mods, { action });
+    if (owner?.kind === "pool") { refuse(poolClash(owner.pool)); return; }
     if (owner?.kind === "unit") { refuse(clashText(got, S.unitKeys[owner.id], t("keys.owner.unit", { name: byId.get(owner.id)?.name || owner.id })) + t("keys.clash.unitFix")); return; }
     if (owner) {
       ui.keyNote = { action, host, type: "conflict", key: got, other: owner.action, text: clashText(got, S.keys[owner.action], t("keys.owner.action", { action: t("keys.action." + owner.action) })) };
@@ -1640,8 +1645,9 @@
     const id = ui.capture.id, u = byId.get(id), got = readCapture(e);
     if (got.error) { ui.unitKeyError = got.error; renderSelection(); return; }
     const { code, mods } = got;
-    const owner = keyOwner(code, { unitId: id });
+    const owner = keyOwner(code, mods, { unitId: id });
     const reason = owner?.kind === "unit" ? clashText(got, S.unitKeys[owner.id], t("keys.owner.unit", { name: byId.get(owner.id)?.name || owner.id })) + t("keys.clash.unitFix")
+      : owner?.kind === "pool" ? poolClash(owner.pool)
       : owner ? clashText(got, S.keys[owner.action], t("keys.owner.action", { action: t("keys.action." + owner.action) })) + t("keys.clash.actionFix") : "";
     ui.capture = null;
     if (reason) { ui.unitKeyError = reason; renderSelection(); return; }
@@ -1783,12 +1789,17 @@
   function summonQueueSettingsHTML() {
     const q = S.summonQueue || {};
     const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue");
+    const unavailable = !RT.online() ? "启动游戏并进入地图后可开启。"
+      : !q.supported ? "游戏内模组还不支持排队召唤，请更新并重载模组。"
+      : !q.on && !q.ready ? "进入可操作的地图后可开启。" : "";
     return `<section class="card"><div class="card-head"><h2 class="card-title">排队召唤（测试）</h2></div>
       <div class="rows">
         <div class="row"><div class="row-main"><div class="row-title">启用排队召唤</div>
           <div class="row-desc">最多 100 条。上一条完成后至少等 0.25 秒再执行。停止清理、换图或关闭开关会取消余项。</div>
+          ${unavailable ? `<div class="row-desc" id="summon-queue-unavailable">${esc(unavailable)}</div>` : ""}
         </div><button class="switch" type="button" role="switch" aria-label="启用排队召唤" aria-checked="${!!q.on}"
-          data-action="toggle-summon-queue" ${busy || !q.supported || (!q.on && !RT.ready()) ? "disabled" : ""}></button></div>
+          ${unavailable ? 'aria-describedby="summon-queue-unavailable"' : ""} data-action="toggle-summon-queue"
+          ${busy || unavailable ? "disabled" : ""}></button></div>
         ${q.on ? `<div class="row"><div class="row-main"><div class="row-title">待执行 ${q.waiting} · 待游戏接收 ${q.transit} · 已完成 ${q.completed}</div>
           <div class="row-desc">${esc(q.running ? "正在召唤" : q.message)}</div></div>
           <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-summon-queue"
@@ -1813,9 +1824,44 @@
       <div id="summon-queue-settings">${summonQueueSettingsHTML()}</div></div>`;
   }
 
+  function poolList() {
+    if (ui.poolDraft) return ui.poolDraft.pools;
+    if (!S.monsterPools) return [];
+    if (S.monsterPools.revision > 0) return S.monsterPools.pools;
+    return [{ id: "pool-default", name: "我的怪物池", team: ui.team, count: ui.count,
+      key_code: 0, modifiers: 0, unit_ids: ui.legacyPool }];
+  }
+
+  function selectedPool() {
+    const pools = poolList();
+    return pools.find(p => p.id === ui.poolId) || pools[0];
+  }
+
+  function poolDraftStale() {
+    const draft = ui.poolDraft;
+    return !!(draft && (draft.scope !== S.poolStatus.scope || draft.revision !== S.monsterPools?.revision ||
+      (S.poolStatus.revision || 0) > draft.revision));
+  }
+
+  function editPoolList() {
+    if (!S.monsterPools || poolDraftStale() || ui.busy.has("pool-save")) return null;
+    if (!ui.poolDraft) ui.poolDraft = { scope: S.poolStatus.scope, revision: S.monsterPools.revision,
+      pools: poolList().map(p => ({ ...p, unit_ids: [...p.unit_ids] })) };
+    return ui.poolDraft.pools;
+  }
+
+  function updatePool(changes) {
+    const id = selectedPool()?.id, pools = id && editPoolList();
+    const pool = pools?.find(p => p.id === id);
+    if (pool) Object.assign(pool, changes);
+  }
+
   function poolMatches() {
+    const pool = selectedPool();
+    if (!pool) return [];
     const query = ui.poolQuery.trim().toLowerCase();
-    return UNITS.filter(u => !ui.monsterPool.includes(u.id) &&
+    const members = new Set(pool.unit_ids.map(RT.poolUnitId));
+    return UNITS.filter(u => !members.has(u.id) && (RT.demo || RT.poolUnitPath(u.id) !== u.id) &&
       (!query || (u.name + " " + u.zhName + " " + u.id).toLowerCase().includes(query))).slice(0, 12);
   }
 
@@ -1825,53 +1871,160 @@
       '<p class="muted" style="padding:12px">没有可加入的匹配单位。</p>';
   }
 
-  function poolPageHTML() {
-    const team = ui.poolTeam ?? ui.team;
-    const count = ui.poolCount ?? ui.count;
-    const members = ui.monsterPool.map(id => byId.get(id)).filter(Boolean);
-    return `<div class="stack"><div class="page-head"><div><h1 class="page-title">自定义怪物池</h1>
-      <p class="page-sub">每笔从池里抽一个可召唤、且支持所选数量的种类。</p></div></div>
-      <section class="card"><div class="card-head"><h2 class="card-title">我的怪物池 · ${members.length}</h2></div>
-        <div class="card-body"><div class="option-list">
-          <label>队伍 <select id="pool-team">${TEAMS.map(t => `<option value="${t}" ${team===t ? "selected" : ""}>${esc(teamName(t))}</option>`).join("")}</select></label>
-          <label>数量 <input id="pool-count" type="number" min="1" max="100" value="${count}" style="width:6em"></label>
-          <button class="btn btn-primary btn-sm" type="button" id="pool-summon" data-action="pool-summon" disabled>随机召唤</button>
-        </div></div>
-        <div class="rows">${members.map(u => `<div class="row"><div class="row-main"><div class="row-title">${esc(u.name)}</div></div>
-          <button class="btn btn-ghost btn-sm" type="button" data-action="pool-remove" data-id="${esc(u.id)}">移除</button></div>`).join("") ||
-          '<p class="muted" style="padding:12px">先从下方加入怪物。</p>'}</div></section>
-      <section class="card"><div class="card-head"><h2 class="card-title">加入怪物</h2></div>
-        <div class="card-body"><input id="pool-search" type="search" placeholder="搜索怪物名称" value="${esc(ui.poolQuery)}"></div>
-        <div class="rows" id="pool-choices">${poolChoicesHTML()}</div></section></div>`;
+  function poolKeyStatus(pool) {
+    if (!pool?.key_code) return "";
+    const previous = S.monsterPools?.pools.find(p => p.id === pool.id);
+    if (!previous || pool.key_code !== previous.key_code || pool.modifiers !== previous.modifiers) return "保存后注册。";
+    if (!RT.online()) return "启动游戏后会注册。";
+    if (!S.poolStatus.supported) return "请更新并重载游戏内模组。";
+    if (S.poolStatus.revision !== S.monsterPools.revision) return "等待游戏确认注册。";
+    const status = S.poolStatus.keys[pool.id];
+    return status?.active ? "已注册，在游戏窗口内按键召唤。"
+      : status?.message || "等待游戏确认注册。";
   }
 
-  function poolEligible(id, count) {
-    return byId.has(id) && (RT.demo || (S.summonLimits?.[id] || 0) >= count);
+  function poolPageHTML() {
+    const pools = poolList(), pool = selectedPool();
+    const busy = ui.busy.has("pool-save");
+    const frozen = busy || poolDraftStale();
+    const disabled = frozen ? "disabled" : "";
+    const capturing = ui.capture?.kind === "pool" && ui.capture.id === pool?.id;
+    return `<div class="stack"><div class="page-head"><div><h1 class="page-title">自定义怪物池</h1>
+      <p class="page-sub">每个池可以设置自己的队伍、数量和游戏内快捷键。每次从符合数量要求的成员中抽一种。</p></div></div>
+      <section class="card"><div class="card-body">
+        <div class="option-list"><label>当前怪物池 <select id="pool-select" ${!pool || busy ? "disabled" : ""}>
+          ${pools.map(p => `<option value="${esc(p.id)}" ${p.id === pool?.id ? "selected" : ""}>${esc(p.name || "未命名")}</option>`).join("")}</select></label>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="pool-new" ${!S.monsterPools || frozen || pools.length >= 24 ? "disabled" : ""}>新建池</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-action="pool-delete" ${!pool || frozen ? "disabled" : ""}>删除当前池</button>
+        </div>
+        <div class="option-list" style="margin-top:12px">
+          <button class="btn btn-primary btn-sm" type="button" id="pool-save" data-action="pool-save" disabled>${busy ? "保存中…" : "保存设置"}</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="pool-discard" data-action="pool-discard" disabled>放弃修改</button>
+          <span id="pool-edit-note" class="muted"></span>
+        </div></div></section>
+      ${pool ? `<section class="card"><div class="card-head"><h2 class="card-title">池设置 · ${pool.unit_ids.length} 种</h2></div>
+        <div class="card-body"><div class="option-list">
+          <label>名称 <input id="pool-name" value="${esc(pool.name)}" maxlength="48" ${disabled}></label>
+          <label>队伍 <select id="pool-team" ${disabled}>${TEAMS.map(team => `<option value="${team}" ${pool.team===team ? "selected" : ""}>${esc(teamName(team))}</option>`).join("")}</select></label>
+          <label>数量 <input id="pool-count" type="number" min="1" max="100" value="${pool.count}" style="width:6em" ${disabled}></label>
+        </div>
+        <div class="option-list" style="margin-top:12px">
+          <button class="btn btn-secondary btn-sm capture-box" type="button" data-action="pool-key" ${disabled}>${capturing ? "请按组合键（Esc 取消）" :
+            (pool.key_code ? esc(vkLabel(pool.key_code, pool.modifiers)) : "绑定快捷键")}</button>
+          ${pool.key_code ? `<button class="btn btn-ghost btn-sm" type="button" data-action="pool-unbind" ${disabled}>解除绑定</button>` : ""}
+          <span id="pool-key-status" class="muted"></span>
+        </div>
+        ${ui.poolKeyError ? `<div class="key-note err">${esc(ui.poolKeyError)}</div>` : ""}
+        <div class="option-list" style="margin-top:12px">
+          <button class="btn btn-primary btn-sm" type="button" id="pool-summon" data-action="pool-summon" disabled>随机召唤</button>
+          <span id="pool-summon-note" class="muted"></span>
+        </div></div>
+        <div class="rows">${pool.unit_ids.map(id => `<div class="row"><div class="row-main"><div class="row-title">${esc(byId.get(RT.poolUnitId(id))?.name || RT.poolUnitId(id))}</div></div>
+          <button class="btn btn-ghost btn-sm" type="button" data-action="pool-remove" data-id="${esc(id)}" ${disabled}>移除</button></div>`).join("") ||
+          '<p class="muted" style="padding:12px">先从下方加入怪物。</p>'}</div></section>
+        <section class="card"><div class="card-head"><h2 class="card-title">加入怪物</h2></div>
+        <div class="card-body"><input id="pool-search" type="search" placeholder="搜索怪物名称" value="${esc(ui.poolQuery)}" ${disabled}></div>
+        <div class="rows" id="pool-choices">${frozen ? "" : poolChoicesHTML()}</div></section>` : ""}</div>`;
+  }
+
+  function poolCandidates(pool) {
+    return pool ? [...new Set(pool.unit_ids.map(RT.poolUnitId))].filter(id =>
+      byId.has(id) && (RT.demo || (S.summonLimits?.[id] || 0) >= pool.count)) : [];
+  }
+
+  function poolSummonBlocker(pool, choices) {
+    return ui.poolDraft ? "请先保存设置。" : (!RT.ready() || S.summonQueue?.ready === false) ? "启动游戏并进入地图后可召唤。"
+      : cleanupBlocker() || (ui.busy.has("spawn") ? "正在召唤。" : !choices.length ? "池里没有支持当前数量的可召唤单位。" : "");
   }
 
   function renderPoolSummon() {
-    const button = $("#pool-summon");
+    const pool = selectedPool(), button = $("#pool-summon");
+    const stale = poolDraftStale();
+    const save = $("#pool-save"), discard = $("#pool-discard"), editNote = $("#pool-edit-note");
+    if (save) save.disabled = !ui.poolDraft || stale || ui.busy.has("pool-save");
+    if (discard) discard.disabled = !ui.poolDraft || ui.busy.has("pool-save");
+    if (editNote) editNote.textContent = S.poolStatus.error ||
+      (stale ? "已在另一处修改，请放弃当前修改后重新载入。"
+        : ui.poolDraft ? "有未保存的修改。" : !S.monsterPools ? "正在读取怪物池。" : "");
+    if ($("#pool-key-status")) $("#pool-key-status").textContent = poolKeyStatus(pool);
     if (!button) return;
-    const count = ui.poolCount ?? ui.count;
-    button.disabled = !RT.ready() || !!cleanupBlocker() || ui.busy.has("spawn") ||
-      !ui.monsterPool.some(id => poolEligible(id, count));
+    const reason = poolSummonBlocker(pool, poolCandidates(pool));
+    button.disabled = !!reason;
+    if ($("#pool-summon-note")) $("#pool-summon-note").textContent = reason;
   }
 
-  function changePool(id, add) {
-    if (!byId.has(id)) return;
-    if (add && !ui.monsterPool.includes(id)) ui.monsterPool.push(id);
-    if (!add) ui.monsterPool = ui.monsterPool.filter(item => item !== id);
-    store.set("monsterPool", ui.monsterPool);
+  function createPool() {
+    const pools = editPoolList();
+    if (!pools || pools.length >= 24) return;
+    const id = "pool-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    let n = 1;
+    while (pools.some(p => p.name === "怪物池 " + n)) n++;
+    pools.push({ id, name: "怪物池 " + n, team: ui.team, count: ui.count, key_code: 0, modifiers: 0, unit_ids: [] });
+    ui.poolId = id; ui.poolKeyError = ""; ui.poolQuery = "";
+    renderPage();
+    $("#pool-name")?.select();
+  }
+
+  function deletePool() {
+    const id = selectedPool()?.id, pools = id && editPoolList();
+    if (!pools) return;
+    pools.splice(pools.findIndex(p => p.id === id), 1);
+    ui.poolId = ""; ui.poolKeyError = "";
     renderPage();
   }
 
+  function changePool(id, add) {
+    const pool = selectedPool();
+    if (!pool || (add && (!byId.has(id) || pool.unit_ids.length >= 256))) return;
+    const members = pool.unit_ids;
+    if (add && members.some(member => RT.poolUnitId(member) === id)) return;
+    updatePool({ unit_ids: add ? [...members, RT.poolUnitPath(id)] : members.filter(member => member !== id) });
+    renderPage();
+  }
+
+  function handlePoolCapture(e) {
+    const { id } = ui.capture, got = readCapture(e);
+    const refuse = text => { ui.poolKeyError = text; renderPage(); };
+    if (got.error) { refuse(got.error); return; }
+    if (selectedPool()?.id !== id) { cancelCapture(); return; }
+    const owner = keyOwner(got.code, got.mods, { poolId: id });
+    if (owner?.kind === "pool") { refuse(poolClash(owner.pool)); return; }
+    if (owner?.kind === "unit") {
+      refuse(clashText(got, S.unitKeys[owner.id], t("keys.owner.unit", { name: byId.get(owner.id)?.name || owner.id }))); return;
+    }
+    if (owner) {
+      refuse(clashText(got, S.keys[owner.action], t("keys.owner.action", { action: t("keys.action." + owner.action) }))); return;
+    }
+    ui.capture = null;
+    ui.poolKeyError = "";
+    updatePool({ key_code: got.code, modifiers: got.mods });
+    renderPage();
+  }
+
+  async function savePoolList() {
+    if (!ui.poolDraft || poolDraftStale() || ui.busy.has("pool-save")) return;
+    const { revision, pools } = ui.poolDraft;
+    if (pools.some(pool => !pool.name.trim())) {
+      toast({ kind: "error", title: "请给每个怪物池起个名字" }); return;
+    }
+    ui.busy.add("pool-save");
+    renderPage();
+    try {
+      await RT.saveMonsterPools(pools, revision);
+      ui.poolDraft = null;
+      toast({ kind: "success", title: "怪物池已保存" });
+    } catch (error) {
+      toast({ kind: "error", title: "怪物池未保存", body: error.detail || error.message });
+    } finally {
+      ui.busy.delete("pool-save");
+      if (ui.page === "pool") renderPage();
+    }
+  }
+
   async function summonFromPool() {
-    if (!RT.ready() || cleanupBlocker() || ui.busy.has("spawn")) return;
-    const count = ui.poolCount ?? ui.count;
-    const choices = ui.monsterPool.filter(id => poolEligible(id, count));
-    if (!choices.length) return;
-    const picked = choices[Math.floor(Math.random() * choices.length)];
-    const result = summon(picked, ui.poolTeam ?? ui.team, count);
+    const pool = selectedPool(), choices = poolCandidates(pool);
+    if (poolSummonBlocker(pool, choices)) return;
+    const result = summon(choices[Math.floor(Math.random() * choices.length)], pool.team, pool.count);
     renderPoolSummon();
     try { await result; }
     finally { renderPoolSummon(); }
@@ -2550,6 +2703,12 @@
     "pool-add": el => changePool(el.dataset.id, true),
     "pool-remove": el => changePool(el.dataset.id, false),
     "pool-summon": () => summonFromPool(),
+    "pool-new": () => createPool(),
+    "pool-delete": () => deletePool(),
+    "pool-save": () => savePoolList(),
+    "pool-discard": () => { ui.poolDraft = null; ui.poolKeyError = ""; renderPage(); },
+    "pool-key": () => { if (ui.capture?.kind === "pool") cancelCapture(); else startCapture({ kind: "pool", id: selectedPool()?.id }); },
+    "pool-unbind": () => { ui.poolKeyError = ""; updatePool({ key_code: 0, modifiers: 0 }); renderPage(); },
     "toggle-summon-queue": () => changeSummonQueue("set_summon_queue", { enabled: !S.summonQueue?.on }),
     "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
@@ -2773,7 +2932,7 @@
   document.addEventListener("click", e => {
     const el = e.target.closest("[data-action]");
     if (pop && !pop.el.contains(e.target) && !pop.anchor.contains(e.target)) closePopover();
-    if (ui.capture && !(el && ["unitkey-capture", "key-capture", "key-cancel"].includes(el.dataset.action))) {
+    if (ui.capture && !(el && ["unitkey-capture", "key-capture", "key-cancel", "pool-key"].includes(el.dataset.action))) {
       if (!e.target.closest(".capture-box")) cancelCapture();
     }
     if (!el) return;
@@ -2789,8 +2948,10 @@
       $("#pool-choices").innerHTML = poolChoicesHTML();
       return;
     }
-    if (e.target.id === "pool-count") {
-      ui.poolCount = Math.max(1, Math.min(100, Math.trunc(Number(e.target.value)) || 1));
+    if (e.target.id === "pool-count" || e.target.id === "pool-name") {
+      updatePool(e.target.id === "pool-count"
+        ? { count: Math.max(1, Math.min(100, Math.trunc(Number(e.target.value)) || 1)) }
+        : { name: e.target.value });
       renderPoolSummon();
       return;
     }
@@ -2831,8 +2992,14 @@
     }
   });
   document.addEventListener("change", e => {
-    if (e.target.id === "pool-team" && TEAMS.includes(e.target.value)) ui.poolTeam = e.target.value;
-    if (e.target.id === "pool-count") e.target.value = ui.poolCount ?? ui.count;
+    if (e.target.id === "pool-select") {
+      ui.poolId = e.target.value; ui.poolKeyError = ""; ui.poolQuery = "";
+      renderPage();
+    }
+    if (e.target.id === "pool-team" && TEAMS.includes(e.target.value)) {
+      updatePool({ team: e.target.value }); renderPoolSummon();
+    }
+    if (e.target.id === "pool-count") e.target.value = selectedPool()?.count || 1;
     if (e.target.id === "chapter") { ui.chapter = e.target.value; renderToolbar(); renderGrid({ animate: true }); $("#catalog-col").scrollTop = 0; }
     if (e.target.id === "count-input") setCount(Number(e.target.value));
     if (e.target.id === "diff-select") setDifficulty(e.target.value);
@@ -2858,7 +3025,9 @@
       e.stopPropagation();
       if (e.key === "Escape") { ui.keyNote = null; cancelCapture(); return; }
       if (e.repeat) return;
-      if (ui.capture.kind === "global") handleGlobalCapture(e); else handleUnitCapture(e);
+      if (ui.capture.kind === "global") handleGlobalCapture(e);
+      else if (ui.capture.kind === "pool") handlePoolCapture(e);
+      else handleUnitCapture(e);
       return;
     }
     if (e.key === "Escape") {
@@ -2985,8 +3154,11 @@
         else if (ui.page === "settings" && p.has("settings")) renderPage();
         else if (ui.page === "queue" && p.has("summonQueue")) renderSummonQueueSettings();
         else if (ui.page === "pool") {
-          if (p.has("names")) renderPage();
-          else if (p.has("grid") || p.has("settings") || p.has("sel")) renderPoolSummon();
+          if ((p.has("names") || p.has("poolConfig")) && !ui.poolDraft && !ui.capture) renderPage();
+          else {
+            if (p.has("grid") && $("#pool-choices") && !poolDraftStale()) $("#pool-choices").innerHTML = poolChoicesHTML();
+            if (p.has("poolConfig") || p.has("poolStatus") || p.has("grid") || p.has("settings") || p.has("sel")) renderPoolSummon();
+          }
         }
         else if (ui.page === "fun" && p.has("fun")) renderPage();
         if (dlg?.kind === "update" && p.has("update")) setDialog(updateHTML());

@@ -187,6 +187,11 @@ LABEL_FIELDS = ("display_name", "internal_name", "category", "category_source", 
 CODEX_ENEMY_TYPES = {"None": "unknown", "Animal": "1", "GuaiMian": "2", "DragonModified": "3", "HumanMaster": "4", "Puppet": "5"}
 COMMAND_FIELDS = ("id", "action", "unit_id", "team", "count", "key_spawn", "key_start", "key_stop", "key_refresh_catalog", "schema_version")
 MAX_UNIT_ID_BYTES = 512
+MAX_POOL_BYTES = 1024 * 1024
+MAX_MONSTER_POOLS = 24
+MAX_POOL_MEMBERS = 256
+POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
+POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
 READY_ACTIONS = {"spawn", "queue_spawn", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
@@ -414,7 +419,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv"}:
+        if name not in {"command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -553,8 +558,8 @@ class Bridge:
                 vk,mod=int(key),int(mask)
                 team,count=(row[3] or None,int(row[4]) if row[4] else None) if columns==5 else (None,None)
                 if team not in (None,)+TEAMS or not (count is None or 1<=count<=MAX_SPAWN_COUNT):raise ValidationError('invalid unit key team or count')
-                if not 1<=vk<=255 or not 0<=mod<=7 or unit in result or vk in seen:raise ValidationError('invalid or duplicated unit key')
-                seen.add(vk);result[unit]={'key_code':vk,'modifiers':mod,'team':team,'count':count,'active':False,'message':'等待游戏确认'}
+                if not 1<=vk<=255 or not 0<=mod<=7 or unit in result or (vk,mod) in seen:raise ValidationError('invalid or duplicated unit key')
+                seen.add((vk,mod));result[unit]={'key_code':vk,'modifiers':mod,'team':team,'count':count,'active':False,'message':'等待游戏确认'}
             status=bounded_read(self._path('unit-keybinds-state.tsv'),2*1024*1024)
             if status:
                 states=tsv_rows(status);meta=next(states,[])
@@ -845,7 +850,10 @@ class Bridge:
             if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
             if vk:
                 for name,binding in self.function_keybinds()['bindings'].items():
-                    if binding['key_code']==vk:raise ValidationError('该键已被功能「'+BINDING_LABELS[name]+'」占用')
+                    if (binding['key_code'],binding['modifiers'])==(vk,mods):
+                        raise ValidationError('该键已被功能「'+BINDING_LABELS[name]+'」占用')
+                pool=self._pool_owner(vk,mods)
+                if pool:raise ValidationError('该键已被怪物池「'+pool+'」占用')
             payload.update(unit_id=unit_id,key_code=vk,modifiers=mods if vk else 0)
         elif action == 'set_spawn_difficulty':
             allowed.add('difficulty')
@@ -985,14 +993,18 @@ class Bridge:
             game=self.game_status();values=game.get('values',{})
             if values.get('function_keys_schema')!='4':raise ValidationError('游戏端尚未支持新版功能改键（镜头跟踪），请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
+            pool_keys=self._pool_owners()
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
                 blocked=binding_system_owner(vk,mods)
                 if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
                 if vk:
-                    if vk in seen:raise ValidationError('同一主键同时用于「'+BINDING_LABELS[seen[vk]]+'」和「'+BINDING_LABELS[name]+'」')
-                    seen[vk]=name
-                    owner=next((unit for unit,binding in units.items() if binding['key_code']==vk),None)
+                    chord=(vk,mods)
+                    if chord in seen:raise ValidationError('同一组合键同时用于「'+BINDING_LABELS[seen[chord]]+'」和「'+BINDING_LABELS[name]+'」')
+                    seen[chord]=name
+                    if chord in pool_keys:raise ValidationError('该键已被怪物池「'+pool_keys[chord]+'」占用')
+                    owner=next((unit for unit,binding in units.items()
+                                if (binding['key_code'],binding['modifiers'])==chord),None)
                     if owner:
                         row=next((unit for unit in self.catalog()['units'] if unit['id']==owner),{})
                         label=row.get('display_name') or row.get('name') or owner.rsplit('.',1)[-1]
@@ -1326,8 +1338,9 @@ class Bridge:
                 if len(row)!=3 or row[0] not in BINDING_NAMES or row[0] in parsed:raise ValidationError('功能快捷键条目无效')
                 entry=parse_binding({'key_code':int(row[1]),'modifiers':int(row[2])})
                 if binding_system_owner(entry['key_code'],entry['modifiers']):raise ValidationError('功能快捷键占用了系统保留组合')
-                if entry['key_code'] and entry['key_code'] in seen:raise ValidationError('功能快捷键存在重复主键')
-                if entry['key_code']:seen.add(entry['key_code'])
+                chord=(entry['key_code'],entry['modifiers'])
+                if entry['key_code'] and chord in seen:raise ValidationError('功能快捷键存在重复组合键')
+                if entry['key_code']:seen.add(chord)
                 parsed[row[0]]=entry
             if not set(V2_BINDING_NAMES)<=set(parsed):raise ValidationError('功能快捷键条目不完整')
             return parsed,rev
@@ -1477,6 +1490,138 @@ class Bridge:
                     values[field] = int(number) if number.is_integer() else number
         return {"mode": mode, "values": values, "fields": list(STAT_FIELDS)}
 
+    @staticmethod
+    def _check_pools(pools, allowed_paths=None, reserved=None):
+        if not isinstance(pools, list) or len(pools) > MAX_MONSTER_POOLS:
+            raise ValidationError(f"最多可保存 {MAX_MONSTER_POOLS} 个怪物池")
+        result, ids, chords = [], set(), set()
+        for pool in pools:
+            if not isinstance(pool, dict) or set(pool) != {"id", "name", "team", "count", "key_code", "modifiers", "unit_ids"}:
+                raise ValidationError("怪物池配置格式无效")
+            pool_id = pool["id"]
+            if not isinstance(pool_id, str) or not POOL_ID.fullmatch(pool_id) or pool_id in ids:
+                raise ValidationError("怪物池标识无效或重复")
+            name = clean_field(pool["name"], "池名称", 48).strip()
+            if not name:
+                raise ValidationError("请给怪物池起个名字")
+            team, count = pool["team"], pool["count"]
+            if team not in TEAMS or type(count) is not int or not 1 <= count <= MAX_SPAWN_COUNT:
+                raise ValidationError(f"「{name}」的队伍或数量无效")
+            key = parse_binding({field: pool[field] for field in ("key_code", "modifiers")})
+            vk, mods = key["key_code"], key["modifiers"]
+            blocked = binding_system_owner(vk, mods)
+            if blocked:
+                raise ValidationError(f"「{name}」的快捷键已被「{blocked}」占用")
+            if vk:
+                chord = (vk, mods)
+                if chord in chords:
+                    raise ValidationError(f"「{name}」的快捷键与另一怪物池重复")
+                if reserved and chord in reserved:
+                    raise ValidationError(f"「{name}」的快捷键已被{reserved[chord]}占用")
+                chords.add(chord)
+            members = pool["unit_ids"]
+            if not isinstance(members, list) or len(members) > MAX_POOL_MEMBERS:
+                raise ValidationError(f"每个怪物池最多 {MAX_POOL_MEMBERS} 种单位")
+            seen = set()
+            for member in members:
+                if not isinstance(member, str) or len(member)>512 or not POOL_CLASS.fullmatch(member) or ".." in member or "//" in member or member in seen:
+                    raise ValidationError(f"「{name}」含无效或重复单位")
+                if allowed_paths is not None and member not in allowed_paths:
+                    raise ValidationError(f"「{name}」含当前目录无法识别的单位")
+                seen.add(member)
+            ids.add(pool_id)
+            result.append(dict(id=pool_id, name=name, team=team, count=count, unit_ids=members, **key))
+        return result
+
+    def monster_pools(self):
+        source = bounded_read(self._path("monster-pools.tsv"), MAX_POOL_BYTES)
+        if source is None:
+            return {"revision": 0, "pools": []}
+        rows = tsv_rows(source)
+        header = next(rows, [])
+        if len(header) != 2 or header[0] != "MonsterPoolsV1" or not header[1].isdigit() or not source.endswith("\n"):
+            raise ValidationError("怪物池配置文件格式无效")
+        revision = int(header[1])
+        if not 1 <= revision <= 2147483646:
+            raise ValidationError("怪物池配置版本无效")
+        pools = []
+        for row in rows:
+            if len(row) != 7 or len(pools) >= MAX_MONSTER_POOLS:
+                raise ValidationError("怪物池条目格式无效")
+            pool_id, name, team, count, vk, mods, units = row
+            pools.append(dict(id=pool_id, name=name, team=team, count=int(count),
+                              key_code=int(vk), modifiers=int(mods), unit_ids=units.split(";") if units else []))
+        return {"revision": revision, "pools": self._check_pools(pools)}
+
+    def _pool_owners(self):
+        try:
+            return {(p["key_code"], p["modifiers"]): p["name"] for p in self.monster_pools()["pools"] if p["key_code"]}
+        except (OSError, UnicodeError, ValueError):
+            return {}  # Bad optional settings should not prevent unit/function key edits.
+
+    def _pool_owner(self, vk, mods):
+        return self._pool_owners().get((vk, mods))
+
+    def save_monster_pools(self, request):
+        if not isinstance(request, dict) or set(request) != {"revision", "pools"} or type(request["revision"]) is not int:
+            raise ValidationError("怪物池请求格式无效")
+        with self.lock:
+            old = self.monster_pools()
+            if request["revision"] != old["revision"]:
+                raise ValidationError("怪物池已在另一处修改，请重新载入")
+            revision = old["revision"] + 1
+            if revision > 2147483646:
+                raise ValidationError("怪物池配置版本已达上限")
+            names = {u["id"]: u["display_name"] for u in self.catalog()["units"]}
+            allowed_paths = set(names) | {path for pool in old["pools"] for path in pool["unit_ids"]}
+            units, _ = self._unit_shortcuts("")
+            reserved = {(row["key_code"], row["modifiers"]): f"单位「{names.get(path, path.rsplit('.',1)[-1])}」"
+                        for path, row in units.items()}
+            reserved.update({(row["key_code"], row["modifiers"]): f"功能「{BINDING_LABELS[action]}」"
+                             for action, row in self.function_keybinds()["bindings"].items() if row["key_code"]})
+            pools = self._check_pools(request["pools"], allowed_paths, reserved)
+            lines = [f"MonsterPoolsV1\t{revision}"]
+            lines.extend("\t".join((pool["id"], pool["name"], pool["team"], str(pool["count"]),
+                                    str(pool["key_code"]), str(pool["modifiers"]), ";".join(pool["unit_ids"])))
+                         for pool in pools)
+            content = "\n".join(lines) + "\n"
+            if len(content.encode("utf-8")) > MAX_POOL_BYTES:
+                raise ValidationError("怪物池配置过大，请减少条目")
+            path = self._path("monster-pools.tsv")
+            atomic_text(path, content)
+            if bounded_read(path, MAX_POOL_BYTES) != content:
+                raise ValidationError("怪物池保存尚未得到确认")
+            return {"revision": revision, "pools": pools}
+
+    def _pool_status(self, game):
+        # Poll only the small header and key readback. Member lists are fetched on demand.
+        result = {"revision": 0, "keys": {}, "supported": False, "error": ""}
+        try:
+            try:
+                with self._path("monster-pools.tsv").open("rb") as stream:
+                    header = stream.readline(64)
+            except FileNotFoundError:
+                header = None
+            if header is not None:
+                match = re.fullmatch(rb"MonsterPoolsV1\t([0-9]{1,10})\n", header)
+                if not match or not 1 <= int(match[1]) <= 2147483646:
+                    raise ValidationError("怪物池配置文件格式无效")
+                result["revision"] = int(match[1])
+            session = game.get("game_session")
+            result["supported"] = bool(game["online"] and session and game["values"].get("monster_pool_keys_schema") == "1")
+            if not result["supported"] or not result["revision"]:
+                return result
+            state = bounded_read(self._path("monster-pools-state.tsv"), 16384)
+            if not state or not state.endswith("\n"):
+                return result
+            rows = tsv_rows(state)
+            if next(rows, []) == ["MonsterPoolKeysV1", str(result["revision"]), session]:
+                result["keys"] = {pool_id: {"active": active == "1", "message": msg}
+                                  for pool_id, active, msg in rows if POOL_ID.fullmatch(pool_id) and active in ("0", "1")}
+        except (OSError, UnicodeError, ValueError) as error:
+            result["error"] = str(error)
+        return result
+
     def keybinds(self):
         with self.lock:
             row = self.db.execute("SELECT value FROM settings WHERE key='requested_keys'").fetchone()
@@ -1501,7 +1646,7 @@ class Bridge:
             game = self.game_status()
             summon_transit = self._summon_transit(game.get("game_session"), self._summon_epoch(game))
             return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": game,
-                    "summon_queue_transit": summon_transit,
+                    "summon_queue_transit": summon_transit, "monster_pools": self._pool_status(game),
                     "catalog": catalog_summary, "queue": [self._command(row[0]) for row in reversed(rows)],
                     "keybinds": keys["active"], "requested_keybinds": keys["requested"],
                     "function_keys": self.function_keybinds(),"function_keys_supported": True,
@@ -1566,6 +1711,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.catalog()
             elif path == "/api/keybinds":
                 result = self.server.bridge.keybinds()
+            elif path == "/api/monster-pools":
+                result = self.server.bridge.monster_pools()
             elif path == "/api/stat-settings":
                 result = self.server.bridge.stat_settings()
             elif path == "/api/companion-stats":
@@ -1609,7 +1756,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted(write=True):
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear"}:
+        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools"}:
             self._reply(404, {"error": "unknown API"}); return
         try:
             if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
@@ -1617,10 +1764,13 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
                 raise ValidationError("Content-Type must be application/json")
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 16384:
-                raise ValidationError("request body must be 1..16384 bytes")
+            limit = MAX_POOL_BYTES if path == "/api/monster-pools" else 16384
+            if not 0 < length <= limit:
+                raise ValidationError(f"request body must be 1..{limit} bytes")
             self.connection.settimeout(5)
             request = json.loads(self.rfile.read(length).decode("utf-8"))
+            if path == "/api/monster-pools":
+                self._reply(200, self.server.bridge.save_monster_pools(request)); return
             if path == "/api/queue/clear":
                 if request != {}:
                     raise ValidationError("queue clear takes an empty object")

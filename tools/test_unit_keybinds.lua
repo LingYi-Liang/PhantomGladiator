@@ -26,7 +26,7 @@ inGame=true;table.remove(queue,1)();inGame=false
 assert(#spawned==0,'a remapped key must cancel an already queued old binding')
 slots['69:0']();inGame=true;table.remove(queue,1)();inGame=false
 assert(spawned[1]==a)
-assert(not keys:configure(b,69,4).ok,'same primary key must not double-spawn two different units')
+assert(not keys:configure(b,69,0).ok,'an identical chord must not double-spawn two different units')
 assert(keys:configure(b,117,0).ok,'an unassigned former camera key must be available')
 assert(keys:configure(b,116,0).ok)
 keys:dispatch(116,0);inGame=true;table.remove(queue,1)();inGame=false

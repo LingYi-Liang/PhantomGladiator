@@ -58,7 +58,12 @@ const MockRuntime = (() => {
   try { savedCompanionExec = localStorage.getItem(COMPANION_EXEC_KEY) === "true"; } catch { /* storage may be unavailable */ }
   let savedExecCam = false;
   try { savedExecCam = localStorage.getItem(EXEC_CAM_KEY) === "true"; } catch { /* storage may be unavailable */ }
+  const poolKey = "pg-proto.monsterPools";
+  let savedPools = { revision: 0, pools: [] };
+  try { savedPools = JSON.parse(localStorage.getItem(poolKey) || "null") || savedPools; } catch { /* storage may be unavailable */ }
   const s = {
+    monsterPools: savedPools,
+    poolStatus: { scope: "demo", supported: false, keys: {}, error: "" },
     game: "ready",              // offline | connecting | notInMap | ready | mismatch
     gameRunning: true,          // the updater refuses to replace mod files while the game runs
     appVersion: "0.26.2",
@@ -585,6 +590,15 @@ const MockRuntime = (() => {
     owned,
     command,
     clearQueue,
+    poolUnitId: member => member,
+    poolUnitPath: id => id,
+    async saveMonsterPools(pools, revision) {
+      if (s.monsterPools.revision !== revision) throw new Error("怪物池已在另一处修改");
+      s.monsterPools = { revision: revision + 1, pools };
+      try { localStorage.setItem(poolKey, JSON.stringify(s.monsterPools)); } catch { /* storage may be unavailable */ }
+      emit({ type: "state", parts: new Set(["poolConfig"]) });
+      return s.monsterPools;
+    },
     launchGame,
     setGame,
     cycleTeam,

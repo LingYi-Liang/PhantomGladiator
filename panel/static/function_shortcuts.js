@@ -10,10 +10,11 @@ const FunctionShortcuts=(()=>{
     for(const [action,name] of Object.entries(names)){
       const {key_code:key,modifiers:mods}=UnitShortcuts.parseBinding(bindings[action]);if(!key)continue;
       const system=UnitShortcuts.systemConflict(key,mods);if(system)return system;
-      if(seen.has(key))return `${UnitShortcuts.label(key,mods)} 的主键同时用于「${names[seen.get(key)]}」和「${name}」。`;
-      seen.set(key,action);
-      const owner=units.find(unit=>Number(unit.unit_shortcut?.key_code)===key);
-      if(owner)return `${UnitShortcuts.label(key,mods)} 的主键已被单位「${owner.display_name||owner.internal_name||owner.name||owner.id}」占用，当前绑定为 ${UnitShortcuts.label(key,owner.unit_shortcut.modifiers)}。`;
+      const chord=key+':'+mods;
+      if(seen.has(chord))return `${UnitShortcuts.label(key,mods)} 同时用于「${names[seen.get(chord)]}」和「${name}」。`;
+      seen.set(chord,action);
+      const owner=units.find(unit=>Number(unit.unit_shortcut?.key_code)===key&&Number(unit.unit_shortcut.modifiers||0)===mods);
+      if(owner)return `${UnitShortcuts.label(key,mods)} 已被单位「${owner.display_name||owner.internal_name||owner.name||owner.id}」占用，当前绑定为 ${UnitShortcuts.label(key,owner.unit_shortcut.modifiers)}。`;
     }
     return '';
   }

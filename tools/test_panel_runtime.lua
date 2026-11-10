@@ -33,7 +33,7 @@ local function harness(saved,withSpectator,withCodex)
     local memoryIO={open=function(path,mode)
         mode=mode:sub(1,1)
         h.ioEvents[#h.ioEvents+1]="open:"..mode
-        if mode=="r" and h.files[path]==nil then return nil,"missing" end
+        if mode=="r" and h.files[path]==nil then return nil,"missing",2 end
         if mode=="w" and h.failWrite then return nil,"simulated write failure" end
         local content=h.files[path] or ""
         return {
@@ -44,6 +44,7 @@ local function harness(saved,withSpectator,withCodex)
                 if mode=="w" then h.files[path]=content end
                 return true
             end,
+            seek=function()return 0 end,
             read=function()
                 h.ioEvents[#h.ioEvents+1]="read"
                 if h.onRead then h.onRead(path) end
@@ -105,7 +106,7 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
-        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue')
+        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -254,6 +255,37 @@ test("opt-in queue keeps the first 100 summons, paces completion and cancels bef
     assert(loop.cancelled and not h.runtime.summonQueue.enabled)
     h.keys.F9();h:drain()
     assert(count(h,'spawn')==4,'the original shortcut path resumes once off')
+end)
+
+test("two pool keys dispatch their own members and team, obey queueing and drop an old-map key",function()
+    local h=harness()
+    local a,b='/Game/BP_A.BP_A_C','/Game/BP_B.BP_B_C'
+    local bad='/Game/BP_Blocked.BP_Blocked_C'
+    h.files['memory/monster-pools.tsv']='MonsterPoolsV1\t1\npool-small\tSmall\tred\t3\t81\t1\t'..a..';'..bad..
+        '\npool-ally\tAlly\tcompanion\t1\t81\t2\t'..b..'\n'
+    h.runtime=h.new({spawnPolicy={check=function(path)return path~=bad end,
+        limits=function(path)if path==b then return {max_count=1}end end,status=function()return {}end}})
+    assert(h.runtime:start());h:tick()
+    assert(h.reported.monster_pool_keys_schema==1)
+    assert(h.files['memory/monster-pools-state.tsv']=='MonsterPoolKeysV1\t1\ttest-session\npool-small\t1\t\npool-ally\t1\t\n')
+    h.keys['Q:1']();assert(#h.queue==1 and count(h,'spawn')==0)
+    h:drain()
+    local spawn
+    for _,call in ipairs(h.calls)do if call.name=='spawn' then spawn=call end end
+    assert(spawn and table.concat(spawn.args,'|')==a..'|red|3')
+    h.runtime.nextSummonAt=nil
+    h.keys['Q:2']();h.sessionState.game_session='next-map';h:drain()
+    assert(count(h,'spawn')==1,'a request queued for the previous map is stale')
+    h:tick()
+    assert(h:run(function()return h.runtime:setSummonQueue(true)end).ok)
+    for _=1,100 do h.keys['Q:2']() end
+    assert(#h.runtime.summonQueue.jobs==100 and count(h,'spawn')==1)
+    local job=h.runtime.summonQueue.jobs[1]
+    assert(job.path==b and job.team=='companion' and job.count==1)
+    assert(h:run(function()return h.runtime:setSummonQueue(false)end).ok and #h.runtime.summonQueue.jobs==0)
+    h.files['memory/monster-pools.tsv']='MonsterPoolsV1\t2\npool-small\tSmall\tblue\t1\t81\t1\t'..a..'\n'
+    h:tick();h.keys['Q:2']();assert(#h.queue==0,'removed key is inert')
+    assert(h.files['memory/monster-pools-state.tsv']=='MonsterPoolKeysV1\t2\tnext-map\npool-small\t1\t\n')
 end)
 
 test("new bindings activate only after persisted readback; old keys stop dispatching",function()

@@ -34,14 +34,14 @@ const UnitShortcuts=(()=>{
   }
   function conflict(id,key,mods,units=[],status={},functions={}){
     if(!key)return '';
-    const owner=units.find(unit=>unit.id!==id&&Number(unit.unit_shortcut?.key_code)===key);
+    const owner=units.find(unit=>unit.id!==id&&Number(unit.unit_shortcut?.key_code)===key&&Number(unit.unit_shortcut.modifiers||0)===mods);
     if(owner){
       const name=owner.display_name||owner.internal_name||owner.name||owner.id;
-      return `${label(key,mods)} 的主键已被「${name}」占用，当前绑定为 ${label(key,owner.unit_shortcut.modifiers)}。请先解除该单位的绑定。`;
+      return `${label(key,mods)} 已被「${name}」占用，当前绑定为 ${label(key,owner.unit_shortcut.modifiers)}。请先解除该单位的绑定。`;
     }
     for(const [action,name] of Object.entries(functionNames)){
       const binding=parseBinding(functions[action]||status['key_'+action]);
-      if(binding.key_code===key)return `${label(key,mods)} 的主键已被功能「${name}」占用，当前绑定为 ${label(key,binding.modifiers)}。`;
+      if(binding.key_code===key&&binding.modifiers===mods)return `${label(key,mods)} 已被功能「${name}」占用，当前绑定为 ${label(key,binding.modifiers)}。`;
     }
     return systemConflict(key,mods);
   }

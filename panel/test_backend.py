@@ -753,20 +753,56 @@ class BridgeTests(unittest.TestCase):
 
     def test_function_conflicts_name_both_actions_and_the_owning_unit(self):
         empty={name:'UNBOUND' for name in backend.BINDING_NAMES}
+        self.assertEqual(self.bridge.enqueue({'action':'configure_keys','bindings':{**empty,'toggle_camera':'F6','exit_camera':'VK_117_MOD_4'}})['status'],'queued')
         with self.assertRaisesRegex(backend.ValidationError,'自由观战.*退出自由观战'):
-            self.bridge.enqueue({'action':'configure_keys','bindings':{**empty,'toggle_camera':'F6','exit_camera':'VK_117_MOD_4'}})
+            self.bridge.enqueue({'action':'configure_keys','bindings':{**empty,'toggle_camera':'F6','exit_camera':'F6'}})
         self.write('unit-keybinds.tsv','UnitKeysV1\t1\n'+UNIT+'\t117\t1\n')
         label=self.bridge.catalog()['units'][0]['display_name']
         with self.assertRaises(backend.ValidationError) as failure:
-            self.bridge.enqueue({'action':'configure_keys','bindings':{**empty,'toggle_camera':'F6'}})
+            self.bridge.enqueue({'action':'configure_keys','bindings':{**empty,'toggle_camera':'VK_117_MOD_1'}})
         self.assertIn(label,str(failure.exception))
+
+    def test_named_monster_pools_save_and_conflict_on_exact_chord_and_scope_readback(self):
+        first = dict(id="pool-small", name="小怪池", team="red", count=3, key_code=81, modifiers=1, unit_ids=[UNIT])
+        second = dict(id="pool-boss", name="随从池", team="companion", count=1, key_code=81, modifiers=2, unit_ids=[UNIT])
+        expected = {"revision": 1, "pools": [first, second]}
+        self.assertEqual(self.bridge.save_monster_pools({"revision": 0, "pools": [first, second]}), expected)
+        self.assertEqual(self.bridge.monster_pools(), expected)
+        with self.assertRaisesRegex(backend.ValidationError, "另一处修改"):
+            self.bridge.save_monster_pools({"revision": 0, "pools": []})
+        with self.assertRaisesRegex(backend.ValidationError, "重复"):
+            self.bridge.save_monster_pools({"revision": 1, "pools": [first, {**second, "modifiers": 1}]})
+        self.assertEqual(self.bridge.monster_pools(), expected)
+        with self.assertRaisesRegex(backend.ValidationError, "小怪池"):
+            self.bridge.enqueue(dict(action="configure_unit_key", unit_id=UNIT, key_code=81, modifiers=1))
+        self.assertEqual(self.bridge.enqueue(dict(action="configure_unit_key", unit_id=UNIT, key_code=81, modifiers=4))["status"], "queued")
+        empty = {name: "UNBOUND" for name in backend.BINDING_NAMES}
+        with self.assertRaisesRegex(backend.ValidationError, "随从池"):
+            self.bridge.enqueue({"action": "configure_keys", "bindings": {**empty, "toggle_camera": "VK_81_MOD_2"}})
+        for session in ("session-A", "session-B"):
+            self.game(session)
+            status = self.bridge.runtime / "status.tsv"
+            with status.open("a", encoding="utf-8") as output:
+                output.write("monster_pool_keys_schema\t1\n")
+            self.write("monster-pools-state.tsv", "MonsterPoolKeysV1\t1\tsession-A\npool-small\t1\t\npool-boss\t0\t其它Mod占用\n")
+            info = self.bridge.status()["monster_pools"]
+            self.assertEqual(info["revision"], 1)
+            self.assertTrue(info["supported"])
+            if session == "session-A":
+                self.assertTrue(info["keys"]["pool-small"]["active"])
+                self.assertEqual(info["keys"]["pool-boss"]["message"], "其它Mod占用")
+            else:
+                self.assertEqual(info["keys"], {})
+        self.assertEqual(self.bridge.save_monster_pools({"revision": 1, "pools": [second]})["pools"], [second])
+        self.assertEqual(self.bridge.enqueue(dict(action="configure_unit_key", unit_id=UNIT, key_code=81, modifiers=1))["status"], "queued")
 
     def test_saved_function_binding_blocks_unit_assignment_and_requires_actual_game_readback(self):
         entries={name:{'key_code':117 if name=='toggle_camera' else 0,'modifiers':0} for name in backend.BINDING_NAMES}
         self.write('function-keybinds.tsv','FunctionKeysV2\t3\n'+''.join(f"{name}\t{e['key_code']}\t0\n" for name,e in entries.items()))
         self.assertFalse(self.bridge.function_keybinds()['bindings']['toggle_camera']['active'])
+        self.assertEqual(self.bridge.enqueue({'action':'configure_unit_key','unit_id':UNIT,'key_code':117,'modifiers':4})['status'],'queued')
         with self.assertRaisesRegex(backend.ValidationError,'自由观战'):
-            self.bridge.enqueue({'action':'configure_unit_key','unit_id':UNIT,'key_code':117,'modifiers':4})
+            self.bridge.enqueue({'action':'configure_unit_key','unit_id':UNIT,'key_code':117,'modifiers':0})
         self.write('status.tsv','schema_version\t1\nheartbeat_unix\t100\ngame_session\tsession-A\ngame_ready\ttrue\nfunction_keys_schema\t4\nfunction_keys_epoch\tnew-keys\nfunction_keys_revision\t3\nkey_toggle_camera\tVK_117_MOD_0\n')
         self.write('function-keybinds-state.tsv','FunctionKeyStateV2\t3\told-keys\ntoggle_camera\t0\tstale error\n')
         state=self.bridge.function_keybinds()
@@ -1472,6 +1508,18 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(raw), {"cleared": 2, "interrupted": 0, "files_left": []})  # refresh_catalog and the ten keys
         self.assertEqual(self.request("POST", "/api/queue/clear", '{"all":1}', write_headers)[0], 400)
         self.assertEqual(self.request("POST", "/api/queue/clear", "{}", {"Content-Type": "application/json"})[0], 403)
+
+    def test_monster_pools_can_be_saved_and_reopened_without_running_game(self):
+        data = json.loads(self.request("GET", "/api/status")[2])
+        headers = {"Content-Type": "application/json", "Origin": self.server.origin}
+        pool = dict(id="pool-ally", name="随从", team="companion", count=2, key_code=81, modifiers=2, unit_ids=[])
+        body = json.dumps({"revision": 0, "pools": [pool]})
+        self.assertEqual(self.request("POST", "/api/monster-pools", body, headers)[0], 403)
+        status, _, raw = self.request("POST", "/api/monster-pools", body, {**headers, "X-CSRF-Token": data["csrf_token"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw), {"revision": 1, "pools": [pool]})
+        self.assertEqual(self.request("GET", "/api/monster-pools")[2], raw)
+        self.assertFalse(json.loads(self.request("GET", "/api/status")[2])["monster_pools"]["supported"])
 
     def test_origin_host_csrf_and_static_traversal_are_rejected(self):
         for headers in ({"Host": "evil.example"}, {"Origin": "https://evil.example"}, {"Origin": "null"}):
