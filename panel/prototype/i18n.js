@@ -1385,6 +1385,7 @@ I18N.add("en", {
   "update.rollback": "Roll back",
   "update.rollback.title": "Roll back to v{v}",
   "update.rollback.body": "The app goes back to this version. Your settings, shortcuts and unit keys stay. Afterwards, update the in-game mod when it asks. To upgrade again later, just check for updates.",
+  "update.rollback.isolated": "The older version runs from a separate folder to protect backups in the current app folder. Follow its prompt to install the matching in-game mod.",
   "update.rollback.confirm": "Download and roll back",
   "update.note1": "New “Rematch”: re-summons the last lineup and starts the fight for you",
   "update.note2": "The codex now ships with the app — pick monsters right away, no scan needed",
