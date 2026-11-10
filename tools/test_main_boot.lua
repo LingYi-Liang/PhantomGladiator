@@ -81,9 +81,14 @@ StandKeep.new=function(options)
 end
 -- What the summon scan finds goes to the arena with its side (arena_summon_links.lua opposing -> 'opposing').
 local adoptCalls,fakeLinks={},{}
+local arenaInstance,unitKeyOptions
+local UnitKeys=require('unit_keybinds')
+local realUnitKeysNew=UnitKeys.new
+UnitKeys.new=function(options)unitKeyOptions=options;return realUnitKeysNew(options)end
 local wrappedArenaNew=Arena.new
 Arena.new=function(options)
     local made=wrappedArenaNew(options)
+    arenaInstance=made
     local adopt=made.adoptSummon
     made.adoptSummon=function(self,...)adoptCalls[#adoptCalls+1]=table.pack(...);return adopt(self,...)end
     return made
@@ -153,11 +158,31 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11-fixes-2',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-fixes-3',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
 else assert(output:find("找不到函数库",1,true),"class resolution must reach the explicit mocked spawn boundary") end
+-- The production callback must forward a legacy key's unset team/count to Arena
+-- rather than sampling all combatants just to look up selection defaults.
+do
+    local sampled,requests=0,{}
+    local status,spawn=arenaInstance.status,arenaInstance.spawn
+    arenaInstance.status=function(self)sampled=sampled+1;return status(self)end
+    arenaInstance.spawn=function(_,path,team,count)
+        requests[#requests+1]=table.pack(path,team,count)
+        return {ok=true,spawned_count=1}
+    end
+    inGame=true
+    unitKeyOptions.spawn(known,nil,nil)
+    unitKeyOptions.spawn(known,'red',3)
+    inGame=false
+    arenaInstance.status,arenaInstance.spawn=status,spawn
+    originalPrint('unit-key dispatch readback: whole-roster status calls='..sampled)
+    assert(sampled==0,'a unit key must not sample the entire roster before summoning')
+    assert(#requests==2 and requests[1].n==3 and requests[1][1]==known and requests[1][2]==nil and requests[1][3]==nil)
+    assert(requests[2][1]==known and requests[2][2]=='red' and requests[2][3]==3)
+end
 -- Exercise the real main.lua activation callback, not a replacement callback.
 local originalFind=StaticFindObject
 local originalFindObject=FindObject
