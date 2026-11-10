@@ -20,7 +20,9 @@ local function new(fs,lines)
     return Rules.new({path='memory',io=fs,log=function(s)if lines then lines[#lines+1]=s end end})
 end
 local function actor(class)
-    return {GetClass=function()return {GetFName=function()return {ToString=function()return class end}end}end}
+    return {IsValid=function()return true end,GetClass=function()
+        return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class end}end}
+    end}
 end
 -- Defaults, a choice saved and read back, the default again takes the row away.
 do
@@ -68,5 +70,17 @@ do
     local rules=new(fs)
     assert(rules:status().text=='BP_Monster_MoTian:lock=kill',rules:status().text)
     assert(new(filesystem({[FILE]='OldV0\nBP_Monster_MoTian\tlock\tkill\n'})):status().text=='')
+end
+-- XuKong keeps his passive by default, and an explicit 'off' survives a restart.
+do
+    local fs=filesystem()
+    local rules=new(fs)
+    local id='BP_Monster_XuKong'
+    assert(rules:get(id,'phantom')=='keep' and rules:get(actor(id..'_C'),'phantom')=='keep')
+    assert(rules:set(id,'phantom','off').ok)
+    assert(rules:status().text==id..':phantom=off')
+    assert(new(fs):get(id,'phantom')=='off')
+    assert(rules:set(id,'phantom','keep').ok)
+    assert(rules:status().text=='' and new(fs):get(id,'phantom')=='keep')
 end
 print('unit_rules: PASS')

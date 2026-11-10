@@ -3,12 +3,27 @@
 --   lock:    how a unit on its death lock ends. execute (default): an opponent executes it, as far as it has an execution.
 --            kill: it dies on the lock (arena_executions.lua).
 --   phantom: 琴女's 虚化 in fights of blue, red and companions. off (default): taken away when summoned, since nothing an NPC
---            does can break it (phantom_break.lua). keep: as in the game.
+--            does can break it (phantom_break.lua). keep: as in the game. XuKong keeps his passive by default.
+local U=require("ue_observe")
 local Rules={}
 local HEADER='UnitRulesV1'
 Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true}}
 Rules.DEFAULTS={lock='execute',phantom='off'}
 local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'}}
+
+local XUKONG='BP_Monster_XuKong'
+
+local function defaultValue(id,rule)
+    if id==XUKONG and rule=='phantom' then return 'keep' end
+    return Rules.DEFAULTS[rule]
+end
+
+local function labelFor(id,rule,value)
+    if id==XUKONG and rule=='phantom' then
+        return value=='off' and '关闭常驻无敌（下次召唤生效）' or '保留常驻无敌（下次召唤生效）'
+    end
+    return LABELS[rule][value]
+end
 
 local function validId(id)return type(id)=='string' and #id<=128 and id:match('^BP_[%w_]+$')~=nil end
 
@@ -39,7 +54,7 @@ function Rules.new(options)
         local saved=readFile()
         if type(saved)=='string' and saved:sub(1,#HEADER+1)==HEADER..'\n' then
             for id,rule,value in saved:gmatch('\n([^\t\r\n]+)\t([^\t\r\n]+)\t([^\t\r\n]+)')do
-                if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=Rules.DEFAULTS[rule] then
+                if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=defaultValue(id,rule) then
                     rules[id]=rules[id] or {};rules[id][rule]=value
                 end
             end
@@ -54,7 +69,7 @@ function Rules.new(options)
             for name,current in pairs(row)do copy[unit][name]=current end
         end
         copy[id]=copy[id] or {}
-        copy[id][rule]=value~=Rules.DEFAULTS[rule] and value or nil
+        copy[id][rule]=value~=defaultValue(id,rule) and value or nil
         if not next(copy[id]) then copy[id]=nil end
         local text=render(copy)
         local f=fs.open(file,'w')
@@ -63,17 +78,23 @@ function Rules.new(options)
         local saved=f~=nil and wrote~=nil and wrote~=false and closed~=false and readFile()==text
         if saved then rules=copy end
         log(string.format('[UnitRules] 设置 单位=%s %s=%s 保存读回=%s',id,rule,value,tostring(saved)))
-        return {ok=saved,spawned_count=0,message=saved and LABELS[rule][value] or '单位规则没有保存'}
+        return {ok=saved,spawned_count=0,message=saved and labelFor(id,rule,value) or '单位规则没有保存'}
     end
     -- The rule for a unit id or an actor's class.
     function self:get(unit,rule)
-        if not next(rules) then return Rules.DEFAULTS[rule] end
         local id=unit
         if type(unit)~='string' then
-            local ok,name=pcall(function()return unit:GetClass():GetFName():ToString()end)
-            id=ok and type(name)=='string' and name:gsub('_C$','') or nil
+            id=nil
+            if U.valid(unit) then
+                local ok,cls=pcall(function()return unit:GetClass()end)
+                cls=ok and U.unwrap(cls) or nil
+                if U.valid(cls) then
+                    local named,name=pcall(function()return cls:GetFName():ToString()end)
+                    id=named and type(name)=='string' and name:gsub('_C$','') or nil
+                end
+            end
         end
-        return id and rules[id] and rules[id][rule] or Rules.DEFAULTS[rule]
+        return id and rules[id] and rules[id][rule] or defaultValue(id,rule)
     end
     -- For the app: BP_Monster_MoTian:lock=kill;BP_Monster_FemaleDoll_QinNv:phantom=keep
     function self:status()

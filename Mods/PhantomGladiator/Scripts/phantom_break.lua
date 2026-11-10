@@ -12,6 +12,10 @@
 -- A unit with no team is fought by the player, who can break it the game's way: left alone.
 local U=require('ue_observe')
 local Break={}
+local XUKONG='BP_Monster_XuKong'
+local XUKONG_PATH='/PBZCombatAsset/ActorData/Mobs/079_XuKong/BP_Monster_XuKong.BP_Monster_XuKong_C'
+local DODGE_CLASS='/PBZCombatAsset/Prototypes/GameplayEffects/GE_DodgeInvulnerable.GE_DodgeInvulnerable_C'
+local DODGE_TAG='CharacterState.Stand.Invulnerable.Dodge'
 local QIN={passive='GA_QinNv_Passive_C',
     effect='/PBZCombatAsset/ActorData/Mobs/FemaleDoll/GameplayEffects/GE_FemaleDoll_QinNv_Phantom.GE_FemaleDoll_QinNv_Phantom_C'}
 Break.KINDS={
@@ -62,7 +66,7 @@ function Break.new(options)
         return type(count)=='number' and count or nil
     end
     local function tagCount(asc,tag)
-        if FName==nil then return nil end
+        if not U.valid(asc) or FName==nil then return nil end
         local ok,count=pcall(function()return asc:GetGameplayTagCount({TagName=FName(tag)})end)
         count=ok and U.unwrap(count) or nil
         return type(count)=='number' and count or nil
@@ -91,6 +95,29 @@ function Break.new(options)
             effect and 'found' or (kind.effect and '没找到' or '无'),tostring(removed),tostring(before),tostring(after),tostring(tagCount(asc,'CharacterState.Phantom'))))
         return true
     end
+    -- ActorConfig adds the infinite effect during initialization. Only this direct spawn path runs
+    -- before ActivateAI. Timed dodge actions grant the same class, so never remove it in tick().
+    function self:beforeActivate(actor,path,escort)
+        if path~=XUKONG_PATH or escort or not options.rule or options.rule(XUKONG)~='off' then return true end
+        local asc=U.field(actor,'AbilitySystemComponent')
+        local before=tagCount(asc,DODGE_TAG)
+        local ok,cls=pcall(find,DODGE_CLASS)
+        local named,name=false,nil
+        if ok and U.valid(cls) then named,name=pcall(function()return cls:GetFullName()end) end
+        local exact=named and name=='BlueprintGeneratedClass '..DODGE_CLASS
+        local called=false
+        if before==1 and exact and U.valid(actor) and U.valid(asc) and U.valid(cls) then
+            called=pcall(function()asc:RemoveActiveGameplayEffectBySourceEffect(cls,nil,1)end)
+        end
+        local after=tagCount(asc,DODGE_TAG)
+        local removed=called and after==0
+        if removed then self.broken=self.broken+1 end
+        say(string.format('虚空登场前关闭常驻无敌 类=%s 移除调用=%s 标签=%s -> %s 读回=%s',
+            tostring(exact),tostring(called),tostring(before),tostring(after),tostring(removed)))
+        if removed or (before==0 and after==0) then return true end
+        return false,'虚空常驻无敌未读回解除'
+    end
+
     function self:tick()
         local present={}
         for _,member in ipairs(options.members() or {})do

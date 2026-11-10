@@ -160,4 +160,36 @@ do
     kept.mod:tick()
     assert(hers.bIsActive==true and kept.all():find('虚化保持原版 单位=BP_Monster_FemaleVessel_YuZan',1,true),kept.all())
 end
+-- XuKong's opt-in removes the initial effect before activation, never a later use of the same effect.
+do
+    local h=harness()
+    local id='BP_Monster_XuKong'
+    local path='/PBZCombatAsset/ActorData/Mobs/079_XuKong/'..id..'.'..id..'_C'
+    local dodge='/PBZCombatAsset/Prototypes/GameplayEffects/GE_DodgeInvulnerable.GE_DodgeInvulnerable_C'
+    local cls=object('GE_DodgeInvulnerable_C')
+    cls.GetFullName=function()return 'BlueprintGeneratedClass '..dodge end
+    h.classes[dodge]=cls
+    local unit=h.unit(id,'neutral')
+    local asc=unit.AbilitySystemComponent
+    asc.GetGameplayTagCount=function(_,tag)
+        assert(tag.TagName=='CharacterState.Stand.Invulnerable.Dodge')
+        return unit.effects
+    end
+    asc.RemoveActiveGameplayEffectBySourceEffect=function(_,effect,owner,count)
+        assert(effect==cls and owner==nil and count==1)
+        h.removed[#h.removed+1]=effect
+        unit.effects=unit.effects-1
+    end
+    assert(h.mod:beforeActivate(unit,path,false) and unit.effects==1 and #h.removed==0)
+    h.rules[id]='off'
+    assert(h.mod:beforeActivate(unit,path,true) and unit.effects==1,'escorts retain their original effect')
+    unit.effects=2
+    assert(not h.mod:beforeActivate(unit,path,false) and unit.effects==2 and #h.removed==0,'do not remove an ambiguous stack')
+    unit.effects=1
+    assert(h.mod:beforeActivate(unit,path,false) and unit.effects==0 and #h.removed==1)
+    assert(h.all():find('标签=1 -> 0 读回=true',1,true))
+    unit.effects=1
+    for _=1,12 do h.mod:tick() end
+    assert(unit.effects==1 and #h.removed==1,'the same class used by later dodge actions is left in place')
+end
 print('phantom_break: PASS')

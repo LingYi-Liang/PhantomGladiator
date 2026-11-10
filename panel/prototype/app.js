@@ -456,20 +456,28 @@
     BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
     BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
-    BP_Monster_FemaleVessel_YuZan: "phantom",
+    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom",
   };
   const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"] };
-  const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || UNIT_RULE_VALUES[rule][0];
+  const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
+  const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
+  const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
+  const unitRuleLabel = (id, rule, value) => xukongDodgeRule(id, rule)
+    ? (value === "off" ? "常驻无敌：关" : "常驻无敌：开")
+    : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
     const rule = UNIT_RULE_OF[u.id];
     if (!rule || (RT.online() && !S.unitRulesSupported)) return "";
-    const value = unitRuleValue(u.id, rule), changed = value !== UNIT_RULE_VALUES[rule][0];
-    return `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(t(`unitRule.${rule}.tip`))}">${esc(t(`unitRule.${rule}.${value}`))}</button>`;
+    const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
+    const tip = xukongDodgeRule(u.id, rule)
+      ? "关闭虚空出生时自带的常驻闪避无敌。技能自己的闪避无敌照常生效。下次召唤生效。"
+      : t(`unitRule.${rule}.tip`);
+    return `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
   }
   function toggleUnitRule(id, rule) {
     const [first, second] = UNIT_RULE_VALUES[rule];
     const value = unitRuleValue(id, rule) === first ? second : first;
-    run("set_unit_rule", { payload: { unit: id, rule, value }, ok: () => { renderGrid(); return t(`unitRule.${rule}.${value}`); } });
+    run("set_unit_rule", { payload: { unit: id, rule, value }, ok: () => { renderGrid(); return unitRuleLabel(id, rule, value); } });
   }
   function cardHTML(u, q, focusable) {
     const sel = u.id === ui.selectedId, key = S.unitKeys[u.id];

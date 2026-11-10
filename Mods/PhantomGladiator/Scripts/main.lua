@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-pool-ui-test-1"
+local BUILD = "v0.40.11-lion-pole-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1367,6 +1367,26 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local prepared,prepareError=pcall(function()companions:prepare(actor,unitPath)end)
             if not prepared then log('[Companion] 准备失败: '..tostring(prepareError)) end
         end
+        if arenaSupport.lionStage then
+            local called,ready,reason=pcall(function()
+                return arenaSupport.lionStage:prepare(actor,unitPath,UEHelpers.GetWorld(),escort)
+            end)
+            if not called or not ready then
+                local detail=called and reason or tostring(ready)
+                log('[LionStage] 场地准备失败 '..tostring(detail))
+                local reasonText=tostring(detail or '烈焰舞狮场地准备失败')
+                return false,reasonText,reasonText
+            end
+        end
+        local spawnWarning
+        if arenaSupport.phantom then
+            local called,ok,reason=pcall(function()return arenaSupport.phantom:beforeActivate(actor,unitPath,escort)end)
+            if not called or not ok then
+                if not called then log('[Phantom] 虚空登场前处理失败：'..tostring(ok)) end
+                spawnWarning=reason or '虚空常驻无敌解除未确认'
+            end
+        end
+        if not summonActorLive(actor) then return false,'登场前对象已失效' end
         local activationRequested,live=FinishEntrance(actor)
         if not live then return false,"原生登场时对象进入销毁或状态不可读" end
         if spectator:status().enabled_requested then spectatorTargets:refresh(true) end
@@ -1425,7 +1445,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local inspected,inspectError=pcall(function() return spawnInspector:inspect(actor,UEHelpers.GetWorld()) end)
             if not inspected then log('[SpawnInspect] 只读检查失败: '..tostring(inspectError)) end
         end
-        return activationRequested==true and ai~=nil and type(hp)=="number" and hp>0,"仅确认初始化调用、AI组件和正HP；行为待验收"
+        return combatReady,'仅确认初始化调用、AI组件和正HP；行为待验收',spawnWarning
     end,
     -- A unit's own summons take the custom numbers of its side (arena adoptSummon).
     summonAdopted=function(actor,unitPath,team)
@@ -1467,6 +1487,8 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return prepared
     end,
     destroy=function(actor)
+        checked(actor)
+        if arenaSupport.lionStage then arenaSupport.lionStage:releaseActor(actor) end
         checked(actor); actor:K2_DestroyActor()
         if mounts then mounts:releaseActor(actor,'随单位清理') end
         if bossStages then bossStages:releaseActor(actor,'随 BOSS 清理') end
@@ -1709,6 +1731,8 @@ arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,
         local player=GetPlayerPawn()
         if safeValid(value) and not (safeValid(player) and value:GetAddress()==player:GetAddress()) then return value end
     end})
+arenaSupport.lionStage=require('lion_stage').new({log=log,location=GetLocation,player=GetPlayerPawn,
+    world=UEHelpers.GetWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
 bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,hp=GetHP,
     onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
@@ -1979,6 +2003,7 @@ local function supportSteps(self)
     step('longzhu',function()self.longzhu:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
+    if self.lionStage then step('lionStage',function()self.lionStage:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.
     step('immortal',function()immortalTeams:tick()end)
     step('activity',function()arenaActivity:sync(tickMembers)end)
@@ -2095,6 +2120,9 @@ if ModRef then
         end
         if mounts and mounts:count()>0 then
             log('[Mount] 卸载时仍有 '..mounts:count()..' 个骑兵的坐骑记录；重载后它们的坐骑和刷怪点不会随清理移除')
+        end
+        if arenaSupport.lionStage and arenaSupport.lionStage:count()>0 then
+            log('[LionStage] 卸载前还有召唤舞狮场地，请先停止并清理')
         end
         if bossStages and bossStages:count()>0 then
             log('[BossStage] 卸载时仍有 '..bossStages:count()..' 个 BOSS 的场地物件记录；重载后这些物件不会随清理移除')
