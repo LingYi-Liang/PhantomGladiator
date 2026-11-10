@@ -604,7 +604,7 @@
   function statusNote(u) {
     const map = { verified: ["verified", "check-circle"], spawn: ["spawn", "info"], experimental: ["experimental", "flask"], special: ["special", "alert"] };
     const [cls, ic] = map[u.status];
-    return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(t("status." + u.status))}</span></div>`;
+    return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(u.note || t("status." + u.status))}</span></div>`;
   }
   function renderSelection() {
     const el = $("#dock-sel");

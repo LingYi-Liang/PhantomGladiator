@@ -135,6 +135,7 @@ I18N.add("zh", {
   "species.HumanMaster": "高手",
   "species.Puppet": "人偶",
   "species.Animal": "动物",
+  "species.Special": "剧情单位",
   "team.blue": "蓝方",
   "team.red": "红方",
   "team.neutral": "暂不配队",

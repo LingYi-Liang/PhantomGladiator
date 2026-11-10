@@ -177,5 +177,6 @@ window.PG_UNITS = [
   {"id":"BP_Monster_LengTu","name":"梦差：冷荼","boss":true,"species":"HumanMaster","ch":12,"chName":"断魂","map":"断魂山","order":3,"status":"experimental"},
   {"id":"BP_Monster_MengHua","name":"救苦救难梦华圣母娘娘","boss":true,"species":"Puppet","ch":12,"chName":"断魂","map":"断魂山","order":4,"status":"experimental"},
   {"id":"BP_Monster_ZuoShang_Ending","name":"组织冥主：左殇（银发）","boss":true,"species":"HumanMaster","ch":12,"chName":"断魂","map":"断魂山","order":5,"status":"experimental"},
-  {"id":"BP_Monster_ZuoShang_P2","name":"龙体左殇","boss":true,"species":"Puppet","ch":12,"chName":"断魂","map":"断魂山","order":6,"status":"experimental"}
+  {"id":"BP_Monster_ZuoShang_P2","name":"龙体左殇","boss":true,"species":"Puppet","ch":12,"chName":"断魂","map":"断魂山","order":6,"status":"experimental"},
+  {"id":"BP_Monster_XuKong","name":"虚空","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":7,"status":"special","note":"手动召唤时与梦华的剧情配对拆开。虚空原版带不可被仇恨标签，独立对战待测试。"}
 ];
