@@ -1286,13 +1286,12 @@ namespace PhantomGladiator
                         src.CopyTo(dst);
                 };
                 add(Paths.In("logs", "backend.log"), "backend.log");
-                zip.CreateEntry("app.txt");
-                using (var w = new StreamWriter(zip.GetEntry("app.txt").Open(), new UTF8Encoding(false)))
+                using (var w = new StreamWriter(zip.CreateEntry("app.txt").Open(), new UTF8Encoding(false)))
                     w.Write("app " + build.AppVersion + " " + BuildInfo.Channel + "\r\nmod " + build.ModBuild + "\r\ngame " + (game != null ? game.Root + " build " + game.Build : "not found") + "\r\nwindows " + Environment.OSVersion + "\r\n");
                 if (game != null)
                 {
                     add(Path.Combine(game.Ue4ssDir, "UE4SS.log"), "UE4SS.log");
-                    foreach (var name in new[] { "status.tsv", "ack.tsv", "command-journal.tsv", "function-keybinds-state.tsv" })
+                    foreach (var name in new[] { "status.tsv", "ack.tsv", "command-journal.tsv", "function-keybinds-state.tsv", "spawn-attempts.tsv" })
                         add(Path.Combine(game.RuntimeDir, name), "Runtime/" + name);
                     if (Directory.Exists(game.RuntimeDir))
                         foreach (var run in Directory.GetFiles(game.RuntimeDir, "run-*.log").OrderByDescending(f => f).Take(2))

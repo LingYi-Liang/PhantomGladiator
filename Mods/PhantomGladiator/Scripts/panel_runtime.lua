@@ -19,7 +19,8 @@ function Runtime.new(options)
         unitOwner=function(vk)
             local unit=options.unitKeys and options.unitKeys:owner(vk)
             return unit and ((unit:match('%.([^%.]+)$') or unit):gsub('_C$',''))
-        end,dispatch=function(action)self:dispatch(action,{})end})
+        end,queueSpawn=function(callback)self:queueSummon(callback)end,
+        dispatch=function(action)self:dispatch(action,{})end})
     self.router.dispatch=function(vk,mask)
         if not self.alive then return end
         if not self.functionKeys:press(vk,mask) and options.unitKeys then options.unitKeys:dispatch(vk,mask)end
@@ -40,7 +41,7 @@ function Runtime.new(options)
     self.handlers={
         spawn=function(command)
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
-            return options.arena:spawn(command.unit_id,command.team,command.count)
+            return self:summon(command.unit_id,command.team,command.count)
         end,
         select_unit=function(command) return options.arena:select(command.unit_id,command.team,command.count) end,
         cycle_team=function() return options.arena:cycleTeam() end,
@@ -418,6 +419,37 @@ function Runtime:configure(proposal)
     if result.ok and self.options.unitKeys then self.options.unitKeys:refresh()end
     return result
 end
+function Runtime:summon(path,team,count)
+    local result=self.options.arena:spawn(path,team,count)
+    self.nextSummonAt=os.clock()+0.25
+    return result
+end
+
+-- A held or rapidly repeated summon key must not fill the engine's callback queue.
+-- Both summon shortcuts share one pending request and leave a gap after it runs.
+function Runtime:queueSummon(callback)
+    if not self.alive then return end
+    if self.summonPending or (self.nextSummonAt and os.clock()<self.nextSummonAt) then
+        self.summonSkipped=(self.summonSkipped or 0)+1
+        return
+    end
+    local request={}
+    self.summonPending=request
+    local queued,queueError=pcall(ExecuteInGameThread,function()
+        if not self.alive or self.summonPending~=request then return end
+        local skipped=self.summonSkipped or 0
+        self.summonSkipped=0
+        local ok,err=xpcall(callback,debug.traceback)
+        self.summonPending=nil
+        if skipped>0 then self.log('[SummonKey] 跳过密集的召唤按键='..skipped..'；已处理一次召唤请求') end
+        if not ok then self.log('[SummonKey] 回调失败: '..tostring(err)) end
+    end)
+    if not queued and self.summonPending==request then
+        self.summonPending=nil
+        self.log('[SummonKey] 无法排入游戏线程: '..tostring(queueError))
+    end
+end
+
 function Runtime:dispatch(action,command)
     if not self.alive then return end
     local handler=self.handlers[action]

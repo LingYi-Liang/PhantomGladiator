@@ -142,7 +142,7 @@ function Keys.new(options)
         local action=self:owner(vk)
         if not action or not self.active[action] or self.entries[action].modifiers~=mask then return false end
         local revision=self.revision
-        local queue=options.queue or ExecuteInGameThread
+        local queue=(action=='spawn' and options.queueSpawn) or options.queue or ExecuteInGameThread
         queue(function()
             if not self.alive or revision~=self.revision then return end
             local e=self.entries[action]

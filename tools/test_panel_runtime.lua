@@ -104,7 +104,7 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
-        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter')
+        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -161,6 +161,36 @@ test("explicit saved fixture keys dispatch only in game thread",function()
     h:drain()
     for _,name in ipairs({"spawn","start","stop","refresh_catalog"})do assert(count(h,name)==1) end
 end)
+
+test("unit and general summon shortcuts share a single pending game-thread request",function()
+    local h=harness()
+    local now=10
+    h.env.os.clock=function() return now end
+    local unit='/Game/BP_A.BP_A_C'
+    local units=h.env.require('unit_keybinds').new({path='memory',router=h.runtime.router,
+        queue=function(callback)h.runtime:queueSummon(callback)end,
+        ready=function()return true end,
+        spawn=function(path,team,count)return h.runtime:summon(path,team,count)end})
+    h.runtime.options.unitKeys=units
+    h.runtime:start()
+    assert(units:configure(unit,81,0,'red',3).ok)
+    for _=1,40 do h.keys.Q();h.keys.F9() end
+    print("burst fixture queued="..#h.queue.." before game-thread drain")
+    assert(#h.queue==1 and count(h,'spawn')==0, "both shortcuts share the one pending summon")
+    h:drain()
+    local spawn
+    for _,call in ipairs(h.calls)do if call.name=='spawn' then spawn=call end end
+    assert(count(h,'spawn')==1 and spawn.args[1]==unit and spawn.args[2]=='red' and spawn.args[3]==3,
+        "the accepted key keeps its selected unit, team and count")
+    for _=1,40 do h.keys.Q();h.keys.F9() end
+    assert(#h.queue==0, "the next burst is ignored during the gap")
+    now=10.25
+    h.keys.F9()
+    assert(#h.queue==1)
+    h:drain()
+    assert(count(h,'spawn')==2, "the next separate press still summons")
+end)
+
 test("new bindings activate only after persisted readback; old keys stop dispatching",function()
     local h=harness();h.runtime:start()
     local checkedReadback=false
