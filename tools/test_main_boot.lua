@@ -158,11 +158,23 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11-fixes-3',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-queue-test-1',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
 else assert(output:find("找不到函数库",1,true),"class resolution must reach the explicit mocked spawn boundary") end
+do
+    inGame=true
+    runtimeInstance.bridge:_writeStatus()
+    inGame=false
+    local statusFile=assert(io.open(root..'/status.tsv','rb'))
+    local wire=statusFile:read('*a');statusFile:close()
+    assert(wire:find('summon_queue_enabled\tfalse',1,true))
+    assert(wire:find('summon_queue_epoch\tSQ_0',1,true))
+    assert(wire:find('summon_queue_waiting\t0',1,true))
+    originalPrint('summon queue status readback: off, epoch SQ_0, waiting 0')
+end
+
 -- The production callback must forward a legacy key's unset team/count to Arena
 -- rather than sampling all combatants just to look up selection defaults.
 do

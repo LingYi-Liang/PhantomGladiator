@@ -87,6 +87,49 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(self.bridge._command(second["id"])["status"], "failed")
         self.assertFalse((self.bridge.runtime / "inbox.tsv").exists())
 
+    def queue_status(self, epoch="SQ_1", waiting=0, ready=True):
+        self.game(ready=ready)
+        with (self.bridge.runtime / "status.tsv").open("a", encoding="utf-8") as stream:
+            stream.write(f"summon_queue_enabled\ttrue\nsummon_queue_epoch\t{epoch}\nsummon_queue_waiting\t{waiting}\n")
+
+    def test_opt_in_summon_queue_accepts_100_and_stop_cancels_waiting_transit(self):
+        request = {"action": "queue_spawn", "unit_id": UNIT, "team": "red", "count": 1}
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue(request)
+        self.queue_status()
+        with self.assertRaises(backend.ValidationError):
+            self.spawn()
+        rows = [self.bridge.enqueue(request) for _ in range(100)]
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue(request)
+        self.assertEqual(self.bridge.status()["summon_queue_transit"], 100)
+        self.bridge.tick()
+        inbox = self.bridge.runtime / "inbox.tsv"
+        self.assertEqual(inbox.read_text(encoding="utf-8").split("\t")[:6],
+                         [str(rows[0]["id"]), "queue_spawn", UNIT, "red", "1", "SQ_1"])
+        stop = self.bridge.enqueue({"action": "stop"})
+        self.assertTrue(all(self.bridge._command(row["id"])["status"] == "failed" for row in rows[1:]))
+        self.write("ack.tsv", f"{rows[0]['id']}\tok\taccepted\t0\n")
+        self.bridge.tick()
+        self.assertEqual(inbox.read_text(encoding="utf-8").split("\t")[0], str(stop["id"]))
+        self.assertEqual(self.bridge._command(rows[0]["id"])["spawned_count"], 0)
+
+    def test_queue_epoch_retires_waiting_transit_and_honors_game_capacity(self):
+        request = {"action": "queue_spawn", "unit_id": UNIT, "count": 1}
+        self.queue_status(waiting=99)
+        row = self.bridge.enqueue(request)
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue(request)
+        self.queue_status(epoch="SQ_2", waiting=0)
+        new = self.bridge.enqueue(request)
+        self.bridge.tick()
+        self.assertEqual(self.bridge._command(row["id"])["status"], "failed")
+        inbox = self.bridge.runtime / "inbox.tsv"
+        self.assertEqual(inbox.read_text(encoding="utf-8").split("\t")[0], str(new["id"]))
+        self.assertTrue(self.bridge.clear_queue()["summon_cancel_requested"])
+        self.bridge.tick()
+        self.assertEqual(inbox.read_text(encoding="utf-8").split("\t")[1], "cancel_summon_queue")
+
     def test_restart_preserves_inflight_id_and_republishes_only_what_the_game_never_took(self):
         first = self.spawn()
         self.bridge.tick()

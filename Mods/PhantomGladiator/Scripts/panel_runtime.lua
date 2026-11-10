@@ -2,6 +2,7 @@
 local Bridge = require("panel_bridge")
 local KeyRouter=require('key_router')
 local FunctionKeys=require('function_keybinds')
+local SummonQueue=require("summon_queue")
 local Runtime = {}
 Runtime.__index = Runtime
 local ACTIONS = FunctionKeys.actions
@@ -14,6 +15,9 @@ end
 function Runtime.new(options)
     local self=setmetatable({options=options,alive=true,pumpReady=false},Runtime)
     self.log=options.log or function() end
+    self.summonQueue=SummonQueue.new({log=self.log,
+        session=function()return options.session and options.session:status() end,
+        spawn=function(path,team,count)return self:summon(path,team,count)end})
     self.router=options.router or KeyRouter.new({log=self.log})
     self.functionKeys=FunctionKeys.new({path=options.path,router=self.router,log=self.log,
         unitOwner=function(vk)
@@ -41,7 +45,20 @@ function Runtime.new(options)
     self.handlers={
         spawn=function(command)
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
+            if self.summonQueue.enabled then return {ok=false,message='排队模式已开启，请重新提交召唤',spawned_count=0} end
             return self:summon(command.unit_id,command.team,command.count)
+        end,
+        queue_spawn=function(command)
+            self.summonQueue:sync(options.session and options.session:status())
+            return self.summonQueue:enqueue(command.unit_id,command.team,command.count,command.key_spawn)
+        end,
+        set_summon_queue=function(command)
+            if command.key_start~='ON' and command.key_start~='OFF' then return {ok=false,message='无效的排队召唤设置'} end
+            return self:setSummonQueue(command.key_start=='ON')
+        end,
+        cancel_summon_queue=function()
+            local cancelled=self.summonQueue:cancel('清空召唤队列')
+            return {ok=true,message='已取消 '..cancelled..' 条游戏内待执行召唤'}
         end,
         select_unit=function(command) return options.arena:select(command.unit_id,command.team,command.count) end,
         cycle_team=function() return options.arena:cycleTeam() end,
@@ -163,6 +180,7 @@ function Runtime.new(options)
             return options.arena:start()
         end,
         stop=function()
+            if self.summonQueue.enabled then self.summonQueue:cancel('停止并清理') end
             if options.support then options.support:discover() end
             return options.arena:stop()
         end,
@@ -240,6 +258,14 @@ function Runtime.new(options)
             catalog_started_at=catalog.started_at,
             catalog_coverage=catalog.coverage,catalog_candidates=catalog.candidates}
         local session=options.session and options.session:status() or {}
+        local queue=self.summonQueue
+        if queue.enabled then queue:sync(session) end
+        out.summon_queue_enabled=queue.enabled
+        out.summon_queue_epoch=queue:epoch()
+        out.summon_queue_waiting=#queue.jobs
+        out.summon_queue_running=queue.running==true
+        out.summon_queue_completed=queue.completed
+        out.summon_queue_message=queue.message
         local policy=options.spawnPolicy and options.spawnPolicy.status() or {}
         out.spawn_trial_policy=policy.version or ''
         out.spawn_trial_count=policy.count or 0
@@ -419,6 +445,41 @@ function Runtime:configure(proposal)
     if result.ok and self.options.unitKeys then self.options.unitKeys:refresh()end
     return result
 end
+function Runtime:setSummonQueue(enabled)
+    local queue=self.summonQueue
+    if enabled==queue.enabled then return {ok=true,message=enabled and '排队召唤已开启' or '排队召唤已关闭'} end
+    if enabled then
+        queue:sync(self.options.session and self.options.session:status())
+        if not queue.session then return {ok=false,message='进入地图后才能开启排队召唤'} end
+        if type(LoopInGameThreadWithDelay)~='function' or type(CancelDelayedAction)~='function' then
+            return {ok=false,message='排队召唤需要游戏线程定时器'}
+        end
+        local token={}
+        local ok,handle=pcall(LoopInGameThreadWithDelay,25,function()
+            if self.alive and self.summonLoopToken==token then queue:tick() end
+        end)
+        if not ok or handle==nil or handle==false then return {ok=false,message='召唤队列定时器注册未确认'} end
+        self.summonLoopToken,self.summonLoop=token,handle
+        self.summonPending=nil
+        queue.enabled=true
+        if self.nextSummonAt and (not queue.nextAt or self.nextSummonAt>queue.nextAt) then queue.nextAt=self.nextSummonAt end
+        queue.completed=0
+        queue:cancel('排队召唤已开启')
+        return {ok=true,message='排队召唤已开启'}
+    end
+
+    queue.enabled=false
+    queue:cancel('排队召唤已关闭')
+    local handle=self.summonLoop
+    self.summonLoopToken,self.summonLoop=nil,nil
+    if handle~=nil then
+        local ok,result=pcall(CancelDelayedAction,handle)
+        if not ok or result==false then self.log('[SummonQueue] 定时器取消未读回；回调已失效') end
+    end
+    return {ok=true,message='排队召唤已关闭'}
+end
+
+
 function Runtime:summon(path,team,count)
     local result=self.options.arena:spawn(path,team,count)
     self.nextSummonAt=os.clock()+0.25
@@ -427,8 +488,12 @@ end
 
 -- A held or rapidly repeated summon key must not fill the engine's callback queue.
 -- Both summon shortcuts share one pending request and leave a gap after it runs.
-function Runtime:queueSummon(callback)
+function Runtime:queueSummon(callback,path,team,count)
     if not self.alive then return end
+    if self.summonQueue.enabled then
+        local selected,defaultTeam,defaultCount=self.options.arena:selection()
+        return self.summonQueue:enqueue(path or selected,team or defaultTeam,count or defaultCount)
+    end
     if self.summonPending or (self.nextSummonAt and os.clock()<self.nextSummonAt) then
         self.summonSkipped=(self.summonSkipped or 0)+1
         return
@@ -557,6 +622,7 @@ function Runtime:start()
 end
 function Runtime:silence()
     self.alive=false
+    if self.summonQueue.enabled then self:setSummonQueue(false) end
     self.functionKeys:silence();self.router:silence()
     if self.options.unitKeys then self.options.unitKeys:silence() end
     self.pumpReady=false

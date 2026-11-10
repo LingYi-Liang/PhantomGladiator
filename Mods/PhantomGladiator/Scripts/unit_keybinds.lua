@@ -49,7 +49,7 @@ function Keys.new(options)
         local binding=self.active[vk]
         if not binding or binding.modifiers~=mask then return end
         local revision=self.revision;local unit=binding.unit_id
-        queue(function()
+        local function run()
             if not self.alive or revision~=self.revision or not self.active[vk] or self.active[vk].unit_id~=unit then return end
             self.event=self.event+1;self.lastUnit=unit
             local ok,ready,reason=pcall(options.ready)
@@ -59,7 +59,8 @@ function Keys.new(options)
             self.message=called and type(result)=='table' and tostring(result.message) or '召唤返回未确认'
             log('[UnitKeys] 单位快捷键 vk='..vk..' modifiers='..mask..' unit='..unit..' team='..tostring(current.team or '跟随当前')
                 ..' count='..tostring(current.count or '跟随当前')..'；读回='..self.message)
-        end)
+        end
+        if options.queue then queue(run,unit,binding.team,binding.count) else queue(run) end
     end
     local function ensure(binding)
         local vk,mask=binding.key_code,binding.modifiers

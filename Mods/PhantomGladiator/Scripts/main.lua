@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-fixes-3"
+local BUILD = "v0.40.11-queue-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1961,7 +1961,9 @@ end
 
 local keyRouter=KeyRouter.new({log=log})
 local unitKeys=UnitKeys.new({path=Config.RuntimePath,log=log,router=keyRouter,
-    queue=function(callback)if panelRuntime then panelRuntime:queueSummon(callback)end end,
+    queue=function(callback,path,team,count)
+        if panelRuntime then panelRuntime:queueSummon(callback,path,team,count) end
+    end,
     reserved=function(vk)return panelRuntime and panelRuntime:unitKeyReserved(vk) end,
     shared=function(vk)return panelRuntime and panelRuntime:unitKeyShared(vk) end,
     ready=function()local status=runtimeSession:status();return status.game_ready,status.game_ready_reason end,

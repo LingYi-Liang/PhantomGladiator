@@ -223,6 +223,7 @@
   }
   const synced = () => !!S.synced && S.synced.unit_id === ui.selectedId && S.synced.team === ui.team && S.synced.count === ui.count;
   const fieldTotal = () => RT.owned();
+  const summonsWaiting = () => S.summonQueue?.on && (S.summonQueue.waiting || S.summonQueue.transit || S.summonQueue.running);
 
   // ---------- Overlays ----------
   const overlays = $("#overlays");
@@ -1219,7 +1220,7 @@
     const startBlocked = gameBlocker("field") || (fighting ? "" : !(S.blue > 0 && S.red > 0) ? t("field.needBoth") : "");
     const startBusy = ui.busy.has("start");
     const rematchable = Object.keys(ui.roster.blue).length && Object.keys(ui.roster.red).length;
-    const stopDisabled = !RT.online() || (fieldTotal() === 0 && S.fight === "idle" && !S.cleanup) || ui.busy.has("stop");
+    const stopDisabled = !RT.online() || (fieldTotal() === 0 && S.fight === "idle" && !S.cleanup && !summonsWaiting()) || ui.busy.has("stop");
     const unfinished = S.cleanup && RT.online()
       ? S.cleanup === "spawn_uncertain"
         ? `<div class="callout callout-red field-callout">${icon("alert")}<div class="callout-body"><strong>${esc(t("field.uncertain.title"))}</strong><span>${esc(t("field.uncertain.body"))}</span></div></div>`
@@ -1421,6 +1422,19 @@
     if (!u) return;
     if (!RT.ready()) { toast({ kind: "warning", title: gameBlocker("sel") || t("sel.blocked.notInMap") }); return; }
     if (cleanupBlocker()) { toast({ kind: "warning", title: cleanupBlocker() }); return; }
+    if (S.summonQueue?.on) {
+      try {
+        const job = await RT.command("queue_spawn", { unit_id: id, team, count });
+        if (job.status === "failed" || job.status === "uncertain") {
+          toast({ id: "summon-queue-intake", kind: "warning", title: "入队未确认", body: reasonText(job.code, job.message) });
+        } else {
+          toast({ id: "summon-queue-intake", kind: "info", title: "已提交排队", body: "进度可在设置页查看。" });
+        }
+      } catch (error) {
+        toast({ id: "summon-queue-intake", kind: "error", title: "未提交召唤", body: reasonText(error.code, error.detail) });
+      }
+      return;
+    }
     ui.busy.add("spawn");
     renderSelection();
     const tid = toast({ kind: "pending", title: t("toast.summon.pending", { name: u.name, n: count, team: teamName(team) }) });
@@ -1501,6 +1515,10 @@
     }
   }
   async function rematch() {
+    if (S.summonQueue?.on) {
+      toast({ kind: "warning", title: "关闭排队召唤后才能一键重赛" });
+      return;
+    }
     // The stop below makes equal stats pick a new baseline, so the old baseline is summoned first
     // and the rematch keeps the same numbers.
     const baseId = S.statMatch.mode === "match" ? S.statMatch.baseline?.id : null;
@@ -1742,12 +1760,41 @@
     }
     return line;
   }
+  function summonQueueSettingsHTML() {
+    const q = S.summonQueue || {};
+    const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue");
+    return `<section class="card"><div class="card-head"><h2 class="card-title">排队召唤（测试）</h2></div>
+      <div class="rows">
+        <div class="row"><div class="row-main"><div class="row-title">启用排队召唤</div>
+          <div class="row-desc">最多 100 条。上一条完成后至少等 0.25 秒再执行。停止清理、换图或关闭开关会取消余项。</div>
+        </div><button class="switch" type="button" role="switch" aria-label="启用排队召唤" aria-checked="${!!q.on}"
+          data-action="toggle-summon-queue" ${busy || !q.supported || (!q.on && !RT.ready()) ? "disabled" : ""}></button></div>
+        ${q.on ? `<div class="row"><div class="row-main"><div class="row-title">待执行 ${q.waiting} · 待游戏接收 ${q.transit} · 已完成 ${q.completed}</div>
+          <div class="row-desc">${esc(q.running ? "正在召唤" : q.message)}</div></div>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-summon-queue"
+            ${busy || !RT.online() || !(q.waiting || q.transit) ? "disabled" : ""}>取消待执行</button></div>` : ""}
+      </div></section>`;
+  }
+
+  function renderSummonQueueSettings() {
+    const section = $("#summon-queue-settings");
+    if (section) section.innerHTML = summonQueueSettingsHTML();
+  }
+
+  async function changeSummonQueue(action, payload) {
+    const result = run(action, { payload, ok: job => job.message || "召唤队列设置已更新" });
+    renderSummonQueueSettings();
+    await result;
+    renderSummonQueueSettings();
+  }
+
   function settingsHTML() {
     const opt = (action, value, checked, main, sub = "", extra = "") => `<button class="option ${extra}" type="button" role="radio" aria-checked="${checked}" data-action="${action}" data-value="${value}"><span class="radio"></span><span class="option-main"><span>${main}</span>${sub ? `<small>${sub}</small>` : ""}</span></button>`;
     const sw = (key, title, desc) => `<div class="row"><div class="row-main"><div class="row-title">${esc(title)}</div><div class="row-desc">${esc(desc)}</div></div><button class="switch" type="button" role="switch" aria-checked="${ui.settings[key]}" data-action="toggle-setting" data-setting="${key}" aria-label="${esc(title)}"></button></div>`;
     const scan = S.scan;
     return `<div class="stack">
       <div class="page-head"><div><h1 class="page-title">${esc(t("settings.title"))}</h1><p class="page-sub">${esc(t("settings.subtitle"))}</p></div></div>
+      <div id="summon-queue-settings">${summonQueueSettingsHTML()}</div>
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.language"))}</h2></div>
         <div class="card-body"><div class="option-list" role="radiogroup" aria-label="${esc(t("settings.language"))}">
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
@@ -2025,6 +2072,9 @@
   function jobTitle(job) {
     const p = job.payload || {}, u = byId.get(p.unit_id);
     switch (job.action) {
+      case "queue_spawn": return "排队召唤 " + (u?.name || p.unit_id || "") + " ×" + p.count;
+      case "set_summon_queue": return p.enabled ? "开启排队召唤" : "关闭排队召唤";
+      case "cancel_summon_queue": return "取消待执行召唤";
       case "spawn": return p.team === "neutral" ? t("action.spawnNeutral", { name: u?.name, n: p.count })
         : p.team === "companion" ? t("action.spawnCompanion", { name: u?.name, n: p.count }) : t("action.spawn", { name: u?.name, n: p.count, team: teamName(p.team) });
       case "configure_unit_key": return t("action.configure_unit_key", { name: u?.name });
@@ -2074,6 +2124,7 @@
       const r = await RT.clearQueue();
       const n = (r.cleared || 0) + (r.interrupted || 0);
       if (r.files_left?.length) toast({ kind: "warning", title: n ? t("toast.queue.cleared", { n }) : t("toast.queue.empty"), body: t("toast.queue.filesLeft") });
+      else if (r.summon_cancel_requested) toast({ kind: "info", title: "已请求清空待执行召唤", body: "游戏确认后可在设置页查看。" });
       else if (n) toast({ kind: "success", title: t("toast.queue.cleared", { n }), body: t("toast.queue.cleared.body") });
       else toast({ kind: "info", title: t("toast.queue.empty") });
     } catch (error) {
@@ -2317,6 +2368,8 @@
 
   // ---------- Events ----------
   const actions = {
+    "toggle-summon-queue": () => changeSummonQueue("set_summon_queue", { enabled: !S.summonQueue?.on }),
+    "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
     "conn-popover": el => (pop?.anchor === el ? closePopover() : openPopover(el, connPopoverHTML(), { align: "center", role: "dialog" })),
     "lang-menu": el => (pop?.anchor === el ? closePopover() : openPopover(el, langMenuHTML(), { align: "end" })),
@@ -2734,7 +2787,10 @@
           if (p.has("view")) renderView();
           if (p.has("grid") && !ui.capture) renderGrid();
         } else if (ui.page === "hotkeys" && p.has("keys") && !ui.capture && !ui.keysSaving) renderPage();
-        else if (ui.page === "settings" && p.has("settings")) renderPage();
+        else if (ui.page === "settings") {
+          if (p.has("settings")) renderPage();
+          else if (p.has("summonQueue")) renderSummonQueueSettings();
+        }
         else if (ui.page === "fun" && p.has("fun")) renderPage();
         if (dlg?.kind === "update" && p.has("update")) setDialog(updateHTML());
         break;

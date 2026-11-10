@@ -148,6 +148,34 @@ test("a summon of 50 or 100 reaches the handler and its count is acknowledged", 
     end
 end)
 
+test("queue spawn transport accepts a batch only once and checks the actual session", function()
+    local fs, calls, time=filesystem(),0,100
+    local Queue=dofile("Mods/PhantomGladiator/Scripts/summon_queue.lua")
+    local queue=Queue.new({now=function()return time end,session=function()return fs.session end,
+        spawn=function(path,team,count)
+            assert(path=="unit_a" and team=="red" and count==3)
+            calls=calls+1
+            return {ok=true,message="spawned",spawned_count=3}
+        end})
+    queue.enabled=true
+    queue:sync(fs.session)
+    local epoch=queue:epoch()
+    local bridge=create(fs, nil, {handlers={queue_spawn=function(request)
+        queue:sync(fs.session)
+        return queue:enqueue(request.unit_id,request.team,request.count,request.key_spawn)
+    end}})
+    deliver(fs,command("one", "queue_spawn", "unit_a", "red", 3, {epoch,"","",""}))
+    bridge:tick()
+    bridge:tick()
+    assert(calls==0 and #queue.jobs==1 and fs.files["runtime/ack.tsv"]:match("^one\tok\t[^\n]+\t0\n$"))
+    queue:tick()
+    assert(calls==1 and #queue.jobs==0)
+    fs.session={game_session="another-world",game_ready=true}
+    deliver(fs,command("two", "queue_spawn", "unit_a", "red", 3, {epoch,"","",""}),"test-session")
+    bridge:tick()
+    assert(calls==1 and #queue.jobs==0 and fs.files["runtime/ack.tsv"]:find("stale_game_session",1,true))
+end)
+
 test("handler exception remains uncertain across reload", function()
     local fs, calls = filesystem(), 0
     local function handler() calls = calls + 1 error("partial game action") end

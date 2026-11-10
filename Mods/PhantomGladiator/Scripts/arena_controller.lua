@@ -282,6 +282,11 @@ function Arena.new(options)
         for slot = 1, #units+1 do if not used[slot] then return slot end end
     end
 
+    -- Plain selection values are safe to snapshot when accepting a shortcut.
+    function instance:selection()
+        return selected or (catalog and catalog.selectedPath),team,count
+    end
+
     function instance:members()
         prune()
         local copy={}

@@ -15,7 +15,7 @@ local JOURNAL, COMPACT = "command-journal.tsv", "command-journal.compact.tsv"
 -- and each Lua state dropped a random few (the battle clock, fun_supported, current_count...).
 local MAX_STATUS = 256
 local MAX_COUNT = 100   -- units per summon, as arena_controller.lua MAX_BATCH
-local ACTIONS = { spawn = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
+local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, cancel_summon_queue = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
     toggle_track = true, track_pick = true, track_next = true, set_camera_track = true,
     configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
     toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
@@ -76,7 +76,7 @@ local function parseInbox(content)
     if not id then return nil, "invalid payload: command id", nil end
     if not ACTIONS[fields[2]] then return nil, "invalid payload: unknown action", id end
     if #fields[3] > 512 or fields[3]:find("%c") then return nil, "invalid payload: unit_id", id end
-    if (fields[2] == "spawn" or fields[2] == "select_unit" or fields[2]=='configure_unit_key') and fields[3] == "" then
+    if (fields[2] == "spawn" or fields[2] == "queue_spawn" or fields[2] == "select_unit" or fields[2]=='configure_unit_key') and fields[3] == "" then
         return nil, "invalid payload: unit_id is required", id
     end
     if fields[4] ~= "blue" and fields[4] ~= "red" and fields[4] ~= "neutral" and fields[4] ~= "companion" then
@@ -134,7 +134,7 @@ function Bridge:_sessionError(command)
     if id~=command.id or session~=current.game_session then
         return "stale_game_session: 指令属于旧会话或缺少绑定，请重新请求"
     end
-    if (command.action=="spawn" or command.action=="start" or command.action=="toggle_spectator")
+    if (command.action=="spawn" or command.action=="queue_spawn" or command.action=="start" or command.action=="toggle_spectator")
         and current.game_ready~=true then
         return "game_not_ready: 尚未进入可控制场景，指令未执行"
     end

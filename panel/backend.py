@@ -30,7 +30,7 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
+ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
@@ -52,6 +52,7 @@ FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
 IMMORTAL_TEAMS = ("blue", "red", "companion")
 # Units per summon (arena_controller.lua MAX_BATCH): only guards against a mistyped number freezing the game.
 MAX_SPAWN_COUNT = 100
+MAX_SUMMON_QUEUE = 100
 # Every attribute of the game's attribute set (character_stats.lua Stats.allFields, CharacterBasics.hpp order):
 # what a unit's spawn values can be set to.
 STAT_FIELDS = (
@@ -185,7 +186,7 @@ CODEX_ENEMY_TYPES = {"None": "unknown", "Animal": "1", "GuaiMian": "2", "DragonM
 COMMAND_FIELDS = ("id", "action", "unit_id", "team", "count", "key_spawn", "key_start", "key_stop", "key_refresh_catalog", "schema_version")
 MAX_UNIT_ID_BYTES = 512
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"spawn", "start", "toggle_spectator"}
+READY_ACTIONS = {"spawn", "queue_spawn", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -372,6 +373,7 @@ class Bridge:
         self.db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.db.commit()
         self.transport_code = None
+        self.summon_queue_scope = None
         self._number_after_journal()
 
     def _journal_ids(self):
@@ -803,7 +805,7 @@ class Bridge:
             raise ValidationError("unsupported action")
         allowed = {"action"}
         payload = {"action": action}
-        if action in {"spawn", "select_unit"}:
+        if action in {"spawn", "queue_spawn", "select_unit"}:
             allowed |= {"unit_id", "team", "count"}
             unit_id = clean_field(request.get("unit_id"), "unit_id")
             if len(unit_id.encode("utf-8")) > MAX_UNIT_ID_BYTES:
@@ -965,7 +967,7 @@ class Bridge:
             if rule not in UNIT_RULES or value not in UNIT_RULES[rule]:
                 raise ValidationError('rule and value must be one of the unit rules')
             payload.update(unit_id=unit, rule=rule, value=value)
-        elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions'):
+        elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions', 'set_summon_queue'):
             allowed.add('enabled')
             enabled = request.get('enabled')
             if type(enabled) is not bool:
@@ -998,14 +1000,55 @@ class Bridge:
             raise ValidationError("unknown command fields: " + ", ".join(sorted(set(request) - allowed)))
         return payload
 
+    @staticmethod
+    def _summon_epoch(game):
+        values = game.get("values", {})
+        epoch = values.get("summon_queue_epoch", "")
+        if game["ready"] and values.get("summon_queue_enabled") == "true" and re.fullmatch(r"SQ_[0-9]{1,16}", epoch):
+            return epoch
+        return None
+
+    def _summon_transit(self, session, epoch):
+        if not epoch:
+            return 0
+        return self.db.execute(
+            "SELECT COUNT(*) FROM commands WHERE action='queue_spawn' AND state IN ('pending','inflight') "
+            "AND game_session=? AND json_extract(payload,'$.queue_epoch')=?",
+            (session, epoch),
+        ).fetchone()[0]
+
+    def _cancel_waiting_summons(self, session, message, keep_epoch=None):
+        query = ("UPDATE commands SET state='failed',completed=?,message=? "
+                 "WHERE action='queue_spawn' AND state='pending' AND game_session=?")
+        args = (self.clock(), message, session)
+        if keep_epoch:
+            query += " AND json_extract(payload,'$.queue_epoch') IS NOT ?"
+            args += (keep_epoch,)
+        self.db.execute(query, args)
+
     def enqueue(self, request):
         with self.lock:
             game = self.game_status()
             if not game["online"] or not game.get("game_session"):
                 raise ValidationError("未建立当前游戏会话；目录可浏览，指令未提交，请游戏连接后重新请求")
             payload = self._validate(request)
+            action = payload["action"]
+            epoch = self._summon_epoch(game)
+            if action == "spawn" and epoch:
+                raise ValidationError("排队召唤已开启，请使用 queue_spawn")
+            if action == "queue_spawn":
+                if not epoch:
+                    raise ValidationError("游戏尚未就绪或排队召唤未开启")
+                waiting = game["values"].get("summon_queue_waiting", "0")
+                if not waiting.isdigit() or int(waiting) > MAX_SUMMON_QUEUE:
+                    raise ValidationError("游戏内召唤队列状态未确认")
+                if int(waiting) + self._summon_transit(game["game_session"], epoch) >= MAX_SUMMON_QUEUE:
+                    raise ValidationError("召唤队列已满（100 条）")
+                payload["queue_epoch"] = epoch
             self._wire({"id": 9223372036854775807, "payload": json.dumps(payload, ensure_ascii=False)})
             with self.db:
+                if action in {"stop", "cancel_summon_queue"} or (action == "set_summon_queue" and not payload["enabled"]):
+                    self._cancel_waiting_summons(game["game_session"], "已取消等待投递的召唤")
                 cursor = self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
                     (payload["action"], json.dumps(payload, ensure_ascii=False), "pending", self.clock(), game["game_session"]))
                 if payload["action"] == "configure_keys":
@@ -1044,8 +1087,10 @@ class Bridge:
             bindings={'spawn':payload['level_mode'],'start':'' if payload.get('level') is None else str(payload['level'])}
         elif payload['action']=='set_free_camera':
             bindings={'spawn':str(payload['speed']),'start':str(payload['turn']),'stop':str(payload['smooth'])}
-        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions'):
+        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions','set_summon_queue'):
             bindings={'start':'ON' if payload['enabled'] else 'OFF'}
+        elif payload['action']=='queue_spawn':
+            bindings={'spawn':payload['queue_epoch']}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
         elif payload['action']=='set_camera_track':
@@ -1155,7 +1200,15 @@ class Bridge:
                 except OSError:
                     left.append(name)
             self.transport_error = self.transport_code = None
-            return {"cleared": waiting, "interrupted": sent, "files_left": left}
+            result = {"cleared": waiting, "interrupted": sent, "files_left": left}
+            game = self.game_status()
+            if game["online"] and self._summon_epoch(game):
+                action = "cancel_summon_queue"
+                with self.db:
+                    self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
+                                    (action, json.dumps({"action": action}), "pending", self.clock(), game["game_session"]))
+                result["summon_cancel_requested"] = True
+            return result
 
     def _expire_stale_sessions(self, session):
         stale = self.db.execute("SELECT * FROM commands WHERE state IN ('pending','inflight') AND (game_session IS NULL OR game_session<>?)", (session,)).fetchall()
@@ -1176,6 +1229,12 @@ class Bridge:
                 session = game.get("game_session") if game["online"] else None
                 if session:
                     self._expire_stale_sessions(session)
+                    epoch = self._summon_epoch(game)
+                    scope = (session, epoch)
+                    if scope != self.summon_queue_scope:
+                        with self.db:
+                            self._cancel_waiting_summons(session, "游戏会话或召唤队列已变化，未投递", epoch)
+                        self.summon_queue_scope = scope
                 current = self.db.execute("SELECT * FROM commands WHERE state='inflight' ORDER BY id LIMIT 1").fetchone()
                 inbox = self._path("inbox.tsv")
                 if current:
@@ -1229,7 +1288,10 @@ class Bridge:
                         self._problem("waiting_ready", "等待游戏进入地图并报告game_ready=true；未投递召唤/开战/观战切换")
                         return
                     try:
-                        self._validate(json.loads(pending["payload"]))
+                        payload = json.loads(pending["payload"])
+                        if pending["action"] == "queue_spawn" and payload.pop("queue_epoch", None) != self._summon_epoch(game):
+                            raise ValidationError("该请求属于已取消的召唤队列")
+                        self._validate(payload)
                     except ValidationError as error:
                         with self.db:
                             self.db.execute("UPDATE commands SET state='failed',completed=?,message=? WHERE id=?", (self.clock(), "投递前资格检查失败，未执行：" + str(error), pending["id"]))
@@ -1432,7 +1494,10 @@ class Bridge:
             except (OSError, UnicodeError, ValueError) as error:
                 catalog_summary = {"available": False, "total": 0, "errors": [str(error)]}
             keys = self.keybinds()
-            return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": self.game_status(),
+            game = self.game_status()
+            summon_transit = self._summon_transit(game.get("game_session"), self._summon_epoch(game))
+            return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": game,
+                    "summon_queue_transit": summon_transit,
                     "catalog": catalog_summary, "queue": [self._command(row[0]) for row in reversed(rows)],
                     "keybinds": keys["active"], "requested_keybinds": keys["requested"],
                     "function_keys": self.function_keybinds(),"function_keys_supported": True,

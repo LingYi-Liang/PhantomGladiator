@@ -52,7 +52,8 @@ local function harness(saved,withSpectator,withCodex)
         }
     end}
     local arena={
-        spawn=function(_,...) return record("spawn",...) end,
+        selection=function()return table.unpack(h.selection or {'/Game/BP_Default.BP_Default_C','blue',1})end,
+        spawn=function(_,...) if h.spawnStep then h.spawnStep() end;return record("spawn",...) end,
         select=function(_,...) return record("select_unit",...) end,
         cycleTeam=function() return record("cycle_team") end,
         start=function() return record("start") end,
@@ -104,7 +105,7 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
-        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds')
+        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -189,6 +190,70 @@ test("unit and general summon shortcuts share a single pending game-thread reque
     assert(#h.queue==1)
     h:drain()
     assert(count(h,'spawn')==2, "the next separate press still summons")
+end)
+
+test("opt-in queue keeps the first 100 summons, paces completion and cancels before cleanup or a new session",function()
+    local h=harness()
+    local now=10
+    h.env.os.clock=function()return now end
+    h.runtime=h.new()
+    h.spawnStep=function()now=now+0.125 end
+    h.selection={'/Game/BP_Initial.BP_Initial_C','red',3}
+    local unit='/Game/BP_Key.BP_Key_C'
+    local units=h.env.require('unit_keybinds').new({path='memory',router=h.runtime.router,
+        queue=function(callback,path,team,n)h.runtime:queueSummon(callback,path,team,n)end})
+    h.runtime.options.unitKeys=units
+    h.runtime:start()
+    assert(#h.loops==1 and not h.runtime.summonQueue.enabled,'default off creates no extra loop')
+    assert(h:run(function()return h.runtime.handlers.set_summon_queue({key_start='ON'})end).ok)
+    local loop=h.loops[2]
+    assert(loop.ms==25 and not loop.cancelled)
+
+    assert(units:configure(unit,81,0,'neutral',2).ok)
+    h.keys.F9()
+    h.keys.Q()
+    local epoch=h.runtime.summonQueue:epoch()
+    h.selection={'/Game/BP_Changed.BP_Changed_C','blue',9}
+    for i=3,100 do
+        local request={unit_id='/Game/BP_'..i..'.BP_Test_C',team='blue',count=1,key_spawn=epoch}
+        local ack=h:run(function()return h.runtime.handlers.queue_spawn(request)end)
+        assert(ack.ok and ack.spawned_count==0)
+    end
+    assert(#h.queue==0 and #h.runtime.summonQueue.jobs==100 and count(h,'spawn')==0)
+    local overflow=h:run(function()return h.runtime.handlers.queue_spawn({
+        unit_id='/Game/BP_Overflow.BP_Test_C',team='blue',count=1,key_spawn=epoch})end)
+    assert(not overflow.ok and #h.runtime.summonQueue.jobs==100)
+
+    h:run(loop.fn)
+    assert(count(h,'spawn')==1 and now==10.125)
+    local first=h.calls[#h.calls]
+    assert(first.name=='spawn' and first.args[1]=='/Game/BP_Initial.BP_Initial_C' and first.args[2]=='red' and first.args[3]==3)
+    now=10.25
+    h:run(loop.fn)
+    assert(count(h,'spawn')==1,'0.25 s from the start is too soon if spawn took 0.125 s')
+    now=10.375
+    h:run(loop.fn)
+    local second=h.calls[#h.calls]
+    assert(count(h,'spawn')==2 and second.args[1]==unit and second.args[2]=='neutral' and second.args[3]==2)
+    now=10.75
+    h:run(loop.fn)
+    assert(count(h,'spawn')==3 and h.calls[#h.calls].args[1]=='/Game/BP_3.BP_Test_C')
+
+    h.keys.F4();h:drain()
+    assert(count(h,'stop')==1 and #h.runtime.summonQueue.jobs==0)
+    local stale=h:run(function()return h.runtime.handlers.queue_spawn({
+        unit_id='/Game/BP_Old.BP_Test_C',team='blue',count=1,key_spawn=epoch})end)
+    assert(not stale.ok)
+    h.keys.F9();assert(#h.runtime.summonQueue.jobs==1)
+    h.sessionState.game_session='test-next-world'
+    now=20
+    h:run(loop.fn)
+    assert(count(h,'spawn')==3 and #h.runtime.summonQueue.jobs==0)
+
+    assert(h:run(function()return h.runtime.handlers.set_summon_queue({key_start='OFF'})end).ok)
+    assert(loop.cancelled and not h.runtime.summonQueue.enabled)
+    h.keys.F9();h:drain()
+    assert(count(h,'spawn')==4,'the original shortcut path resumes once off')
 end)
 
 test("new bindings activate only after persisted readback; old keys stop dispatching",function()

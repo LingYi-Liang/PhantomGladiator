@@ -24,6 +24,7 @@ const RealRuntime = (() => {
     gamePath: "",
     blue: 0, red: 0, neutral: 0, companion: 0,
     down: { blue: 0, red: 0, neutral: 0, companion: 0 },
+    summonQueue: { supported: false, on: false, waiting: 0, transit: 0, completed: 0, running: false, message: "" },
     companionFailures: 0,       // companions whose follow state or side did not read back (companion.lua)
     unreadable: 0,
     freeCam: false,
@@ -214,6 +215,15 @@ const RealRuntime = (() => {
     s.modVersion = v.build || "";
     if (online && s.expectedBuild && s.modVersion && s.modVersion !== s.expectedBuild) game = "mismatch";
     s.game = game;
+    s.summonQueue = {
+      supported: online && typeof v.summon_queue_enabled === "string",
+      on: online && yes("summon_queue_enabled"),
+      waiting: online ? num("summon_queue_waiting") : 0,
+      transit: Number(data.summon_queue_transit) || 0,
+      completed: online ? num("summon_queue_completed") : 0,
+      running: online && yes("summon_queue_running"),
+      message: online ? (v.summon_queue_message || "") : "",
+    };
 
     if (online) {
       s.blue = num("blue_count");
@@ -359,13 +369,14 @@ const RealRuntime = (() => {
       diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom],
       fun: [s.game, JSON.stringify(s.fun)],
       battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, JSON.stringify([s.keys.start, s.keys.stop]),
-        s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state],
+        s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next]), JSON.stringify(s.track), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
       keys: [s.game, JSON.stringify(s.keys)],
       grid: [s.unitRulesSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
+      summonQueue: [s.game, JSON.stringify(s.summonQueue)],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
     const parts = new Set(Object.keys(sig).filter(k => JSON.stringify(sig[k]) !== JSON.stringify(lastSig[k])));
@@ -394,10 +405,10 @@ const RealRuntime = (() => {
 
   async function command(action, payload = {}) {
     if (!online()) throw fail("offline");
-    if (["spawn", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
+    if (["spawn", "queue_spawn", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
     if ((action === "toggle_camera" || action === "toggle_time_stop") && !s.freeCam && !ready()) throw fail("notInMap");
     let path = "/api/command", body;
-    if (action === "spawn" || action === "select_unit") body = { action, unit_id: gameId(payload.unit_id), team: payload.team, count: payload.count };
+    if (action === "spawn" || action === "queue_spawn" || action === "select_unit") body = { action, unit_id: gameId(payload.unit_id), team: payload.team, count: payload.count };
     else if (action === "configure_unit_key") {
       body = { action, unit_id: gameId(payload.unit_id), key_code: payload.code || 0, modifiers: payload.code ? payload.mods || 0 : 0 };
       if (payload.code && payload.team) Object.assign(body, { team: payload.team, count: payload.count });
@@ -409,7 +420,7 @@ const RealRuntime = (() => {
       if (payload.mode === "UNIT") body.unit_id = payload.unit;
     }
     else if (action === "set_fun_feature") body = { action, feature: payload.feature, enabled: payload.enabled };
-    else if (action === "set_boss_combos") body = { action, enabled: payload.enabled };
+    else if (action === "set_boss_combos" || action === "set_summon_queue") body = { action, enabled: payload.enabled };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
@@ -430,6 +441,7 @@ const RealRuntime = (() => {
     // A poll may already have picked the job up (and even its answer); never step it back to pending.
     const job = jobById.get(reply.id) || mapJob({ id: reply.id, action, payload: body, status: "pending", created: Date.now() / 1000 });
     jobs.sort((a, b) => b.id - a.id);
+    if (action === "queue_spawn") return job; // POST acknowledges transport only, not an actual summon.
     emit({ type: "job", job });
     const done = await new Promise(resolve => {
       const timer = setTimeout(() => { waiters.delete(job.id); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);
