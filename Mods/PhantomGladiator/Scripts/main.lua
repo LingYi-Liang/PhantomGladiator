@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-cycle-test-1"
+local BUILD = "v0.40.11-mboss-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1439,7 +1439,11 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     -- Sends a unit that left combat back at its opponent: hatred entry and ForceIntoCombat. The faction
     -- relation and blackboard target written by ForceAttack at the start still hold.
     engage=function(attacker,victim)return arenaSupport:engage(attacker,victim)end,
-    prepareBattle=function(members)return arenaGrabs:sync(Config.EnableNPCGrabs and members or {},true,true) end,
+    prepareBattle=function(members)
+        local prepared=arenaGrabs:sync(Config.EnableNPCGrabs and members or {},true,true)
+        if prepared and arenaSupport.guillotine then arenaSupport.guillotine:prepare(members) end
+        return prepared
+    end,
     destroy=function(actor)
         checked(actor); actor:K2_DestroyActor()
         if mounts then mounts:releaseActor(actor,'随单位清理') end
@@ -1449,6 +1453,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     restore=function()
         probeSampleGen=probeSampleGen+1
         probe:stop("停止参赛者")
+        if arenaSupport.guillotine then arenaSupport.guillotine:stop() end
         if arenaExecutions then arenaExecutions:stop('停止参赛者') end
         if bossHUD then bossHUD:clear(true) end
         local grabRestored=not arenaGrabs or arenaGrabs:restore()
@@ -1891,6 +1896,10 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
+arenaSupport.guillotine=Config.EnableNPCGrabs and require('arena_guillotine').new({log=log,live=summonActorLive,
+    opponentOf=function(key)return arena:opponentOf(key)end,
+    session=function()return runtimeSession:status()end,
+    isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
 -- A support tick slower than this is logged with the time of each step, to find the source of stutter (60 a session);
 -- every minute a summary of all ticks and their costliest steps (perf_meter.lua) keeps coming after that.
 local SLOW_TICK_MS,slowTicks=10,0
@@ -1937,6 +1946,7 @@ local function supportSteps(self)
     step('bossCombos',function()bossCombos:tick()end)
     step('fightWatch',function()fightWatch:tick()end)
     step('reinforce',function()arena:tickReinforcements()end)
+    if self.guillotine then step('guillotine',function()self.guillotine:tick(tickMembers,tickStatus)end) end
     if arenaExecutions then step('executions',function()arenaExecutions:tick()end) end
     step('executionCamera',function()executionCamera:sweep()end)
     step('bossHUD',function()
@@ -2033,6 +2043,7 @@ if ModRef then
         playerAim:silence('Mod卸载')
         aiParams:silence()
         bossCombos:silence()
+        if arenaSupport.guillotine then arenaSupport.guillotine:silence() end
         if arenaExecutions then arenaExecutions:silence() end
         battle:cancel("Mod卸载")
         if battle:pendingCount()>0 or #arenaActors>0 then

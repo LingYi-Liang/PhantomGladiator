@@ -58,6 +58,25 @@ end
 local function key(actor)return tostring(actor.GetAddress())end
 local function test(name,fn)fn();print('ok - '..name)end
 
+test('only the C4 warning action of a fighting unit gets an NPC instead of the player',function()
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.fighting=true;aim:tick()
+    local base=object('NPCBase',{GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC'end})
+    red.GetClass=function()
+        return object('Class',{GetFullName=function()return 'BlueprintGeneratedClass /Test/NPC.NPC_C'end,
+            GetSuperStruct=function()return base end})
+    end
+    local avatar=blue
+    local skill=object('GA_MBoss_Skill_02_C4_C')
+    local warning=object('GAAction_ParticleOnPlayer_C',{GetAbility=function()return skill end,GetAvatarActor=function()return avatar end})
+    assert(h.ask('pawn',warning)==red,'the native warning receives the opponent pawn')
+    assert(h.ask('character',warning)==h.player,'the warning calls GetPlayerPawn only')
+    skill=object('GA_Other_C');assert(h.ask('pawn',warning)==h.player)
+    skill=object('GA_MBoss_Skill_02_C4_C');avatar=h.player;assert(h.ask('pawn',warning)==h.player)
+    avatar=blue;h.paused=true;assert(h.ask('pawn',warning)==h.player)
+end)
+
 test('no fight: no hooks; a fight hooks both getters once and checks the answer',function()
     local h=harness();local aim=h.new()
     local blue,red=h.unit('blue'),h.unit('red')

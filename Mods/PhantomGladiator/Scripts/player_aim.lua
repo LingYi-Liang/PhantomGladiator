@@ -110,8 +110,10 @@ local function addr(object)
     return ok and key~=nil and tostring(key) or nil
 end
 local function className(object)
-    local ok,name=pcall(function()return object:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    local ok,class=pcall(function()return object:GetClass()end)
+    if not ok or not U.valid(class) then return '?' end
+    local named,name=pcall(function()return class:GetFName():ToString()end)
+    return named and type(name)=='string' and name or '?'
 end
 
 function Aim.new(options)
@@ -217,11 +219,24 @@ function Aim.new(options)
             local object=U.unwrap(context)
             if not U.valid(object) then return nil end
             local cls=className(object)
-            if cls~=probe and not aims(object,cls) then noteUnlisted(object,cls,name);return nil end
-            local unit=unitOf(object)
+            local unit
+            local warning=name=='pawn' and cls=='GAAction_ParticleOnPlayer_C'
+            if warning then
+                -- This action is shared. Only the guillotine warning uses the arena opponent.
+                local got,ability=pcall(function()return object:GetAbility()end)
+                ability=got and U.unwrap(ability) or nil
+                if not U.valid(ability) or className(ability)~='GA_MBoss_Skill_02_C4_C' then return nil end
+                local found,avatar=pcall(function()return object:GetAvatarActor()end)
+                local key=found and U.key(U.unwrap(avatar))
+                if key and fighters[key]==true then unit=key end
+            else
+                if cls~=probe and not aims(object,cls) then noteUnlisted(object,cls,name);return nil end
+                unit=unitOf(object)
+            end
             if not unit or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             local ok,target=pcall(options.opponentOf,unit)
             if not ok or not U.valid(target) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+            if warning and not U.npcPath(target) then return nil end
             if cls==probe and not AIMS[cls] then return target end
             self.redirected=self.redirected+1
             self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
