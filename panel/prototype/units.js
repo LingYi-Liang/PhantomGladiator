@@ -178,5 +178,12 @@ window.PG_UNITS = [
   {"id":"BP_Monster_MengHua","name":"救苦救难梦华圣母娘娘","boss":true,"species":"Puppet","ch":12,"chName":"断魂","map":"断魂山","order":4,"status":"experimental"},
   {"id":"BP_Monster_ZuoShang_Ending","name":"组织冥主：左殇（银发）","boss":true,"species":"HumanMaster","ch":12,"chName":"断魂","map":"断魂山","order":5,"status":"experimental"},
   {"id":"BP_Monster_ZuoShang_P2","name":"龙体左殇","boss":true,"species":"Puppet","ch":12,"chName":"断魂","map":"断魂山","order":6,"status":"experimental"},
-  {"id":"BP_Monster_XuKong","name":"虚空","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":7,"status":"special","note":"手动召唤时与梦华的剧情配对拆开。虚空原版带不可被仇恨标签，独立对战待测试。"}
+  {"id":"BP_Monster_XuKong","name":"虚空","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":7,"status":"special","source":"梦华战援军","note":"手动召唤时跳过梦华的剧情配对。虚空原版带不可被仇恨标签，独立对战待测试。"},
+  {"id":"BP_Monster_PengMeng_Axe_NPC","name":"彭猛（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":8,"status":"special","source":"冷荼战第一阶段援军","note":"手动召唤时跳过与冷荼战清道夫的剧情配对。"},
+  {"id":"BP_Monster_EMei_Sword_NPC","name":"峨眉剑客（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":9,"status":"special","source":"冷荼战第二阶段援军","note":"手动召唤时跳过与冷荼战鬼差的剧情配对。"},
+  {"id":"BP_Monster_HuaShan_Blue_NPC","name":"华山双剑（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":10,"status":"special","source":"冷荼战第二阶段援军","note":"手动召唤时跳过与冷荼战鬼差的剧情配对。"},
+  {"id":"BP_Monster_FengXueDaoKe_NPC","name":"风雪刀客（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":11,"status":"special","source":"冷荼战第三阶段援军","note":"手动召唤时跳过与冷荼战玉鼎和玉璧的剧情配对。"},
+  {"id":"BP_Monster_LionDancer_P2_NPC","name":"舞狮（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":12,"status":"special","source":"冷荼战第四阶段援军","note":"手动召唤时跳过与冷荼战金色人偶的剧情配对。"},
+  {"id":"BP_Monster_LeiDang_NPC","name":"雷当（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":13,"status":"special","source":"冷荼战第五阶段援军","note":"手动召唤时跳过与冷荼的剧情配对。召唤需要存档已记录击杀雷当。"},
+  {"id":"BP_Monster_XianZhe","name":"弦者","boss":true,"species":"Special","ch":2,"chName":"林中血，镜中蛇","map":"血色森林","order":29,"status":"special","source":"白赤练二阶段援军","note":"手动召唤时跳过与白赤练二阶段的剧情配对。"}
 ];

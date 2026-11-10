@@ -135,7 +135,7 @@
   const teamName = team => t("team." + team);
   const speciesName = sp => t("species." + sp);
   const chapterName = ch => (ch === 0 ? t("chapter.prologue") : t("chapter.n", { n: ch }));
-  const unitMeta = u => [speciesName(u.species), u.ch === 0 ? chapterName(0) : u.map].join(" · ");
+  const unitMeta = u => [speciesName(u.species), u.source || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
   const langName = id => I18N.LANGS.find(l => l.id === id)?.name || id;
 
   // ---------- Keys ----------
@@ -604,7 +604,8 @@
   function statusNote(u) {
     const map = { verified: ["verified", "check-circle"], spawn: ["spawn", "info"], experimental: ["experimental", "flask"], special: ["special", "alert"] };
     const [cls, ic] = map[u.status];
-    return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(u.note || t("status." + u.status))}</span></div>`;
+    const note = [u.source, u.note || t("status." + u.status)].filter(Boolean).join("。");
+    return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(note)}</span></div>`;
   }
   function renderSelection() {
     const el = $("#dock-sel");

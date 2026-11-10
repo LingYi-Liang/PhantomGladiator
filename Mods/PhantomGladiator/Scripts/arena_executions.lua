@@ -67,6 +67,9 @@ local ABILITY_LIBRARY='/Script/GameplayAbilities.Default__AbilitySystemBlueprint
 local AI_LIBRARY='/Script/SGameAI.Default__SGameAIFunctionLibrary'
 local PAUSE_REASON='PhantomGladiator execution'
 local MESH_CLASS='/Script/Engine.SkeletalMeshComponent'
+-- The player grab montage plays the sequence at its authored 0.6 rate for 0.9 s before the lethal branch.
+local GUILLOTINE_GRAB={clip='/HuaShira/Characters/EliteBoss/MBoss/Anim/Hun_EXD_ByMBoss.Hun_EXD_ByMBoss',
+    rate=0.6000000238418579,clip_to=0.54,same_skeleton=true}
 local IDENTITY={Rotation={X=0,Y=0,Z=0,W=1},Translation={X=0,Y=0,Z=0},Scale3D={X=1,Y=1,Z=1}}
 -- Skinned parts that can follow a body: meshes, and Chaos cloth (魔渊's hair CA_Motian_Hair01 and three cloth pieces,
 -- 彭猛's cape). The first build left the cloth on the body while the body followed the borrowed skeleton, and the
@@ -134,6 +137,7 @@ function Exec.new(options)
     local humanoidLines=0
     local tagRead=nil   -- how the executable tags read back the first time, logged once
     local active=nil
+    local grabPose
     local finish
     local callingNative=false
     local pendingBodies={}
@@ -390,6 +394,10 @@ function Exec.new(options)
         asset=okAsset and U.unwrap(asset) or nil
         if not U.valid(asset) then return nil,'读不到玩家的模型' end
         local skeleton=U.field(asset,'Skeleton')
+        if timing.same_skeleton then
+            local expected=U.key(U.field(montage,'Skeleton'))
+            if not expected or U.key(skeleton)~=expected then return nil,'被抓动画与借用骨架不匹配' end
+        end
         local cls=object(MESH_CLASS)
         if not cls then return nil,'找不到 SkeletalMeshComponent 类' end
         local okAdd,comp=call(executor,'AddComponentByClass',cls,true,IDENTITY,false)
@@ -474,6 +482,62 @@ function Exec.new(options)
         local destroyed=call(body.comp,'K2_DestroyComponent',body.comp)
         local settled=U.valid(body.executor) and settle(partsOf(body.executor)) or '执行方已失效'
         return string.format('还原跟随=%d/%d 补回=%d 移除借来的骨架=%s %s',back,#body.followers,swept,tostring(destroyed),settled)
+    end
+
+    local function closeGrabPose(why,restore)
+        local pose=grabPose
+        if not pose then return end
+        grabPose=nil
+        if pose.handle then pcall(pose.cancel,pose.handle) end
+        if restore then
+            say(string.format('血滴子被抓姿势结束（%s）片段读回=%.3f；%s',
+                tostring(why or '停止'),pose.position,returnBody(pose.body)))
+        end
+    end
+
+    function self:stopGrabPose(why)
+        closeGrabPose(why,true)
+    end
+
+    -- Borrow only the victim's pre-kill pose. Native damage, movement and montages keep running.
+    function self:playGrabPose(actor,stillValid)
+        if active or grabPose or next(pendingBodies) then return false,'骨架正在用于另一段表现' end
+        local loop=options.loop or LoopInGameThreadWithDelay
+        local cancel=options.cancel or CancelDelayedAction
+        if type(loop)~='function' or type(cancel)~='function' then return false,'缺少游戏线程动画定时器' end
+        if not stillValid() then return false,'被抓目标已离场或倒下' end
+        local body,why=borrowBody(actor,GUILLOTINE_GRAB)
+        if not body then return false,why end
+        local leader=weak(U.field(body.main,'LeaderPoseComponent'))
+        local got,playing=call(body.comp,'IsPlaying')
+        if why or not U.valid(leader) or U.key(leader)~=body.key or not got or U.unwrap(playing)~=true then
+            return false,(why or '被抓动画或主网格跟随未读回')..'；'..returnBody(body)
+        end
+        local pose={body=body,cancel=cancel,started=os.clock(),position=0}
+        grabPose=pose
+        local ok,handle=pcall(loop,16,function()
+            if grabPose~=pose then return end
+            local checked,current=pcall(stillValid)
+            if not checked or not current then closeGrabPose('目标离场或倒下',true);return end
+            local read,position=call(body.comp,'GetPosition')
+            position=read and U.unwrap(position)
+            if type(position)~='number' or position~=position then closeGrabPose('动画位置不可读',true);return end
+            pose.position=position
+            if position>=GUILLOTINE_GRAB.clip_to or os.clock()-pose.started>=3 then
+                closeGrabPose('片段结束',true)
+            end
+        end)
+        if not ok or not handle then
+            closeGrabPose('定时器未登记',true)
+            return false,'被抓动画定时器未登记'
+        end
+        if grabPose~=pose then
+            pcall(cancel,handle)
+            return false,'被抓动画启动时目标已离场'
+        end
+        pose.handle=handle
+        say('血滴子被抓姿势开始 '..className(actor)..' 播放和主网格跟随读回=true')
+        return true
     end
 
     -- Pause (on=true) or resume the executor's brain through the game's AI library, read back with IsPaused.
@@ -862,6 +926,8 @@ function Exec.new(options)
         if next(pendingBodies) or not (U.valid(event.executor) and U.valid(event.target)) then return end
         local timing=animationData(short(event.execution))
         if not timing then return end
+        self:stopGrabPose('转入原生处决')
+        if next(pendingBodies) then return end
         local continuing,paused=false,false
         if active then
             if U.key(active.executor)==U.key(event.executor) and U.key(active.boss)==U.key(event.target)
@@ -1001,6 +1067,7 @@ function Exec.new(options)
             end
         end
         if not self.enabled then return end
+        if grabPose then return end
         chain:auditExisting()
         opportunities:tick()
         for key,body in pairs(pendingBodies) do if not U.valid(body.comp) then pendingBodies[key]=nil end end
@@ -1064,6 +1131,7 @@ function Exec.new(options)
     end
     -- F4 / stop: give the body back; the boss is left as it is.
     function self:stop(why)
+        self:stopGrabPose(why)
         opportunities:stop(why)
         if active then
             local run=active;active=nil
@@ -1081,7 +1149,12 @@ function Exec.new(options)
         for _,body in ipairs(retry)do say('重试身体恢复：'..returnBody(body)) end
         units={}
     end
-    function self:silence()chain:silence();opportunities:silence();if active and active.playback then active.playback:stop() end end
+    function self:silence()
+        closeGrabPose('Mod 卸载',type(IsInGameThread)=='function' and IsInGameThread())
+        chain:silence()
+        opportunities:silence()
+        if active and active.playback then active.playback:stop() end
+    end
     function self:executing(actor)
         local key=U.key(actor)
         return key~=nil and active~=nil and U.key(active.executor)==key

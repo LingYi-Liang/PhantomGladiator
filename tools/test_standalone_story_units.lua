@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Standalone=require('standalone_xukong')
+local Standalone=require('standalone_story_units')
 local XUKONG='/PBZCombatAsset/ActorData/Mobs/079_XuKong/BP_Monster_XuKong.BP_Monster_XuKong_C'
 local MENGHUA='/PBZCombatAsset/ActorData/Mobs/078_MengHua/BP_Monster_MengHua.BP_Monster_MengHua_C'
 local address=0
@@ -26,6 +26,7 @@ end
 local function fixture()
     local h={dream=object('Dream'),dreamClass=object('BlueprintGeneratedClass '..MENGHUA),
         null=object('Null'),lines={},inGame=true,override=true,registrations=0}
+    h.classes={[MENGHUA]=h.dreamClass}
     h.null.valid=false
     h.statics=object('GameplayStatics')
     function h.statics:GetActorOfClass(context,class)
@@ -34,7 +35,7 @@ local function fixture()
         return h.dream
     end
     h.module=Standalone.new({log=function(line)h.lines[#h.lines+1]=line end,statics=function()return h.statics end,
-        staticFind=function(path)assert(path==MENGHUA);return h.dreamClass end,
+        staticFind=function(path)return h.classes[path]end,
         createInvalidObject=function()return h.null end,inGameThread=function()return h.inGame end,
         registerHook=function(path,callback)
             assert(path=='/Script/Engine.GameplayStatics:GetActorOfClass')
@@ -61,6 +62,27 @@ do
     h.module:prune({})
     assert(h.statics:GetActorOfClass(manual,h.dreamClass)==h.dream)
     print('PASS direct XuKong skips the specific partner lookup in BeginPlay and OnDead, story lookups still resolve')
+end
+
+do
+    local h=fixture()
+    local name='BP_Monster_FengXueDaoKe_NPC'
+    local path='/PBZCombatAsset/ActorData/Mobs/FengXueDaoKe/'..name..'.'..name..'_C'
+    local manual=object(name..'_C /Test/World.Manual')
+    local class=object('BlueprintGeneratedClass '..path)
+    function class:GetSuperStruct()return npc end
+    function manual:GetClass()return class end
+    local yuding='/PBZCombatAsset/ActorData/Mobs/YuDing_00/BP_Monster_FemaleVessel_YuDing_LengTu.BP_Monster_FemaleVessel_YuDing_LengTu_C'
+    local yubi='/PBZCombatAsset/ActorData/Mobs/YuBi/BP_Monster_YuBi_LengTu.BP_Monster_YuBi_LengTu_C'
+    h.classes[yuding]=object('BlueprintGeneratedClass '..yuding)
+    h.classes[yubi]=object('BlueprintGeneratedClass '..yubi)
+    local entry=assert(h.module:prepare(manual))
+    assert(h.module:matches(manual:GetFullName()))
+    assert(h.statics:GetActorOfClass(manual,h.classes[yuding])==h.null)
+    assert(h.statics:GetActorOfClass(manual,h.classes[yubi])==h.null)
+    assert(h.statics:GetActorOfClass(manual,h.dreamClass)==h.dream)
+    assert(entry.lookups==2 and h.module:verify(entry))
+    print('PASS FengXueDaoKe manual spawn isolates both of its original partner branches')
 end
 
 do

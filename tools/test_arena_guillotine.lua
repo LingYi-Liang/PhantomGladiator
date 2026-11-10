@@ -19,7 +19,7 @@ local active={battle_active=true,blue_count=1,red_count=1}
 local idle={battle_active=false,blue_count=1,red_count=1}
 
 local function fixture()
-    local h={members={},hits=0,aims=0,finds=0,registrations=0,now=0,logs={},inGame=true,protect={},world='one'}
+    local h={members={},hits=0,grabs={},timers={},aims=0,finds=0,registrations=0,now=0,logs={},inGame=true,protect={},world='one'}
     local kill=object('GE_Kill')
     local function npc(name,rank)
         local actor=object('NPC /Test/World.'..name,{hp=200,floor=0,tags={},Mesh=object('Mesh'),GetClass=function()return npcClass end})
@@ -65,6 +65,12 @@ local function fixture()
         live=function(actor)return actor and actor:IsValid() and not actor.destroying end,
         opponentOf=function(owner)assert(owner==key(h.boss));return h.opponent end,
         isImmortal=function(team)return h.protect[team]==true end,
+        playGrab=function(actor,stillValid)
+            assert(stillValid())
+            h.grabs[#h.grabs+1]=actor
+            return true
+        end,
+        defer=function(callback)h.timers[#h.timers+1]=callback;return #h.timers end,
         attributes={read=function(_,actor,field)
             local value=field=='Health' and actor.hp or actor.floor
             return value and {current=value,base=value}
@@ -111,30 +117,37 @@ do
     h:hit(h.player)
     h.inGame=false;h:hit(h.foe);h.inGame=true
     h:tick()
-    assert(h.hits==0,'normal strikes, another owner, allies and players must not enter the NPC kill path')
+    assert(#h.grabs==0 and h.hits==0,'normal strikes, another owner, allies and players must not enter the grab path')
     h:hit(h.foe);h:hit(h.foe)
-    assert(h.foe.hp==200,'the engine hit callback must not execute a death inline')
+    assert(#h.grabs==0 and #h.timers==1,'the engine hit callback defers a single visual job')
+    h.timers[1]()
     h:tick()
-    assert(h.hits==1 and h.foe.hp==0)
-    assert(table.concat(h.logs,'\n'):find('HP=200 -> 0',1,true),'record the health readback')
+    assert(#h.grabs==1 and h.grabs[1]==h.foe)
+    assert(h.hits==0 and h.foe.hp==200,'the grab must leave the native health result alone')
+    assert(table.concat(h.logs,'\n'):find('原招结算后 HP=200',1,true),'record the health readback')
+    h.foe.hp=0
     h:hit(h.foe);h:tick()
-    assert(h.hits==1)
-    print('PASS only the confirmed blade hit settles once on the next support tick')
+    assert(#h.grabs==1 and h.hits==0,'leave the original death to the game')
+    print('PASS the confirmed blade hit defers one visual job without adding damage or death')
 end
 
 do
     local h=fixture();h:tick()
     h.protect.red=true;h:hit(h.foe);h:tick();h.protect.red=nil
-    h.foe.floor=1;h:hit(h.foe);h:tick();h.foe.floor=0
     h.foe.tags['CharacterState.Immortal']=1;h:hit(h.foe);h:tick();h.foe.tags={}
+    assert(#h.grabs==0)
     local boss=h.npc('PhaseBoss','BigBoss')
+    boss.floor=1
+    boss.tags['CharacterType.AI.Boss']=1
     h.members[#h.members+1]={actor=boss,team='red'}
     h:tick();h:hit(boss);h:tick()
-    assert(h.hits==0 and boss.hp==200)
+    assert(#h.grabs==1 and h.grabs[1]==boss and h.hits==0 and boss.hp==200 and boss.floor==1,
+        'a boss can play the pose with native HP and its floor intact')
     h:hit(h.foe);h.world='two';h:tick()
     h:hit(h.foe);h.module:stop();h:tick()
     h:hit(h.foe);h.foe.destroying=true;h:tick()
     h.foe.destroying=false;h:hit(h.foe);h.module:silence();h:tick()
-    assert(h.hits==0,'protections, invalidation, session changes, stop and unload cancel settlement')
-    print('PASS protected NPCs, world changes and teardown cannot receive a queued kill')
+    for _,callback in ipairs(h.timers)do callback()end
+    assert(#h.grabs==1 and h.hits==0,'protections, invalidation, session changes, stop and unload cancel visuals')
+    print('PASS boss health floors are preserved, and old session callbacks cannot play a pose')
 end

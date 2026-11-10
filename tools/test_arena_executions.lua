@@ -43,6 +43,8 @@ local function harness()
     for _,entry in pairs(DATA)do addClip(entry)end
     h.abilities={}      -- ability class name -> its live instances
     local skeleton=object('Hun_Skin_Skeleton')
+    h.found['/HuaShira/Characters/EliteBoss/MBoss/Anim/Hun_EXD_ByMBoss.Hun_EXD_ByMBoss']=
+        object('Hun_EXD_ByMBoss',{Skeleton=skeleton})
     h.player=actor('BP_Player_Hero_Hun',{Mesh=object('CharacterMesh0',{GetSkeletalMeshAsset=function()return object('Hun_Skin',{Skeleton=skeleton})end})})
     h.stats={read=function(_,a,field)local v=h.attrs[a] and h.attrs[a][field];return v and {base=v,current=v} end}
     local function tagCount(actor,key)
@@ -180,6 +182,30 @@ local function harness()
     function h.count(text)local n=0;for _,c in ipairs(h.calls)do if c==text then n=n+1 end end;return n end
     function h.run(exec,seconds)for _=1,math.floor(seconds/0.5+0.5)do h.clock=h.clock+0.5;exec:tick()end end
     return h
+end
+
+do
+    local h=harness()
+    local victim=h.enemy({X=100,Y=0,Z=0},{})
+    victim.nativeAnim.montage='NativeHitReaction'
+    local alive=true
+    local timers,cancelled={},{}
+    local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,
+        cancel=function(id)cancelled[id]=true end})
+    assert(exec:playGrabPose(victim,function()return alive end))
+    local pose=h.components[1]
+    assert(pose.playing=='Hun_EXD_ByMBoss' and pose.rate==0.6000000238418579 and victim.Mesh.LeaderPoseComponent==pose)
+    assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
+    assert(not exec:playGrabPose(victim,function()return true end),'duplicate pose must not borrow another skeleton')
+    pose.position=0.53;timers[1]()
+    assert(not pose.destroyed)
+    pose.position=0.54;timers[1]()
+    assert(cancelled[1] and pose.destroyed and victim.Mesh.LeaderPoseComponent==nil)
+    assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
+    assert(exec:playGrabPose(victim,function()return alive end))
+    alive=false;timers[2]()
+    assert(cancelled[2] and h.components[2].destroyed and victim.Mesh.LeaderPoseComponent==nil)
+    print('PASS original guillotine pose ends at the pre-kill segment and restores the mesh without affecting native health or montage')
 end
 
 do

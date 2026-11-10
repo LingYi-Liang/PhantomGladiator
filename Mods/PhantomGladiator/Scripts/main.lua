@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-xukong-split-test-1"
+local BUILD = "v0.40.11-story-grab-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -545,9 +545,9 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     end
     local name=objectName(pawn)
     local standalone
-    if route=='npc' and not leader and name:match('^BP_Monster_XuKong_C ') then
+    if route=='npc' and not leader and arenaSupport.standaloneStoryUnits:matches(name) then
         local why
-        standalone,why=arenaSupport.standaloneXuKong:prepare(pawn)
+        standalone,why=arenaSupport.standaloneStoryUnits:prepare(pawn)
         if not standalone then return false,why end
     end
     if not spawnAudit:record("finish_spawn_begin",name,"所有权已登记；"..objectName(world)) then
@@ -562,8 +562,8 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     local audited=spawnAudit:record("finish_spawn_return",name,"call="..tostring(ok2).." live="..tostring(live))
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
     if not live then return false,"FinishSpawn 后对象进入销毁或状态不可读" end
-    if standalone and not arenaSupport.standaloneXuKong:verify(standalone) then
-        return false,'虚空出场时的剧情查找未读回；保留对象供清理'
+    if standalone and not arenaSupport.standaloneStoryUnits:verify(standalone) then
+        return false,'出场时的剧情查找未读回；保留对象供清理'
     end
     -- 冷荼 born under her old save ID (a checkpoint cleared for the save-repair button) moves to the mod's now.
     if route=='npc' and bossStages then
@@ -1471,7 +1471,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     onUnitsChanged=function(units)
         if statMatch then statMatch:roster(units) end
-        if arenaSupport.standaloneXuKong then arenaSupport.standaloneXuKong:prune(units) end
+        if arenaSupport.standaloneStoryUnits then arenaSupport.standaloneStoryUnits:prune(units) end
         arenaActors={}
         local routes={}
         for _,entry in ipairs(units) do
@@ -1909,8 +1909,13 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
 arenaSupport.guillotine=Config.EnableNPCGrabs and require('arena_guillotine').new({log=log,live=summonActorLive,
     opponentOf=function(key)return arena:opponentOf(key)end,
     session=function()return runtimeSession:status()end,
+    playGrab=function(actor,stillValid)
+        if not arenaExecutions then return false,'借用骨架模块已关闭' end
+        return arenaExecutions:playGrabPose(actor,stillValid)
+    end,
+    stopGrab=function(why)if arenaExecutions then arenaExecutions:stopGrabPose(why)end end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
-arenaSupport.standaloneXuKong=require('standalone_xukong').new({log=log,statics=GetGameplayStatics})
+arenaSupport.standaloneStoryUnits=require('standalone_story_units').new({log=log,statics=GetGameplayStatics})
 -- A support tick slower than this is logged with the time of each step, to find the source of stutter (60 a session);
 -- every minute a summary of all ticks and their costliest steps (perf_meter.lua) keeps coming after that.
 local SLOW_TICK_MS,slowTicks=10,0
@@ -2055,7 +2060,7 @@ if ModRef then
         aiParams:silence()
         bossCombos:silence()
         if arenaSupport.guillotine then arenaSupport.guillotine:silence() end
-        arenaSupport.standaloneXuKong:silence()
+        arenaSupport.standaloneStoryUnits:silence()
         if arenaExecutions then arenaExecutions:silence() end
         battle:cancel("Mod卸载")
         if battle:pendingCount()>0 or #arenaActors>0 then

@@ -8,13 +8,11 @@ local MBOSS='/Game/RenewalContent/Actors/Mobs/Normal/BP_Monster_MBoss.BP_Monster
 local ROOT='/PBZCombatAsset/ActorData/Mobs/012_MBoss/'
 local HIT=ROOT..'Abilities/GA_MBoss_Skill_02_C4.GA_MBoss_Skill_02_C4_C:EventReceived_B050170643A0D6231C0901B07314DB59'
 local BLADE=ROOT..'BulletData/BulletData_MBoss_Kill.BulletData_MBoss_Kill'
-local KILL='/Game/PBZContent/Blueprint/Ability/GameplayEffects/GE_Kill.GE_Kill_C'
 local ABILITY_LIB='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'
 local TARGET_CHANGED='GameplayEvent.AI.TargetChanged'
-local PROTECTED={'CharacterState.Immortal','CharacterState.Stand.Invulnerable','CharacterState.CanNotBeExecuted',
+local PROTECTED={'CharacterState.Immortal','CharacterState.Stand.Invulnerable',
     'CharacterState.Unselectable','CharacterState.Dead','CharacterState.Hitreact.State.Executing',
-    'CharacterType.AI.Boss','Driver.Driving'}
-local ORDINARY={Mob=true,Standard=true,Elite=true}
+    'Driver.Driving'}
 
 local function call(object,method,...)
     if not U.valid(object) then return false,nil end
@@ -36,12 +34,13 @@ function Guillotine.new(options)
     local stats=options.attributes or Stats.new()
     local clock=options.clock or os.clock
     local find=options.staticFind or StaticFindObject
-    local load=options.loadAsset or LoadAsset
     local register=options.registerHook or RegisterHook
+    local defer=options.defer or function(callback)return ExecuteInGameThreadWithDelay(1,callback)end
     local fname=options.fname or FName
     local inGameThread=options.inGameThread or IsInGameThread
     local alive,hooked=true,false
     local session,roster,pending,aims=nil,{},{},{}
+    local deferred,flush
     local lines=0
     local function say(message)
         if lines>=80 then return end
@@ -72,6 +71,18 @@ function Guillotine.new(options)
             pending[targetKey]={source=sourceKey,sourceName=sourceName,targetName=targetName,
                 sourceTeam=attacker.team,targetTeam=victim.team}
             say('铡刀原生命中已读回 '..sourceName..' -> '..targetName)
+            if not deferred then
+                local token={}
+                deferred=token
+                local queued,handle=pcall(defer,function()
+                    if not alive or deferred~=token then return end
+                    deferred=nil
+                    local current=options.session()
+                    if current.game_ready and current.game_session==session then flush()
+                    else self:stop() end
+                end)
+                if not queued or not handle then deferred=nil end
+            end
         end
     end
 
@@ -108,36 +119,47 @@ function Guillotine.new(options)
             ..' TargetMesh='..tostring(afterMesh)..' 一致='..tostring(after==targetKey and afterMesh==meshKey))
     end
 
-    local function finish(member)
+    local function showGrab(member,key)
         local actor=member.actor
         if options.isImmortal(member.team) or member.untargetable then return '队伍或单位受保护' end
         if not options.live(actor) or not U.npcPath(actor) then return '目标非有效 NPC' end
-        local tag=U.struct(U.field(U.field(actor,'Actor Config'),'Difficulty Tag'),'TagName')
-        local ok,rank=pcall(function()return tag:ToString()end)
-        if not ok or type(rank)~='string' or not ORDINARY[rank:gsub('^CharacterType%.Difficulty%.','')] then
-            return '目标不是普通等级 NPC'
-        end
-        local hp,floor=read(actor,'Health'),stats:read(actor,'Health_Min')
-        if not hp or hp<=0 or not floor or floor.current>0 or floor.base>0 then return '死亡状态或锁血保护' end
+        local hp=read(actor,'Health')
+        if not hp or hp<=0 then return '原招结算后已倒下或血量未读回' end
         local asc=U.field(actor,'AbilitySystemComponent')
         for _,name in ipairs(PROTECTED)do
             local readTag,count=call(asc,'GetGameplayTagCount',{TagName=fname(name)})
             if not readTag or count~=0 then return '状态保护或未读回 '..name end
         end
-        local effect=retry:find(KILL,function(path)
-            local found=find(path)
-            if U.valid(found) then return found end
-            local loaded=load(path)
-            return U.valid(loaded) and loaded or find(path)
+        local worldSession=session
+        local played,why=options.playGrab(actor,function()
+            local current=roster[key]
+            return session==worldSession and current and current.team==member.team and U.key(current.actor)==key
+                and options.live(actor) and (read(actor,'Health') or 0)>0
         end)
-        if not U.valid(effect) then return 'GE_Kill 未加载' end
-        if not options.live(actor) then return '结算前目标已失效' end
-        local applied=call(asc,'BP_ApplyGameplayEffectToSelf',effect,0.0,{})
-        return 'GE_Kill 调用='..tostring(applied)..' HP='..tostring(hp)..' -> '..tostring(read(actor,'Health'))
+        return '原招结算后 HP='..tostring(hp)..' 被抓动画='..tostring(played)..(why and '；'..why or '')
     end
 
-    function self:stop()
+    local function clear()
+        deferred=nil
         session,roster,pending,aims=nil,{},{},{}
+    end
+    function self:stop()
+        clear()
+        if options.stopGrab then options.stopGrab('交战结束或召唤会话变化') end
+    end
+
+    flush=function()
+        deferred=nil
+        local hits=pending
+        pending={}
+        for targetKey,record in pairs(hits)do
+            local attacker,victim=roster[record.source],roster[targetKey]
+            if attacker and attacker.class_path==MBOSS and victim
+                and attacker.team==record.sourceTeam and victim.team==record.targetTeam
+                and fullName(attacker.actor)==record.sourceName and fullName(victim.actor)==record.targetName then
+                say('铡刀命中表现 '..record.targetName..' '..showGrab(victim,targetKey))
+            end
+        end
     end
 
     function self:prepare(members)
@@ -172,16 +194,7 @@ function Guillotine.new(options)
             end
         end
         install()
-        local hits=pending
-        pending={}
-        for targetKey,record in pairs(hits)do
-            local attacker,victim=roster[record.source],roster[targetKey]
-            if attacker and attacker.class_path==MBOSS and victim
-                and attacker.team==record.sourceTeam and victim.team==record.targetTeam
-                and fullName(attacker.actor)==record.sourceName and fullName(victim.actor)==record.targetName then
-                say('铡刀命中结算 '..record.targetName..' '..finish(victim))
-            end
-        end
+        if next(pending) then flush() end
         for key,member in pairs(roster)do
             if member.class_path==MBOSS and options.live(member.actor) and (read(member.actor,'Health') or 0)>0 then
                 syncAim(member,key)
@@ -193,7 +206,7 @@ function Guillotine.new(options)
     -- UE4SS removes the script hook with the mod. Any retained callback becomes inert first.
     function self:silence()
         alive=false
-        self:stop()
+        clear()
     end
     return self
 end
