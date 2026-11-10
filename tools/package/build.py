@@ -285,7 +285,7 @@ def main() -> None:
     subprocess.run([str(CSC), "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/utf8output", "/codepage:65001",
                     *(["/define:NEXUS"] if nexus else []),
                     f"/out:{out / 'PhantomGladiator.exe'}", f"/win32icon:{icon}", f"/win32manifest:{build / 'app.manifest'}", *refs,
-                    str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs")], check=True)
+                    str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "desktop/ManualBeta.cs")], check=True)
     (out / "PhantomGladiator.exe.config").write_text(EXE_CONFIG, encoding="utf-8")
     (out / "licenses").mkdir()
     for lic in wv.glob("LICENSE*"):

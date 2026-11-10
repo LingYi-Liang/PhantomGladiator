@@ -16,7 +16,7 @@ CSC = pathlib.Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 REFS = ["System.dll", "System.Core.dll", "System.Drawing.dll", "System.Windows.Forms.dll", "System.Web.Extensions.dll",
         "System.IO.Compression.dll", "System.IO.Compression.FileSystem.dll"]
 WEBVIEW2 = ["Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll"]
-APP = [str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs")]
+APP = [str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "desktop/ManualBeta.cs")]
 # Literals only the update check, download, verify and install code holds (UTF-16 in the exe's string heap).
 UPDATE_ONLY = ["versions.json", "所有下载节点都失败了。", "下载的文件校验不通过，已删除。请换一条线路重试。", "更新包的版本与所选版本不一致。"]
 

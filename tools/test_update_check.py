@@ -143,7 +143,7 @@ def main():
         subprocess.run([str(CSC), "/nologo", "/target:exe", "/platform:x64", "/utf8output", "/codepage:65001",
                         "/main:PhantomGladiator.UpdateCheckTest", f"/out:{exe}", *[f"/r:{r}" for r in REFS],
                         *[f"/r:{tmp / dll}" for dll in WEBVIEW2],
-                        str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs"),
+                        str(ROOT / "desktop/PhantomGladiator.cs"), str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "desktop/ManualBeta.cs"),
                         str(ROOT / "tools/test_update_check.cs")], check=True)
         # A crash prints in the console's code page, not UTF-8.
         run = subprocess.run([str(exe), base], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240,

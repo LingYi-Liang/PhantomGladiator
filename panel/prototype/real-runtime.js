@@ -14,6 +14,7 @@ const RealRuntime = (() => {
 
   const s = {
     icons: {},                  // unit id -> codex bust URL (codex_icons.lua, backend.py /api/codex-icons)
+    summonLimits: {},
     unitNames: null,            // names in the game's language (codex_catalog_export.lua, backend.py /api/unit-names)
     game: "offline",            // offline | connecting | notInMap | ready | mismatch
     gameRunning: false,
@@ -119,12 +120,15 @@ const RealRuntime = (() => {
     const r = await fetch("/api/catalog", { cache: "no-store" });
     if (!r.ok) return;
     const data = await r.json();
-    const game = new Map(), short = new Map(), unitKeys = {};
+    const game = new Map(), short = new Map(), unitKeys = {}, summonLimits = {};
     // Primary codex rows first, so a short name always means the entry units.js shows.
     const rows = [...(data.units || [])].sort((a, b) => (b.codex_entry_kind === "primary") - (a.codex_entry_kind === "primary"));
     for (const u of rows) {
       const name = u.internal_name || String(u.id).split("/").pop().split(".")[0];
-      if (!game.has(name)) game.set(name, u.id);
+      if (!game.has(name)) {
+        game.set(name, u.id);
+        if (u.spawnable !== false) summonLimits[name] = Number(u.max_count) || 100;
+      }
       short.set(u.id, name);
       const k = u.unit_shortcut;
       if (k && k.key_code) unitKeys[name] = { code: k.key_code, mods: k.modifiers || 0, team: k.team || null, count: k.count || null };
@@ -132,6 +136,7 @@ const RealRuntime = (() => {
     toGame = game;
     toShort = short;
     s.unitKeys = unitKeys;
+    s.summonLimits = summonLimits;
     s.synced = s.synced && { ...s.synced };
     emit({ type: "state", parts: new Set(["sel", "keys", "grid"]) });
   }
@@ -575,6 +580,11 @@ const RealRuntime = (() => {
       const r = await fetch("/api/companion-stats", { cache: "no-store" });
       if (!r.ok) throw fail("rejected");
       return r.json();
+    },
+    beta: {
+      installation: () => host("betaInstallation"),
+      check: code => host("checkBeta", { code }),
+      install: id => host("installBeta", { id }),
     },
     exportReport: () => host("exportReport"),
     // Prototype demo hooks; the packaged app has no demo panel.

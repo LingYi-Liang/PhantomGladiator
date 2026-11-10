@@ -70,6 +70,7 @@
 
   // ---------- State ----------
   const detected = I18N.detect();
+  const savedPool = store.get("monsterPool", []);
   const ui = {
     page: "arena",
     langMode: store.get("langMode", "auto"),
@@ -79,6 +80,9 @@
     type: "all",
     chapter: "all",
     selectedId: store.get("selected", null),
+    monsterPool: Array.isArray(savedPool) ? [...new Set(savedPool.filter(id => typeof id === "string"))] : [],
+    poolQuery: "", poolTeam: null, poolCount: null,
+    manualBeta: null,
     team: "blue",
     count: 1,
     roster: { blue: {}, red: {}, neutral: {}, companion: {} },
@@ -361,6 +365,7 @@
   function go(page) {
     if (ui.capture) cancelCapture();
     ui.page = page;
+    if (page === "queue" || page === "pool") $("#arena-extra").open = true;
     renderRail();
     renderPage();
     // Only a real navigation fades in; re-renders of the same page stay still.
@@ -377,8 +382,9 @@
       renderDock();
       return;
     }
-    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML }[ui.page]();
+    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, queue: queuePageHTML, pool: poolPageHTML }[ui.page]();
     content.innerHTML = `<div class="page page-scroll scroll">${html}</div>`;
+    if (ui.page === "pool") renderPoolSummon();
   }
 
   // ---------- Arena: catalog ----------
@@ -1428,7 +1434,7 @@
         if (job.status === "failed" || job.status === "uncertain") {
           toast({ id: "summon-queue-intake", kind: "warning", title: "入队未确认", body: reasonText(job.code, job.message) });
         } else {
-          toast({ id: "summon-queue-intake", kind: "info", title: "已提交排队", body: "进度可在设置页查看。" });
+          toast({ id: "summon-queue-intake", kind: "info", title: "已提交排队", body: "进度可在对战扩展的排队召唤页查看。" });
         }
       } catch (error) {
         toast({ id: "summon-queue-intake", kind: "error", title: "未提交召唤", body: reasonText(error.code, error.detail) });
@@ -1788,13 +1794,167 @@
     renderSummonQueueSettings();
   }
 
+  function queuePageHTML() {
+    return `<div class="stack"><div class="page-head"><h1 class="page-title">排队召唤</h1></div>
+      <div id="summon-queue-settings">${summonQueueSettingsHTML()}</div></div>`;
+  }
+
+  function poolMatches() {
+    const query = ui.poolQuery.trim().toLowerCase();
+    return UNITS.filter(u => !ui.monsterPool.includes(u.id) &&
+      (!query || (u.name + " " + u.zhName + " " + u.id).toLowerCase().includes(query))).slice(0, 12);
+  }
+
+  function poolChoicesHTML() {
+    return poolMatches().map(u => `<div class="row"><div class="row-main"><div class="row-title">${esc(u.name)}</div></div>
+      <button class="btn btn-secondary btn-sm" type="button" data-action="pool-add" data-id="${esc(u.id)}">加入</button></div>`).join("") ||
+      '<p class="muted" style="padding:12px">没有可加入的匹配单位。</p>';
+  }
+
+  function poolPageHTML() {
+    const team = ui.poolTeam ?? ui.team;
+    const count = ui.poolCount ?? ui.count;
+    const members = ui.monsterPool.map(id => byId.get(id)).filter(Boolean);
+    return `<div class="stack"><div class="page-head"><div><h1 class="page-title">自定义怪物池</h1>
+      <p class="page-sub">每笔从池里抽一个可召唤、且支持所选数量的种类。</p></div></div>
+      <section class="card"><div class="card-head"><h2 class="card-title">我的怪物池 · ${members.length}</h2></div>
+        <div class="card-body"><div class="option-list">
+          <label>队伍 <select id="pool-team">${TEAMS.map(t => `<option value="${t}" ${team===t ? "selected" : ""}>${esc(teamName(t))}</option>`).join("")}</select></label>
+          <label>数量 <input id="pool-count" type="number" min="1" max="100" value="${count}" style="width:6em"></label>
+          <button class="btn btn-primary btn-sm" type="button" id="pool-summon" data-action="pool-summon" disabled>随机召唤</button>
+        </div></div>
+        <div class="rows">${members.map(u => `<div class="row"><div class="row-main"><div class="row-title">${esc(u.name)}</div></div>
+          <button class="btn btn-ghost btn-sm" type="button" data-action="pool-remove" data-id="${esc(u.id)}">移除</button></div>`).join("") ||
+          '<p class="muted" style="padding:12px">先从下方加入怪物。</p>'}</div></section>
+      <section class="card"><div class="card-head"><h2 class="card-title">加入怪物</h2></div>
+        <div class="card-body"><input id="pool-search" type="search" placeholder="搜索怪物名称" value="${esc(ui.poolQuery)}"></div>
+        <div class="rows" id="pool-choices">${poolChoicesHTML()}</div></section></div>`;
+  }
+
+  function poolEligible(id, count) {
+    return byId.has(id) && (RT.demo || (S.summonLimits?.[id] || 0) >= count);
+  }
+
+  function renderPoolSummon() {
+    const button = $("#pool-summon");
+    if (!button) return;
+    const count = ui.poolCount ?? ui.count;
+    button.disabled = !RT.ready() || !!cleanupBlocker() || ui.busy.has("spawn") ||
+      !ui.monsterPool.some(id => poolEligible(id, count));
+  }
+
+  function changePool(id, add) {
+    if (!byId.has(id)) return;
+    if (add && !ui.monsterPool.includes(id)) ui.monsterPool.push(id);
+    if (!add) ui.monsterPool = ui.monsterPool.filter(item => item !== id);
+    store.set("monsterPool", ui.monsterPool);
+    renderPage();
+  }
+
+  async function summonFromPool() {
+    if (!RT.ready() || cleanupBlocker() || ui.busy.has("spawn")) return;
+    const count = ui.poolCount ?? ui.count;
+    const choices = ui.monsterPool.filter(id => poolEligible(id, count));
+    if (!choices.length) return;
+    const picked = choices[Math.floor(Math.random() * choices.length)];
+    const result = summon(picked, ui.poolTeam ?? ui.team, count);
+    renderPoolSummon();
+    try { await result; }
+    finally { renderPoolSummon(); }
+  }
+
+  function betaDialogHTML() {
+    const v = ui.manualBeta;
+    const busy = v.checking || v.installing;
+    const header = `<div class="dialog-head"><h2 id="dlg-title">检查内测版</h2>
+      <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="关闭">${icon("x")}</button></div>`;
+    const identity = v.installation ? `<p class="muted">本机编号 <code>${esc(v.installation)}</code>
+      <button class="btn-link" type="button" data-action="copy-beta-id">复制</button></p>` : "";
+    const error = v.error ? `<p class="callout callout-amber">${esc(v.error)}</p>` : "";
+    const offer = v.offer ? `<div class="callout callout-green"><div class="callout-body"><strong>指定内测版 ${esc(v.offer.version)}</strong>
+      <span>${esc(v.offer.build)} · ${fmtBytes(v.offer.size)}</span><span>${esc(v.offer.note)}</span></div></div>` : "";
+    return header + `<div class="dialog-body">${identity}${error}${offer}
+      <p>把本机编号发给作者领取内测码。之后由你手动检查，内测版安装在独立目录。</p>
+      <input id="manual-beta-code" type="password" autocomplete="off" maxlength="16384"
+        placeholder="${store.get("manualBetaInvite", "") ? "已保存内测码，可粘贴新码替换" : "粘贴内测码"}" style="width:100%" ${busy ? "disabled" : ""}>
+      </div><div class="dialog-foot">
+      <button class="btn btn-secondary" type="button" data-action="check-manual-beta" ${busy || !v.installation ? "disabled" : ""}>${v.checking ? "检查中…" : "检查"}</button>
+      ${v.offer ? `<button class="btn btn-primary" type="button" data-action="install-manual-beta"
+        ${busy || S.gameRunning ? "disabled" : ""}>${v.installing ? "下载并校验中…" : S.gameRunning ? "请先关闭游戏" : "安装内测版"}</button>` : ""}
+      </div>`;
+  }
+
+  function renderBetaDialog(view) {
+    if (ui.manualBeta === view && dlg?.kind === "beta") setDialog(betaDialogHTML());
+  }
+
+  async function checkManualBeta(code) {
+    const view = ui.manualBeta;
+    if (!view?.installation || view.checking || view.installing) return;
+    code = code || $("#manual-beta-code")?.value?.trim() || store.get("manualBetaInvite", "");
+    if (typeof code !== "string" || !code.trim()) {
+      view.error = "请先输入内测码。";
+      renderBetaDialog(view);
+      return;
+    }
+    view.checking = true;
+    view.offer = null;
+    view.error = "";
+    renderBetaDialog(view);
+    try {
+      view.offer = await RT.beta.check(code.trim());
+      store.set("manualBetaInvite", code.trim());
+    } catch (error) {
+      view.error = reasonText(error.code, error.detail);
+    } finally {
+      view.checking = false;
+      renderBetaDialog(view);
+    }
+  }
+
+  async function openManualBeta() {
+    if (!RT.beta || fromNexus()) return;
+    const view = { installation: "", offer: null, checking: true, installing: false, error: "" };
+    ui.manualBeta = view;
+    openDialog("beta", betaDialogHTML(), "dialog-sm");
+    try {
+      view.installation = await RT.beta.installation();
+    } catch (error) {
+      view.error = reasonText(error.code, error.detail);
+    } finally {
+      view.checking = false;
+      renderBetaDialog(view);
+    }
+    if (ui.manualBeta === view && dlg?.kind === "beta" && view.installation && store.get("manualBetaInvite", "")) {
+      await checkManualBeta(store.get("manualBetaInvite", ""));
+    }
+  }
+
+  async function installManualBeta() {
+    const view = ui.manualBeta;
+    if (!view?.offer || view.checking || view.installing || S.gameRunning) return;
+    view.installing = true;
+    view.error = "";
+    renderBetaDialog(view);
+    try {
+      await RT.beta.install(view.offer.id);
+    } catch (error) {
+      view.error = reasonText(error.code, error.detail);
+    } finally {
+      view.installing = false;
+      renderBetaDialog(view);
+    }
+  }
+
   function settingsHTML() {
     const opt = (action, value, checked, main, sub = "", extra = "") => `<button class="option ${extra}" type="button" role="radio" aria-checked="${checked}" data-action="${action}" data-value="${value}"><span class="radio"></span><span class="option-main"><span>${main}</span>${sub ? `<small>${sub}</small>` : ""}</span></button>`;
     const sw = (key, title, desc) => `<div class="row"><div class="row-main"><div class="row-title">${esc(title)}</div><div class="row-desc">${esc(desc)}</div></div><button class="switch" type="button" role="switch" aria-checked="${ui.settings[key]}" data-action="toggle-setting" data-setting="${key}" aria-label="${esc(title)}"></button></div>`;
     const scan = S.scan;
     return `<div class="stack">
       <div class="page-head"><div><h1 class="page-title">${esc(t("settings.title"))}</h1><p class="page-sub">${esc(t("settings.subtitle"))}</p></div></div>
-      <div id="summon-queue-settings">${summonQueueSettingsHTML()}</div>
+      ${!fromNexus() && RT.beta ? `<section class="card"><div class="card-head">
+        <h2 class="card-title">内测版推送</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-manual-beta">检查内测版</button></div>
+        <div class="card-body"><p class="muted">凭内测码手动查看作者指定的版本。正式更新仍从原来的入口检查。</p></div></section>` : ""}
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.language"))}</h2></div>
         <div class="card-body"><div class="option-list" role="radiogroup" aria-label="${esc(t("settings.language"))}">
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
@@ -2124,7 +2284,7 @@
       const r = await RT.clearQueue();
       const n = (r.cleared || 0) + (r.interrupted || 0);
       if (r.files_left?.length) toast({ kind: "warning", title: n ? t("toast.queue.cleared", { n }) : t("toast.queue.empty"), body: t("toast.queue.filesLeft") });
-      else if (r.summon_cancel_requested) toast({ kind: "info", title: "已请求清空待执行召唤", body: "游戏确认后可在设置页查看。" });
+      else if (r.summon_cancel_requested) toast({ kind: "info", title: "已请求清空待执行召唤", body: "游戏确认后可在排队召唤页查看。" });
       else if (n) toast({ kind: "success", title: t("toast.queue.cleared", { n }), body: t("toast.queue.cleared.body") });
       else toast({ kind: "info", title: t("toast.queue.empty") });
     } catch (error) {
@@ -2368,6 +2528,13 @@
 
   // ---------- Events ----------
   const actions = {
+    "open-manual-beta": () => openManualBeta(),
+    "check-manual-beta": () => checkManualBeta(),
+    "install-manual-beta": () => installManualBeta(),
+    "copy-beta-id": () => copyText(ui.manualBeta?.installation || ""),
+    "pool-add": el => changePool(el.dataset.id, true),
+    "pool-remove": el => changePool(el.dataset.id, false),
+    "pool-summon": () => summonFromPool(),
     "toggle-summon-queue": () => changeSummonQueue("set_summon_queue", { enabled: !S.summonQueue?.on }),
     "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
@@ -2602,6 +2769,16 @@
     fn(el, e);
   });
   document.addEventListener("input", e => {
+    if (e.target.id === "pool-search") {
+      ui.poolQuery = e.target.value;
+      $("#pool-choices").innerHTML = poolChoicesHTML();
+      return;
+    }
+    if (e.target.id === "pool-count") {
+      ui.poolCount = Math.max(1, Math.min(100, Math.trunc(Number(e.target.value)) || 1));
+      renderPoolSummon();
+      return;
+    }
     if (e.target.id === "level-custom") { ui.levelCustom = e.target.value; return; }
     if (e.target.classList?.contains("stat-input")) {
       if (e.target.classList.contains("ai-input")) ui.aiDraft[e.target.dataset.field] = e.target.value;
@@ -2639,6 +2816,8 @@
     }
   });
   document.addEventListener("change", e => {
+    if (e.target.id === "pool-team" && TEAMS.includes(e.target.value)) ui.poolTeam = e.target.value;
+    if (e.target.id === "pool-count") e.target.value = ui.poolCount ?? ui.count;
     if (e.target.id === "chapter") { ui.chapter = e.target.value; renderToolbar(); renderGrid({ animate: true }); $("#catalog-col").scrollTop = 0; }
     if (e.target.id === "count-input") setCount(Number(e.target.value));
     if (e.target.id === "diff-select") setDifficulty(e.target.value);
@@ -2787,12 +2966,15 @@
           if (p.has("view")) renderView();
           if (p.has("grid") && !ui.capture) renderGrid();
         } else if (ui.page === "hotkeys" && p.has("keys") && !ui.capture && !ui.keysSaving) renderPage();
-        else if (ui.page === "settings") {
-          if (p.has("settings")) renderPage();
-          else if (p.has("summonQueue")) renderSummonQueueSettings();
+        else if (ui.page === "settings" && p.has("settings")) renderPage();
+        else if (ui.page === "queue" && p.has("summonQueue")) renderSummonQueueSettings();
+        else if (ui.page === "pool") {
+          if (p.has("names")) renderPage();
+          else if (p.has("grid") || p.has("settings") || p.has("sel")) renderPoolSummon();
         }
         else if (ui.page === "fun" && p.has("fun")) renderPage();
         if (dlg?.kind === "update" && p.has("update")) setDialog(updateHTML());
+        if (dlg?.kind === "beta" && p.has("update")) renderBetaDialog(ui.manualBeta);
         break;
       }
     }

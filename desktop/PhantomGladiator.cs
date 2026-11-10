@@ -716,13 +716,33 @@ namespace PhantomGladiator
 #else
         const string FirstSafeSwapVersion = "0.40.10";
         readonly BuildInfo build;
+        readonly bool preview;
+        readonly string workDirectory;
         Dictionary<string, object> manifest;
         List<PartDownload.Part> partFiles;
         List<PartDownload.Source> partSources;
         string downloaded;
         volatile bool cancel;
 
-        public UpdateClient(BuildInfo b) { build = b; }
+        public UpdateClient(BuildInfo b, bool preview = false)
+        {
+            build=b;
+            this.preview=preview;
+            workDirectory=Paths.In(preview ? "beta-updates" : "updates");
+        }
+
+        public void UseBetaOffer(BetaOffer offer)
+        {
+            if (!preview) throw new InvalidOperationException();
+            manifest=new Dictionary<string, object> {
+                { "version", offer.Version }, { "modBuild", offer.Build },
+                { "size", offer.Size }, { "sha256", offer.Sha256 },
+                { "downloads", new System.Collections.ArrayList {
+                    new Dictionary<string, object> { { "id", "github" }, { "url", offer.Url } }
+                } }
+            };
+            downloaded=null;
+        }
 
         static string Get(string url, int timeout)
         {
@@ -914,8 +934,8 @@ namespace PhantomGladiator
             var size = Convert.ToInt64(manifest["size"]);
             var urls = ((System.Collections.ArrayList)manifest["downloads"]).Cast<Dictionary<string, object>>().ToList();
             var pick = urls.FirstOrDefault(d => (string)d["id"] == line) ?? urls.First();
-            Directory.CreateDirectory(Paths.In("updates"));
-            var target = Paths.In("updates", "PhantomGladiator-" + manifest["version"] + ".zip");
+            Directory.CreateDirectory(workDirectory);
+            var target = Path.Combine(workDirectory, "PhantomGladiator-" + manifest["version"] + ".zip");
             var part = target + ".part";
             var req = (HttpWebRequest)WebRequest.Create((string)pick["url"]);
             req.UserAgent = "PhantomGladiator";
@@ -933,6 +953,7 @@ namespace PhantomGladiator
                 while ((n = input.Read(buffer, 0, buffer.Length)) > 0)
                 {
                     if (cancel) throw new HostError("cancelled", "");
+                    if (preview && done + n > size) throw new HostError("verify","内测包超过签名清单中的大小。");
                     output.Write(buffer, 0, n);
                     done += n;
                     if (clock.ElapsedMilliseconds - lastTick >= 200)
@@ -968,10 +989,10 @@ namespace PhantomGladiator
         }
 
         // Older executables clean every .old entry at startup. Run them from a fresh directory on rollback.
-        public void Install()
+        string InstallFiles()
         {
             if (downloaded == null) throw new HostError("verify", "");
-            var staging = Paths.In("updates", "staging");
+            var staging = Path.Combine(workDirectory, "staging");
             if (Directory.Exists(staging)) Directory.Delete(staging, true);
             ZipFile.ExtractToDirectory(downloaded, staging);
             var root = Directory.GetFiles(staging, "PhantomGladiator.exe", SearchOption.AllDirectories).Select(Path.GetDirectoryName).FirstOrDefault();
@@ -983,19 +1004,29 @@ namespace PhantomGladiator
             object packagedVersion;
             if (packaged == null || !packaged.TryGetValue("appVersion", out packagedVersion) || (packagedVersion as string) != version)
                 throw new HostError("verify", "更新包的版本与所选版本不一致。");
+            object packagedBuild;
+            if (preview && (!packaged.TryGetValue("modBuild", out packagedBuild) || (packagedBuild as string) != (string)manifest["modBuild"]))
+                throw new HostError("verify","内测包构建标记与签名清单不一致。");
             var installed = Paths.AppDir;
             try
             {
-                if (Newer(FirstSafeSwapVersion, version))
+                if (preview || Newer(FirstSafeSwapVersion, version))
                 {
                     var versions = Paths.In("versions");
                     Directory.CreateDirectory(versions);
-                    installed = Path.Combine(versions, "PhantomGladiator-" + string.Join(".", Ver(version)) + "-" + Guid.NewGuid().ToString("N"));
+                    var prefix = preview ? "PhantomGladiator-beta-" : "PhantomGladiator-";
+                    installed = Path.Combine(versions, prefix + string.Join(".", Ver(version)) + "-" + Guid.NewGuid().ToString("N"));
                     Directory.Move(root, installed);
                 }
                 else AppSwap.Apply(root, installed);
             }
             catch (IOException e) { throw new HostError("install", "更新没有完成。\n" + e.Message); }
+            return installed;
+        }
+
+        public void Install()
+        {
+            var installed=InstallFiles();
             try
             {
                 Process.Start(new ProcessStartInfo(Path.Combine(installed, "PhantomGladiator.exe"), "--wait-for " + Process.GetCurrentProcess().Id)
@@ -1031,6 +1062,11 @@ namespace PhantomGladiator
         readonly Settings settings = Settings.Load();
         readonly BuildInfo build = BuildInfo.Load();
         readonly UpdateClient updates;
+        bool updateTransfer;
+#if !NEXUS
+        bool betaChecking;
+        BetaOffer betaOffer;
+#endif
         readonly System.Windows.Forms.Timer gameTimer = new System.Windows.Forms.Timer { Interval = 3000 };
         readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
         GameInfo game;
@@ -1178,6 +1214,30 @@ namespace PhantomGladiator
             return new Dictionary<string, object> { { "path", g.Root }, { "store", "Steam" }, { "build", g.Build }, { "appId", g.AppId } };
         }
 
+        void BeginUpdateTransfer()
+        {
+            if (updateTransfer) throw new HostError("updateBusy","另一个更新操作正在进行。");
+            updateTransfer=true;
+        }
+
+        async Task<object> InstallAndRestart(UpdateClient client)
+        {
+            if (gameRunning || (game!=null && GameLocator.Running(game)))
+                throw new HostError("gameRunning","请先关闭游戏再更新。");
+            var runtime=backend.Runtime;
+            backend.Stop();
+            Exception failed=null;
+            try { await Task.Run(() => client.Install()); }
+            catch (Exception error) { failed=error; }
+            if (failed!=null)
+            {
+                if (!string.IsNullOrEmpty(runtime)) await Task.Run(() => backend.Start(runtime));
+                throw failed;
+            }
+            BeginInvoke((Action)Close);
+            return null;
+        }
+
         async Task<object> Dispatch(string method, Dictionary<string, object> p)
         {
             switch (method)
@@ -1227,41 +1287,78 @@ namespace PhantomGladiator
                     return null;
                 case "exportReport":
                     return await Task.Run(() => ExportReport());
+#if !NEXUS
+                case "betaInstallation":
+                    return ManualBeta.InstallationId();
+                case "checkBeta":
+                {
+                    if (updateTransfer || betaChecking) throw new HostError("updateBusy","另一个更新操作正在进行。");
+                    betaChecking=true;
+                    betaOffer=null;
+                    try
+                    {
+                        var code=p.ContainsKey("code") ? p["code"] as string : null;
+                        betaOffer=await Task.Run(() => new ManualBeta().Check(code,ManualBeta.InstallationId(),DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+                        return betaOffer.Describe();
+                    }
+                    finally { betaChecking=false; }
+                }
+                case "installBeta":
+                {
+                    var offer=betaOffer;
+                    if (offer==null || !p.ContainsKey("id") || p["id"] as string!=offer.Id ||
+                        DateTimeOffset.UtcNow.ToUnixTimeSeconds()>=offer.Expires)
+                        throw new HostError("betaOffer","请重新检查指定内测版。");
+                    if (gameRunning || (game!=null && GameLocator.Running(game)))
+                        throw new HostError("gameRunning","请先关闭游戏再安装内测版。");
+                    BeginUpdateTransfer();
+                    try
+                    {
+                        var preview=new UpdateClient(build,true);
+                        preview.UseBetaOffer(offer);
+                        await Task.Run(() => {
+                            preview.Download("github",(done,total,speed)=>{});
+                            preview.Verify();
+                        });
+                        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds()>=offer.Expires)
+                            throw new HostError("betaOffer","内测授权已到期，请重新检查。");
+                        return await InstallAndRestart(preview);
+                    }
+                    finally { updateTransfer=false; }
+                }
+#endif
                 case "checkUpdate":
+                    if (updateTransfer) throw new HostError("updateBusy","另一个更新操作正在进行。");
                     if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
                     return await Task.Run(() => updates.Check(lang));
                 case "selectVersion":
+                    if (updateTransfer) throw new HostError("updateBusy","另一个更新操作正在进行。");
                     if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
                     var wanted = p.ContainsKey("version") ? p["version"] as string : null;
                     return await Task.Run(() => updates.SelectVersion(wanted, lang));
                 case "downloadUpdate":
                 {
                     var line = p.ContainsKey("line") ? p["line"] as string : "";
-                    await Task.Run(() => updates.Download(line, (done, total, speed) =>
-                        Progress("download", new Dictionary<string, object> { { "done", done }, { "total", total }, { "speed", speed } })));
-                    return null;
+                    BeginUpdateTransfer();
+                    try
+                    {
+                        await Task.Run(() => updates.Download(line, (done, total, speed) =>
+                            Progress("download", new Dictionary<string, object> { { "done", done }, { "total", total }, { "speed", speed } })));
+                        return null;
+                    }
+                    finally { updateTransfer=false; }
                 }
                 case "cancelDownload":
                     updates.Cancel();
                     return null;
                 case "verifyUpdate":
-                    await Task.Run(() => updates.Verify());
-                    return null;
+                    BeginUpdateTransfer();
+                    try { await Task.Run(() => updates.Verify()); return null; }
+                    finally { updateTransfer=false; }
                 case "installUpdate":
-                    if (gameRunning) throw new HostError("gameRunning", "请先关闭游戏再更新。");
-                    // The backend's Python keeps files in app\ open while it runs; it comes back if the update fails.
-                    var runtime = backend.Runtime;
-                    backend.Stop();
-                    Exception failed = null;
-                    try { await Task.Run(() => updates.Install()); }
-                    catch (Exception e) { failed = e; }
-                    if (failed != null)
-                    {
-                        if (!string.IsNullOrEmpty(runtime)) await Task.Run(() => backend.Start(runtime));
-                        throw failed;
-                    }
-                    BeginInvoke((Action)Close);
-                    return null;
+                    BeginUpdateTransfer();
+                    try { return await InstallAndRestart(updates); }
+                    finally { updateTransfer=false; }
                 case "restart":
                     Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--wait-for " + Process.GetCurrentProcess().Id) { UseShellExecute = false });
                     BeginInvoke((Action)Close);

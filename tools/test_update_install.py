@@ -59,7 +59,7 @@ def main():
         subprocess.run([str(CSC), "/nologo", "/target:exe", "/platform:x64", "/utf8output", "/codepage:65001",
                         "/main:PhantomGladiator.UpdateInstallTest", f"/out:{exe}", *[f"/r:{r}" for r in REFS],
                         *[f"/r:{wv / dll}" for dll in WEBVIEW2], str(ROOT / "desktop/PhantomGladiator.cs"),
-                        str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "tools/test_update_install.cs")], check=True)
+                        str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "desktop/ManualBeta.cs"), str(ROOT / "tools/test_update_install.cs")], check=True)
 
         # A version as a release zip: one top folder holding the exe, its DLLs and app\.
         def release(version):

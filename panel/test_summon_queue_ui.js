@@ -33,7 +33,10 @@ vm.runInContext(section("  function summonQueueSettingsHTML()", "  function rend
 (async () => {
   assert.match(context.summonQueueSettingsHTML(), /aria-checked="false"/);
   assert.doesNotMatch(context.summonQueueSettingsHTML(), /取消待执行/);
-  assert.match(section("  function settingsHTML()", "  function aboutHTML()"), /id="summon-queue-settings"/);
+  assert.match(section("  function queuePageHTML()", "  function poolMatches()"), /id="summon-queue-settings"/);
+  assert.doesNotMatch(section("  function settingsHTML()", "  function aboutHTML()"), /id="summon-queue-settings"/);
+  const rail = readFileSync(path.join(__dirname, "prototype", "index.html"), "utf8");
+  assert.match(rail, /<details id="arena-extra"[\s\S]*data-page="queue"[\s\S]*data-page="pool"/);
 
   await context.summon();
   assert.equal(calls[0].action, "spawn");

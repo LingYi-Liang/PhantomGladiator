@@ -342,6 +342,11 @@ a.btn, a.menu-item { text-decoration: none; }
 .nav-item:hover { background: var(--bg-hover); color: var(--text); }
 .nav-item[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border); font-weight: 650; }
 .nav-item[aria-current="page"] .icon { color: var(--seal); }
+.arena-extra { min-width: 0; }
+.arena-extra summary { cursor: pointer; list-style: none; }
+.arena-extra summary::-webkit-details-marker { display: none; }
+.arena-extra-items .nav-item { width: 100%; }
+.arena-extra-items { padding-left: 6px; }
 .rail-spacer { flex: 1; }
 .rail-credit {
   display: flex;
@@ -1291,6 +1296,9 @@ body.has-dock.has-dialog .toasts { right: 20px; }
   .rail-spacer, .rail-credit { display: none; }
   .nav-item { flex: 1; height: 50px; flex-direction: column; gap: 2px; font-size: 11px; }
   .nav-item span { display: block; }
+  .arena-extra { position: relative; flex: 1; }
+  .arena-extra-items { position: absolute; bottom: 100%; left: 0; min-width: 108px; padding: 3px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
   .topbar { gap: 8px; padding: 0 8px; }
   .topbar-actions { gap: 2px; }
   /* Phones keep the essentials in the bar; the theme switch is still in Settings. */
