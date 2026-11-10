@@ -1,5 +1,5 @@
 """Writes release/safe/latest.json for a new version and adds it to release/safe/versions.json.
-The old feed stays frozen at 0.40.9. Notes and date are the first entry of
+The legacy feed is maintained separately for the one-time migration to 0.40.10. Notes and date are the first entry of
 panel/prototype/changelog.js (the app's release history, written by changelog.py), so the update dialog and the
 history say the same thing. Downloads point at the GitHub release asset, directly and through the two mirrors
 reachable from mainland China.

@@ -20,14 +20,20 @@ def main():
         frozen = {name: (ROOT / "release" / name).read_bytes() for name in ("latest.json", "versions.json")}
         for name, content in frozen.items():
             (release / name).write_bytes(content)
-        previous = json.loads(frozen["latest.json"])
-        assert previous["version"] == "0.40.9"
+        safe = release / "safe"
+        safe.mkdir()
+        for name in frozen:
+            (safe / name).write_bytes((ROOT / "release" / "safe" / name).read_bytes())
+        previous = json.loads((safe / "latest.json").read_bytes())
+        previous_versions = json.loads((safe / "versions.json").read_bytes())["versions"]
+        major, minor, patch_number = previous["version"].split(".")
+        version = f"{major}.{minor}.{int(patch_number) + 1}"
 
         changelog = repo / "panel" / "prototype" / "changelog.js"
         changelog.parent.mkdir(parents=True)
-        entry = {"version": "0.40.10", "date": previous["date"], "notes": previous["notes"]}
+        entry = {"version": version, "date": previous["date"], "notes": previous["notes"]}
         changelog.write_text("window.PG_CHANGELOG = " + json.dumps([entry]) + ";", encoding="utf-8")
-        archive = repo / "PhantomGladiator-0.40.10-win64.zip"
+        archive = repo / f"PhantomGladiator-{version}-win64.zip"
         payload = b"isolated release fixture"
         archive.write_bytes(payload)
 
@@ -57,8 +63,8 @@ def main():
             assert (release / name).read_bytes() == content, name
         latest = json.loads((release / "safe" / "latest.json").read_text(encoding="utf-8"))
         versions = json.loads((release / "safe" / "versions.json").read_text(encoding="utf-8"))["versions"]
-        assert latest["version"] == "0.40.10" and latest["parts"] == versions[0]["parts"]
-        assert versions[0]["version"] == "0.40.10" and versions[1]["version"] == "0.40.9"
+        assert latest["version"] == version and latest["parts"] == versions[0]["parts"]
+        assert versions[0]["version"] == version and versions[1:] == previous_versions
         manifests = runpy.run_path(str(ROOT / "tools" / "package" / "build.py"), run_name="build_fixture")["MANIFESTS"]
         assert len(manifests) == 3 and all(entry.endswith("/release/safe/latest.json") for entry in manifests)
         print("release_feed: PASS (both writers keep the legacy feed byte-identical)")
