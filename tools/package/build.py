@@ -39,7 +39,7 @@ UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
 VERIFIED_GAME_BUILD = "26367565"
 REPO = "LingYi-Liang/PhantomGladiator"
 NEXUS_PAGE = "https://www.nexusmods.com/phantombladezero/mods/363"
-# The legacy feed stays frozen so an old updater cannot offer an in-place migration to this series.
+# The legacy feed offers only the one-time migration to 0.40.10.
 MANIFESTS = [
     f"cdn|https://cdn.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
     f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
