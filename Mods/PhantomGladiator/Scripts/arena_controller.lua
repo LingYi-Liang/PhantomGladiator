@@ -428,6 +428,17 @@ function Arena.new(options)
         return false
     end
 
+    local function is_story_team_actor(unit)
+        if not options.isStoryTeamActor or unit.summoner then return false end
+        local called,matched=invoke('isStoryTeamActor',unit.actor)
+        return called and matched==true
+    end
+
+    local function prepare_story_team_actor(actor)
+        local called,ready=invoke('prepareStoryTeamActor',actor)
+        return called and ready==true
+    end
+
     function instance:tickReinforcements()
         if not battleActive or busy or state=='cleanup_pending' or state=='restore_pending' or spawn_block() then return end
         prune()
@@ -437,6 +448,9 @@ function Arena.new(options)
                 local isStand=stand(unit)
                 if isStand or not dormant(unit) then
                     local ok,ready=invoke('combatReady',unit.actor)
+                    if not isStand and ok and ready==true and unit.needsJoin and is_story_team_actor(unit) then
+                        ready=prepare_story_team_actor(unit.actor)
+                    end
                     if isStand or (ok and ready==true) then
                         unit.key=unit.key or actor_key(unit.actor);participants[#participants+1]=unit
                         if not isStand and not unit.aid then unit.untargetable=untargetable(unit);active[#active+1]=unit end
@@ -716,6 +730,7 @@ function Arena.new(options)
             local blue, red = {}, {}
             local reachable={blue={},red={}}
             local relations={blue={},red={}}
+            local storyActors={}
             for _, unit in ipairs(units) do
               if unit.team=='blue' or unit.team=='red' then
                 local alive=alive_readback(unit)
@@ -742,6 +757,7 @@ function Arena.new(options)
                     if unit.team == "red" then red[#red + 1] = unit.actor end
                     unit.untargetable=untargetable(unit)
                     if not unit.untargetable then local list=reachable[unit.team];list[#list+1]=unit.actor end
+                    if is_story_team_actor(unit) then storyActors[unit.actor]=true end
                 end
               end
             end
@@ -751,6 +767,28 @@ function Arena.new(options)
             if options.prepareBattle then
                 local prepared,readback=invoke('prepareBattle',instance:members())
                 if not prepared or readback~=true then return response(false,'交战前配置未确认；未发起攻击') end
+            end
+            for actor in pairs(storyActors) do
+                if not prepare_story_team_actor(actor) then
+                    return response(false,'剧情援军的阵营或仇恨资格未确认，未下达交战指令')
+                end
+            end
+            if next(storyActors) then
+                -- Other units keep their existing pair relations. These former story allies
+                -- need an explicit Friendly relation with every current teammate.
+                for _, side in ipairs({relations.blue, relations.red}) do
+                    for i, a in ipairs(side) do
+                        for j=i+1,#side do
+                            local b=side[j]
+                            if storyActors[a] or storyActors[b] then
+                                local called, friendly=invoke('setRelation',a,b,0)
+                                if not called or friendly~=true then
+                                    return response(false,'剧情援军的同队关系未确认，未下达交战指令')
+                                end
+                            end
+                        end
+                    end
+                end
             end
             local failures, requests = 0, 0
             -- Player neutrality belongs exclusively to the F8 spectator switch.

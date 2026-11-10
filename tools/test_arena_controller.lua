@@ -83,6 +83,47 @@ end
 assert(not prepared.arena:start().ok and stageCount(prepared,'attack')==0,'unconfirmed preparation cannot request combat')
 prepared.options.prepareBattle=function()return true end
 assert(prepared.arena:start().ok and stageCount(prepared,'attack')==2)
+do
+    local teams=fixture()
+    assert(teams.arena:spawn(nil,'blue',2).ok and teams.arena:spawn(nil,'red',2).ok)
+    local blueAid,blueFighter,redAid,redFighter=table.unpack(teams.actors)
+    blueAid.storyAid=true
+    redAid.storyAid=true
+    local storyPrepared={}
+    teams.options.isStoryTeamActor=function(actor)return actor.storyAid==true end
+    teams.options.prepareStoryTeamActor=function(actor)
+        assert(actor.storyAid)
+        storyPrepared[actor]=true
+        return true
+    end
+    assert(teams.arena:start().ok)
+    assert(storyPrepared[blueAid] and storyPrepared[redAid],
+        'direct story aids must be prepared before starting the assigned fight')
+    local relations,targets={},{}
+    for _,event in ipairs(teams.trace)do
+        if type(event)=='table' then
+            if event[1]=='relation' then relations[event[2].name..event[3].name]=event[4] end
+            if event[1]=='attack' then targets[event[2]]=event[3] end
+        end
+    end
+    assert(relations[blueAid.name..blueFighter.name]==0 and relations[redAid.name..redFighter.name]==0,
+        'direct story aids need an explicit Friendly relationship with same-team units')
+    assert(relations[blueAid.name..redAid.name]==2 and targets[blueAid]==redAid and targets[redAid]==blueAid,
+        'opposing direct story aids must be assigned to attack one another')
+
+    assert(teams.arena:spawn(nil,'blue',1).ok)
+    local newcomer=teams.actors[5]
+    newcomer.storyAid=true
+    teams.arena:tickReinforcements()
+    assert(storyPrepared[newcomer],'direct story aid reinforcement must receive the same preparation')
+    for _,event in ipairs(teams.trace)do
+        if type(event)=='table' and event[1]=='attack' and event[2]==newcomer then
+            assert(event[3]==redAid or event[3]==redFighter,'reinforcement may attack only the opposite team')
+            targets[newcomer]=event[3]
+        end
+    end
+    assert(targets[newcomer])
+end
 -- Reproduce the multi-second spawn hitch: a selected path must never run discovery.
 local directSpawn=fixture()
 function directSpawn.catalog:refresh()error('full class discovery on the spawn path')end

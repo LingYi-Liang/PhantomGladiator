@@ -136,8 +136,12 @@ local function harness()
             if not opts.silent then target.anim.montage=opts.montage or 'BeingExecuted_Montage' end
         end
         local brain=object('BrainComponent',{IsPaused=function(self)return self.paused==true end})
+        local movement=object('Movement',{MovementMode=1,CustomMovementMode=0})
+        function movement:SetMovementMode(mode,custom)
+            self.MovementMode,self.CustomMovementMode=mode,custom
+        end
         e=actor(opts.class or 'BP_Monster_GuiChai',{Mesh=mesh,['Execution Component']=component,at=at,yaw=0,
-            Controller=object('AIController',{BrainComponent=brain})})
+            CharacterMovement=movement,Controller=object('AIController',{BrainComponent=brain})})
         e.AbilitySystemComponent=object('ASC',{GetGameplayTagCount=function(_,tag)return tagCount(e,tag.TagName)end})
         e.brain=brain
         e.nativeAnim=nativeAnim
@@ -192,20 +196,46 @@ do
     local timers,cancelled={},{}
     local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,
         cancel=function(id)cancelled[id]=true end})
-    assert(exec:playGrabPose(victim,function()return alive end))
+    local action=object('ActiveNPCStrike',{
+        bIsActive=true,AbilityTags={GameplayTags={{TagName={ToString=function()return 'Ability.Action' end}}}},
+        GetAvatarActorFromActorInfo=function()return victim end,
+        K2_CancelAbility=function(self)self.bIsActive=false end,
+    })
+    victim.AbilitySystemComponent.LocalAnimMontageInfo={AnimatingAbility=action}
+    assert(exec:startGuillotineHold(victim,function()return alive end))
     local pose=h.components[1]
     assert(pose.playing=='Hun_EXD_ByMBoss' and pose.rate==0.6000000238418579 and victim.Mesh.LeaderPoseComponent==pose)
+    assert(victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==0 and action.bIsActive==false)
     assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
-    assert(not exec:playGrabPose(victim,function()return true end),'duplicate pose must not borrow another skeleton')
+    assert(not exec:startGuillotineHold(victim,function()return true end),'duplicate capture must not borrow another skeleton')
     pose.position=0.53;timers[1]()
-    assert(not pose.destroyed)
+    assert(not pose.destroyed and pose.rate==0.6000000238418579)
     pose.position=0.54;timers[1]()
+    assert(pose.position==0.4 and pose.rate==3 and victim.brain:IsPaused())
+    pose.position=0.7;timers[1]()
+    assert(pose.position==0.7 and pose.rate==1.5 and victim.CharacterMovement.MovementMode==0)
+    local held,finished=exec:guillotineHeld(victim)
+    assert(held and not finished and not cancelled[1],'a partial victim visual cannot be marked finished')
+    pose.position=6.24;timers[1]()
+    held,finished=exec:guillotineHeld(victim)
+    assert(held and finished and pose.position==6.233333 and pose.rate==0 and not pose.destroyed)
+    assert(victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==0 and h.attrs[victim].Health==500)
+    assert(exec:stopGrabPose('收尾读回'))
     assert(cancelled[1] and pose.destroyed and victim.Mesh.LeaderPoseComponent==nil)
+    assert(not victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==1 and not exec:guillotineHeld(victim))
     assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
-    assert(exec:playGrabPose(victim,function()return alive end))
+
+    victim.brain.paused=true
+    victim.CharacterMovement:SetMovementMode(6,2)
+    assert(exec:startGuillotineHold(victim,function()return alive end))
     alive=false;timers[2]()
     assert(cancelled[2] and h.components[2].destroyed and victim.Mesh.LeaderPoseComponent==nil)
-    print('PASS original guillotine pose ends at the pre-kill segment and restores the mesh without affecting native health or montage')
+    assert(victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==6 and victim.CharacterMovement.CustomMovementMode==2)
+    alive=true
+    assert(exec:startGuillotineHold(victim,function()return alive end))
+    exec:stop('F4')
+    assert(cancelled[3] and h.components[3].destroyed and victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==6)
+    print('PASS guillotine hold advances both original victim segments, waits for release, and restores on completion, invalidation and F4')
 end
 
 do

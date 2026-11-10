@@ -29,6 +29,8 @@ function HUD.new(options)
     end
     local function wanted(unit)
         if unit.summoner or (unit.team~='blue' and unit.team~='red') or not U.valid(unit.actor)then return false end
+        local extraName=options.extraBossName and options.extraBossName(unit)
+        if type(extraName)=='string' and extraName~='' then return true,extraName end
         if options.isBoss then return options.isBoss(unit)==true end
         return self.bosses and self.bosses[unit.class_path]==true
     end
@@ -36,15 +38,20 @@ function HUD.new(options)
         self.ticks=self.ticks+1;loadCodex()
         local desired,ordered={},{}
         local world=options.getWorld and options.getWorld()
-        for _,unit in ipairs(members)do if wanted(unit) and (not world or U.inWorld(unit.actor,world))then
-            local ok,hp=pcall(options.hp,unit.actor);local maxOK,maximum=pcall(options.maxHP,unit.actor)
-            if ok and maxOK and number(hp) and number(maximum) and hp>0 and maximum>0 then
-                local key=U.key(unit.actor)
-                if key and not desired[key]then
-                    desired[key]={unit=unit,hp=hp,maximum=maximum};ordered[#ordered+1]=key
+        for _,unit in ipairs(members)do
+            local show,extraName=wanted(unit)
+            if show and (not world or U.inWorld(unit.actor,world))then
+                local ok,hp=pcall(options.hp,unit.actor)
+                local maxOK,maximum=pcall(options.maxHP,unit.actor)
+                if ok and maxOK and number(hp) and number(maximum) and hp>0 and maximum>0 then
+                    local key=U.key(unit.actor)
+                    if key and not desired[key]then
+                        desired[key]={unit=unit,hp=hp,maximum=maximum,extraName=extraName}
+                        ordered[#ordered+1]=key
+                    end
                 end
             end
-        end end
+        end
         local result={registered=0,visible=0,pending=0,health_verified=0,names_verified=0,numbers_verified=0}
         for key,record in pairs(self.records)do if not desired[key]then
             if renderer:remove(record)then self.records[key]=nil;self.attempts[key]=nil else result.pending=result.pending+1 end
@@ -60,7 +67,8 @@ function HUD.new(options)
                 if record then self.records[key]=record else log('[ArenaHUD] 创建未确认 actor='..key..' error='..tostring(why))end
             end
             if record then
-                local name=(options.getName and options.getName(unit)) or self.names[unit.class_path] or (unit.class_path or ''):match('%.([^%.]+)$') or 'BOSS'
+                local name=(options.getName and options.getName(unit)) or self.names[unit.class_path] or data.extraName
+                    or (unit.class_path or ''):match('%.([^%.]+)$') or 'BOSS'
                 local title=self.teams[unit.team]..' · '..name
                 local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team])
                 if state then

@@ -62,5 +62,25 @@ codexText='class_path\tzh_name\tis_boss\tenemy_type\tsource\tname\tname_lang\r\n
 bars:reloadCodex();bars:sync(fight);assert(titles[5]=='蓝队 · 被面具控制的舞狮尊主：烈焰',tostring(titles[5]))
 codexText='class_path\tzh_name\tis_boss\tenemy_type\tsource\tname\tname_lang\r\n/Game/Boss.Boss_C\t舞狮尊主\t1\t5\tnative\t\t\r\n'
 bars:reloadCodex();bars:sync(fight);assert(titles[6]=='蓝队 · 舞狮尊主','an empty name falls back to the Chinese one')
+do
+    local virtual,bard,story,neutral,noHP=object(11),object(12),object(13),object(14),object(15)
+    virtual.hp,bard.hp,story.hp,neutral.hp,noHP.hp=100,70,100,80,0
+    virtual.extra,bard.extra,story.extra,neutral.extra,noHP.extra='虚空','弦者','原版援军','未编队','已倒下'
+    local extraBars=HUD.new({codexPath=codexPath,renderer=renderer,hp=function(actor)return actor.hp end,
+        maxHP=function()return 100 end,extraBossName=function(unit)return unit.actor.extra end})
+    extraBars:sync({
+        {actor=blue,team='blue',class_path='/Game/Boss.Boss_C'},
+        {actor=virtual,team='blue',class_path='/Test/Virtual.Virtual_C'},
+        {actor=bard,team='red',class_path='/Test/Bard.Bard_C'},
+        {actor=story,team='red',summoner=bard,class_path='/Test/Bard.Bard_C'},
+        {actor=neutral,team='neutral',class_path='/Test/Bard.Bard_C'},
+        {actor=noHP,team='red',class_path='/Test/Bard.Bard_C'},
+    })
+    assert(extraBars:status().visible==3,'live direct arena bosses absent from codex also need their own bars')
+    assert(extraBars.records['1'] and extraBars.records['11'] and extraBars.records['12'])
+    assert(updates[#updates-1].title=='蓝队 · 虚空' and updates[#updates].title=='红队 · 弦者')
+    assert(updates[#updates].hp==70 and updates[#updates].maximum==100)
+    extraBars:clear()
+end
 io.open=realOpen
 print('arena_hud: PASS (independent ownership, rebind recovery, real HP/max, dead hide, bounded creation, cleanup, both codex formats, names and team labels in the game language)')

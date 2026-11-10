@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-story-aid-timing-test-1"
+local BUILD = "v0.40.11-guillotine-team-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1337,7 +1337,16 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return okTag and (name=='None' or name=='')
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
-    holdTarget=HoldSensedTarget,
+    isStoryTeamActor=function(actor)
+        return arenaSupport.standaloneStoryUnits:isTeamActor(actor)
+    end,
+    prepareStoryTeamActor=function(actor)
+        return arenaSupport.standaloneStoryUnits:prepareTeamActor(actor)
+    end,
+    holdTarget=function(actor,target,why)
+        if not arenaSupport.standaloneStoryUnits:assignOpponent(actor,target) then return false end
+        return HoldSensedTarget(actor,target,why)
+    end,
     releaseLock=function(actor,target)return arenaSupport.lockRelease~=nil and arenaSupport.lockRelease:release(actor,target)end,
     unstick=function(actor,target)return onGround~=nil and onGround:free(actor,target)end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
@@ -1432,6 +1441,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     setRelation=SetFactionRelation,
     forceAttack=function(attacker,victim)
+        if not arenaSupport.standaloneStoryUnits:assignOpponent(attacker,victim) then return false end
         local sent=ForceAttack(attacker,victim)
         if mounts then mounts:fight(attacker,victim) end
         return sent
@@ -1447,7 +1457,10 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     -- Sends a unit that left combat back at its opponent: hatred entry and ForceIntoCombat. The faction
     -- relation and blackboard target written by ForceAttack at the start still hold.
-    engage=function(attacker,victim)return arenaSupport:engage(attacker,victim)end,
+    engage=function(attacker,victim)
+        if not arenaSupport.standaloneStoryUnits:assignOpponent(attacker,victim) then return false end
+        return arenaSupport:engage(attacker,victim)
+    end,
     prepareBattle=function(members)
         local prepared=arenaGrabs:sync(Config.EnableNPCGrabs and members or {},true,true)
         if prepared and arenaSupport.guillotine then arenaSupport.guillotine:prepare(members) end
@@ -1462,12 +1475,12 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     restore=function()
         probeSampleGen=probeSampleGen+1
         probe:stop("停止参赛者")
-        if arenaSupport.guillotine then arenaSupport.guillotine:stop() end
+        local guillotineRestored=not arenaSupport.guillotine or arenaSupport.guillotine:stop()
         if arenaExecutions then arenaExecutions:stop('停止参赛者') end
         if bossHUD then bossHUD:clear(true) end
         local grabRestored=not arenaGrabs or arenaGrabs:restore()
         local battleRestored=battle:reset("停止参赛者")
-        return grabRestored and battleRestored
+        return guillotineRestored and grabRestored and battleRestored
     end,
     onUnitsChanged=function(units)
         if statMatch then statMatch:roster(units) end
@@ -1507,7 +1520,11 @@ local function GetMaxHP(actor)
     return attributes.Health_Max.CurrentValue
 end
 bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=UEHelpers.GetWorld,hp=GetHP,maxHP=GetMaxHP,
-    codexPath=Config.RuntimePath..'/codex.tsv',log=log})
+    codexPath=Config.RuntimePath..'/codex.tsv',log=log,
+    extraBossName=function(unit)
+        local story=arenaSupport.standaloneStoryUnits
+        return story and story:teamBossName(unit.actor)
+    end})
 -- Companions show the game's own health bar above their heads, as enemies do (companion_bars.lua).
 local companionBars=Config.ShowCompanionHealthBars and CompanionBars.new({log=log,hp=GetHP,maxHP=GetMaxHP}) or nil
 -- One copy of the arena's members and status per support tick: a dozen modules ask for them, and each
@@ -1908,14 +1925,24 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
 arenaSupport.guillotine=Config.EnableNPCGrabs and require('arena_guillotine').new({log=log,live=summonActorLive,
     opponentOf=function(key)return arena:opponentOf(key)end,
-    session=function()return runtimeSession:status()end,
+    session=function()return runtimeSession:status()end,now=GameSeconds,
     playGrab=function(actor,stillValid)
         if not arenaExecutions then return false,'借用骨架模块已关闭' end
-        return arenaExecutions:playGrabPose(actor,stillValid)
+        return arenaExecutions:startGuillotineHold(actor,stillValid)
     end,
-    stopGrab=function(why)if arenaExecutions then arenaExecutions:stopGrabPose(why)end end,
+    grabHeld=function(actor)
+        if not arenaExecutions then return false end
+        return arenaExecutions:guillotineHeld(actor)
+    end,
+    stopGrab=function(why)
+        if not arenaExecutions then return true end
+        return arenaExecutions:stopGrabPose(why)
+    end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
-arenaSupport.standaloneStoryUnits=require('standalone_story_units').new({log=log,statics=GetGameplayStatics})
+arenaSupport.standaloneStoryUnits=require('standalone_story_units').new({log=log,statics=GetGameplayStatics,
+    boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end,
+    remember=function(key,restore)return battle:remember(key,restore)end,
+    live=summonActorLive,isDestroying=actorIsDestroying})
 -- A support tick slower than this is logged with the time of each step, to find the source of stutter (60 a session);
 -- every minute a summary of all ticks and their costliest steps (perf_meter.lua) keeps coming after that.
 local SLOW_TICK_MS,slowTicks=10,0
