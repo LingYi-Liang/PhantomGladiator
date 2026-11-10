@@ -145,7 +145,7 @@ function Grabs.new(options)
     -- companions whenever they are out, so their grabs work on the map's own enemies too. A change of units within
     -- the same folders (summons coming and going) changes nothing here.
     local function scope(members,battleActive)
-        local families,owners,listed={}, {}, {};local blue,red=false,false
+        local families,owners,listed={}, {}, {};local blue,red,liveCompanion=false,false,false
         local arena,companions={},{}
         looks=looks+1
         for _,unit in ipairs(members)do
@@ -156,7 +156,9 @@ function Grabs.new(options)
                 if ok and type(hp)=='number' and hp>0 and key then
                     listed[key]=true
                     local entry={actor=unit.actor,key=key,roots=rootsOf(unit,key)}
-                    if team=='companion' then companions[#companions+1]=entry
+                    if team=='companion' then
+                        companions[#companions+1]=entry
+                        liveCompanion=liveCompanion or (not unit.stand and not unit.reserve)
                     else arena[#arena+1]=entry;blue=blue or team=='blue';red=red or team=='red' end
                 end
             end
@@ -167,7 +169,8 @@ function Grabs.new(options)
                 for root in pairs(entry.roots)do families[root]=true end
             end
         end
-        if battleActive and blue and red then add(arena) end
+        -- A team unit can also hit a companion outside a started fight. Native hostility and target tags still apply.
+        if (battleActive and blue and red) or liveCompanion then add(arena) end
         add(companions)
         for key in pairs(roots)do if not listed[key] then roots[key]=nil end end
         local signature={}

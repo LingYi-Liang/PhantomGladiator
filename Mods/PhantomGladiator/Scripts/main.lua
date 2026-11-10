@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.10-fixes-2"
+local BUILD = "v0.40.10-fixes-3"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1644,7 +1644,7 @@ arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,
         if safeValid(value) and not (safeValid(player) and value:GetAddress()==player:GetAddress()) then return value end
     end})
 -- Staged bosses: the markers of their own arena placed around them, and their phase marks logged (boss_stages.lua).
-bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
+bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,hp=GetHP,
     onUsed=function(actor)if playerAim then playerAim:lockAbilityOf(actor) end end,
     saveData=function(id)return arenaSupport:actorSaveData(id)end,
     -- The save-repair button asks for 冷荼's old checkpoint to be cleared (save_repair.lua).

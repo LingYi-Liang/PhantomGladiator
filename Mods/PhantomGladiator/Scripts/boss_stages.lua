@@ -16,6 +16,10 @@ local Stages={}
 local MOBS='/PBZCombatAsset/ActorData/Mobs/'
 local LENGTU='CharacterState.AbilityState.LengTu.'
 local PERFORM_UNSELECTABLE='CharacterState.Unselectable.Force.Perform'
+local ZUOSHANG_CA02=MOBS..'054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_02.GA_ZuoShang_CA_02_C:'
+local ZUOSHANG_END=ZUOSHANG_CA02..'K2_OnEndAbility'
+local ZUOSHANG_UNLOCK='Added_284246B1411E4F95F9C50FB89CB71ABF'
+local ZUOSHANG_PHASE2='CharacterState.AbilityState.ZuoShang.Phase2'
 -- Per boss: each marker's package and where it stands from the boss's spawner (yaw relative to the spawner's).
 local STAGES={
     -- The pole ability adds this tag, and OnSummonsDead clears it after the last summon dies.
@@ -173,12 +177,12 @@ function Stages.new(options)
     local now=options.now or os.clock
     local self={records={},placed=0,failures=0,borrowed=0}
     local shared={}   -- prop name -> {actor=, users=}: the actors the mod placed, shared by every boss using them
-    local revealHook
     local find=options.staticFind or function(path)return StaticFindObject(path)end
     local register=options.registerHook or function(...)return RegisterHook(...)end
     local unregister=options.unregisterHook or function(...)return UnregisterHook(...)end
     local unseen={}     -- actor address -> {actor=, component=, label=}: placed hidden, shown when used
-    local revealHooks={}   -- function path -> {pre=, post=}
+    local stageHooks={}   -- function path -> {pre=, post=, purpose=}
+    local nextTransitionCheck,reportedTransitionWait=0,false
     local revealed,revealedLogged,revealLines=0,0,0
     local function say(text)log('[BossStage] '..text)end
     local function className(actor)
@@ -234,23 +238,64 @@ function Stages.new(options)
         end
         return nil
     end
-    function revealHook(path)
-        if revealHooks[path] then return true end
+    local function stageHook(path,callback,purpose)
+        if stageHooks[path] then return true end
         local okFind,found=pcall(find,path)
-        if not okFind or not U.valid(found) then say('找不到用时显现的函数 '..path);return false end
-        local ok,pre,post=pcall(register,path,reveal)
+        if not okFind or not U.valid(found) then return false end
+        local ok,pre,post=pcall(register,path,callback)
         if ok and type(pre)=='number' and type(post)=='number' then
-            revealHooks[path]={pre=pre,post=post};say('用时显现挂钩注册ID读回 pre='..pre..' post='..post)
+            stageHooks[path]={pre=pre,post=post,purpose=purpose}
+            say(purpose..'挂钩注册ID读回 pre='..pre..' post='..post)
             return true
         end
-        say('用时显现挂钩注册失败：'..tostring(pre))
         return false
     end
+    local function floorOf(actor,field)
+        return U.struct(U.field(U.field(actor,'AttributeSetBase'),field),'CurrentValue')
+    end
+    -- CA_02's end graph applies the 40% floor. The original unlock event separately removes the old
+    -- floors and Phase2. An early end can skip that event and leave the AI selecting the phase transition.
+    local function finishTransition(context,cancelled)
+        local ability=U.unwrap(context)
+        if not U.valid(ability) then return nil end
+        local got,avatar=pcall(function()return ability:GetAvatarActorFromActorInfo()end)
+        local key=got and U.key(U.unwrap(avatar))
+        local record=key and self.records[key]
+        if not record or record.stage~=STAGES.BP_Monster_ZuoShang or gone(record.actor) then return nil end
+        local actor=record.actor
+        local ok,hp=pcall(options.hp,actor)
+        if not ok or type(hp)~='number' or hp<=0 then return nil end
+        local before=count(actor,ZUOSHANG_PHASE2)
+        if not before or before<=0 then return nil end
+        local found,callback=pcall(find,ZUOSHANG_CA02..ZUOSHANG_UNLOCK)
+        if not found or not U.valid(callback) or not U.valid(ability) then
+            say('左殇 CA_02 结束后 Phase2='..before..'，原版解锁回调不可用')
+            return nil
+        end
+        local health,shachi=floorOf(actor,'Health_Min'),floorOf(actor,'Shachi_Min')
+        local called=pcall(function()ability[ZUOSHANG_UNLOCK](ability)end)
+        local after=count(actor,ZUOSHANG_PHASE2)
+        say(string.format('左殇 CA_02 补走原版解锁 取消=%s 调用=%s Phase2=%s -> %s Health_Min=%s -> %s Shachi_Min=%s -> %s 读回=%s',
+            tostring(U.unwrap(cancelled)),tostring(called),tostring(before),tostring(after),
+            tostring(health),tostring((floorOf(actor,'Health_Min'))),tostring(shachi),tostring((floorOf(actor,'Shachi_Min'))),
+            tostring(called and after==0)))
+        return nil
+    end
+    local function watchTransition(t)
+        if stageHooks[ZUOSHANG_END] or t<nextTransitionCheck then return end
+        nextTransitionCheck=t+1
+        if stageHook(ZUOSHANG_END,finishTransition,'左殇转阶段') then
+            reportedTransitionWait=false
+        elseif not reportedTransitionWait then
+            reportedTransitionWait=true
+            say('左殇转阶段挂钩暂未读到，等待技能载入')
+        end
+    end
     local function releaseHooks()
-        for path,hook in pairs(revealHooks)do
+        for path,hook in pairs(stageHooks)do
             local ok,err=pcall(unregister,path,hook.pre,hook.post)
-            say('摘除用时显现挂钩 调用='..tostring(ok)..(ok and '' or ' 错误='..tostring(err))..' 本场显现='..revealed)
-            if ok then revealHooks[path]=nil end
+            say('摘除'..hook.purpose..'挂钩 调用='..tostring(ok)..(ok and '' or ' 错误='..tostring(err))..' 本场显现='..revealed)
+            if ok then stageHooks[path]=nil end
         end
     end
     local function qmul(a,b)
@@ -433,6 +478,8 @@ function Stages.new(options)
     -- After FinishSpawn (BeginPlay ran InitTags): the read-back of a cleared checkpoint, then the move.
     function self:finished(actor)
         local key=U.key(actor)
+        local record=key and self.records[key]
+        if record and record.stage==STAGES.BP_Monster_ZuoShang then watchTransition(now()) end
         local pending=key and pendingSave[key]
         if not pending then return nil end
         pendingSave[key]=nil
@@ -477,7 +524,7 @@ function Stages.new(options)
         end
         for name,g in pairs(groups)do
             local def=stage.groups and stage.groups[name] or {label=name}
-            local hooked=def.revealOn and revealHook(def.revealOn)
+            local hooked=def.revealOn and stageHook(def.revealOn,reveal,'用时显现')
             local registered=def.tag and options.targetsByTag and select(2,pcall(options.targetsByTag,def.tag))
             parts[#parts+1]=string.format('%s %d 个：放好=%d 沿用=%d 地图上已有=%d 失败=%d%s%s%s',def.label,g.total,g.placed,g.shared,g.map,g.failed,
                 def.tag and string.format('；按 %s 登记的读回=%s',def.tag,tostring(registered)) or '',
@@ -543,7 +590,7 @@ function Stages.new(options)
         for _,other in pairs(self.records)do
             for _,def in pairs(other.stage.groups or {})do if def.revealOn then still=true end end
         end
-        if not still and next(revealHooks) then releaseHooks() end
+        if not still and next(stageHooks) then releaseHooks() end
     end
 
     -- After the boss is destroyed (the arena's own clean-up).
@@ -576,6 +623,7 @@ function Stages.new(options)
         end
         for key,record in pairs(self.records)do
             if gone(record.actor) then self:release(record,'已不在场上')
+            elseif record.stage==STAGES.BP_Monster_ZuoShang then watchTransition(t)
             elseif record.stage.tags then
                 local on,unread={},0
                 for _,tag in ipairs(record.stage.tags)do

@@ -68,6 +68,22 @@ test('a companion out of any fight gets full grabs on map enemies until it is di
     h.members[2].team='neutral'
     assert(h.grabs:sync(h.members,true,true) and h.own.NonPlayerGE==h.original,'a lone Blue unit without Red still enables nothing')
 end)
+test('a living companion opens grabs from a team NPC before an arena fight',function()
+    local h=harness()
+    local companion=h.members[2]
+    companion.team='companion'
+    companion.class_path=ROOT..'Beta/BP_Companion.BP_Companion_C'
+    assert(h.grabs:sync(h.members,false,true))
+    assert(h.own.NonPlayerGE==h.emptyClass and h.other.NonPlayerGE==h.emptyClass)
+    assert(h.player.NonPlayerGE==h.original,'unrelated player assets stay untouched')
+    h.red.hp=0
+    assert(h.grabs:sync(h.members,false,true))
+    assert(h.own.NonPlayerGE==h.original and h.other.NonPlayerGE==h.original)
+    h.red.hp=100
+    companion.stand=true
+    assert(h.grabs:sync(h.members,false,true) and h.own.NonPlayerGE==h.original,
+        'a visual stand is not a live companion target')
+end)
 test('inactive battle, neutral actors and missing live opponents do not enable grabs',function()
     local h=harness();h.grabs:sync(h.members,false,true);assert(h.scans==0)
     h.members[2].team='neutral';h.grabs:sync(h.members,true,true);assert(h.scans==0)

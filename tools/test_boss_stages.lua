@@ -19,6 +19,11 @@ locations[player]={X=1000,Y=0,Z=150}
 local tags={}
 local hooks,unhooked={},{}
 local FLYUP='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Bullet/BP_ZuoShang_GroundWeapon_Base.BP_ZuoShang_GroundWeapon_Base_C:FlyUp'
+local CA02='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_02.GA_ZuoShang_CA_02_C:'
+local ON_END=CA02..'K2_OnEndAbility'
+local UNLOCK='Added_284246B1411E4F95F9C50FB89CB71ABF'
+local PHASE2='CharacterState.AbilityState.ZuoShang.Phase2'
+local transitionLoaded=false
 local saves={LengTu_Combat='{"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}'}
 local mapActors={}
 local loadable={}
@@ -53,6 +58,7 @@ local statics=object({
 local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()return now end,
     location=function(a)return locations[a] end,
     isDestroying=function(a)return a.destroying==true end,
+    hp=function(a)return a.hp or 100 end,
     player=function()return player end,
     findClass=function(path)
         local name=path:match('/([%w_]+)%.[%w_]+_C$')
@@ -69,7 +75,10 @@ local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()retur
     ground=function(w,x,y,z)assert(w==world);return 0 end,
     tagCount=function(actor,tag)return tags[tag] or 0 end,
     fname=function(text)return {ToString=function()return text end}end,
-    staticFind=function(path)return object({},'Function')end,
+    staticFind=function(path)
+        if not transitionLoaded and (path==ON_END or path==CA02..UNLOCK) then return nil end
+        return object({},'Function')
+    end,
     registerHook=function(path,callback)hooks[path]=callback;return 7,8 end,
     unregisterHook=function(path,pre,post)assert(pre==7 and post==8);unhooked[#unhooked+1]=path;hooks[path]=nil end,
     saveData=function(id)return saves[id]~=nil end,
@@ -391,5 +400,51 @@ test('of two in her map, the one her abilities find by class is the one borrowed
     local s=borrowingStages({BP_LengTu_SummonSlot_01=slot},{BP_LengTu_SummonSlot_01={decoy,slot}})
     assert(s:prepare(boss('BP_Monster_LengTu_C'),transform,world).ok)
     assert(locations[slot].X==-163 and locations[decoy].X==-30000,'the first found by class moves, the other stays')
+end)
+test('interrupted CA_02 repairs only a managed living leftshang that still has the transition tag',function()
+    local zuoshang=boss('BP_Monster_ZuoShang_C')
+    zuoshang.AttributeSetBase=object({Health_Min={CurrentValue=600},Shachi_Min={CurrentValue=10}},'AttributeSet')
+    assert(stage:prepare(zuoshang,transform,world).ok)
+    stage:finished(zuoshang)
+    assert(not hooks[ON_END],'the ability is not loaded yet')
+    transitionLoaded=true
+    now=now+2
+    stage:tick()
+    local endAbility=assert(hooks[ON_END],'retry registration when the ability loads')
+    local calls=0
+    local avatar=zuoshang
+    local ability=object({GetAvatarActorFromActorInfo=function()return avatar end},'GA_ZuoShang_CA_02_C')
+    ability[UNLOCK]=function()
+        calls=calls+1
+        tags[PHASE2]=0
+        zuoshang.AttributeSetBase.Health_Min.CurrentValue=400
+        zuoshang.AttributeSetBase.Shachi_Min.CurrentValue=0
+    end
+    tags[PHASE2]=0
+    endAbility(ability,false)
+    assert(calls==0,'normal completion already unlocked the phase')
+    tags[PHASE2]=1
+    avatar=boss('BP_Monster_ZuoShang_C')
+    endAbility(ability,true)
+    assert(calls==0,'world actors are outside the arena ownership')
+    avatar=zuoshang
+    zuoshang.hp=0
+    endAbility(ability,true)
+    assert(calls==0,'no phase transition on a dead actor')
+    zuoshang.hp=100
+    transitionLoaded=false
+    endAbility(ability,true)
+    assert(calls==0 and tags[PHASE2]==1,'an unavailable native callback is never called')
+    transitionLoaded=true
+    endAbility(ability,true)
+    endAbility(ability,true)
+    assert(calls==1 and tags[PHASE2]==0)
+    assert(zuoshang.AttributeSetBase.Health_Min.CurrentValue==400 and zuoshang.AttributeSetBase.Shachi_Min.CurrentValue==0)
+    assert(all():find('Phase2=1 -> 0',1,true),all())
+    stage:releaseActor(zuoshang)
+    tags[PHASE2]=1
+    endAbility(ability,true)
+    assert(calls==1,'a released actor is no longer managed')
+    tags[PHASE2]=0
 end)
 print('test_boss_stages: all passed')
