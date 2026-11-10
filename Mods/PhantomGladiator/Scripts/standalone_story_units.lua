@@ -10,20 +10,22 @@ end
 local GUI_CHAI=generated(MOBS..'060_GuiChai_Yellow/BP_Monster_GuiChai_Yellow_MoDao_LengTu')
 local PARTNERS={
     [generated(MOBS..'079_XuKong/BP_Monster_XuKong')]={
-        generated(MOBS..'078_MengHua/BP_Monster_MengHua')},
+        paths={generated(MOBS..'078_MengHua/BP_Monster_MengHua')}},
     [generated(MOBS..'071_XianZhe/BP_Monster_XianZhe')]={
-        generated(MOBS..'065_ChiLian_P2/BP_Monster_ChiLian_P2')},
+        paths={generated(MOBS..'065_ChiLian_P2/BP_Monster_ChiLian_P2')}},
+    -- These six LengTu helpers use DelayUntilNextTick before the partner lookup.
     [generated(MOBS..'044_PengMeng/BP_Monster_PengMeng_Axe_NPC')]={
-        generated(MOBS..'043_Scavenger/BP_Monster_Scavenger_LengTu')},
-    [generated(MOBS..'034_EMei/BP_Monster_EMei_Sword_NPC')]={GUI_CHAI},
-    [generated(MOBS..'035_HuaShan/BP_Monster_HuaShan_Blue_NPC')]={GUI_CHAI},
+        nextTick=true, paths={generated(MOBS..'043_Scavenger/BP_Monster_Scavenger_LengTu')}},
+    [generated(MOBS..'034_EMei/BP_Monster_EMei_Sword_NPC')]={nextTick=true, paths={GUI_CHAI}},
+    [generated(MOBS..'035_HuaShan/BP_Monster_HuaShan_Blue_NPC')]={nextTick=true, paths={GUI_CHAI}},
     [generated(MOBS..'FengXueDaoKe/BP_Monster_FengXueDaoKe_NPC')]={
-        generated(MOBS..'YuDing_00/BP_Monster_FemaleVessel_YuDing_LengTu'),
-        generated(MOBS..'YuBi/BP_Monster_YuBi_LengTu')},
+        nextTick=true, paths={
+            generated(MOBS..'YuDing_00/BP_Monster_FemaleVessel_YuDing_LengTu'),
+            generated(MOBS..'YuBi/BP_Monster_YuBi_LengTu')}},
     [generated('/Game/RenewalContent/Actors/Mobs/Normal/BP_Monster_LionDancer_P2_NPC')]={
-        generated(MOBS..'FemaleDoll/BP_Monster_FemaleDoll_Golden_LengTu')},
+        nextTick=true, paths={generated(MOBS..'FemaleDoll/BP_Monster_FemaleDoll_Golden_LengTu')}},
     [generated(MOBS..'047_LeiDang/BP_Monster_LeiDang_NPC')]={
-        generated(MOBS..'077_LengTu/BP_Monster_LengTu')},
+        nextTick=true, paths={generated(MOBS..'077_LengTu/BP_Monster_LengTu')}},
 }
 local SHORT={}
 for path in pairs(PARTNERS)do SHORT[path:match('%.([^%.]+)$')]=true end
@@ -52,8 +54,14 @@ function Standalone.new(options)
         if not entry or fullName(actor)~=entry.name then return end
         local name=fullName(U.unwrap(actorClass))
         local path=name and name:match('^%S+ (/.+)$')
-        if not path or not entry.partners[path:lower()] then return end
+        local partnerKey=path and path:lower()
+        if not partnerKey or not entry.partners[partnerKey] then return end
         entry.lookups=entry.lookups+1
+        local delayedReadback=entry.delayedReadback
+        if delayedReadback and not delayedReadback[partnerKey] then
+            delayedReadback[partnerKey]=true
+            pcall(say,'延迟剧情查找回调读回 '..entry.name..' 搭档='..path..' 回传空Actor')
+        end
         return nullActor
     end
 
@@ -62,8 +70,9 @@ function Standalone.new(options)
     end
 
     function self:prepare(actor)
-        local paths=alive and PARTNERS[U.npcPath(actor)]
-        if not paths then return nil,'剧情战斗类未读回' end
+        local config=alive and PARTNERS[U.npcPath(actor)]
+        if not config then return nil,'剧情战斗类未读回' end
+        local paths=config.paths
         local key,name=U.key(actor),fullName(actor)
         if not key or not name then return nil,'剧情单位对象未读回' end
         local statics=options.statics()
@@ -90,7 +99,7 @@ function Standalone.new(options)
             say('查找挂钩注册读回='..tostring(installed)..(installed and ' ID='..pre..'/'..post or ''))
             if not installed then return nil,'剧情拆分挂钩注册未确认' end
         end
-        local entry={name=name,partners=partners,lookups=0}
+        local entry={name=name,partners=partners,lookups=0,nextTick=config.nextTick}
         owned[key]=entry
         -- Verify each return slot for the deferred actor before its BeginPlay runs.
         for i,cls in ipairs(targets)do
@@ -110,6 +119,13 @@ function Standalone.new(options)
     end
 
     function self:verify(entry)
+        if entry.nextTick and entry.lookups==0 then
+            -- prepare proved the hook's return slot for each partner. BeginPlay will
+            -- use that same guard on the next tick, after FinishSpawn has returned.
+            entry.delayedReadback={}
+            say('独立生成预检确认 '..entry.name..' 原生剧情查找待读回')
+            return true
+        end
         say('独立生成读回 '..entry.name..' 剧情查找被拦截次数='..entry.lookups)
         return entry.lookups>0
     end

@@ -78,11 +78,26 @@ do
     h.classes[yubi]=object('BlueprintGeneratedClass '..yubi)
     local entry=assert(h.module:prepare(manual))
     assert(h.module:matches(manual:GetFullName()))
+    assert(entry.lookups==0,'preflight cannot count as the native callback')
+    local finishAccepted=h.module:verify(entry)
+    local logBefore=table.concat(h.lines,'\n')
+    assert(not logBefore:find('延迟剧情查找回调读回',1,true))
+
+    -- Cooked BeginPlay resumes on the next tick after FinishSpawn has returned.
     assert(h.statics:GetActorOfClass(manual,h.classes[yuding])==h.null)
     assert(h.statics:GetActorOfClass(manual,h.classes[yubi])==h.null)
     assert(h.statics:GetActorOfClass(manual,h.dreamClass)==h.dream)
-    assert(entry.lookups==2 and h.module:verify(entry))
-    print('PASS FengXueDaoKe manual spawn isolates both of its original partner branches')
+    assert(entry.lookups==2)
+    assert(finishAccepted,'verified preflight must let a delayed story aid reach activation')
+
+    local logAfter=table.concat(h.lines,'\n')
+    assert(logBefore:find('原生剧情查找待读回',1,true))
+    assert(logAfter:find('延迟剧情查找回调读回',1,true))
+    assert(logAfter:find('搭档='..yuding..' 回传空Actor',1,true))
+    assert(logAfter:find('搭档='..yubi..' 回传空Actor',1,true))
+    assert(h.statics:GetActorOfClass(manual,h.classes[yuding])==h.null)
+    assert(table.concat(h.lines,'\n')==logAfter,'later matching lookups stay guarded without repeating the diagnostic')
+    print('PASS FengXueDaoKe activates before the next tick and isolates both of its original partner branches')
 end
 
 do
