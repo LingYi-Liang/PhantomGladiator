@@ -153,7 +153,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11-fixes-1',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-fixes-2',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -179,6 +179,7 @@ local npc={IsValid=function()return true end,GetFullName=function()return 'NPC /
         return 0
     end},
     AttributeSetBase={IsValid=function()return true end,Health={CurrentValue=12000}}}
+function npc:IsActorBeingDestroyed()return false end
 local result={ok=false,rollback_verified=true,message='数值统一失败；回滚读回=true'}
 statMatchInstance.onSpawn=function(_,actor,path)assert(actor==npc and path==known);return result end
 inGame=true
@@ -223,6 +224,45 @@ assert(#scanned==1 and scanned[1]==npc,'spectator must ignore class templates/ou
 inGame=false
 -- A helper sent to fight its own summoner's side (冷荼's 彭猛 and the rest) is taken out as it comes; one that cannot
 -- be taken out joins the other side; an ordinary summon is adopted as before.
+-- Native activation or FinishSpawn can destroy an actor while its Lua wrapper stays valid.
+local function expiringActor()
+    local actor={destroying=false,afterDestroyReads=0,
+        IsValid=function()return true end,
+        GetFullName=function()return 'NPC /Test/World.Expiring' end,
+        IsActorBeingDestroyed=function(self)return self.destroying end,
+        GetAddress=function()return 2003 end}
+    return setmetatable(actor,{__index=function(self,key)
+        if self.destroying and (key=='CapsuleComponent' or key=='Mesh' or key=='Controller' or key=='AttributeSetBase'
+            or key=='AbilitySystemComponent' or key=='K2_GetActorLocation') then
+            self.afterDestroyReads=self.afterDestroyReads+1
+            error('fixture: property read after native destruction: '..key)
+        end
+    end})
+end
+inGame=true
+local lostOnActivate=expiringActor()
+local normalActivation=aiLib.ActivateAI
+aiLib.ActivateAI=function(_,actor)assert(actor==lostOnActivate);actor.destroying=true end
+local activationResult=arenaOptions.activate(lostOnActivate,known,'blue')
+aiLib.ActivateAI=normalActivation
+local finishResult=false
+local afterFinishReads=0
+if not actorMode then
+    local lostOnFinish=expiringActor()
+    aiLib.SpawnAIDefered=function()return lostOnFinish end
+    aiLib.FinishSpawnAIDefered=function(_,actor)assert(actor==lostOnFinish);actor.destroying=true end
+    local transform={Translation={X=0,Y=0,Z=100},Rotation={X=0,Y=0,Z=0,W=1},Scale3D={X=1,Y=1,Z=1}}
+    local owned=arenaOptions.spawnClass(cls,transform,world,{path=known,isNPC=true})
+    assert(owned==lostOnFinish,'the real deferred-spawn path must register the fixture')
+    finishResult=arenaOptions.finishSpawn(owned,transform,world)
+    afterFinishReads=lostOnFinish.afterDestroyReads
+end
+originalPrint('spawn lifecycle readback: activate='..tostring(activationResult)..' reads='..lostOnActivate.afterDestroyReads
+    ..' finish='..tostring(finishResult)..' reads='..afterFinishReads)
+assert(activationResult==false and lostOnActivate.afterDestroyReads==0,'never read pawn fields after native activation starts destruction')
+assert(finishResult==false and afterFinishReads==0,'never continue from FinishSpawn once destruction starts')
+inGame=false
+
 local function helper(name,throws)
     local h={name=name,destroyed=false}
     h.IsValid=function()return true end

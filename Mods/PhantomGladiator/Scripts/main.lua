@@ -80,7 +80,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-fixes-1"
+local BUILD = "v0.40.11-fixes-2"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -106,6 +106,11 @@ end
 local function actorIsDestroying(actor)
     checked(actor)
     return actor:IsActorBeingDestroyed()
+end
+-- A valid wrapper can still point to an Actor already entering destruction.
+local function summonActorLive(actor)
+    local ok,destroying=pcall(actorIsDestroying,actor)
+    return ok and destroying==false
 end
 local battle = Session.new(log)
 local probeFinished
@@ -501,7 +506,7 @@ end
 
 -- leader: the unit an escort comes with; the escort takes its level, as a map group shares its domain's.
 local function FinishSpawnViaAILib(pawn,t,world,leader)
-    if not safeValid(pawn) or not safeValid(world) then return false,"Actor/World无效，保留清理记录" end
+    if not summonActorLive(pawn) or not safeValid(world) then return false,"Actor/World无效或Actor正在销毁，保留清理记录" end
     local route=spawnRoutes[pawn]
     if route~='npc' and route~='actor' then return false,'生成路径未登记，保留清理记录' end
     if route=='npc' and arenaActivity then arenaActivity:prepare(pawn) end
@@ -535,8 +540,11 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         if not placed then log('[BossStage] 出生前失败: '..tostring(placeError)) end
     end
     local lib=route=='npc' and GetAILib() or StaticFindObject('/Script/Engine.Default__GameplayStatics')
-    if not safeValid(lib) then return false,"FinishSpawn函数库不可用，保留清理记录" end
-    if not spawnAudit:record("finish_spawn_begin",objectName(pawn),"所有权已登记；"..objectName(world)) then
+    if not summonActorLive(pawn) or not safeValid(lib) or not safeValid(world) then
+        return false,"FinishSpawn前对象失效或进入销毁，保留清理记录"
+    end
+    local name=objectName(pawn)
+    if not spawnAudit:record("finish_spawn_begin",name,"所有权已登记；"..objectName(world)) then
         return false,"FinishSpawn阶段日志写入失败；未继续初始化"
     end
     if not safeValid(pawn) or not safeValid(lib) or not safeValid(world) then return false,"FinishSpawn前对象失效" end
@@ -544,30 +552,35 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         if route=='npc' then lib:FinishSpawnAIDefered(pawn,t,world)
         else lib:FinishSpawningActor(pawn,t,1) end
     end)
-    local audited=spawnAudit:record("finish_spawn_return",objectName(pawn),"call="..tostring(ok2).." valid="..tostring(safeValid(pawn)))
+    local live=summonActorLive(pawn)
+    local audited=spawnAudit:record("finish_spawn_return",name,"call="..tostring(ok2).." live="..tostring(live))
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
+    if not live then return false,"FinishSpawn 后对象进入销毁或状态不可读" end
     -- 冷荼 born under her old save ID (a checkpoint cleared for the save-repair button) moves to the mod's now.
     if route=='npc' and bossStages then
         local moved,moveError=pcall(function()bossStages:finished(pawn)end)
         if not moved then log('[BossStage] 出生后失败: '..tostring(moveError)) end
     end
+    if not summonActorLive(pawn) then return false,"出生后对象进入销毁或状态不可读" end
     if onGround then onGround:settle(pawn,placedOnGround) end
-    return safeValid(pawn),nil
+    return summonActorLive(pawn),nil
 end
 
 -- 请求原生登场并读回可见状态；不移除游戏效果。
 local function FinishEntrance(pawn)
-    local activated = false
-    local lib = GetAILib()
-    local world = UEHelpers.GetWorld()
-    if lib and safeValid(pawn) and safeValid(world) then
-        if not spawnAudit:record("activate_begin",objectName(pawn),objectName(world)) then return false end
-        activated = pcall(function() lib:ActivateAI(pawn, world) end)
-        spawnAudit:record("activate_return",objectName(pawn),"call="..tostring(activated).." valid="..tostring(safeValid(pawn)))
+    local lib=GetAILib()
+    local world=UEHelpers.GetWorld()
+    local live=summonActorLive(pawn)
+    if not live or not safeValid(lib) or not safeValid(world) then return false,live end
+    local name=objectName(pawn)
+    if not spawnAudit:record("activate_begin",name,objectName(world)) then return false,live end
+    local activated=pcall(function() lib:ActivateAI(pawn,world) end)
+    live=summonActorLive(pawn)
+    spawnAudit:record("activate_return",name,"call="..tostring(activated).." live="..tostring(live))
+    if live then
+        log(string.format("  登场处理: ActivateAI调用=%s（行为未验收） | %s",tostring(activated),DescribeCollision(pawn)))
     end
-    log(string.format("  登场处理: ActivateAI调用=%s（行为未验收） | %s",
-        lib and tostring(activated) or "找不到函数库", DescribeCollision(pawn)))
-    return activated
+    return activated,live
 end
 
 -- ---------- 战况只读采样 ----------
@@ -1336,9 +1349,12 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local prepared,prepareError=pcall(function()companions:prepare(actor,unitPath)end)
             if not prepared then log('[Companion] 准备失败: '..tostring(prepareError)) end
         end
-        local activationRequested=FinishEntrance(actor)
+        local activationRequested,live=FinishEntrance(actor)
+        if not live then return false,"原生登场时对象进入销毁或状态不可读" end
         if spectator:status().enabled_requested then spectatorTargets:refresh(true) end
+        if not summonActorLive(actor) then return false,"刷新观战目标时对象进入销毁或状态不可读" end
         if team~='companion' then spectator:applyTo(actor) end
+        if not summonActorLive(actor) then return false,"应用观战关系后对象进入销毁或状态不可读" end
         local ai=GetAIComp(actor)
         local hp=GetHP(actor)
         log("召唤激活读回 ControllerAI="..tostring(ai~=nil).." HP="..tostring(hp))
@@ -1398,7 +1414,13 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         local stats=team=='companion' and arenaSupport.companionStats or statMatch
         return stats:onSummon(actor,unitPath)
     end,
-    spawnOrigin=function(body,look,team,world)return arenaSupport.spawnSpot:origin(body,look,team,world) end,
+    spawnOrigin=function(body,look,team,world)
+        local watching=team~='companion' and freeCamera:status().active==true
+        if watching and not spawnAudit:record("camera_spawn_origin_begin",team,"观战落点检测") then return body,look end
+        local position,forward=arenaSupport.spawnSpot:origin(body,look,team,world)
+        if watching then spawnAudit:record("camera_spawn_origin_return",team,"position="..tostring(position~=nil)) end
+        return position,forward
+    end,
     setRelation=SetFactionRelation,
     forceAttack=function(attacker,victim)
         local sent=ForceAttack(attacker,victim)
