@@ -226,4 +226,21 @@ do
     assert(#got==2)
 end
 
-print('key_poll: PASS (engine key names, exact chords, one press per press, in-frame presses, controller changes, F13 flag fallback, loop choice, router)')
+do
+    local active
+    local h=fixture({isCurrentController=function(controller)return controller==active end})
+    active=h.pc
+    local c=counter()
+    h.poll.register(81,c.fn)
+    h.poll:tick();h:press('Q');h:release('Q')
+    assert(c.n==1)
+    local old=h.pc
+    h.pc={alive=true,IsValid=old.IsValid,GetInputAnalogKeyState=old.GetInputAnalogKeyState,WasInputKeyJustPressed=old.WasInputKeyJustPressed}
+    active=h.pc
+    local staleReads=0
+    old.GetInputAnalogKeyState=function()staleReads=staleReads+1;return 0 end
+    old.WasInputKeyJustPressed=function()staleReads=staleReads+1;return false end
+    h:press('Q')
+    assert(c.n==2 and staleReads==0 and h.finds==2,'a valid but unowned cached controller must be replaced before reading input')
+end
+print('key_poll: PASS (engine key names, exact chords, one press per press, in-frame presses, controller changes, ownership, F13 flag fallback, loop choice, router)')

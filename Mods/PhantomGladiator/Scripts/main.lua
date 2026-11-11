@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11"
+local BUILD = "v0.40.11-beta-2"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -166,34 +166,58 @@ end
 
 -- ---------- 基础工具 ----------
 
--- 真正的玩家控制器：持有 UPlayer、且不是调试相机
+function arenaSupport:viewportWorld()
+    if type(UEHelpers.GetGameViewportClient)~='function' then return nil end
+    local ok,viewport=pcall(UEHelpers.GetGameViewportClient)
+    if not ok or not safeValid(viewport) then return nil end
+    local world=UEObserve.field(viewport,'World')
+    return safeValid(world) and world or nil
+end
+function arenaSupport:controllerCurrent(pc,world)
+    local player=UEObserve.field(pc,'Player')
+    local owner=UEObserve.field(player,'PlayerController')
+    local key=UEObserve.key(pc)
+    if not key or UEObserve.key(owner)~=key then return false end
+    if safeValid(world) then
+        local ok,current=pcall(function()return pc:GetWorld()end)
+        if not ok or UEObserve.key(current)~=UEObserve.key(world) then return false end
+    end
+    return true
+end
+
+-- A retained controller can remain valid after its local player has moved to another controller/world.
 local function GetRealPlayerController()
     local ok, list = pcall(FindAllOf, "PlayerController")
     if not ok or not list then return nil end
+    local world=arenaSupport:viewportWorld()
     for _, pc in ipairs(list) do
         local okP, good = pcall(function()
             if not pc:IsValid() then return false end
             local cls = pc:GetClass()
             if not safeValid(cls) or objectName(cls):find("DebugCameraController") then return false end
-            local player = pc.Player
-            return safeValid(player)
+            return arenaSupport:controllerCurrent(pc,world)
         end)
         if okP and good then return pc end
     end
     return nil
 end
 
+local function GetCurrentWorld()
+    local world=arenaSupport:viewportWorld()
+    if world then return world end
+    local pc=GetRealPlayerController()
+    if not safeValid(pc) then return nil end
+    local ok,current=pcall(function()return pc:GetWorld()end)
+    return ok and safeValid(current) and current or nil
+end
+
 local function GetPlayerPawn()
     local pc = GetRealPlayerController()
-    if pc then
-        local ok, p = pcall(function() return pc.Pawn end)
-        if ok and p and p:IsValid() then return p end
-    end
-    local ok, pawn = pcall(function()
-        local upc = UEHelpers.GetPlayerController()
-        return upc and upc:IsValid() and upc.Pawn or nil
-    end)
-    if ok and pawn and pawn:IsValid() then return pawn end
+    local pawn=UEObserve.field(pc,'Pawn')
+    if not summonActorLive(pawn) then return nil end
+    local world=GetCurrentWorld()
+    local ok,actual=pcall(function()return pawn:GetWorld()end)
+    if ok and safeValid(world) and UEObserve.key(actual)==UEObserve.key(world) then return pawn end
     return nil
 end
 
@@ -204,11 +228,26 @@ local function GetLocation(actor)
     return nil
 end
 
+function arenaSupport:pointText(point)
+    local ok,x,y,z=pcall(function()return point.X,point.Y,point.Z end)
+    if not ok or type(x)~='number' or type(y)~='number' or type(z)~='number' then return '?' end
+    return string.format('%.1f,%.1f,%.1f',x,y,z)
+end
+function arenaSupport:spawnSpace(actor,transform,world)
+    local ok,actualWorld=pcall(function()return actor:GetWorld()end)
+    local match='unknown'
+    if ok and safeValid(actualWorld) then match=UEObserve.key(actualWorld)==UEObserve.key(world) end
+    local mesh=UEObserve.field(actor,'Mesh')
+    return string.format('requested=%s actual=%s world_match=%s hidden=%s mesh_visible=%s',
+        self:pointText(transform and transform.Translation),self:pointText(GetLocation(actor)),tostring(match),
+        tostring(UEObserve.field(actor,'bHidden')),tostring(UEObserve.field(mesh,'bVisible')))
+end
+
 -- World time in seconds (stops while the game is paused, follows slow motion); nil before a world exists.
 local gameplayStatics
 local function GameSeconds()
     if not safeValid(gameplayStatics) then gameplayStatics=StaticFindObject('/Script/Engine.Default__GameplayStatics') end
-    local world=UEHelpers.GetWorld()
+    local world=GetCurrentWorld()
     if not safeValid(gameplayStatics) or not safeValid(world) then return nil end
     local ok,seconds=pcall(function()return gameplayStatics:GetTimeSeconds(world)end)
     return ok and type(seconds)=='number' and seconds or nil
@@ -246,8 +285,8 @@ local npcCatalog=Catalog.new({log=log,valid=safeValid,getPlayer=GetPlayerPawn,
     audit=function(stage,unit,detail) return spawnAudit:record(stage,unit,detail) end})
 local exporter=AssetExporter.new({log=log,path=Config.RuntimePath,
     config=Config.AssetCatalog})
-local worldMaps=WorldMapCatalog.new({log=log,getWorld=UEHelpers.GetWorld})
-local codexExporter=CodexExporter.new({log=log,path=Config.RuntimePath.."/codex.tsv",getWorld=UEHelpers.GetWorld,
+local worldMaps=WorldMapCatalog.new({log=log,getWorld=GetCurrentWorld})
+local codexExporter=CodexExporter.new({log=log,path=Config.RuntimePath.."/codex.tsv",getWorld=GetCurrentWorld,
     locationsPath=Config.RuntimePath..'/codex-locations.tsv',
     maps=worldMaps,onWritten=function()if bossHUD then bossHUD:reloadCodex()end end})
 
@@ -489,7 +528,12 @@ local function SpawnViaAILib(cls, t, world, given)
     local npc=entry.isNPC
     local lib=npc and GetAILib() or StaticFindObject('/Script/Engine.Default__GameplayStatics')
     if not safeValid(lib) then return nil,'找不到函数库','not_started' end
-    if not spawnAudit:record("spawn_deferred_begin",classPath,objectName(world)) then return nil,"阶段日志写入失败；未生成","not_started" end
+    local pc=GetRealPlayerController()
+    local player=UEObserve.field(pc,'Pawn')
+    if not summonActorLive(player) then player=nil end
+    local context=objectName(world)..' controller='..tostring(UEObserve.key(pc))..' player='..tostring(UEObserve.key(player))
+        ..' player_at='..arenaSupport:pointText(GetLocation(player))..' requested='..arenaSupport:pointText(t and t.Translation)
+    if not spawnAudit:record("spawn_deferred_begin",classPath,context) then return nil,"阶段日志写入失败；未生成","not_started" end
     if not safeValid(cls) or not safeValid(lib) or not safeValid(world) then return nil,"生成前对象失效","not_started" end
     local pawn = nil
     local ok, err = pcall(function()
@@ -560,7 +604,8 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         else lib:FinishSpawningActor(pawn,t,1) end
     end)
     local live=summonActorLive(pawn)
-    local audited=spawnAudit:record("finish_spawn_return",name,"call="..tostring(ok2).." live="..tostring(live))
+    local space=live and arenaSupport:spawnSpace(pawn,t,world) or 'spatial_read=skipped_destroying'
+    local audited=spawnAudit:record("finish_spawn_return",name,"call="..tostring(ok2).." live="..tostring(live)..' '..space)
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
     if not live then return false,"FinishSpawn 后对象进入销毁或状态不可读" end
     if standalone and not arenaSupport.standaloneStoryUnits:verify(standalone) then
@@ -579,14 +624,15 @@ end
 -- 请求原生登场并读回可见状态；不移除游戏效果。
 local function FinishEntrance(pawn)
     local lib=GetAILib()
-    local world=UEHelpers.GetWorld()
+    local world=GetCurrentWorld()
     local live=summonActorLive(pawn)
     if not live or not safeValid(lib) or not safeValid(world) then return false,live end
     local name=objectName(pawn)
     if not spawnAudit:record("activate_begin",name,objectName(world)) then return false,live end
     local activated=pcall(function() lib:ActivateAI(pawn,world) end)
     live=summonActorLive(pawn)
-    spawnAudit:record("activate_return",name,"call="..tostring(activated).." live="..tostring(live))
+    local space=live and arenaSupport:spawnSpace(pawn,nil,world) or 'spatial_read=skipped_destroying'
+    spawnAudit:record("activate_return",name,"call="..tostring(activated).." live="..tostring(live)..' '..space)
     if live then
         log(string.format("  登场处理: ActivateAI调用=%s（行为未验收） | %s",tostring(activated),DescribeCollision(pawn)))
     end
@@ -1160,7 +1206,7 @@ end
 
 local observerGuard=ObserverGuard.new({log=log,getSpectator=function()return spectator end})
 local freeCamera=FreeCamera.new({path=Config.RuntimePath,log=log,getController=GetRealPlayerController,guard=observerGuard,
-    getWorld=UEHelpers.GetWorld,moveSpeed=Config.FreeCamera.MoveSpeed,mouseSensitivity=Config.FreeCamera.MouseSensitivity,
+    getWorld=GetCurrentWorld,moveSpeed=Config.FreeCamera.MoveSpeed,mouseSensitivity=Config.FreeCamera.MouseSensitivity,
     track=function()return arenaSupport.track end})
 -- Real seconds less the time 时停 held the game: timers about units that cannot move meanwhile (a companion stuck
 -- for 6 s is teleported) wait while it lasts.
@@ -1275,7 +1321,7 @@ local function ToggleProbe()
     end)
 end
 -- ---------- 单位控制器：按钮与快捷键共用，只有本Mod的参赛者受管理 ----------
-local runtimeSession=RuntimeSession.new({valid=safeValid,getWorld=UEHelpers.GetWorld,
+local runtimeSession=RuntimeSession.new({valid=safeValid,getWorld=GetCurrentWorld,
     getPlayer=GetPlayerPawn,isDestroying=actorIsDestroying,hp=GetHP})
 local spectatorTargets=SpectatorTargets.new({log=log})
 local spectatorExcluded={}
@@ -1304,7 +1350,7 @@ spectator=SpectatorMode.new({log=log,valid=engineValid,getPlayer=GetPlayerPawn,p
     getNPCs=function()
         spectatorTargets:refresh()
         local out={}
-        local world=UEHelpers.GetWorld()
+        local world=GetCurrentWorld()
         for _,npc in ipairs(CollectNPCs()) do
             if UEObserve.inWorld(npc,world) then
                 local ok,destroying=pcall(function() checked(npc); return npc:IsActorBeingDestroyed() end)
@@ -1353,7 +1399,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return onGround~=nil and not (arenaSupport.lionNPC and arenaSupport.lionNPC:keepsMovement(actor,classPath))
             and onGround:free(actor,target)
     end,
-    getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
+    getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
     spawnClass=SpawnViaAILib,
     finishSpawn=FinishSpawnViaAILib,
@@ -1373,7 +1419,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         end
         if arenaSupport.lionStage then
             local called,ready,reason=pcall(function()
-                return arenaSupport.lionStage:prepare(actor,unitPath,UEHelpers.GetWorld(),escort)
+                return arenaSupport.lionStage:prepare(actor,unitPath,GetCurrentWorld(),escort)
             end)
             if not called or not ready then
                 local detail=called and reason or tostring(ready)
@@ -1446,7 +1492,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             end
         end
         if activationRequested and safeValid(actor) then
-            local inspected,inspectError=pcall(function() return spawnInspector:inspect(actor,UEHelpers.GetWorld()) end)
+            local inspected,inspectError=pcall(function() return spawnInspector:inspect(actor,GetCurrentWorld()) end)
             if not inspected then log('[SpawnInspect] 只读检查失败: '..tostring(inspectError)) end
         end
         return combatReady,'仅确认初始化调用、AI组件和正HP；行为待验收',spawnWarning
@@ -1526,14 +1572,14 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         BeginArenaObservation(a,b)
     end})
 
-local summonLinks=SummonLinks.new({getWorld=UEHelpers.GetWorld,getNPCs=CollectNPCs,log=log})
+local summonLinks=SummonLinks.new({getWorld=GetCurrentWorld,getNPCs=CollectNPCs,log=log})
 arenaActivity=ArenaActivity.new({log=log,isNPC=function(actor)return spawnRoutes[actor]~='actor' end,
     freeCam=function()return freeCamera:isActive() or safeValid(FindActiveDebugCam()) end,
     context=function()
         local debugCamera=FindActiveDebugCam()
         local original=UEObserve.field(debugCamera,'OriginalControllerRef')
         local originalPawn=UEObserve.field(original,'Pawn')
-        local world=UEHelpers.GetWorld()
+        local world=GetCurrentWorld()
         local level=UEObserve.field(world,'PersistentLevel')
         local settings=UEObserve.field(level,'WorldSettings')
         return 'mod_player='..tostring(UEObserve.key(GetPlayerPawn()))
@@ -1547,7 +1593,7 @@ local function GetMaxHP(actor)
     if not engineValid(attributes) then return nil end
     return attributes.Health_Max.CurrentValue
 end
-bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=UEHelpers.GetWorld,hp=GetHP,maxHP=GetMaxHP,
+bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=GetCurrentWorld,hp=GetHP,maxHP=GetMaxHP,
     codexPath=Config.RuntimePath..'/codex.tsv',log=log,
     extraBossName=function(unit)
         local story=arenaSupport.standaloneStoryUnits
@@ -1564,7 +1610,7 @@ local function ArenaStatus()return tickStatus or arena:status() end
 statMatch=StatMatch.new({path=Config.RuntimePath,log=log})
 arenaSupport.companionStats=StatMatch.new({path=Config.RuntimePath,log=log,tag='[CompanionStats]',customOnly=true,
     settings='companion-stats-settings.tsv',request='companion-stats-request.tsv'})
-spawnDifficulty=SpawnDifficulty.new({path=Config.RuntimePath,log=log,getWorld=UEHelpers.GetWorld,
+spawnDifficulty=SpawnDifficulty.new({path=Config.RuntimePath,log=log,getWorld=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end})
 statProbe=Config.EnableStatFormulaProbe and StatFormulaProbe.new({log=log}) or nil
 fieldProbe=Config.EnableStatFieldProbe and StatFieldProbe.new({log=log}) or nil
@@ -1572,7 +1618,7 @@ fieldProbe=Config.EnableStatFieldProbe and StatFieldProbe.new({log=log}) or nil
 -- "Init Level"). Read with the same library call, at most every 10 s, logged when it changes.
 local cycleRead={}
 local function GameCycle()
-    local world=UEHelpers.GetWorld()
+    local world=GetCurrentWorld()
     local key=UEObserve.key(world)
     if not key then cycleRead={};return nil end
     local now=os.clock()
@@ -1604,7 +1650,7 @@ local homeLevels=HomeLevels.new({log=log,path=Config.RuntimePath,
 spawnLevel=SpawnLevel.new({log=log,path=Config.RuntimePath,getPlayer=GetPlayerPawn,getLocation=GetLocation,collect=CollectNPCs,homeLevels=homeLevels,
     -- The loaded world's name (PBZ_Xigu_WP): spawner places and the remembered level are per world.
     getWorldName=function()
-        local world=UEHelpers.GetWorld()
+        local world=GetCurrentWorld()
         if not safeValid(world) then return nil end
         local ok,name=pcall(function()return world:GetFName():ToString()end)
         return ok and type(name)=='string' and name or nil
@@ -1681,7 +1727,7 @@ local function GroundZ(world,x,y,z,up)
     -- The caller can tell a start inside something solid from nothing under the start.
     return nil,(type(distance)=='number' and distance<=0) and 'inside' or nil
 end
-onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,label=objectName,player=GetPlayerPawn,world=function()return UEHelpers.GetWorld()end,
+onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,label=objectName,player=GetPlayerPawn,world=function()return GetCurrentWorld()end,
     anchor=function()return arenaSupport.spawnSpot and arenaSupport.spawnSpot:anchor() end,
     name=function(text)return FName(text)end})
 -- A straight line through the world: where it hits and which way that surface faces, for the summon spot and the view.
@@ -1738,9 +1784,9 @@ arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,
         if safeValid(value) and not (safeValid(player) and value:GetAddress()==player:GetAddress()) then return value end
     end})
 arenaSupport.lionStage=require('lion_stage').new({log=log,location=GetLocation,player=GetPlayerPawn,
-    world=UEHelpers.GetWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics})
+    world=GetCurrentWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics})
 arenaSupport.lionNPC=require('lion_npc').new({log=log,location=GetLocation,ground=GroundZ,
-    world=UEHelpers.GetWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics,
+    world=GetCurrentWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics,
     area=function(actor,world)return arenaSupport.lionStage:areaFor(actor,world)end,
     opponent=function(actor)return arena:opponentOf(UEObserve.key(actor))end,
     busy=function(actor)
@@ -1768,7 +1814,7 @@ bossStages=BossStages.new({log=log,location=GetLocation,isDestroying=actorIsDest
     statics=GetGameplayStatics,findAll=function(name)return FindAllOf(name)end,ground=GroundZ,
     -- How many actors of a targeting type are registered in this world (左殇's ground weapons, what CA_02 will find).
     targetsByTag=function(tag)
-        local world=UEHelpers.GetWorld()
+        local world=GetCurrentWorld()
         local ok,sub=pcall(FindFirstOf,'TargetingWorldSubsystem')
         if not ok or not safeValid(sub) or not UEObserve.inWorld(sub,world) then return nil end
         local out={}
@@ -1832,7 +1878,7 @@ function arenaSupport:discover()
 end
 arenaSupport.stands=require('arena_stands').new({log=log,members=ArenaMembers,aiOf=GetAIComp})
 function arenaSupport:cameraAt()
-    local lib,world=GetGameplayStatics(),UEHelpers.GetWorld()
+    local lib,world=GetGameplayStatics(),GetCurrentWorld()
     if not safeValid(lib) or not safeValid(world) then return nil end
     local ok,manager=pcall(function()return lib:GetPlayerCameraManager(world,0)end)
     if not ok or not safeValid(manager) then return nil end
@@ -1844,7 +1890,7 @@ arenaSupport.standKeep=require('stand_keep').new({log=log,members=ArenaMembers,c
 -- The loaded world's subsystem of a class (its outer chain reaches the world; the class default object's does not), kept per world.
 arenaSupport.subsystems={}
 function arenaSupport:worldSubsystem(name)
-    local world=UEHelpers.GetWorld()
+    local world=GetCurrentWorld()
     local worldKey=safeValid(world) and UEObserve.key(world)
     if not worldKey then return nil end
     local kept=self.subsystems[name]
@@ -1887,7 +1933,7 @@ arenaSupport.summonKeep=require('summon_keep').new({log=log,members=ArenaMembers
 -- A fighter locked on a boss the game keeps out of reach is moved to its opponent (lock_release.lua).
 arenaSupport.lockRelease=require('lock_release').new({log=log,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end})
-companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
+companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
 -- Read-only: which of a companion's attacks may hit the player, and why (companion_hit_probe.lua).
 companionHitProbe=Config.EnableCompanionHitProbe and CompanionHitProbe.new({log=log,getPlayer=GetPlayerPawn,hp=GetHP,location=GetLocation,
@@ -1896,13 +1942,13 @@ companionHitProbe=Config.EnableCompanionHitProbe and CompanionHitProbe.new({log=
 attackScan=Config.EnableAttackFactionScan and AttackFactionScan.new({log=log,path=Config.RuntimePath,
     ready=function()return runtimeSession:status().game_ready==true end}) or nil
 -- Experiment: save a few codex pictures as PNG on this PC (codex_art_probe.lua).
-codexArt=Config.EnableCodexArtProbe and CodexArtProbe.new({log=log,path=Config.RuntimePath,getWorld=UEHelpers.GetWorld,
+codexArt=Config.EnableCodexArtProbe and CodexArtProbe.new({log=log,path=Config.RuntimePath,getWorld=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end}) or nil
 -- The codex busts for the app's unit cards, saved on this PC from the player's own game (codex_icons.lua).
-codexIcons=Config.EnableCodexIcons and CodexIcons.new({log=log,path=Config.RuntimePath,getWorld=UEHelpers.GetWorld,
+codexIcons=Config.EnableCodexIcons and CodexIcons.new({log=log,path=Config.RuntimePath,getWorld=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end}) or nil
 -- Units summoned at a chosen difficulty also get that difficulty when their AI asks for it.
-aiDifficulty=AIDifficulty.new({log=log,getWorld=UEHelpers.GetWorld,
+aiDifficulty=AIDifficulty.new({log=log,getWorld=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end,members=ArenaMembers,
     levelOf=function(actor)return spawnDifficulty:levelOf(actor)end})
 -- Infinite Shachi and auto deflect/dodge for the player only; paused while the free camera observes.
@@ -1913,7 +1959,7 @@ funFeatures=FunFeatures.new({log=log,path=Config.RuntimePath,getPlayer=GetPlayer
 immortalTeams=ImmortalTeams.new({log=log,path=Config.RuntimePath,members=ArenaMembers,collect=CollectNPCs,hp=GetHP,
     ready=function()return runtimeSession:status().game_ready==true end})
 -- The fight time at the top centre of the game screen, when switched on in the app (battle_clock_hud.lua).
-clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,getWorld=UEHelpers.GetWorld,
+clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,getWorld=GetCurrentWorld,
     getPlayer=GetPlayerPawn,ready=function()return runtimeSession:status().game_ready==true end,
     clock=function()local s=ArenaStatus();return s.battle_clock,s.battle_seconds end})
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
@@ -1938,7 +1984,7 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
         local ai=GetAIComp(actor)
         return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
     end})
-playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return UEHelpers.GetWorld() end,
+playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
     player=GetPlayerPawn,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
@@ -1948,12 +1994,12 @@ playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGam
 bossCombos=require('boss_combos').new({path=Config.RuntimePath,log=log,members=ArenaMembers,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=ArenaMembers,aiComp=GetAIComp,
-    tension=function()return StaticFindObject('/Script/TensionMeter.Default__TensionLibrary'),UEHelpers.GetWorld() end})
+    tension=function()return StaticFindObject('/Script/TensionMeter.Default__TensionLibrary'),GetCurrentWorld() end})
 -- 怪对怪处决（实验）: a boss stuck on its health lock is executed by the nearest enemy with the game's own pair of
 -- abilities; the enemy borrows the player's skeleton for its half (arena_executions.lua).
 -- 处决镜头: the app switch; during an execution the view plays that execution's own camera (execution_camera.lua).
 executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,
-    getWorld=UEHelpers.GetWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
+    getWorld=GetCurrentWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
 arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
@@ -1967,7 +2013,7 @@ arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
     companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
-    getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
+    getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,camera=executionCamera,
     onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
     lionPickup=function(actor,victim)return arenaSupport.lionNPC:beginPickup(actor,victim,ArenaMembers(),ArenaStatus())end,
     lionPickupReady=function(actor)return arenaSupport.lionNPC:pickupReady(actor)end,
@@ -2085,6 +2131,7 @@ end
 -- Every hotkey of this mod is read once a frame in the game thread (key_poll.lua); none is a UE4SS key bind, whose
 -- callback would run this mod's Lua on UE4SS's own thread.
 local keyPoll=KeyPoll.new({log=log,controller=GetRealPlayerController,
+    isCurrentController=function(pc)return arenaSupport:controllerCurrent(pc,arenaSupport:viewportWorld())end,
     meter=require('perf_meter').new({label='按键读取',log=log,slow=2,hitch=1000})})
 local keyRouter=KeyRouter.new({log=log,register=keyPoll.register,occupied=keyPoll.occupied})
 local unitKeys=UnitKeys.new({path=Config.RuntimePath,log=log,router=keyRouter,
@@ -2122,7 +2169,7 @@ panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.Runtime
         -- 时停 (the app's switch and its function key) and the app's speed, turn and smoothing (free_camera.lua).
         freeze=function(_,on)return freeCamera:freeze(on)end,
         configure=function(_,speed,turn,smooth)return freeCamera:configure(speed,turn,smooth)end},
-    spawnCatalog=SpawnCatalog.new({log=log,path=Config.RuntimePath,getWorld=UEHelpers.GetWorld}),
+    spawnCatalog=SpawnCatalog.new({log=log,path=Config.RuntimePath,getWorld=GetCurrentWorld}),
     tableCatalog=TableCatalog.new({log=log,path=Config.RuntimePath,maps=worldMaps}),
     areaLevels=AreaLevels.new({log=log,path=Config.RuntimePath}),
     spawnLevel=spawnLevel,

@@ -59,6 +59,7 @@ function player:IsActorBeingDestroyed() return false end
 function player:K2_GetActorLocation() return {X=0,Y=0,Z=100} end
 function player:GetActorForwardVector() return {X=1,Y=0,Z=0} end
 local world={IsValid=function() return true end,GetAddress=function() return 100 end}
+function player:GetWorld()return world end
 local pc={IsValid=function() return true end,Pawn=player}
 -- Keys as the engine reports them: `pressed` holds the names down in this frame.
 local pressed={}
@@ -71,12 +72,17 @@ local keyController={IsValid=function()return true end,GetClass=function()return
     GetInputAnalogKeyState=function(_,key)assert(inGame,'key read outside game thread');return pressed[key.KeyName:ToString()] and 1.0 or 0.0 end,
     WasInputKeyJustPressed=function(_,key)assert(inGame,'key read outside game thread');return pressed[key.KeyName:ToString()]==true end}
 controllers[1]=keyController
+function keyController:GetAddress()return 201 end
+function keyController:GetWorld()return world end
+function keyController.Player:GetAddress()return 202 end
+keyController.Player.PlayerController=keyController
 -- One frame with the keys down, then one with them up.
 local function press(...)
     for _,name in ipairs({...})do pressed[name]=true end
     inGame=true;frameLoops[1]();pressed={};frameLoops[1]();inGame=false
 end
-package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end}
+package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end,
+    GetGameViewportClient=function()return {IsValid=function()return true end,World=world}end}
 local arenaOptions,statMatchInstance,companionStatsInstance,spectatorOptions,runtimeInstance
 local Arena=require('arena_controller');local realArenaNew=Arena.new
 Arena.new=function(options)arenaOptions=options;return realArenaNew(options)end
@@ -181,7 +187,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-beta-2',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -439,4 +445,48 @@ ModRef.OnUnload()
 press('F9')
 assert(#queue==queuedBefore,"unloaded input must stay inert")
 print=originalPrint
-print("main_boot: PASS (all modules, no startup asset load, ready no-NPC approved resolution, camera bindings, game-thread dispatch, unload)")
+do
+    local previousControllers,previousWorld=controllers,world
+    local previousFind=FindAllOf
+    local helper=package.loaded.UEHelpers
+    local previousViewport=helper.GetGameViewportClient
+    local oldWorld={IsValid=function()return true end,GetAddress=function()return 8101 end}
+    local currentWorld={IsValid=function()return true end,GetAddress=function()return 8102 end}
+    local oldPawn={IsValid=function()return true end,IsActorBeingDestroyed=function()return false end,
+        GetAddress=function()return 8103 end,GetWorld=function()return oldWorld end}
+    local currentPawn={IsValid=function()return true end,IsActorBeingDestroyed=function()return false end,
+        GetAddress=function()return 8104 end,GetWorld=function()return currentWorld end}
+    local localPlayer={IsValid=function()return true end,GetAddress=function()return 8105 end}
+    local stale={IsValid=function()return true end,GetAddress=function()return 8106 end,
+        GetClass=function()return controllerClass end,Player=localPlayer,Pawn=oldPawn,GetWorld=function()return oldWorld end}
+    local current={IsValid=function()return true end,GetAddress=function()return 8107 end,
+        GetClass=function()return controllerClass end,Player=localPlayer,Pawn=currentPawn,GetWorld=function()return currentWorld end}
+    localPlayer.PlayerController=current
+    local viewport={IsValid=function()return true end,World=currentWorld}
+    helper.GetGameViewportClient=function()return viewport end
+    controllers={stale,current};world=oldWorld
+    FindAllOf=function(name)
+        if name=='PlayerController' then return controllers end
+        return previousFind(name)
+    end
+    inGame=true
+    local chosen=arenaOptions.getPlayer()
+    local chosenWorld=arenaOptions.getWorld(chosen)
+    stale.Player={IsValid=function()return true end,GetAddress=function()return 8110 end,PlayerController=stale}
+    local chosenFromDifferentPlayer=arenaOptions.getPlayer()
+    current.Pawn=oldPawn
+    local mismatchedPawn=arenaOptions.getPlayer()
+    current.Pawn=currentPawn
+    currentPawn.IsActorBeingDestroyed=function()return true end
+    local destroyingPawn=arenaOptions.getPlayer()
+    inGame=false
+    controllers,world=previousControllers,previousWorld
+    FindAllOf=previousFind
+    helper.GetGameViewportClient=previousViewport
+    print('main_context readback: pawn='..tostring(chosen and chosen:GetAddress())..' active pawn='..tostring(chosen==currentPawn)..' active world='..tostring(chosenWorld==currentWorld))
+    assert(chosen==currentPawn,'a still-valid old controller must not select the previous pawn')
+    assert(chosenFromDifferentPlayer==currentPawn,'a retained controller from another world must be rejected even with its own player backlink')
+    assert(mismatchedPawn==nil and destroyingPawn==nil,'a pawn from another world or entering destruction must not be accepted')
+    assert(chosenWorld==currentWorld,'spawns must use the viewport world rather than the first retained controller world')
+end
+print("main_boot: PASS (all modules, active player/world, no startup asset load, ready no-NPC approved resolution, camera bindings, game-thread dispatch, unload)")

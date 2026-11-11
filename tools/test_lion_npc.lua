@@ -477,7 +477,7 @@ test('a blocking target rim allows the centered landing on both the first and ne
     assert(h.adapter:stop())
 end)
 
-test('takeoff bypasses a same-area active link box and restores it after landing',function()
+test('takeoff keeps the owned same-area link bypass until leaving the pole',function()
     local h=fixture()
     local npc=enemy(h)
     local startZ=npc.at.Z
@@ -510,9 +510,9 @@ test('takeoff bypasses a same-area active link box and restores it after landing
     h:tick(1.8);h:tick()
     assert(passed>0 and blocked==0 and #h.resume==1 and #npc.teleports==0)
     assert(npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001)
-    assert(not ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==0)
+    assert(ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==1)
     assert(box.mode==1 and box.responses[19]==2 and box.responses[2]==0)
-    assert(h.adapter:stop())
+    assert(h.adapter:stop() and not ignores(npc.CapsuleComponent,box))
 end)
 
 test('two registered stage components can block the same sweep without canceling the jump',function()
@@ -584,4 +584,88 @@ test('an obstructed hop returns to the last supported pole and keeps the weapon 
     assert(npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001 and #npc.teleports==0)
     assert(obstacles>0 and #npc.CapsuleComponent.MoveIgnoreComponents==0)
     assert(combat.landings==2 and h.adapter:stop())
+end)
+
+test('same-area links cannot cancel the final descent on the first or consecutive poles',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h)
+    local secondPole=object({outer=h.world,Area=h.area})
+    local link=object({outer=h.world,LinkedPoleA=h.anchor,LinkedPoleB=secondPole})
+    local box=collider(link,1)
+    function box:GetOwner()return link end
+    function box:GetFullName()return 'BoxComponent /Test/World.BP_LionDancing_Link.Box' end
+    link.Box=box
+    h.area.ActivatedLinks={link}
+    local descents,blocked=0,0
+    h.block=function(actor,dest,hit)
+        if dest.Z>=actor.at.Z then return false end
+        for _,pole in ipairs(h.poles)do
+            if not pole.gone then
+                local top=pole.StandPoint:K2_GetComponentLocation()
+                local floorZ=top.Z+actor.CapsuleComponent:GetScaledCapsuleHalfHeight()+3
+                if (dest.X-top.X)^2+(dest.Y-top.Y)^2<=8^2 and dest.Z>=floorZ-8 and dest.Z<=floorZ+35 then
+                    descents=descents+1
+                    if ignores(actor.CapsuleComponent,box) then return false end
+                    blocked=blocked+1
+                    hit.bBlockingHit=true;hit.Component=box;hit.PenetrationDepth=0
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    h:board()
+    assert(combat.landings==1 and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001,
+        'the first landing must not be canceled by a stage link at 100%')
+    assert(ignores(npc.CapsuleComponent,box),'keep only the owned link bypass while standing on poles')
+    for expected=2,3 do
+        combat.turn=true
+        h:tick();h:tick();h:tick(1.8);h:tick()
+        assert(combat.landings==expected,'the next pole must also finish its final descent')
+    end
+    assert(descents>0 and blocked==0 and #npc.teleports==0)
+    assert(h.adapter:stop() and not ignores(npc.CapsuleComponent,box),'restore the link bypass on exit')
+end)
+
+test('a newly activated same-area link is bypassed during the landing sweep',function()
+    local h=fixture(combatFixture())
+    local npc=enemy(h)
+    local link=object({outer=h.world,LinkedPoleA=h.anchor,LinkedPoleB=object({outer=h.world,Area=h.area})})
+    local box=collider(link,1)
+    function box:GetOwner()return link end
+    link.Box=box
+    h.area.ActivatedLinks={}
+    local blocked=0
+    h.block=function(actor,dest,hit)
+        if dest.Z>=actor.at.Z then return false end
+        local pole=h.poles[1]
+        if not pole then return false end
+        local top=pole.StandPoint:K2_GetComponentLocation()
+        local z=top.Z+actor.CapsuleComponent:GetScaledCapsuleHalfHeight()+3
+        if (dest.X-top.X)^2+(dest.Y-top.Y)^2<=8^2 and dest.Z>=z-8 and dest.Z<=z+35 then
+            h.area.ActivatedLinks={link}
+            if not ignores(actor.CapsuleComponent,box) then
+                blocked=blocked+1;hit.bBlockingHit=true;hit.Component=box;return true
+            end
+        end
+        return false
+    end
+    h:board()
+    assert(blocked>0 and #h.resume==1 and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001 and #npc.teleports==0,
+        'late link: blocked='..blocked..' resumed='..#h.resume..'\n'..table.concat(h.log,'\n'))
+    assert(h.adapter:stop() and not ignores(npc.CapsuleComponent,box))
+end)
+
+test('an existing link ignore is preserved when the pole controller releases its own changes',function()
+    local h=fixture()
+    local npc=enemy(h)
+    local link=object({outer=h.world,LinkedPoleA=h.anchor,LinkedPoleB=object({outer=h.world,Area=h.area})})
+    local box=collider(link,1)
+    function box:GetOwner()return link end
+    link.Box=box;h.area.ActivatedLinks={link}
+    npc.CapsuleComponent:IgnoreComponentWhenMoving(box,true)
+    h:board()
+    assert(#h.resume==1 and h.adapter:stop())
+    assert(ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==1)
 end)

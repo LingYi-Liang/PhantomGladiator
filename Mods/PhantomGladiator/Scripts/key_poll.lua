@@ -109,12 +109,19 @@ function Poll.new(options)
         if not ok and failures<5 then failures=failures+1;log('[KeyPoll] 按键处理失败：'..tostring(err)) end
     end
     local function controller(now)
-        if pc and U.valid(pc) then return pc end
+        if pc and U.valid(pc) then
+            if not options.isCurrentController then return pc end
+            local ok,current=pcall(options.isCurrentController,pc)
+            if ok and current==true then return pc end
+        end
+        local changed=pc~=nil
+        if changed then resolveAt=0 end
         pc=nil
         if now<resolveAt or not options.controller then return nil end
         resolveAt=now+RESOLVE_SECONDS
         local ok,found=pcall(options.controller)
         if ok and U.valid(found) then pc=found end
+        if changed then log('[KeyPoll] 控制器缓存已失效或归属已切换；重新解析读回='..tostring(pc~=nil)) end
         return pc
     end
     local function isDown(target,key)

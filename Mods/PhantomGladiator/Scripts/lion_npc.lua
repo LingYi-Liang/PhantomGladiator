@@ -301,10 +301,19 @@ function LionNPC.new(options)
     local function stageHit(seat,component)
         local ok,owner=call(component,'GetOwner')
         if not ok or not U.inWorld(owner,seat.world) then return false end
-        return contains(U.field(seat.area,'ActivatedPoles'),owner)
-            or contains(U.field(seat.area,'ActivatedLinks'),owner)
+        if contains(U.field(seat.area,'ActivatedPoles'),owner) and same(U.field(owner,'Area'),seat.area) then return 'pole' end
+        local a,b=U.field(owner,'LinkedPoleA'),U.field(owner,'LinkedPoleB')
+        if contains(U.field(seat.area,'ActivatedLinks'),owner) and same(U.field(owner,'Box'),component)
+            and same(U.field(a,'Area'),seat.area) and same(U.field(b,'Area'),seat.area) then return 'link' end
+        return false
+    end
+    local function linkCollision(seat,capsule)
+        if not seat.linkCollision then seat.linkCollision={capsule=capsule,ignored={}} end
+        if same(seat.linkCollision.capsule,capsule) then return seat.linkCollision end
     end
     local function ignoreStageLinks(seat,flight)
+        local owned=linkCollision(seat,flight.capsule)
+        if not owned then return false end
         local pending=ignoredComponents(flight.capsule)
         if not pending then return false end
         for _,link in ipairs(U.array(U.field(seat.area,'ActivatedLinks')) or {})do
@@ -312,12 +321,12 @@ function LionNPC.new(options)
             if not gone(link) and U.inWorld(link,seat.world) and same(U.field(a,'Area'),seat.area)
                 and same(U.field(b,'Area'),seat.area) then
                 local box=U.field(link,'Box')
-                if U.valid(box) and not ignoreForFlight(flight,box,pending) then return false end
+                if U.valid(box) and not ignoreForFlight(owned,box,pending) then return false end
             end
         end
         local after=ignoredComponents(flight.capsule)
         if not after then return false end
-        for _,component in pairs(flight.ignored)do if not contains(after,component) then return false end end
+        for _,component in pairs(owned.ignored)do if not contains(after,component) then return false end end
         return true
     end
     local function restoreFields(seat)
@@ -374,6 +383,7 @@ function LionNPC.new(options)
         -- A map transition invalidates the whole old world. Never call its actors again.
         if not same(currentWorld,seat.world) or not same(options.world(),seat.world) then return true end
         if not restoreFlightCollision(seat.flight) then return false end
+        if not restoreFlightCollision(seat.linkCollision) then return false end
         local carrierHere=U.inWorld(seat.carrier,seat.world)
         local returned=false
         if seat.moved and carrierHere and alive(seat.carrier) then
@@ -647,18 +657,36 @@ function LionNPC.new(options)
                 say('跳桩碰撞恢复待重试 actor='..seat.key)
             end
         end
-        local function move(desired,angle)
+        local function sweep(desired,angle)
             local hit={}
             local called=call(actor,'K2_SetActorLocationAndRotation',desired,angle,true,hit,false)
             local actual=location(actor)
             local reached=called and actual and distance2(actual,desired)<=8^2 and math.abs(actual.Z-desired.Z)<=8
             return reached,actual,hit
         end
-        local function blocked(progress,hit)
+        local function move(desired,angle,linksOnly)
+            local reached,actual,hit=sweep(desired,angle)
+            while not reached and flight.additionalIgnores<4 do
+                local component=hitComponent(hit)
+                local kind=stageHit(seat,component)
+                local owned=kind=='link' and linkCollision(seat,flight.capsule) or flight
+                if not kind or (linksOnly and kind~='link') or not owned
+                    or contains(ignoredComponents(flight.capsule),component)
+                    or not ignoreForFlight(owned,component) then break end
+                flight.additionalIgnores=flight.additionalIgnores+1
+                say('跳跃暂让场地部件 actor='..seat.key..' 部件='..tostring(U.key(component))..' 忽略读回=true')
+                reached,actual,hit=sweep(desired,angle)
+            end
+            return reached,actual,hit
+        end
+        local function pointText(point)
+            return point and string.format('%.1f,%.1f,%.1f',point.X,point.Y,point.Z) or '未读回'
+        end
+        local function blocked(progress,hit,desired,actual)
             local component=hitComponent(hit)
             local _,full=call(component,'GetFullName')
-            fail(string.format('跳跃位移未到位 %.0f%% 碰撞部件=%s 深度=%s',
-                progress*100,tostring(full or '未读回'),tostring(U.struct(hit,'PenetrationDepth'))))
+            fail(string.format('跳跃位移未到位 %.0f%% 碰撞部件=%s 深度=%s 目标=%s 实际=%s',
+                progress*100,tostring(full or '未读回'),tostring(U.struct(hit,'PenetrationDepth')),pointText(desired),pointText(actual)))
         end
         local function land(time)
             call(movement,'StopMovementImmediately')
@@ -682,11 +710,11 @@ function LionNPC.new(options)
             if flight.descending then
                 local alpha=math.min(1,(time-flight.descending)/0.13)
                 local desired={X=to.X,Y=to.Y,Z=to.Z+clearance*(1-alpha)}
-                local reached,actual,hit=move(desired,angle)
+                local reached,actual,hit=move(desired,angle,true)
                 if not reached then
                     local onTop=actual and distance2(actual,to)<=8^2 and actual.Z>=to.Z-8
                         and actual.Z<=to.Z+clearance and same(hitComponent(hit),platform.mesh)
-                    if onTop then land(time) else blocked(1,hit) end
+                    if onTop then land(time) else blocked(1,hit,desired,actual) end
                 elseif alpha>=1 then land(time) end
                 return
             end
@@ -701,20 +729,12 @@ function LionNPC.new(options)
             local horizontal=progress*progress*(3-2*progress)
             local desired={X=from.X+dx*horizontal,Y=from.Y+dy*horizontal,
                 Z=from.Z+(dz+clearance)*progress+4*lift*progress*(1-progress)}
-            local reached,_,hit=move(desired,angle)
-            while not reached and flight.additionalIgnores<4 do
-                local component=hitComponent(hit)
-                if not stageHit(seat,component) or contains(ignoredComponents(flight.capsule),component)
-                    or not ignoreForFlight(flight,component) then break end
-                flight.additionalIgnores=flight.additionalIgnores+1
-                say('跳跃暂让场地部件 actor='..seat.key..' 部件='..tostring(U.key(component))..' 忽略读回=true')
-                reached,_,hit=move(desired,angle)
-            end
-            if not reached then blocked(progress,hit);return end
+            local reached,actual,hit=move(desired,angle,false)
+            if not reached then blocked(progress,hit,desired,actual);return end
             if progress>=1 then
                 if not restoreFlightCollision(flight) then fail('落脚前碰撞恢复未读回');return end
                 flight.descending=time
-                say('到达目标桩正上方 actor='..seat.key..' 临时碰撞已恢复，开始落脚')
+                say('到达目标桩正上方 actor='..seat.key..' 桩体碰撞已恢复，横杆避让保持，开始落脚')
             end
         end
         local registered,handle=pcall(loop,16,function()
