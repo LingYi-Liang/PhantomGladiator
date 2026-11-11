@@ -25,13 +25,13 @@ def main():
     dry = "--dry-run" in sys.argv[2:]
     repo = json.loads(gh("repo", "view", "--json", "url"))["url"]
     url = repo + "/releases/latest"
-    releases = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,name"))
+    releases = json.loads(gh("release", "list", "--limit", "200", "--json", "tagName,name,isPrerelease,isDraft"))
     tags = [r["tagName"] for r in releases]
     assert latest in tags, (latest, tags[:5])
     changed = 0
     for release in releases:
         tag, name = release["tagName"], release["name"]
-        if tag == latest or name.startswith(PREFIX):
+        if tag == latest or name.startswith(PREFIX) or release.get("isPrerelease") or release.get("isDraft"):
             continue
         body = json.loads(gh("release", "view", tag, "--json", "body"))["body"]
         print(("would mark " if dry else "marking ") + tag)
