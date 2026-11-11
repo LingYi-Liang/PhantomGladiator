@@ -23,9 +23,14 @@ IsKeyBindRegistered=function(key,modifiers) return keys[keySlot(key,modifiers)]~
 RegisterKeyBind=function(key,second,third)keys[keySlot(key,third and second or nil)]=third or second end
 ExecuteInGameThread=function(callback) queue[#queue+1]=callback end
 LoopInGameThreadWithDelay=function(_,callback) loops[#loops+1]=callback; return #loops end
+-- The hotkeys' frame loop (key_poll.lua), kept apart from the timers.
+local frameLoops={}
+LoopInGameThreadAfterFrames=function(frames,callback) assert(frames==1);frameLoops[#frameLoops+1]=callback;return 'frame'..#frameLoops end
 CancelDelayedAction=function() end
 ExecuteInGameThreadWithDelay=function() error("no delayed UE work expected during empty-world boot") end
-FindAllOf=function() assert(inGame,"UObject lookup outside game thread"); return {} end
+-- Filled in below: the player controller the hotkeys are read from.
+local controllers={}
+FindAllOf=function(name) assert(inGame,"UObject lookup outside game thread"); return name=='PlayerController' and controllers or {} end
 FindObjects=function() assert(inGame); return {} end
 local known=cfg.KnownMonsterClasses[1]
 local base={IsValid=function() return true end,GetFullName=function() return actorMode and 'Class /Script/Engine.Actor' or "Class /Script/ProjectPBZ.PBZCharacter_NPC" end}
@@ -55,6 +60,22 @@ function player:K2_GetActorLocation() return {X=0,Y=0,Z=100} end
 function player:GetActorForwardVector() return {X=1,Y=0,Z=0} end
 local world={IsValid=function() return true end,GetAddress=function() return 100 end}
 local pc={IsValid=function() return true end,Pawn=player}
+-- Keys as the engine reports them: `pressed` holds the names down in this frame.
+local pressed={}
+FName=FName or function(name)return {ToString=function()return name end}end
+local controllerClass={IsValid=function()return true end,GetFullName=function()return 'Class /Script/ProjectPBZ.PBZPlayerController' end,
+    GetFName=function()return {ToString=function()return 'PBZPlayerController' end}end}
+local keyController={IsValid=function()return true end,GetClass=function()return controllerClass end,
+    GetFullName=function()return 'PBZPlayerController /Test/World.Controller' end,
+    Player={IsValid=function()return true end},Pawn=player,
+    GetInputAnalogKeyState=function(_,key)assert(inGame,'key read outside game thread');return pressed[key.KeyName:ToString()] and 1.0 or 0.0 end,
+    WasInputKeyJustPressed=function(_,key)assert(inGame,'key read outside game thread');return pressed[key.KeyName:ToString()]==true end}
+controllers[1]=keyController
+-- One frame with the keys down, then one with them up.
+local function press(...)
+    for _,name in ipairs({...})do pressed[name]=true end
+    inGame=true;frameLoops[1]();pressed={};frameLoops[1]();inGame=false
+end
 package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end}
 local arenaOptions,statMatchInstance,companionStatsInstance,spectatorOptions,runtimeInstance
 local Arena=require('arena_controller');local realArenaNew=Arena.new
@@ -137,19 +158,21 @@ assert(loadfile(scripts.."main.lua"))()
 assert(keepOptions and keepOptions.members and keepOptions.location and keepOptions.camera and keepOptions.ground and keepOptions.ground.park,'stands are kept on the ground')
 assert(next(keys)==nil,'fresh installation must not register fixed or developer shortcuts')
 assert(#loops==1,"boot should only install bounded panel polling")
+assert(#frameLoops==1,'the hotkeys are read by one frame loop')
 local configured={spawn='F9',start='F3',stop='F4',refresh_catalog='F1',toggle_camera='F6',exit_camera='F7',cycle_team='F2',toggle_spectator='F8'}
 inGame=true;assert(runtimeInstance:configure(configured).ok);inGame=false
-keys['113:0']();assert(#queue==1 and #loads==0)
+assert(next(keys)==nil,'configured shortcuts are read in the game thread, never registered as UE4SS key binds')
+press('F2');assert(#queue==1 and #loads==0)
 inGame=true;table.remove(queue,1)();inGame=false
 assert(#loads==0 and table.concat(logs,'\n'):find('blue -> red',1,true),'F2 must only cycle next-spawn settings')
-keys['120:0']()
+press('F9')
 assert(#loads==0 and #queue==1,"hotkey must dispatch to game thread")
 inGame=true
 table.remove(queue,1)()
 inGame=false
 assert(#loads==0,"startup without a player must not load assets")
 player.alive=true
-keys['120:0'](); inGame=true; table.remove(queue,1)(); inGame=false
+press('F9'); inGame=true; table.remove(queue,1)(); inGame=false
 assert(#loads==1 and loads[1]==known,"ready world with zero NPC instances must resolve only the approved path")
 inGame=true
 local beforeCameraQueue=#queue
@@ -158,7 +181,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.11-lion-npc-test-1',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.11-lion-story-fix-1',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -413,7 +436,7 @@ do -- An attack order's restore records: once what they would put back is gone, 
 end
 local queuedBefore=#queue
 ModRef.OnUnload()
-keys['120:0']()
+press('F9')
 assert(#queue==queuedBefore,"unloaded input must stay inert")
 print=originalPrint
 print("main_boot: PASS (all modules, no startup asset load, ready no-NPC approved resolution, camera bindings, game-thread dispatch, unload)")

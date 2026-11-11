@@ -24,7 +24,7 @@ local function remote(value)
     return {type=function()return 'RemoteUnrealParam' end,get=function()return value end}
 end
 
-local function fixture()
+local function fixture(fname)
     local h={dream=object('Dream'),dreamClass=object('BlueprintGeneratedClass '..MENGHUA),
         null=object('Null'),lines={},inGame=true,override=true,registrations=0}
     h.classes={[MENGHUA]=h.dreamClass}
@@ -38,7 +38,7 @@ local function fixture()
     end
     h.module=Standalone.new({log=function(line)h.lines[#h.lines+1]=line end,statics=function()return h.statics end,
         staticFind=function(path)return h.classes[path]end,
-        fname=function(name)return name end,
+        fname=fname or function(name)return name end,
         boardOf=function(actor)return actor.board end,
         remember=function(key,restore)return h.session:remember(key,restore)end,
         createInvalidObject=function()return h.null end,inGameThread=function()return h.inGame end,
@@ -144,7 +144,8 @@ do
 end
 
 do
-    local h=fixture()
+    -- UE4SS exposes FName as a callable object.
+    local h=fixture(setmetatable({}, {__call=function(_,name)return name end}))
     local bardPath='/PBZCombatAsset/ActorData/Mobs/071_XianZhe/BP_Monster_XianZhe.BP_Monster_XianZhe_C'
     local chilian='/PBZCombatAsset/ActorData/Mobs/065_ChiLian_P2/BP_Monster_ChiLian_P2.BP_Monster_ChiLian_P2_C'
     local bardClass=object('BlueprintGeneratedClass '..bardPath)

@@ -109,7 +109,7 @@ local function fixture(combat)
         statics=function()return statics end,find=function(path)assert(path==polePath);return poleClass end,
         library=function()return library end,range=function(a)return a.range end,
         opponent=function(a)return a.target end,carrier=function(a)if not a.mountPending then return a.mount or a end end,
-        fname=function(s)return s end,combat=combat})
+        fname=function(s)return s end,combat=combat,busy=function(actor)return actor.executing==true end})
     function h:tick(seconds)
         self.now=self.now+(seconds or 0.5)
         self.adapter:tick(self.members,self.battle)
@@ -131,6 +131,14 @@ test('native phase protection and unknown tags keep opponents on the ground',fun
     h.boss.noTags=true
     h:tick()
     assert(#h.poles==0 and #npc.moves==0)
+end)
+
+test('native lion dance movement is not treated as a stuck actor',function()
+    local h=fixture()
+    assert(h.adapter:keepsMovement(h.boss,bossPath))
+    h.boss.tags[onPole]=0
+    assert(not h.adapter:keepsMovement(h.boss,bossPath))
+    assert(not h.adapter:keepsMovement(enemy(h),'/Test/CustomNPC.CustomNPC_C'))
 end)
 
 test('an arbitrary native walker boards an owned pole and restores the movement snapshot',function()
@@ -164,6 +172,30 @@ test('a rider waits for its own mount and only the carrier is moved',function()
     assert(#rider.moves==0 and #rider.mount.moves==1 and h.resume[1]==rider.mount)
     assert(h.poles[1].Owner==rider.mount and h.poles[1].scale.X>=3)
     assert(h.adapter:stop() and h.poles[1].gone and rider.mount.at.Z==193)
+end)
+
+test('the last lion execution can finish over a prepared pole without missing the next idle tick',function()
+    local h=fixture()
+    local npc=enemy(h,5)
+    npc.executing=true
+    h:tick()
+    assert(#h.poles==1 and #npc.moves==0,'prepare the pole during the execution tail')
+    for _=1,8 do h:tick() end
+    assert(#npc.moves==0 and not h.poles[1].gone,'keep waiting through the rest of the execution')
+    npc.executing=false
+    npc.CharacterMovement.MovementMode=1
+    h:tick()
+    assert(#npc.moves==1 and npc.CharacterMovement.MovementMode==1,'board as soon as the execution releases the actor')
+    h:tick()
+    assert(#h.resume==1 and h.adapter:holds(npc))
+end)
+
+test('an elevated boss can be located by its actual feet and the registered pole top',function()
+    local h=fixture()
+    local npc=enemy(h)
+    h.anchor.Occupied=false
+    h:tick();h:tick();h:tick()
+    assert(#h.resume==1 and #npc.moves==1,'the temporary Occupied flag can be cleared by native transitions')
 end)
 
 test('flying units retain their movement mode and continue after leaving the pole',function()

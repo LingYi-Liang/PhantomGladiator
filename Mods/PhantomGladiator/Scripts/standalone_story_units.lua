@@ -209,8 +209,13 @@ function Standalone.new(options)
     function self:prepareTeamActor(actor)
         local entry,key=entryFor(actor)
         if not entry or not entry.teamBossName then return false end
-        if type(fname)~='function' or type(options.remember)~='function' then return false end
-        local blockTag={TagName=fname(HATRED_BLOCK)}
+        if type(options.remember)~='function' then return false end
+        local made,tagName=pcall(fname,HATRED_BLOCK)
+        local blockTag={TagName=made and tagName or nil}
+        if tag_name(blockTag)~=HATRED_BLOCK then
+            say('剧情援军仇恨标签名称未读回 '..entry.name..' 构造调用='..tostring(made))
+            return false
+        end
         local originalFaction,originalCount=teamState(actor,blockTag)
         if not originalFaction or (originalCount~=0 and originalCount~=1) then
             say('剧情援军阵营或初始仇恨标签不可确认 '..entry.name

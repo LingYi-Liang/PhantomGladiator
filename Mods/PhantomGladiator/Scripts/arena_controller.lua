@@ -478,7 +478,7 @@ function Arena.new(options)
         end
         for _,unit in ipairs(active) do
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
-            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget) end
+            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget,unit.class_path) end
             if scan and options.holdMount and unit.assignedTarget then invoke('holdMount',unit.actor,unit.assignedTarget) end
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.

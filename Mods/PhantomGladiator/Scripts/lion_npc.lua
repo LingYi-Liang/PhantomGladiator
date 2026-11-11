@@ -68,15 +68,21 @@ function LionNPC.new(options)
         return true
     end
     local function idle(actor)
-        if gone(actor) or (options.busy and options.busy(actor)) or not clearTags(actor,BUSY) then return false end
+        if gone(actor) then return false,'角色已离场' end
+        if options.busy and options.busy(actor) then return false,'处决或受抓尚未结束' end
+        for _,text in ipairs(BUSY)do
+            local count=tag(actor,text)
+            if count~=0 then return false,text..'='..tostring(count) end
+        end
         local montage=U.field(U.field(actor,'AbilitySystemComponent'),'LocalAnimMontageInfo')
         local ability=U.struct(montage,'AnimatingAbility')
         if U.kind(ability)=='FWeakObjectPtr' then
             local ok,value=pcall(function()return ability:Get()end)
-            if not ok then return false end
+            if not ok then return false,'当前动作未读回' end
             ability=U.unwrap(value)
         end
-        return not U.valid(ability) or U.field(ability,'bIsActive')==false
+        if U.valid(ability) and U.field(ability,'bIsActive')~=false then return false,'原生招式仍在执行' end
+        return true
     end
     local function wait(actor,why)
         local key=U.key(actor)
@@ -99,8 +105,11 @@ function LionNPC.new(options)
     end
     local function sourceAnchor(source)
         local at=location(source.actor)
-        if not at then return nil end
+        local body=shape(source.actor)
+        if not at or not body then return nil,'烈焰位置或胶囊未读回' end
+        local feet=at.Z-body.half
         local best,closest
+        local under,underDistance
         for _,pole in ipairs(U.array(U.field(source.area,'ActivatedPoles')) or {})do
             local owned=false
             for _,seat in pairs(self.seats)do
@@ -108,14 +117,23 @@ function LionNPC.new(options)
                     or (seat.nextPole and same(pole,seat.nextPole.pole)) then owned=true;break end
             end
             if not owned and not gone(pole) and same(U.field(pole,'Area'),source.area)
-                and U.field(pole,'Occupied')==true and U.field(pole,'Activated')==true then
+                and U.field(pole,'Activated')==true then
                 local ok,point=call(U.field(pole,'StandPoint'),'K2_GetComponentLocation')
                 point=ok and vector(point) or nil
                 local d=point and distance2(point,at)
-                if d and (not closest or d<closest) then best,closest=point,d end
+                if d and d<600^2 then
+                    if U.field(pole,'Occupied')==true and (not closest or d<closest) then best,closest=point,d end
+                    local height=math.abs(point.Z-feet)
+                    if height<=160 then
+                        local distance=d+height^2
+                        if not underDistance or distance<underDistance then under,underDistance=point,distance end
+                    end
+                end
             end
         end
-        return closest and closest<600^2 and best or nil
+        if best then return best,'原版占用桩' end
+        if under then return under,'烈焰脚下的原版桩' end
+        return nil,'烈焰身边的桩顶未读回'
     end
     local function chooseSpot(actor,carrier,source,body,anchor)
         local at=location(carrier)
@@ -279,8 +297,18 @@ function LionNPC.new(options)
         if not key or not alive(carrier) or not U.inWorld(carrier,currentWorld) then return end
         if not U.npcPath(actor) or not U.npcPath(carrier) then return wait(actor,'未读到原生NPC身份') end
         local body=shape(carrier)
-        local anchor=sourceAnchor(source)
-        if not body or not anchor or not idle(actor) or not idle(carrier) then return wait(actor,'动作、移动模式或原版占用桩未就绪') end
+        if not body then return wait(actor,'载体胶囊或移动模式未读回') end
+        local finishing=options.busy and options.busy(actor)
+        if not finishing then
+            local ready,reason=idle(actor)
+            if not ready then return wait(actor,reason) end
+            if not same(actor,carrier) then
+                ready,reason=idle(carrier)
+                if not ready then return wait(actor,'坐骑'..reason) end
+            end
+        end
+        local anchor,anchorRead=sourceAnchor(source)
+        if not anchor then return wait(actor,anchorRead) end
         local top=chooseSpot(actor,carrier,source,body,anchor)
         local original=location(carrier)
         local rotation=rotationOf(carrier)
@@ -292,14 +320,22 @@ function LionNPC.new(options)
         for field,value in pairs(platform)do seat[field]=value end
         self.seats[key]=seat
         seat.failed=not seat.readyToCheck
+        say('上桩点准备 actor='..key..' 桩顶依据='..anchorRead..' 处决收尾='..tostring(finishing==true))
     end
     local function board(seat,now)
         if now-seat.createdAt<SETTLE then return end
-        local actor,body=seat.carrier,seat.body
-        if not idle(seat.actor) or not idle(actor) or tonumber((U.field(body.movement,'MovementMode')))~=body.mode then
-            if now-seat.createdAt>3 then seat.failed=true end
-            return
+        local actor=seat.carrier
+        local ready,reason=idle(seat.actor)
+        if not ready then return wait(seat.actor,reason) end
+        if not same(seat.actor,actor) then
+            ready,reason=idle(actor)
+            if not ready then return wait(seat.actor,'坐骑'..reason) end
         end
+        local body=shape(actor)
+        local original,rotation=location(actor),rotationOf(actor)
+        if not body or not original or not rotation then return wait(seat.actor,'收尾后位置、胶囊或移动模式未读回') end
+        if not same(body.capsule,seat.body.capsule) then seat.failed=true;return end
+        seat.body,seat.original,seat.rotation=body,original,rotation
         if not validatePole(seat,seat) then
             seat.failed=true
             return wait(seat.actor,'桩高度、登记或双向碰撞未读回')
@@ -328,7 +364,7 @@ function LionNPC.new(options)
         local top=seat.top
         local dest={X=top.X,Y=top.Y,Z=top.Z+body.half+3}
         seat.moved=true -- retain rollback even if a teleport changes location but returns failure
-        local moved=teleport(actor,dest,rotationOf(actor) or seat.rotation)
+        local moved=teleport(actor,dest,rotation)
         seat.boardedAt=now
         seat.failed=not moved
         say('上桩定位 actor='..seat.key..' 原版桩登记=true 双向碰撞=2 位置读回='..tostring(moved))
@@ -460,6 +496,10 @@ function LionNPC.new(options)
         end
         return false
     end
+    function self:keepsMovement(actor,classPath)
+        if self:holds(actor) then return true end
+        return classPath==BOSS and (tag(actor,ON_POLE) or 0)>0
+    end
     function self:count()
         local n=0
         for _ in pairs(self.seats)do n=n+1 end
@@ -525,7 +565,7 @@ function LionNPC.new(options)
                 if source and source~=failedFor[key] and source.team~=entry.team and clearTags(source.actor,PROTECTED) then
                     local carrier=options.carrier(entry.actor)
                     if U.valid(carrier) and not self.seats[U.key(carrier)] then
-                        retryAt[key]=now+RETRY
+                        retryAt[key]=now+0.5
                         create(entry.actor,carrier,source,now)
                         break
                     end

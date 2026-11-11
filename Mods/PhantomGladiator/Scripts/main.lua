@@ -36,6 +36,7 @@ local StatMatch = require('stat_match')
 local ObserverGuard = require('observer_guard')
 local SpectatorTargets = require('spectator_targets')
 local KeyRouter = require('key_router')
+local KeyPoll = require('key_poll')
 local SpawnDifficulty=require('spawn_difficulty')
 local AIDifficulty=require('ai_difficulty')
 local Companion=require('companion')
@@ -80,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-lion-npc-test-1"
+local BUILD = "v0.40.11-lion-story-fix-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1348,8 +1349,9 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return HoldSensedTarget(actor,target,why)
     end,
     releaseLock=function(actor,target)return arenaSupport.lockRelease~=nil and arenaSupport.lockRelease:release(actor,target)end,
-    unstick=function(actor,target)
-        return onGround~=nil and not (arenaSupport.lionNPC and arenaSupport.lionNPC:holds(actor)) and onGround:free(actor,target)
+    unstick=function(actor,target,classPath)
+        return onGround~=nil and not (arenaSupport.lionNPC and arenaSupport.lionNPC:keepsMovement(actor,classPath))
+            and onGround:free(actor,target)
     end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
@@ -2026,8 +2028,6 @@ local function supportSteps(self)
     step('longzhu',function()self.longzhu:tick()end)
     if mounts then step('mounts',function()mounts:tick()end) end
     if bossStages then step('bossStages',function()bossStages:tick()end) end
-    step('lionNPC',function()self.lionNPC:tick(tickMembers,tickStatus)end)
-    if self.lionStage then step('lionStage',function()self.lionStage:tick()end) end
     -- Before reinforcements: a unit joining an immortal team is locked before it is sent at the enemy.
     step('immortal',function()immortalTeams:tick()end)
     step('activity',function()arenaActivity:sync(tickMembers)end)
@@ -2040,6 +2040,8 @@ local function supportSteps(self)
     step('reinforce',function()arena:tickReinforcements()end)
     if self.guillotine then step('guillotine',function()self.guillotine:tick(tickMembers,tickStatus)end) end
     if arenaExecutions then step('executions',function()arenaExecutions:tick()end) end
+    step('lionNPC',function()self.lionNPC:tick(tickMembers,tickStatus)end)
+    if self.lionStage then step('lionStage',function()self.lionStage:tick()end) end
     step('executionCamera',function()executionCamera:sweep()end)
     step('bossHUD',function()
         local state=tickStatus.state
@@ -2073,7 +2075,11 @@ function arenaSupport:status()
     return result
 end
 
-local keyRouter=KeyRouter.new({log=log})
+-- Every hotkey of this mod is read once a frame in the game thread (key_poll.lua); none is a UE4SS key bind, whose
+-- callback would run this mod's Lua on UE4SS's own thread.
+local keyPoll=KeyPoll.new({log=log,controller=GetRealPlayerController,
+    meter=require('perf_meter').new({label='按键读取',log=log,slow=2,hitch=1000})})
+local keyRouter=KeyRouter.new({log=log,register=keyPoll.register,occupied=keyPoll.occupied})
 local unitKeys=UnitKeys.new({path=Config.RuntimePath,log=log,router=keyRouter,
     queue=function(callback,path,team,count)
         if panelRuntime then panelRuntime:queueSummon(callback,path,team,count) end
@@ -2088,10 +2094,10 @@ local unitKeys=UnitKeys.new({path=Config.RuntimePath,log=log,router=keyRouter,
 
 -- Developer probes are opt-in, never hidden default key reservations.
 if Config.EnableDeveloperKeybinds then
-RegisterKeyBind(Key.F1,{ModifierKey.SHIFT},DumpBrain)
-RegisterKeyBind(Key.F2,{ModifierKey.SHIFT},TargetDiag)
-RegisterKeyBind(Key.F3,{ModifierKey.SHIFT},DumpCollisionMatrix)
-RegisterKeyBind(Key.F9,{ModifierKey.SHIFT},function()
+keyPoll.register(Key.F1,{ModifierKey.SHIFT},DumpBrain)
+keyPoll.register(Key.F2,{ModifierKey.SHIFT},TargetDiag)
+keyPoll.register(Key.F3,{ModifierKey.SHIFT},DumpCollisionMatrix)
+keyPoll.register(Key.F9,{ModifierKey.SHIFT},function()
     ExecuteInGameThread(function()
         for _,path in ipairs(SpawnPolicy.knownPaths()) do
             local result=arena:select(path,"blue",1)
@@ -2116,10 +2122,12 @@ panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.Runtime
     homeLevels=homeLevels,
     references=ReferenceAudit.new({log=log,path=Config.RuntimePath})})
 panelRuntime:start()
+keyPoll:start()
 
 if ModRef then
     ModRef.OnUnload=function()
         freeCamera:silence()
+        keyPoll:silence()
         panelRuntime:silence()
         probeSampleGen=probeSampleGen+1
         probe:silence("Mod卸载")

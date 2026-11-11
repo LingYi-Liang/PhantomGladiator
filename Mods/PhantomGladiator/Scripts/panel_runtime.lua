@@ -557,8 +557,7 @@ end
 function Runtime:queuePoolSummon(path,team,count)
     if not self.alive then return end
     if self.summonQueue.enabled then return self.summonQueue:enqueue(path,team,count) end
-    -- Called from the key thread: the session is not read here. The status pump keeps poolQueue's session current
-    -- and tick() reads it again in the game thread before each summon.
+    -- The status pump keeps poolQueue's session current and tick() reads it again before each summon.
     local queue=self.poolQueue
     local result=queue:enqueue(path,team,count)
     if result.ok and #queue.jobs==1 and not self.poolKick then
