@@ -74,11 +74,15 @@ local function fixture()
             if path:find('SkeletalMeshComponent',1,true) then return meshClass end
             if path:find('SGameAIFunctionLibrary',1,true) then return ai end
         end,
-        pose=function(_,clip)
+        pose=function(_,clip,looping)
             if h.noPose then return nil end
-            local pose={clip=clip,started=h.time}
+            local pose={clip=clip,started=h.time,looping=looping}
             function pose:position()if not h.lostPose then return h.time-self.started end end
             function pose:stop()self.stopped=true;return true end
+            function pose:play(nextClip,loop)
+                self.clip,self.started,self.looping=nextClip,h.time,loop
+                return true
+            end
             h.poses[#h.poses+1]=pose
             return pose
         end})
@@ -90,7 +94,7 @@ local function fixture()
 end
 local function test(name,fn)fn();print('ok - '..name)end
 
-test('original projectile launches only at the shooting frame with NPC ownership and target',function()
+test('two confirmed projectiles trigger a hop, with the same pose driver used for idle, aiming and jumping',function()
     local h=fixture()
     assert(h.combat:arm(h.seat,0) and h.actor.brain.paused and h.head.AttachParent==h.actor.Mesh)
     assert(h:tick(0) and #h.poses==1 and h.poses[1].clip:find('Attack_R',1,true))
@@ -99,10 +103,14 @@ test('original projectile launches only at the shooting frame with NPC ownership
     assert(h.bullets[1].BulletOwnerAvatar==h.actor and h.bullets[1].CurrentTarget.Component==h.boss.CapsuleComponent)
     assert(h:tick(2.0) and #h.bullets==1 and h.boss.hp==100)
     local ok,hop=h:tick(2.9)
-    assert(ok and hop and h.poses[1].stopped)
-    assert(h.combat:beginHop(h.seat) and h.poses[2].clip:find('Battle_Walk_Fwd_R',1,true))
-    assert(h.combat:endHop(h.seat,3.7) and h.poses[2].stopped)
-    assert(h.combat:release(h.seat) and not h.actor.brain.paused and h.head.gone and h.bullets[1].BulletStatus==3)
+    assert(ok and not hop and h.poses[1].looping and h.poses[1].clip:find('Battle_Idle_R',1,true))
+    h.bullets[1].BulletStatus=3
+    assert(h:tick(3) and h:tick(4) and #h.bullets==2)
+    ok,hop=h:tick(6)
+    assert(ok and hop and #h.poses==1)
+    assert(h.combat:beginHop(h.seat) and h.poses[1].clip:find('Battle_Walk_Fwd_R',1,true))
+    assert(h.combat:endHop(h.seat,7.3) and h.poses[1].looping and not h.poses[1].stopped)
+    assert(h.combat:release(h.seat) and not h.actor.brain.paused and h.head.gone and h.bullets[2].BulletStatus==3)
 end)
 
 test('a hit interrupts the windup and stop never completes an unfinished shot',function()
@@ -147,4 +155,32 @@ test('existing AI pause and native spawn failure preserve a recoverable actor',f
     h.actor.brain.paused=false;h.failCreate=true
     assert(h.combat:arm(h.seat,0) and h:tick(0) and not h:tick(1.1))
     assert(h.combat:release(h.seat) and not h.actor.brain.paused and #h.bullets==0)
+end)
+
+test('native pickup uses its equipped lion head and restores the original main weapon on exit',function()
+    local h=fixture()
+    local actor=h.actor
+    local original=object({})
+    local weapons=object({current=0})
+    actor['Character Weapons Component']=weapons
+    actor.AbilitySystemComponent=object({GetGameplayTagCount=function(_,tag)
+        assert(tag.TagName=='CharacterState.HasTempWeapon.HouHouHouHead')
+        return weapons.current==1 and 1 or 0
+    end})
+    function weapons:GetCurrentWeaponIndex(slot,pending)
+        assert(slot.TagName=='Weapon.Slot.Main' and pending==false)
+        return self.current
+    end
+    function weapons:GetSlotWeapon(_,index,out)
+        if index==0 then out.WeaponConfig=original end
+    end
+    function weapons:SetCurrentWeapon(_,index)
+        assert(index==0)
+        self.current=index
+    end
+    local record=assert(h.combat:captureWeapon(actor,h.world))
+    weapons.current=1
+    assert(h.combat:arm(h.seat,0) and not h.head and h.combat:held(h.seat))
+    assert(h.combat:release(h.seat) and h.combat:restoreWeapon(record))
+    assert(weapons.current==0 and not actor.brain.paused and not h.head)
 end)

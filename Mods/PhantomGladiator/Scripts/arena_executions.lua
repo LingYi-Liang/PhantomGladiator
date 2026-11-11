@@ -421,7 +421,7 @@ function Exec.new(options)
         step('换玩家模型',call(comp,'SetSkeletalMeshAsset',asset))
         step('隐藏时照样算骨骼',pcall(function()comp.VisibilityBasedAnimTickOption=TICK_REFRESH end))
         step('隐藏',call(comp,'SetVisibility',false,false))
-        step('播动画',call(comp,'PlayAnimation',montage,false))
+        step('播动画',call(comp,'PlayAnimation',montage,timing.loop==true))
         if (timing.clip_from or 0)~=0 then
             local set=call(comp,'SetPosition',timing.clip_from,false)
             local got,at=call(comp,'GetPosition');at=got and U.unwrap(at)
@@ -437,7 +437,11 @@ function Exec.new(options)
             if not verified then return body,'动画片段速率写后读回失败' end
         end
         local okAnim,anim=call(comp,'GetAnimInstance');anim=okAnim and U.unwrap(anim) or nil
-        step('保留根运动',call(anim,'SetRootMotionMode',KEEP_ROOT_MOTION))
+        local rootMotion=timing.ignoreRootMotion and 1 or KEEP_ROOT_MOTION
+        step('根运动模式',call(anim,'SetRootMotionMode',rootMotion))
+        if timing.ignoreRootMotion and tonumber((U.field(anim,'RootMotionMode')))~=rootMotion then
+            return body,'桩上动画根运动模式未读回'
+        end
         for _,part in ipairs(meshesOf(executor,mesh)) do
             -- Its rendered pose follows the player skeleton, but the primary mesh must still tick its native
             -- montage so CharacterMovement/MotionWarping can advance. false froze it at 0 / StartTime in logs.
@@ -496,11 +500,11 @@ function Exec.new(options)
     end
 
     -- Temporary presentation for the pole controller. Combat, targeting and input remain on the NPC.
-    function self:borrowPolePose(actor,clip)
+    function self:borrowPolePose(actor,clip,looping)
         if active or grabPose or next(pendingBodies) then return nil end
         local mesh=U.field(actor,'Mesh')
         if not U.valid(mesh) or U.valid(weak(U.field(mesh,'LeaderPoseComponent'))) then return nil end
-        local body,why=borrowBody(actor,{clip=clip,same_skeleton=true})
+        local body,why=borrowBody(actor,{clip=clip,same_skeleton=true,loop=looping,ignoreRootMotion=true})
         if not body then return nil end
         if why or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key then
             returnBody(body)
@@ -511,6 +515,20 @@ function Exec.new(options)
             if not body or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key then return nil end
             local ok,value=call(body.comp,'GetPosition')
             return ok and type(value)=='number' and value or nil
+        end
+        function pose:play(nextClip,loop)
+            if not body or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key then return false end
+            local asset=object(nextClip)
+            local _,mesh=call(body.comp,'GetSkeletalMeshAsset')
+            local expected=U.key(U.field(mesh,'Skeleton'))
+            if not expected or U.key(U.field(asset,'Skeleton'))~=expected then return false end
+            if not call(body.comp,'PlayAnimation',asset,loop==true) then return false end
+            local _,anim=call(body.comp,'GetAnimInstance')
+            -- The capsule follows the swept jump. Extract the animation's root without moving the mesh twice.
+            call(anim,'SetRootMotionMode',1)
+            local read=U.struct(U.field(body.comp,'AnimationData'),'AnimToPlay')
+            return U.key(read)==U.key(asset) and tonumber((U.field(anim,'RootMotionMode')))==1
+                and select(2,call(body.comp,'IsPlaying'))==true
         end
         function pose:stop()
             if not body then return true end
@@ -942,6 +960,8 @@ function Exec.new(options)
         say(string.format('开始（%s）目标=%s HP=%s 底线=%s 执行方=%s 距离=%.1fm 技能对=%s / %s 来源=%s；%s',reason,className(boss),fmt(hp),fmt(floor),
             className(executor),(d or 0)/100,short(info.pair.execution),short(info.pair.executed),info.pair.source,turned))
         local wantPlayback=info.timing.dynamic or (adopted and not info.timing.mash and info.timing.montage~=nil)
+        local lionPickup=short(info.pair.execution)=='GA_Hun_BEx_HouHouHou_01_C'
+            and options.lionPickup and options.lionPickup(executor,boss)
         local body,why
         if not wantPlayback then body,why=borrowBody(executor,info.timing) end
         poseProbe:begin(executor,boss,body and body.comp or nil)
@@ -966,6 +986,7 @@ function Exec.new(options)
         say(string.format('调用 PlayExactExecution=%s %s；%s；执行方组件：%s；目标组件：%s；目标动作=%s 执行方动作=%s',tostring(ok),ok and '' or tostring(err),
             held,executionInfo(executor),executionInfo(boss),tostring(montageOf(boss)),tostring(montageOf(executor))))
         if not ok then
+            if lionPickup then options.lionPickupEnded(executor) end
             self.failures=self.failures+1
             chain:stop('PlayExactExecution failed')
             poseProbe:stop('PlayExactExecution failed')
@@ -982,7 +1003,7 @@ function Exec.new(options)
         local mash=info.timing.mash and setupMash(executor,boss,info) or nil
         if mash then length=mash.next+PRESSES*GAP+info.timing.stages.finale.length+TAIL end
         active={executor=executor,boss=boss,info=info,body=body,t0=now(),length=length,before=before,mash=mash,yaw=yaw,
-            dynamic=wantPlayback,adopted=adopted~=nil,
+            dynamic=wantPlayback,adopted=adopted~=nil,lionPickup=lionPickup,
             own=abilityOn(executor,short(info.pair.execution)),theirs=abilityOn(boss,short(info.pair.executed)),
             montage=after~=before and after or nil,gone=nil,samples=0,paused=paused,byLock=reason=='卡在锁血线'}
         self.message='处决中：'..className(executor)..' → '..className(boss)
@@ -1052,6 +1073,7 @@ function Exec.new(options)
         local released=not handoff and release(run) or '；旧技能由原生切换处理'
         chain:stop(why)
         local back=returnBody(run.body)..'；'..(handoff and 'AI暂停交给下一段' or resume(run))..released
+        if run.lionPickup then options.lionPickupEnded(run.executor) end
         local boss=run.boss
         local hp=U.valid(boss) and read(boss,'Health') or nil
         local kill='目标已倒下或失效'
@@ -1101,6 +1123,17 @@ function Exec.new(options)
                 tostring(montageOf(run.executor)),tostring(playing and U.unwrap(playing)),d and string.format('%.1fm',d/100) or '?'))
         end
         if hp and hp<=0 and not run.fell then run.fell=t;say(string.format('目标在 %.1fs 倒下，执行方的动作继续播完',t)) end
+        if run.lionPickup and run.fell and t>=2.8 and t<4.2 then
+            local _,anim=call(U.field(run.executor,'Mesh'),'GetAnimInstance')
+            local _,current=call(anim,'GetCurrentActiveMontage')
+            if short(current)=='HouHouHou_GEx_01_R_Montage' then
+                local _,position=call(anim,'Montage_GetPosition',current)
+                if type(position)=='number' and position>=3.052 and position<4.1 and options.lionPickupReady(run.executor) then
+                    finish('狮头到手，衔接跳桩')
+                    return
+                end
+            end
+        end
         if run.mash and not run.mash.finale and t>=run.mash.next then press(run,t) end
         if t>=1.5 and not run.montage and not run.fell then finish('目标没有播被处决动作',true);return end
         if not run.dynamic and t>=run.length then finish(run.fell and '播完，目标已倒下' or '播完');return end

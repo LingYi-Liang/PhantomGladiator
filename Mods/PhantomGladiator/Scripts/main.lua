@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.11-lion-story-fix-1"
+local BUILD = "v0.40.11-lion-jump-test-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1749,7 +1749,7 @@ arenaSupport.lionNPC=require('lion_npc').new({log=log,location=GetLocation,groun
     carrier=function(actor)if mounts then return mounts:carrierOf(actor) end;return actor end,
     library=function()return StaticFindObject('/Script/ProjectPBZ.Default__PBZAbilityBlueprintLibrary')end,
     combat=require('lion_pole_combat').new({log=log,location=GetLocation,hp=GetHP,isDestroying=actorIsDestroying,
-        pose=function(actor,clip)if arenaExecutions then return arenaExecutions:borrowPolePose(actor,clip) end end}),
+        pose=function(actor,clip,looping)if arenaExecutions then return arenaExecutions:borrowPolePose(actor,clip,looping) end end}),
     range=function(actor)
         local controller=UEObserve.field(GetAIComp(actor),'AIController')
         local library=StaticFindObject('/Script/SGameAI.Default__SGameAIFunctionLibrary')
@@ -1969,6 +1969,9 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=UEHelpers.GetWorld,getLocation=GetLocation,camera=executionCamera,
     onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
+    lionPickup=function(actor,victim)return arenaSupport.lionNPC:beginPickup(actor,victim,ArenaMembers(),ArenaStatus())end,
+    lionPickupReady=function(actor)return arenaSupport.lionNPC:pickupReady(actor)end,
+    lionPickupEnded=function(actor)arenaSupport.lionNPC:pickupEnded(actor)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
@@ -2127,6 +2130,7 @@ keyPoll:start()
 if ModRef then
     ModRef.OnUnload=function()
         freeCamera:silence()
+        arenaSupport.lionNPC:silence()
         keyPoll:silence()
         panelRuntime:silence()
         probeSampleGen=probeSampleGen+1

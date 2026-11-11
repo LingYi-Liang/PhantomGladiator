@@ -23,32 +23,47 @@ local function collider(outer,channel)
         SetGenerateOverlapEvents=function(self,value)self.overlapEvents=value end})
 end
 local function fixture(combat)
-    local h={now=0,world=object({}),poles={},resume={},log={},members={},battle={battle_active=true}}
+    local h={now=0,world=object({}),poles={},resume={},log={},members={},timers={},timerId=0,battle={battle_active=true}}
     local npcBase=object({GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC' end})
     function h:unit(path,team,mode,radius,x)
-        local actor=object({outer=self.world,hp=100,tags={},at={X=x or 250,Y=0,Z=radius*2+3},moves={}})
+        local actor=object({outer=self.world,hp=100,tags={},at={X=x or 250,Y=0,Z=radius*2+3},moves={},teleports={}})
         local cls=object({GetFullName=function()return 'BlueprintGeneratedClass '..path end,GetSuperStruct=function()return npcBase end})
         actor.GetClass=function()return cls end
         actor.K2_GetActorRotation=function()return {Pitch=0,Yaw=180,Roll=0} end
-        actor.K2_TeleportTo=function(a,dest,rotation)
-            assert(not a.gone and rotation.Yaw==180)
+        actor.K2_TeleportTo=function(a,dest)
+            assert(not a.gone)
+            a.at=dest
+            a.teleports[#a.teleports+1]=dest
+            a.CharacterMovement.base=nil
+            return true
+        end
+        actor.K2_SetActorLocationAndRotation=function(a,dest,_,sweep,_,teleport)
+            assert(not a.gone and sweep and not teleport)
+            if self.block and self.block(a,dest) then return false end
             a.at=dest
             a.moves[#a.moves+1]=dest
             a.CharacterMovement.base=nil
-            if dest.Z>200 and not self.noBase and a.CharacterMovement.MovementMode==1 then
-                for _,pole in ipairs(self.poles)do
-                    if pole.Owner==a and not pole.gone then a.CharacterMovement.base=pole.SM_WoodPost_001;break end
-                end
-            end
-            return not (dest.Z>200 and self.teleportFails)
+            return true
         end
         actor.CapsuleComponent=collider(actor,19)
         actor.CapsuleComponent.GetScaledCapsuleRadius=function()return radius end
         actor.CapsuleComponent.GetScaledCapsuleHalfHeight=function()return radius*2 end
         actor.CharacterMovement=object({outer=actor,MovementMode=mode,bCanWalkOffLedges=true,bCanWalkOffLedgesWhenCrouching=true,
             GetMovementBase=function(self)return self.base end,
-            GetGravityZ=function()return -980 end,
-            SetMovementMode=function(self,value)self.MovementMode=value end})
+            StopMovementImmediately=function()end,
+            SetMovementMode=function(move,value)
+                move.MovementMode=value
+                move.base=nil
+                if value~=1 or self.noBase then return end
+                for _,pole in ipairs(self.area.ActivatedPoles)do
+                    local top=pole.StandPoint:K2_GetComponentLocation()
+                    if pole.SM_WoodPost_001 and not pole.gone and math.abs(actor.at.Z-top.Z-radius*2-3)<1
+                        and (actor.at.X-top.X)^2+(actor.at.Y-top.Y)^2<1 then
+                        move.base=pole.SM_WoodPost_001
+                        break
+                    end
+                end
+            end})
         actor.AbilitySystemComponent=object({outer=actor,GetGameplayTagCount=function(_,value)
             if actor.noTags then return nil end
             return actor.tags[value.TagName] or 0
@@ -98,7 +113,7 @@ local function fixture(combat)
             return pole
         end})
     local library=object({ResumeLionDancerPoleClusterActions=function(_,area,actor)
-        assert(area==h.area and actor.at.Z>200 and #h.poles>0)
+        assert(area==h.area and actor.at.Z>200 and #h.area.ActivatedPoles>1)
         h.resume[#h.resume+1]=actor
         return h.resumeCount or 1
     end})
@@ -106,13 +121,33 @@ local function fixture(combat)
         now=function()return h.now end,world=function()return h.world end,area=function()return h.area end,
         location=function(a)assert(not a.gone);return a.at end,hp=function(a)assert(not a.gone);return a.hp end,
         ground=function()return 0 end,isDestroying=function(a)return a.gone end,
-        statics=function()return statics end,find=function(path)assert(path==polePath);return poleClass end,
+        statics=function()return statics end,find=function(path)
+            if path=='/Script/MotionWarping.MotionWarpingComponent' then return h.warpClass end
+            assert(path==polePath);return poleClass
+        end,
         library=function()return library end,range=function(a)return a.range end,
         opponent=function(a)return a.target end,carrier=function(a)if not a.mountPending then return a.mount or a end end,
-        fname=function(s)return s end,combat=combat,busy=function(actor)return actor.executing==true end})
+        fname=function(s)return s end,combat=combat,busy=function(actor)return actor.executing==true end,
+        loop=function(ms,fn)
+            assert(ms==16)
+            h.timerId=h.timerId+1
+            h.timers[h.timerId]=fn
+            return h.timerId
+        end,
+        cancel=function(id)h.timers[id]=nil end})
+    function h:frames(seconds)
+        local untilTime=self.now+seconds
+        while self.now<untilTime do
+            self.now=math.min(self.now+0.016,untilTime)
+            for _,callback in pairs(self.timers)do callback() end
+        end
+    end
     function h:tick(seconds)
-        self.now=self.now+(seconds or 0.5)
+        self:frames(seconds or 0.5)
         self.adapter:tick(self.members,self.battle)
+    end
+    function h:board()
+        self:tick();self:tick();self:tick(1.4);self:tick()
     end
     return h
 end
@@ -147,7 +182,11 @@ test('an arbitrary native walker boards an owned pole and restores the movement 
     h:tick()
     assert(#h.poles==1 and #npc.moves==0 and #h.resume==0)
     h:tick()
-    assert(h.adapter:holds(npc) and #npc.moves==1 and npc.at.Z==573)
+    h:frames(0.8)
+    assert(h.adapter:holds(npc) and #npc.moves>1 and npc.at.Z>73 and npc.at.Z<700 and #npc.teleports==0)
+    assert(npc.CharacterMovement.MovementMode==5 and #h.resume==0)
+    h:tick(0.6)
+    assert(math.abs(npc.at.Z-573)<0.01)
     assert(npc.CharacterMovement.MovementMode==1 and not npc.CharacterMovement.bCanWalkOffLedges)
     assert(npc.CapsuleComponent.responses[1]==2 and h.poles[1].Area==h.area)
     assert(#h.resume==0,'position alone does not confirm a walking unit has a floor')
@@ -168,8 +207,8 @@ test('a rider waits for its own mount and only the carrier is moved',function()
     assert(#h.poles==0)
     rider.mount=h:unit('/Test/Mount.Mount_C',nil,1,95)
     rider.mountPending=false
-    h:tick();h:tick();h:tick()
-    assert(#rider.moves==0 and #rider.mount.moves==1 and h.resume[1]==rider.mount)
+    h:board()
+    assert(#rider.moves==0 and #rider.mount.moves>1 and h.resume[1]==rider.mount)
     assert(h.poles[1].Owner==rider.mount and h.poles[1].scale.X>=3)
     assert(h.adapter:stop() and h.poles[1].gone and rider.mount.at.Z==193)
 end)
@@ -185,7 +224,8 @@ test('the last lion execution can finish over a prepared pole without missing th
     npc.executing=false
     npc.CharacterMovement.MovementMode=1
     h:tick()
-    assert(#npc.moves==1 and npc.CharacterMovement.MovementMode==1,'board as soon as the execution releases the actor')
+    assert(npc.CharacterMovement.MovementMode==5 and next(h.timers),'start the jump when the execution releases the actor')
+    h:tick(1.4)
     h:tick()
     assert(#h.resume==1 and h.adapter:holds(npc))
 end)
@@ -194,18 +234,18 @@ test('an elevated boss can be located by its actual feet and the registered pole
     local h=fixture()
     local npc=enemy(h)
     h.anchor.Occupied=false
-    h:tick();h:tick();h:tick()
-    assert(#h.resume==1 and #npc.moves==1,'the temporary Occupied flag can be cleared by native transitions')
+    h:board()
+    assert(#h.resume==1 and #npc.moves>1,'the temporary Occupied flag can be cleared by native transitions')
 end)
 
 test('flying units retain their movement mode and continue after leaving the pole',function()
     local h=fixture()
     local npc=enemy(h,5)
-    h:tick();h:tick();h:tick()
+    h:board()
     assert(#h.resume==1 and npc.CharacterMovement.MovementMode==5 and npc.CharacterMovement.bCanWalkOffLedges)
     npc.at={X=750,Y=0,Z=600}
-    h:tick(3);h:tick()
-    assert(#npc.moves==1 and npc.at.X==750 and npc.CharacterMovement.MovementMode==5 and h.poles[1].gone)
+    h:tick();h:tick(1.2);h:tick()
+    assert(#npc.teleports==0 and npc.at.X==750 and npc.CharacterMovement.MovementMode==5 and h.poles[1].gone)
 end)
 
 test('unsupported and busy movement waits rather than interrupting an action',function()
@@ -218,7 +258,7 @@ test('unsupported and busy movement waits rather than interrupting an action',fu
     h:tick(6)
     assert(#h.poles==0)
     npc.tags['Ability.Action']=0
-    h:tick(6);h:tick();h:tick()
+    h:tick(6);h:tick();h:tick(1.4);h:tick()
     assert(#h.resume==1)
 end)
 
@@ -235,21 +275,21 @@ test('the original scatter resumes only after a real physical floor readback',fu
     local h=fixture()
     local npc=enemy(h)
     h.noBase=true
-    h:tick();h:tick();h:tick(3);h:tick()
-    assert(#h.resume==0 and npc.at.Z==73 and #npc.moves==2 and h.poles[1].gone)
+    h:board();h:tick(2);h:tick()
+    assert(#h.resume==0 and npc.at.Z==73 and #npc.teleports==1 and h.poles[1].gone)
 end)
 
 test('partial relocation and actor invalidation both clean up owned poles',function()
     local h=fixture()
     local npc=enemy(h)
-    h.teleportFails=true
-    h:tick();h:tick();h:tick()
+    h.block=function(_,dest)return dest.Z>200 end
+    h:tick();h:tick();h:tick(1.4);h:tick()
     assert(npc.at.Z==73 and h.poles[1].gone and #h.resume==0)
-    h.teleportFails=false
+    h.block=nil
     h:tick(6)
     assert(#h.poles==1,'one failure per native phase avoids repeated actor creation')
     h.boss.tags[onPole]=0;h:tick()
-    h.boss.tags[onPole]=1;h:tick();h:tick();h:tick()
+    h.boss.tags[onPole]=1;h:board()
     npc.gone=true
     h:tick()
     assert(h.poles[2].gone and h.adapter:count()==0 and #h.area.ActivatedPoles==1)
@@ -262,11 +302,12 @@ test('inactive fights and map changes do not take over other actors',function()
     h:tick()
     assert(#h.poles==0)
     h.battle.battle_active=true
-    h:tick();h:tick();h:tick()
+    h:tick();h:tick();h:frames(0.8)
+    local moved=#npc.moves
     h.world=object({})
     h.members={}
     h:tick()
-    assert(#npc.moves==1 and not h.poles[1].gone and h.adapter:count()==0)
+    assert(#npc.moves==moved and not next(h.timers) and not h.poles[1].gone and h.adapter:count()==0)
 end)
 
 test('opponents on other targets and non-fighting actors stay put',function()
@@ -279,31 +320,82 @@ test('opponents on other targets and non-fighting actors stay put',function()
     assert(#h.poles==0 and #npc.moves==0 and #other.moves==0)
 end)
 
-test('a second verified pole is reserved through the native jump and the old one is removed only after landing',function()
-    local combat={ticks=0}
+local function combatFixture()
+    local combat={hops=0,landings=0,turn=false,restored=0}
     function combat:arm(seat)seat.combat={};return true end
     function combat:held(seat)return seat.combat~=nil end
-    function combat:tick(seat)
-        self.ticks=self.ticks+1
-        return true,self.ticks==1
+    function combat:tick()
+        local requested=self.turn
+        self.turn=false
+        return true,requested
     end
-    function combat:beginHop()self.started=true;return true end
-    function combat:endHop()self.landed=true;return true end
+    function combat:beginHop()self.hops=self.hops+1;return true end
+    function combat:endHop()self.landings=self.landings+1;return true end
     function combat:release(seat)seat.combat=nil;return true end
+    function combat:captureWeapon()return {} end
+    function combat:restoreWeapon()self.restored=self.restored+1;return true end
+    return combat
+end
+
+test('a staged pickup selects the newly registered pole at the native warp target',function()
+    local combat=combatFixture()
     local h=fixture(combat)
     local npc=enemy(h)
-    npc.LaunchCharacter=function(self,velocity,xy,z)
-        assert(xy and z and velocity.Z>0 and combat.started and h.poles[2].Area==h.area)
-        self.CharacterMovement.base=nil
-        self.CharacterMovement.MovementMode=3
-    end
-    h:tick();h:tick();h:tick()
-    assert(#h.poles==2 and not combat.started and combat.ticks==1)
-    h:tick();h:tick()
-    assert(combat.started and not combat.landed and not h.poles[1].gone and combat.ticks==1)
-    npc.CharacterMovement.base=h.poles[2].SM_WoodPost_001
-    npc.CharacterMovement.MovementMode=1
+    local victim=h:unit('/Test/HouHouHou.HouHouHou_C','red',1,25)
+    h.members[#h.members].summoner=h.boss
+    npc.executing=true
+    assert(h.adapter:beginPickup(npc,victim,h.members,h.battle))
     h:tick()
-    assert(combat.landed and h.poles[1].gone and not h.poles[2].gone and h.adapter:holds(npc))
-    assert(h.adapter:stop() and h.poles[2].gone and #h.area.ActivatedPoles==1)
+    assert(#h.poles==0,'wait for the actual pole plan before choosing the first landing')
+    local top={X=440,Y=0,Z=500}
+    local pole=object({outer=h.world,Area=h.area,Activated=true,Occupied=false,
+        StandPoint=object({K2_GetComponentLocation=function()return top end})})
+    pole.SM_WoodPost_001=collider(pole,1)
+    pole.SM_WoodPost_001.mode=3
+    pole.SM_WoodPost_001.responses[19]=2
+    h.area.ActivatedPoles[#h.area.ActivatedPoles+1]=pole
+    h.warpClass=object({})
+    local warp=object({WarpTargets={{Name={ToString=function()return 'Pole' end},Location=top}}})
+    function npc:GetComponentByClass(cls)assert(cls==h.warpClass);return warp end
+    npc.tags['CharacterState.HasTempWeapon.HouHouHouHead']=1
+    assert(h.adapter:pickupReady(npc))
+    assert(#h.poles==0 and pole.Occupied)
+    h.adapter:pickupEnded(npc)
+    npc.executing=false
+    h:tick();h:tick(1.4);h:tick()
+    assert(combat.hops==1 and combat.landings==1 and npc.CharacterMovement.base==pole.SM_WoodPost_001)
+    assert(#npc.teleports==0 and #h.resume==1)
+    assert(h.adapter:stop() and combat.restored==1 and not pole.Occupied and not pole.gone)
+end)
+
+test('confirmed poles can be reused for a second and third landing without a ground reset',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h)
+    h:board()
+    assert(combat.hops==1 and combat.landings==1)
+    combat.turn=true
+    h:tick();h:tick();h:tick(1.4)
+    assert(#h.poles==2 and combat.landings==2 and not h.poles[1].gone
+        and npc.CharacterMovement.base==h.poles[2].SM_WoodPost_001)
+    combat.turn=true
+    h:tick();h:tick();h:tick(1.4)
+    assert(#h.poles==2 and combat.landings==3 and #npc.teleports==0
+        and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001)
+    assert(h.adapter:stop() and h.poles[1].gone and h.poles[2].gone and #h.area.ActivatedPoles==1)
+end)
+
+test('an obstructed hop returns to the last supported pole and keeps the weapon mode',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h)
+    h:board()
+    local first={X=npc.at.X,Y=npc.at.Y,Z=npc.at.Z}
+    combat.turn=true
+    h:tick()
+    h.block=function(_,dest)return (dest.X-first.X)^2+(dest.Y-first.Y)^2>30^2 end
+    h:tick();h:tick(1.4);h:tick(0.8)
+    assert(h.poles[2].gone and not h.poles[1].gone and h.adapter:holds(npc))
+    assert(npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001 and #npc.teleports==0)
+    assert(combat.landings==2 and h.adapter:stop())
 end)

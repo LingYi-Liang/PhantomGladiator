@@ -9,6 +9,8 @@ local BUSY={'Ability.Action','CharacterState.InLevelSequence','CharacterState.St
     'CharacterState.Hitreact.State.Lying','AI.DisableCombatAI'}
 local POLE_TOP=500.126801 -- the native wood mesh's local upper bound
 local RETRY,SETTLE=5,0.4
+local MOTION_WARP='/Script/MotionWarping.MotionWarpingComponent'
+local JUMP_START,JUMP_LAND=0.513629,1.249791
 
 local function call(object,method,...)
     if not U.valid(object) then return false end
@@ -45,6 +47,9 @@ function LionNPC.new(options)
     local load=options.load or LoadAsset
     local name=options.fname or FName
     local combat=options.combat
+    local loop=options.loop or LoopInGameThreadWithDelay
+    local cancel=options.cancel or CancelDelayedAction
+    local pickups={}
     local retryAt,waiting,failedFor={},{},{}
     local currentWorld,poleClass
     local function say(text)options.log('[LionNPC] '..text)end
@@ -113,7 +118,7 @@ function LionNPC.new(options)
         for _,pole in ipairs(U.array(U.field(source.area,'ActivatedPoles')) or {})do
             local owned=false
             for _,seat in pairs(self.seats)do
-                if same(pole,seat.pole) or same(pole,seat.previousPole)
+                if same(pole,seat.pole) or (seat.otherPole and same(pole,seat.otherPole.pole))
                     or (seat.nextPole and same(pole,seat.nextPole.pole)) then owned=true;break end
             end
             if not owned and not gone(pole) and same(U.field(pole,'Area'),source.area)
@@ -150,6 +155,8 @@ function LionNPC.new(options)
             for _,seat in pairs(self.seats)do
                 local minimum=(body.radius+seat.body.radius+75)^2
                 if (seat.top and distance2(candidate,seat.top)<minimum)
+                    or (seat.otherPole and distance2(candidate,seat.otherPole.top)<minimum)
+                    or (seat.blockedTop and same(seat.actor,actor) and distance2(candidate,seat.blockedTop)<minimum)
                     or (seat.nextPole and distance2(candidate,seat.nextPole.top)<minimum) then free=false;break end
             end
             if free then return candidate end
@@ -170,6 +177,87 @@ function LionNPC.new(options)
         local ok=pcall(function()object[field]=value end)
         return ok and U.field(object,field)==value
     end
+    local function poleWarp(actor)
+        local ok,cls=pcall(find,MOTION_WARP)
+        if not ok or not U.valid(cls) then return nil end
+        local _,component=call(actor,'GetComponentByClass',cls)
+        for _,target in ipairs(U.array(U.field(component,'WarpTargets')) or {})do
+            local targetName=U.struct(target,'Name')
+            local named,text=pcall(function()return targetName:ToString()end)
+            if named and text=='Pole' then return vector(U.struct(target,'Location')) end
+        end
+    end
+    local function pickupPole(pickup,body,carrier,now)
+        if not pickup or not pickup.planned then return nil end
+        local warp=pickup.warp or poleWarp(pickup.actor)
+        local at=location(carrier)
+        if not warp or not at then return nil end
+        local _,pawnChannel=call(body.capsule,'GetCollisionObjectType')
+        if type(pawnChannel)~='number' then return nil end
+        local chosen,closest
+        for _,pole in ipairs(U.array(U.field(pickup.area,'ActivatedPoles')) or {})do
+            local key=U.key(pole)
+            if key and not pickup.prior[key] and not gone(pole) and U.inWorld(pole,pickup.world)
+                and same(U.field(pole,'Area'),pickup.area) and U.field(pole,'Occupied')==false
+                and U.field(pole,'Activated')==true then
+                local _,value=call(U.field(pole,'StandPoint'),'K2_GetComponentLocation')
+                local top=vector(value)
+                local gap=top and distance2(top,warp)
+                if gap and gap<=80^2 and math.abs(top.Z-warp.Z)<=180 and distance2(top,at)<=1300^2
+                    and (not closest or gap<closest) then
+                    local mesh=U.field(pole,'SM_WoodPost_001')
+                    local _,response=call(mesh,'GetCollisionResponseToChannel',pawnChannel)
+                    local _,mode=call(mesh,'GetCollisionEnabled')
+                    local _,channel=call(mesh,'GetCollisionObjectType')
+                    if tonumber(response)==2 and (tonumber(mode)==1 or tonumber(mode)==3) and type(channel)=='number' then
+                        chosen={pole=pole,mesh=mesh,top=top,poleChannel=channel,pawnChannel=pawnChannel,
+                            createdAt=now-SETTLE,readyToCheck=true}
+                        closest=gap
+                    end
+                end
+            end
+        end
+        return chosen
+    end
+    function self:beginPickup(actor,victim,members,status)
+        if not combat or not status or not status.battle_active then return false end
+        local world=options.world()
+        if not U.inWorld(actor,world) then return false end
+        local owner,team,sourceTeam,source
+        for _,entry in ipairs(members)do
+            if same(entry.actor,victim) then owner=entry.summoner end
+            if same(entry.actor,actor) then team=entry.team end
+        end
+        for _,entry in ipairs(members)do
+            if entry.class_path==BOSS and same(entry.actor,owner) then source,sourceTeam=entry.actor,entry.team;break end
+        end
+        if not source or (team~='blue' and team~='red') or (sourceTeam~='blue' and sourceTeam~='red')
+            or team==sourceTeam or (tag(source,ON_POLE) or 0)<=0 then return false end
+        local area=options.area(source,world)
+        local poles=U.array(U.field(area,'ActivatedPoles'))
+        if not poles or not U.inWorld(area,world) then return false end
+        local key=U.key(actor)
+        if not key or pickups[key] then return false end
+        local prior={}
+        for _,pole in ipairs(poles)do
+            local poleKey=U.key(pole)
+            if poleKey then prior[poleKey]=true end
+        end
+        pickups[key]={key=key,actor=actor,source=source,area=area,world=world,prior=prior,
+            weapon=combat:captureWeapon(actor,world)}
+        return true
+    end
+    function self:pickupEnded(actor)
+        local pickup=pickups[U.key(actor)]
+        if pickup then pickup.ended=options.now();pickup.planned=true end
+    end
+    local function stopFlight(seat)
+        local flight=seat.flight
+        if flight and flight.handle then
+            pcall(cancel,flight.handle)
+            flight.handle=nil
+        end
+    end
     local function restoreFields(seat)
         local body=seat.body
         local restored=true
@@ -189,18 +277,14 @@ function LionNPC.new(options)
                 restored=read and tonumber(after)==seat.oldResponse and restored
             end
         end
-        if seat.changedMode and U.valid(body.movement) then
+        if seat.flight and U.valid(body.movement) and tonumber((U.field(body.movement,'MovementMode')))==5 and body.mode~=5 then
+            call(body.movement,'SetMovementMode',body.mode,0)
+            restored=tonumber((U.field(body.movement,'MovementMode')))==body.mode and restored
+        elseif seat.changedMode and U.valid(body.movement) then
             local mode=tonumber((U.field(body.movement,'MovementMode')))
-            if mode==1 or (seat.hopAt and mode==3) then
+            if mode==1 or (seat.flight and mode==3) then
                 call(body.movement,'SetMovementMode',body.mode,0)
                 restored=tonumber((U.field(body.movement,'MovementMode')))==body.mode and restored
-            elseif not mode then restored=false end
-        end
-        if seat.hopMode==5 and U.valid(body.movement) then
-            local mode=tonumber((U.field(body.movement,'MovementMode')))
-            if mode==1 or mode==3 then
-                call(body.movement,'SetMovementMode',5,0)
-                restored=tonumber((U.field(body.movement,'MovementMode')))==5 and restored
             elseif not mode then restored=false end
         end
         return restored
@@ -212,6 +296,10 @@ function LionNPC.new(options)
     end
     local function removePole(seat,pole)
         if gone(pole) or not U.inWorld(pole,seat.world) then return true end
+        if same(pole,seat.borrowedPole) then
+            if not same(U.field(pole,'Area'),seat.area) or U.field(pole,'Occupied')==false then return true end
+            return write(pole,'Occupied',false)
+        end
         if not gone(seat.area) and U.inWorld(seat.area,seat.world) then
             if not call(seat.area,'UnregisterPole',pole) then return false end
             if contains(U.field(seat.area,'ActivatedPoles'),pole) or contains(U.field(seat.area,'DeactivatedPoles'),pole) then return false end
@@ -220,8 +308,9 @@ function LionNPC.new(options)
         return gone(pole)
     end
     local function release(seat,why)
+        stopFlight(seat)
         -- A map transition invalidates the whole old world. Never call its actors again.
-        if not same(currentWorld,seat.world) then return true end
+        if not same(currentWorld,seat.world) or not same(options.world(),seat.world) then return true end
         local carrierHere=U.inWorld(seat.carrier,seat.world)
         local returned=false
         if seat.moved and carrierHere and alive(seat.carrier) then
@@ -232,7 +321,6 @@ function LionNPC.new(options)
             local rotation=rotationOf(seat.carrier) or seat.rotation
             if not teleport(seat.carrier,dest,rotation)
                 and (dest==seat.original or not teleport(seat.carrier,seat.original,rotation)) then
-                if combat then combat:release(seat) end
                 wait(seat.actor,'下桩位置尚未读回')
                 return false
             end
@@ -240,10 +328,12 @@ function LionNPC.new(options)
             returned=true
         end
         if carrierHere and not gone(seat.carrier) and not restoreFields(seat) then return false end
+        if seat.pickup and not combat:restoreWeapon(seat.pickup.weapon) then return false end
         if combat and not combat:release(seat) then return false end
         if seat.nextPole and not removePole(seat,seat.nextPole.pole) then return false end
-        if seat.previousPole and not removePole(seat,seat.previousPole) then return false end
+        if seat.otherPole and not removePole(seat,seat.otherPole.pole) then return false end
         if not removePole(seat,seat.pole) then return false end
+        if seat.pickup then pickups[seat.pickup.key]=nil end
         say('下桩与独立桩清理 actor='..seat.key..' 原因='..why..' 返地读回='..tostring(returned)..' 属性/桩移除读回=true')
         return true
     end
@@ -287,7 +377,7 @@ function LionNPC.new(options)
         local _,poleResponse=call(platform.mesh,'GetCollisionResponseToChannel',platform.pawnChannel)
         local _,collisionMode=call(platform.mesh,'GetCollisionEnabled')
         local registered=same(U.field(pole,'Area'),seat.area) and contains(U.field(seat.area,'ActivatedPoles'),pole)
-        if not top or not registered or tonumber(poleResponse)~=2 or tonumber(collisionMode)~=1
+        if not top or not registered or tonumber(poleResponse)~=2 or (tonumber(collisionMode)~=1 and tonumber(collisionMode)~=3)
             or U.field(pole,'Activated')~=true or U.field(pole,'Occupied')~=true then return false end
         platform.top=top
         return true
@@ -307,21 +397,55 @@ function LionNPC.new(options)
                 if not ready then return wait(actor,'坐骑'..reason) end
             end
         end
-        local anchor,anchorRead=sourceAnchor(source)
-        if not anchor then return wait(actor,anchorRead) end
-        local top=chooseSpot(actor,carrier,source,body,anchor)
+        local pickup=pickups[U.key(actor)]
+        if pickup and (not same(pickup.source,source.actor) or not same(pickup.area,source.area)) then pickup=nil end
+        if pickup and not pickup.planned then return wait(actor,'等待原版狮头桩升起') end
+        local platform=pickupPole(pickup,body,carrier,now)
+        local anchorRead='处决升起的原版桩'
+        local top
+        if not platform then
+            local anchor
+            anchor,anchorRead=sourceAnchor(source)
+            if not anchor then return wait(actor,anchorRead) end
+            top=chooseSpot(actor,carrier,source,body,anchor)
+        end
         local original=location(carrier)
         local rotation=rotationOf(carrier)
-        if not top or not original or not rotation then return wait(actor,'落点未读回') end
+        if (not platform and not top) or not original or not rotation then return wait(actor,'落点未读回') end
         local seat={actor=actor,carrier=carrier,key=key,source=source,area=source.area,world=currentWorld,
-            body=body,original=original,rotation=rotation}
-        local platform=spawnPole(seat,top,now)
+            body=body,original=original,rotation=rotation,pickup=pickup}
+        if platform then
+            seat.borrowedPole=platform.pole
+            platform.readyToCheck=write(platform.pole,'Occupied',true)
+        else platform=spawnPole(seat,top,now) end
         if not platform then return wait(actor,'独立桩生成未读回') end
         for field,value in pairs(platform)do seat[field]=value end
         self.seats[key]=seat
         seat.failed=not seat.readyToCheck
         say('上桩点准备 actor='..key..' 桩顶依据='..anchorRead..' 处决收尾='..tostring(finishing==true))
     end
+    function self:pickupReady(actor)
+        local pickup=pickups[U.key(actor)]
+        if not pickup then return false end
+        pickup.planned=true
+        pickup.warp=pickup.warp or poleWarp(actor)
+        local now=options.now()
+        if type(now)~='number' or not same(currentWorld,pickup.world)
+            or (tag(actor,'CharacterState.HasTempWeapon.HouHouHouHead') or 0)<=0
+            or not clearTags(pickup.source,PROTECTED) or not same(options.opponent(actor),pickup.source) then
+            return false
+        end
+        local carrier=options.carrier(actor)
+        local key=U.key(carrier)
+        local source=self.sources[U.key(pickup.source)]
+        if key and not self.seats[key] and source and same(source.area,pickup.area) then
+            create(actor,carrier,source,now)
+        end
+        local seat=self.seats[key]
+        if not seat or seat.pickup~=pickup or seat.failed or now-seat.createdAt<SETTLE then return false end
+        return validatePole(seat,seat)
+    end
+    local beginFlight
     local function board(seat,now)
         if now-seat.createdAt<SETTLE then return end
         local actor=seat.carrier
@@ -361,26 +485,26 @@ function LionNPC.new(options)
             call(body.movement,'SetMovementMode',1,0)
             if tonumber((U.field(body.movement,'MovementMode')))~=1 then seat.failed=true;return end
         end
-        local top=seat.top
-        local dest={X=top.X,Y=top.Y,Z=top.Z+body.half+3}
-        seat.moved=true -- retain rollback even if a teleport changes location but returns failure
-        local moved=teleport(actor,dest,rotation)
-        seat.boardedAt=now
-        seat.failed=not moved
-        say('上桩定位 actor='..seat.key..' 原版桩登记=true 双向碰撞=2 位置读回='..tostring(moved))
+        if combat and not seat.combat and not combat:arm(seat,now) then seat.failed=true;return end
+        if not beginFlight(seat,seat,now,false) then seat.failed=true end
+    end
+local function supported(seat,platform)
+        local ok,base=call(seat.body.movement,'GetMovementBase')
+        local physical=ok and (same(base,platform.mesh) or same(U.field(base,'Owner'),platform.pole))
+        local mode=tonumber((U.field(seat.body.movement,'MovementMode')))
+        local at=location(seat.carrier)
+        local inPlace=at and distance2(at,platform.top)<(seat.body.radius+35)^2
+            and math.abs(at.Z-platform.top.Z-seat.body.half)<40
+        local stationary=(seat.body.mode==0 or seat.body.mode==5) and mode==seat.body.mode and inPlace
+        return physical or stationary,physical,inPlace,mode
     end
     local function verifySeat(seat,now)
-        local mode=tonumber((U.field(seat.body.movement,'MovementMode')))
-        local ok,base=call(seat.body.movement,'GetMovementBase')
-        local supported=ok and (same(base,seat.mesh) or same(U.field(base,'Owner'),seat.pole))
-        local at=location(seat.carrier)
-        local inPlace=at and distance2(at,seat.top)<(seat.body.radius+35)^2
-            and math.abs(at.Z-seat.top.Z-seat.body.half)<40
-        local stationary=(seat.body.mode==0 or seat.body.mode==5) and mode==seat.body.mode and inPlace
-        if supported or stationary then
+        local ready,physical,inPlace,mode=supported(seat,seat)
+        if ready then
+            seat.lostAt=nil
             if not seat.confirmed then
                 seat.confirmed=true
-                say('NPC上桩确认 actor='..seat.key..' 物理基底='..tostring(supported)..' 原移动模式='..seat.body.mode..' 当前='..tostring(mode))
+                say('NPC上桩确认 actor='..seat.key..' 物理基底='..tostring(physical)..' 原移动模式='..seat.body.mode..' 当前='..tostring(mode))
             end
             if not seat.source.resumed and now>=(seat.source.resumeAt or 0) then
                 seat.source.resumeAt=now+1
@@ -397,84 +521,156 @@ function LionNPC.new(options)
                 end
             end
             return true
-        elseif now-seat.boardedAt>2 then
-            -- After verified native movement off the pole, keep the new location.
+        end
+        seat.lostAt=seat.lostAt or now
+        if now-seat.lostAt>1 then
+            -- Allow native knockback to land normally. Restore the weapon when leaving.
             if seat.confirmed and not inPlace then seat.moved=false end
             seat.failed=true
-            wait(seat.actor,'脚下支撑未读回或已离开')
+            wait(seat.actor,'脚下支撑已离开')
         end
     end
-    local function skipHop(seat,why,now)
-        if removePole(seat,seat.nextPole.pole) then
-            seat.nextPole=nil
-            if not combat:endHop(seat,now) then seat.failed=true end
-        else seat.failed=true end
-        say('取消跨桩 actor='..seat.key..' 读回='..why)
-    end
-    local function hop(seat,now)
-        local nextPole,body=seat.nextPole,seat.body
-        if not combat:held(seat) then seat.failed=true;return end
-        if seat.hopAt then
-            local _,base=call(body.movement,'GetMovementBase')
-            if same(base,nextPole.mesh) then
-                seat.previousPole=seat.pole
-                seat.pole,seat.mesh,seat.top=nextPole.pole,nextPole.mesh,nextPole.top
-                seat.nextPole,seat.hopAt=nil,nil
-                call(body.movement,'StopMovementImmediately')
-                if seat.hopMode==5 then
-                    call(body.movement,'SetMovementMode',5,0)
-                    if tonumber((U.field(body.movement,'MovementMode')))~=5 then seat.failed=true;return end
-                end
-                seat.hopMode=nil
-                if removePole(seat,seat.previousPole) then seat.previousPole=nil end
-                if not combat:endHop(seat,now) then seat.failed=true end
-                say('跨桩落脚 actor='..seat.key..' 新桩物理基底读回=true')
-            elseif now-seat.hopAt>1.6 then
-                seat.failed=true
-                wait(seat.actor,'跨桩落脚未读回')
+
+    beginFlight=function(seat,platform,now,returning)
+        local actor,movement=seat.carrier,seat.body.movement
+        local from,rotation=location(actor),rotationOf(actor)
+        if not from or not rotation or not U.valid(movement) or not validatePole(seat,platform)
+            or platform.poleChannel~=seat.poleChannel or type(loop)~='function' or type(cancel)~='function' then
+            return false
+        end
+        local top=platform.top
+        local to={X=top.X,Y=top.Y,Z=top.Z+seat.body.half+3}
+        local dx,dy,dz=to.X-from.X,to.Y-from.Y,to.Z-from.Z
+        if dx*dx+dy*dy>1300^2 or math.abs(dz)>850 then return false end
+        if combat and not returning and not combat:beginHop(seat) then return false end
+        local flight={platform=platform,returning=returning,started=now,first=not seat.confirmed}
+        seat.flight=flight
+        local yaw=math.deg(math.atan(dy,dx))
+        if dx*dx+dy*dy<1 then yaw=rotation.Yaw end
+        local turn=(yaw-rotation.Yaw+180)%360-180
+        local lift=math.max(120,math.abs(dz)*0.42+75)
+        local landMode=seat.body.mode==2 and 1 or seat.body.mode
+        call(movement,'StopMovementImmediately')
+        call(movement,'SetMovementMode',5,0)
+        if tonumber((U.field(movement,'MovementMode')))~=5 then return false end
+        seat.moved=true
+        local function fail(reason)
+            flight.error=reason
+            stopFlight(seat)
+        end
+        local function step()
+            if self.seats[seat.key]~=seat or seat.flight~=flight or flight.error or flight.arrived then return end
+            if not same(options.world(),seat.world) or not alive(actor) or not alive(seat.source.actor)
+                or (tag(seat.source.actor,ON_POLE) or 0)<=0 or not clearTags(seat.source.actor,PROTECTED)
+                or gone(platform.pole) or U.field(platform.pole,'Activated')~=true
+                or not same(U.field(actor,'CharacterMovement'),movement) then fail('角色、场地或桩状态变化');return end
+            if tonumber((U.field(movement,'MovementMode')))~=5 then fail('原生动作接管了移动');return end
+            local time=options.now()
+            if type(time)~='number' then fail('跳跃时钟未读回');return end
+            local elapsed=time-flight.started
+            if elapsed>3.5 then fail('跳跃动画没有推进');return end
+            local frame=not returning and combat and combat.jumpPosition and combat:jumpPosition(seat)
+            if type(frame)~='number' then frame=elapsed end
+            local progress=returning and elapsed/0.65 or (frame-JUMP_START)/(JUMP_LAND-JUMP_START)
+            progress=math.min(1,math.max(0,progress))
+            local horizontal=progress*progress*(3-2*progress)
+            local desired={X=from.X+dx*horizontal,Y=from.Y+dy*horizontal,
+                Z=from.Z+dz*progress+4*lift*progress*(1-progress)}
+            local angle={Pitch=rotation.Pitch,Yaw=rotation.Yaw+turn*math.min(1,elapsed/JUMP_START),Roll=rotation.Roll}
+            local called=call(actor,'K2_SetActorLocationAndRotation',desired,angle,true,{},false)
+            local actual=location(actor)
+            if not called or not actual or distance2(actual,desired)>8^2 or math.abs(actual.Z-desired.Z)>8 then
+                fail(string.format('跳跃被碰撞截断 %.0f%%',progress*100))
+                return
             end
-            return
+            if progress>=1 then
+                call(movement,'StopMovementImmediately')
+                if landMode~=5 then call(movement,'SetMovementMode',landMode,0) end
+                if tonumber((U.field(movement,'MovementMode')))~=landMode then fail('落脚移动模式未读回');return end
+                flight.arrived=time
+                stopFlight(seat)
+            end
         end
-        if now-nextPole.createdAt<SETTLE then return end
-        if not idle(seat.actor) or not idle(seat.carrier) then
-            if now-nextPole.createdAt>3 then skipHop(seat,'仍在受击或技能中',now) end
-            return
-        end
-        local at=location(seat.carrier)
-        local mode=tonumber((U.field(body.movement,'MovementMode')))
-        local _,gravity=call(body.movement,'GetGravityZ')
-        if not at or (mode~=1 and mode~=5) or type(gravity)~='number' or gravity>=-1
-            or nextPole.poleChannel~=seat.poleChannel or not validatePole(seat,nextPole) then
-            skipHop(seat,'移动、重力或目标桩未读回',now);return
-        end
-        local top=nextPole.top
-        local dx,dy,dz=top.X-at.X,top.Y-at.Y,top.Z+body.half+3-at.Z
-        if dx*dx+dy*dy>1300^2 or math.abs(dz)>300 then skipHop(seat,'目标桩超出跳跃范围',now);return end
-        if not combat:beginHop(seat) then seat.failed=true;return end
-        local seconds=0.8
-        seat.hopMode=mode
-        seat.hopAt=now
-        local launched=call(seat.carrier,'LaunchCharacter',{X=dx/seconds,Y=dy/seconds,Z=dz/seconds-gravity*seconds/2},true,true)
-        say('跨桩起跳 actor='..seat.key..' 目标桩读回=true 原生起跳调用='..tostring(launched))
-        if not launched then seat.failed=true end
+        local registered,handle=pcall(loop,16,function()
+            local ok,err=pcall(step)
+            if not ok then fail('跳跃更新异常 '..tostring(err)) end
+        end)
+        if not registered or handle==nil or handle==false then return false end
+        flight.handle=handle
+        local label=returning and '回到上一根桩' or (flight.first and '首次上桩起跳' or '跨桩起跳')
+        say(string.format('%s actor=%s 目标桩读回=true 距离=%.0f 高差=%.0f',label,seat.key,math.sqrt(dx*dx+dy*dy),dz))
+        return true
     end
+
+    local function finishFlight(seat,now)
+        local flight=seat.flight
+        local landed=flight.arrived and supported(seat,flight.platform)
+        if landed then
+            if flight.platform~=seat then
+                local old={pole=seat.pole,mesh=seat.mesh,top=seat.top,createdAt=seat.createdAt,
+                    poleChannel=seat.poleChannel,pawnChannel=seat.pawnChannel,readyToCheck=seat.readyToCheck}
+                for field,value in pairs(flight.platform)do seat[field]=value end
+                seat.otherPole=old
+            elseif flight.returning and seat.nextPole then
+                if not removePole(seat,seat.nextPole.pole) then seat.failed=true;return end
+                if seat.otherPole==seat.nextPole then seat.otherPole=nil end
+            end
+            seat.nextPole,seat.flight=nil,nil
+            seat.boardedAt=now
+            seat.lostAt=nil
+            if combat and not combat:endHop(seat,now) then seat.failed=true;return end
+            local label=flight.returning and '已回上一根桩' or (flight.first and '首次落桩' or '跨桩落脚')
+            say(label..' actor='..seat.key..' 桩上支撑读回=true')
+            return
+        end
+        if not flight.error and (not flight.arrived or now-flight.arrived<=1.25) then return end
+        local reason=flight.error or '到达桩顶后未读到物理基底'
+        say('跳桩待恢复 actor='..seat.key..' 读回='..reason)
+        if not flight.first and not flight.returning then
+            seat.blockedTop=flight.platform.top
+            if beginFlight(seat,seat,now,true) then return end
+        end
+        seat.failed=true
+    end
+
+    local function hop(seat,now)
+        local platform=seat.nextPole
+        if now-platform.createdAt<SETTLE or not idle(seat.actor) or not idle(seat.carrier) then return end
+        if combat:held(seat) and beginFlight(seat,platform,now,false) then return end
+        if seat.flight then seat.failed=true;return end
+        if not removePole(seat,platform.pole) then seat.failed=true;return end
+        if seat.otherPole==platform then seat.otherPole=nil end
+        seat.nextPole=nil
+        if not combat:endHop(seat,now) then seat.failed=true end
+        say('取消换桩 actor='..seat.key..' 起跳准备未读回，继续当前桩')
+    end
+
     local function fight(seat,now)
         if not combat then return end
         if not seat.combat and not combat:arm(seat,now) then seat.failed=true;return end
-        if seat.previousPole and removePole(seat,seat.previousPole) then seat.previousPole=nil end
         local ok,wantsHop=combat:tick(seat,now,idle(seat.actor) and idle(seat.carrier))
         if not ok then seat.failed=true;return end
-        if wantsHop and not seat.previousPole and seat.body.mode~=0 then
-            local anchor=sourceAnchor(seat.source)
-            local top=anchor and chooseSpot(seat.actor,seat.carrier,seat.source,seat.body,anchor)
-            if top and distance2(top,seat.top)<=1300^2 then seat.nextPole=spawnPole(seat,top,now) end
+        if not wantsHop then return end
+        if seat.otherPole and validatePole(seat,seat.otherPole) then
+            seat.nextPole=seat.otherPole
+            return
         end
+        if seat.otherPole and not removePole(seat,seat.otherPole.pole) then seat.failed=true;return end
+        seat.otherPole=nil
+        local anchor=sourceAnchor(seat.source)
+        local top=anchor and chooseSpot(seat.actor,seat.carrier,seat.source,seat.body,anchor)
+        if top and distance2(top,seat.top)<=1300^2 then seat.nextPole=spawnPole(seat,top,now) end
+        if not seat.nextPole and not combat:endHop(seat,now) then seat.failed=true end
     end
 
     function self:stop(why)
         local complete=true
         for key,seat in pairs(self.seats)do
             if release(seat,why or '停止') then self.seats[key]=nil else complete=false end
+        end
+        for key,pickup in pairs(pickups)do
+            if not same(options.world(),pickup.world) or combat:restoreWeapon(pickup.weapon) then pickups[key]=nil
+            else complete=false end
         end
         if complete then self.sources={};retryAt={};waiting={};failedFor={} end
         return complete
@@ -488,7 +684,14 @@ function LionNPC.new(options)
                 if release(seat,'角色清理') then self.seats[key]=nil else complete=false end
             end
         end
+        local pickup=pickups[U.key(actor)]
+        if pickup and same(options.world(),pickup.world) then
+            if combat:restoreWeapon(pickup.weapon) then pickups[pickup.key]=nil else complete=false end
+        end
         return complete
+    end
+    function self:silence()
+        for _,seat in pairs(self.seats)do stopFlight(seat) end
     end
     function self:holds(actor)
         for _,seat in pairs(self.seats)do
@@ -509,6 +712,8 @@ function LionNPC.new(options)
         local world=options.world()
         if not U.valid(world) then return end
         if currentWorld and not same(world,currentWorld) then
+            self:silence()
+            pickups={}
             self.seats={};self.sources={};retryAt={};waiting={};failedFor={}
         end
         currentWorld=world
@@ -551,10 +756,16 @@ function LionNPC.new(options)
                     self.seats[key]=nil;retryAt[actorKey]=now+RETRY
                     if seat.failed then failedFor[actorKey]=seat.source end
                 end
+            elseif seat.flight then finishFlight(seat,now)
             elseif seat.nextPole then hop(seat,now)
             elseif seat.boardedAt then
                 if verifySeat(seat,now) then fight(seat,now) end
             else board(seat,now) end
+        end
+        for key,pickup in pairs(pickups)do
+            local carrier=roster[key] and options.carrier(pickup.actor)
+            if not self.seats[U.key(carrier)] and pickup.ended and now-pickup.ended>4
+                and combat:restoreWeapon(pickup.weapon) then pickups[key]=nil end
         end
         if not next(active) then return end
         -- At most one new native actor per support tick, including multi-opponent battles.

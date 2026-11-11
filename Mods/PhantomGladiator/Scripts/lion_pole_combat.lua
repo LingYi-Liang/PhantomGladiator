@@ -10,6 +10,10 @@ local BULLET=BULLET_PACKAGE..'.BP_Bullet_LionDancer_FlameBall_Small_C'
 local POSE_DIR='/HuaShira/Characters/EliteBoss/LionDancer_P2/Hun_Anim/B/'
 local SHOOT=POSE_DIR..'Hun_LionHead_B_Attack_R.Hun_LionHead_B_Attack_R'
 local HOP=POSE_DIR..'Hun_LionHead_B_Battle_Walk_Fwd_R.Hun_LionHead_B_Battle_Walk_Fwd_R'
+local IDLE=POSE_DIR..'Hun_LionHead_B_Battle_Idle_R.Hun_LionHead_B_Battle_Idle_R'
+local HEAD_TAG='CharacterState.HasTempWeapon.HouHouHouHead'
+local ABILITY='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'
+local SWITCH='GameplayEvent.Ability.Action.TempWeapon.ForceSwitch'
 local LAUNCH_FRAME,SHOT_END=0.990279,2.766667
 local PAUSE_REASON='PhantomGladiator lion pole'
 
@@ -57,7 +61,58 @@ function Combat.new(options)
         if not control.pose then return true end
         if not control.pose:stop() then return false end
         control.pose=nil
+        control.clip=nil
         return true
+    end
+    local function headCount(actor)
+        local ok,count=call(U.field(actor,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=name(HEAD_TAG)})
+        return ok and type(count)=='number' and count or nil
+    end
+    local function weaponsOf(actor)
+        return U.field(actor,'Character Weapons Component')
+    end
+    local function currentWeapon(weapons,slot)
+        local ok,index=call(weapons,'GetCurrentWeaponIndex',slot,false)
+        return ok and type(index)=='number' and index or nil
+    end
+    local function weaponConfig(weapons,slot,index)
+        local out={}
+        if type(index)~='number' or index<0 or not call(weapons,'GetSlotWeapon',slot,index,out) then return nil end
+        return U.key(out.WeaponConfig)
+    end
+    function self:captureWeapon(actor,world)
+        if not live(actor,world) or headCount(actor)~=0 then return nil end
+        local weapons=weaponsOf(actor)
+        local slot={TagName=name('Weapon.Slot.Main')}
+        local index=currentWeapon(weapons,slot)
+        return {actor=actor,world=world,weapons=weapons,slot=slot,index=index,config=weaponConfig(weapons,slot,index)}
+    end
+    function self:restoreWeapon(record)
+        if not record or not live(record.actor,record.world) then return true end
+        local actor=record.actor
+        local hp=options.hp(actor)
+        if type(hp)=='number' and hp<=0 then return true end
+        local count=headCount(actor)
+        if count==0 then return true end
+        if not count then return false end
+        local weapons=weaponsOf(actor)
+        local index=same(weapons,record.weapons) and currentWeapon(weapons,record.slot)
+        if type(index)=='number' and index~=record.index and record.config
+            and weaponConfig(weapons,record.slot,record.index)==record.config
+            and not record.setOriginal then
+            record.setOriginal=call(weapons,'SetCurrentWeapon',record.slot,record.index)
+            local after=headCount(actor)
+            say('狮头换回原武器 actor='..tostring(U.key(actor))..' 武器槽读回='..tostring(currentWeapon(weapons,record.slot))
+                ..' 狮头标签读回='..tostring(after))
+            if after==0 then return true end
+        end
+        if not record.switchSent then
+            local library=object(ABILITY)
+            record.switchSent=call(library,'SendGameplayEventToActor',actor,{TagName=name(SWITCH)},{})
+            say('触发原版狮头退场 actor='..tostring(U.key(actor))..' 调用='..tostring(record.switchSent)
+                ..' 狮头标签读回='..tostring(headCount(actor)))
+        end
+        return headCount(actor)==0
     end
     function self:release(seat)
         local control=seat.combat
@@ -105,23 +160,27 @@ function Combat.new(options)
         return attached and result==true and same(asset,headAsset) and same(U.field(head,'AttachParent'),parent)
     end
     function self:arm(seat,now)
-        local data,headAsset,meshClass,ai=object(FIRE),object(HEAD),object(MESH),object(AI)
+        local data,ai=object(FIRE),object(AI)
         local _,class=call(data,'GetBulletClass')
         local _,full=call(class,'GetFullName')
-        if full~='BlueprintGeneratedClass '..BULLET or not U.valid(headAsset) or not U.valid(meshClass) or not U.valid(ai) then
+        if full~='BlueprintGeneratedClass '..BULLET or not U.valid(ai) then
             say('原版火焰弹或狮头资源未读回 actor='..seat.key)
             return false
         end
         local actors={seat.actor}
         if not same(seat.actor,seat.carrier) then actors[#actors+1]=seat.carrier end
-        local control={brains={},data=data,class=class,ai=ai,nextAt=now,shots=0}
+        local control={brains={},data=data,class=class,ai=ai,nextAt=now,shots=0,hoppedAfter=0,
+            nativeHead=(headCount(seat.actor) or 0)>0}
         for _,actor in ipairs(actors)do
             local brain=brainOf(actor)
             if not live(actor,seat.world) or paused(brain)~=false then return false end
             control.brains[#control.brains+1]={brain=brain,actor=actor}
         end
         seat.combat=control
-        if not createHead(seat,control,headAsset,meshClass) then return false end
+        if not control.nativeHead then
+            local headAsset,meshClass=object(HEAD),object(MESH)
+            if not U.valid(headAsset) or not U.valid(meshClass) or not createHead(seat,control,headAsset,meshClass) then return false end
+        end
         for _,record in ipairs(control.brains)do
             if not U.valid(record.brain) or not U.valid(ai) then return false end
             record.changed=true
@@ -134,7 +193,10 @@ function Combat.new(options)
     end
     function self:held(seat)
         local control=seat.combat
-        if not control or not U.valid(control.head) then return false end
+        if not control then return false end
+        if control.nativeHead then
+            if (headCount(seat.actor) or 0)<=0 then return false end
+        elseif not U.valid(control.head) then return false end
         for _,record in ipairs(control.brains)do
             if not live(record.actor,seat.world) or not same(brainOf(record.actor),record.brain) or paused(record.brain)~=true then
                 return false
@@ -158,7 +220,6 @@ function Combat.new(options)
     local function launch(seat,control)
         local target=seat.source.actor
         if not live(target,seat.world) or not U.valid(control.data) or not U.valid(control.class) then return false end
-        if matches(control.bullet,seat,control) and U.field(control.bullet,'BulletStatus')==2 then return true end
         local shot=aim(seat)
         local component=U.field(target,'CapsuleComponent')
         if not shot or not U.valid(component) then return false end
@@ -191,21 +252,33 @@ function Combat.new(options)
         control.shots=control.shots+1
         return true
     end
-    local function pose(seat,clip)
-        if not options.pose or not same(seat.actor,seat.carrier) then return nil end
-        return options.pose(seat.actor,clip)
+    local function playPose(seat,clip,looping)
+        local control=seat.combat
+        if control.clip==clip then return true end
+        if control.pose and control.pose.play and control.pose:play(clip,looping) then
+            control.clip=clip
+            return true
+        end
+        if not stopPose(control) then return false end
+        if options.pose and same(seat.actor,seat.carrier) then
+            control.pose=options.pose(seat.actor,clip,looping)
+        end
+        control.clip=clip
+        return true
     end
     function self:beginHop(seat)
-        local control=seat.combat
-        if not control or not stopPose(control) then return false end
-        control.pose=pose(seat,HOP)
-        return true
+        return seat.combat~=nil and playPose(seat,HOP,false)
     end
     function self:endHop(seat,now)
         local control=seat.combat
-        if not control or not stopPose(control) then return false end
+        if not control or not playPose(seat,IDLE,true) then return false end
         control.nextAt=now+0.25
+        control.hoppedAfter=control.shots
         return true
+    end
+    function self:jumpPosition(seat)
+        local control=seat.combat
+        return control and control.pose and control.pose:position() or nil
     end
     function self:tick(seat,now,canAct)
         local control=seat.combat
@@ -229,18 +302,20 @@ function Combat.new(options)
         end
         if control.started and now-control.started>=SHOT_END then
             control.started=nil;control.fired=false
-            if not stopPose(control) then return false end
-            if control.shots>(control.hoppedAfter or 0) then
-                control.hoppedAfter=control.shots
+            if not playPose(seat,IDLE,true) then return false end
+            if control.shots-control.hoppedAfter>=2 then
                 return true,true
             end
         end
-        if not control.started and now>=control.nextAt and canAct then
+        if not control.started and not canAct then return stopPose(control) end
+        if not control.started and not playPose(seat,IDLE,true) then return false end
+        local bulletRunning=matches(control.bullet,seat,control) and U.field(control.bullet,'BulletStatus')==2
+        if not control.started and now>=control.nextAt and canAct and not bulletRunning then
             local _,yaw=aim(seat)
             local hp=options.hp(seat.actor)
             if yaw and type(hp)=='number' and hp>0 then
                 call(seat.carrier,'K2_SetActorRotation',{Pitch=0,Yaw=math.deg(yaw),Roll=0},false)
-                control.pose=pose(seat,SHOOT)
+                if not playPose(seat,SHOOT,false) then return false end
                 control.started=now;control.hp=hp;control.fired=false
             end
         end
