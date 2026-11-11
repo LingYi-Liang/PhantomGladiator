@@ -94,6 +94,14 @@ local function fixture()
 end
 local function test(name,fn)fn();print('ok - '..name)end
 
+test('first boarding uses the native entry dash clip',function()
+    local h=fixture()
+    assert(h.combat:arm(h.seat,0))
+    assert(h.combat:beginHop(h.seat,true))
+    assert(h.poses[1].clip:find('Hun_LionHead_B_Dodge_F_R',1,true))
+    assert(h.combat:endHop(h.seat,1.2) and h.combat:release(h.seat))
+end)
+
 test('two confirmed projectiles trigger a hop, with the same pose driver used for idle, aiming and jumping',function()
     local h=fixture()
     assert(h.combat:arm(h.seat,0) and h.actor.brain.paused and h.head.AttachParent==h.actor.Mesh)

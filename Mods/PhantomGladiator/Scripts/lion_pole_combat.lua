@@ -9,6 +9,7 @@ local BULLET_PACKAGE='/PBZCombatAsset/ActorData/Mobs/LionDancer/BP_Bullet_LionDa
 local BULLET=BULLET_PACKAGE..'.BP_Bullet_LionDancer_FlameBall_Small_C'
 local POSE_DIR='/HuaShira/Characters/EliteBoss/LionDancer_P2/Hun_Anim/B/'
 local SHOOT=POSE_DIR..'Hun_LionHead_B_Attack_R.Hun_LionHead_B_Attack_R'
+local FIRST_HOP=POSE_DIR..'Hun_LionHead_B_Dodge_F_R.Hun_LionHead_B_Dodge_F_R'
 local HOP=POSE_DIR..'Hun_LionHead_B_Battle_Walk_Fwd_R.Hun_LionHead_B_Battle_Walk_Fwd_R'
 local IDLE=POSE_DIR..'Hun_LionHead_B_Battle_Idle_R.Hun_LionHead_B_Battle_Idle_R'
 local HEAD_TAG='CharacterState.HasTempWeapon.HouHouHouHead'
@@ -266,8 +267,8 @@ function Combat.new(options)
         control.clip=clip
         return true
     end
-    function self:beginHop(seat)
-        return seat.combat~=nil and playPose(seat,HOP,false)
+    function self:beginHop(seat,first)
+        return seat.combat~=nil and playPose(seat,first and FIRST_HOP or HOP,false)
     end
     function self:endHop(seat,now)
         local control=seat.combat

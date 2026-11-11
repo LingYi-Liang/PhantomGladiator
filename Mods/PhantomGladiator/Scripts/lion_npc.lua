@@ -10,6 +10,7 @@ local BUSY={'Ability.Action','CharacterState.InLevelSequence','CharacterState.St
 local POLE_TOP=500.126801 -- the native wood mesh's local upper bound
 local RETRY,SETTLE=5,0.4
 local MOTION_WARP='/Script/MotionWarping.MotionWarpingComponent'
+local FIRST_START,FIRST_LAND=0.235649,1.044753
 local JUMP_START,JUMP_LAND=0.513629,1.249791
 
 local function call(object,method,...)
@@ -258,6 +259,67 @@ function LionNPC.new(options)
             flight.handle=nil
         end
     end
+    local function ignoredComponents(capsule)
+        local ok,items=call(capsule,'CopyArrayOfMoveIgnoreComponents')
+        return ok and U.array(items) or nil
+    end
+    local function ignoreForFlight(flight,component,pending)
+        if not U.valid(component) then return false end
+        local list=pending or ignoredComponents(flight.capsule)
+        if not list then return false end
+        if contains(list,component) then return true end
+        local key=U.key(component)
+        if not key then return false end
+        flight.ignored[key]=component
+        if not call(flight.capsule,'IgnoreComponentWhenMoving',component,true) then return false end
+        if pending then pending[#pending+1]=component;return true end
+        return contains(ignoredComponents(flight.capsule),component)
+    end
+    local function restoreFlightCollision(flight)
+        if not flight or not U.valid(flight.capsule) then return true end
+        for key,component in pairs(flight.ignored)do
+            if U.valid(component) then
+                call(flight.capsule,'IgnoreComponentWhenMoving',component,false)
+            else flight.ignored[key]=nil end
+        end
+        local list=ignoredComponents(flight.capsule)
+        if list then
+            for key,component in pairs(flight.ignored)do
+                if not contains(list,component) then flight.ignored[key]=nil end
+            end
+        end
+        return not next(flight.ignored)
+    end
+    local function hitComponent(hit)
+        local component=U.struct(hit,'Component')
+        if U.kind(component)=='FWeakObjectPtr' then
+            local ok,value=pcall(function()return component:Get()end)
+            component=ok and U.unwrap(value) or nil
+        end
+        return U.valid(component) and component or nil
+    end
+    local function stageHit(seat,component)
+        local ok,owner=call(component,'GetOwner')
+        if not ok or not U.inWorld(owner,seat.world) then return false end
+        return contains(U.field(seat.area,'ActivatedPoles'),owner)
+            or contains(U.field(seat.area,'ActivatedLinks'),owner)
+    end
+    local function ignoreStageLinks(seat,flight)
+        local pending=ignoredComponents(flight.capsule)
+        if not pending then return false end
+        for _,link in ipairs(U.array(U.field(seat.area,'ActivatedLinks')) or {})do
+            local a,b=U.field(link,'LinkedPoleA'),U.field(link,'LinkedPoleB')
+            if not gone(link) and U.inWorld(link,seat.world) and same(U.field(a,'Area'),seat.area)
+                and same(U.field(b,'Area'),seat.area) then
+                local box=U.field(link,'Box')
+                if U.valid(box) and not ignoreForFlight(flight,box,pending) then return false end
+            end
+        end
+        local after=ignoredComponents(flight.capsule)
+        if not after then return false end
+        for _,component in pairs(flight.ignored)do if not contains(after,component) then return false end end
+        return true
+    end
     local function restoreFields(seat)
         local body=seat.body
         local restored=true
@@ -311,6 +373,7 @@ function LionNPC.new(options)
         stopFlight(seat)
         -- A map transition invalidates the whole old world. Never call its actors again.
         if not same(currentWorld,seat.world) or not same(options.world(),seat.world) then return true end
+        if not restoreFlightCollision(seat.flight) then return false end
         local carrierHere=U.inWorld(seat.carrier,seat.world)
         local returned=false
         if seat.moved and carrierHere and alive(seat.carrier) then
@@ -488,13 +551,24 @@ function LionNPC.new(options)
         if combat and not seat.combat and not combat:arm(seat,now) then seat.failed=true;return end
         if not beginFlight(seat,seat,now,false) then seat.failed=true end
     end
-local function supported(seat,platform)
+    local function supported(seat,platform)
         local ok,base=call(seat.body.movement,'GetMovementBase')
         local physical=ok and (same(base,platform.mesh) or same(U.field(base,'Owner'),platform.pole))
         local mode=tonumber((U.field(seat.body.movement,'MovementMode')))
         local at=location(seat.carrier)
         local inPlace=at and distance2(at,platform.top)<(seat.body.radius+35)^2
             and math.abs(at.Z-platform.top.Z-seat.body.half)<40
+        if not physical and inPlace and (mode==1 or mode==2) then
+            local floor={}
+            local read=call(seat.body.movement,'K2_FindFloor',at,floor)
+            local walkable=U.struct(floor,'bWalkableFloor')
+            local distance=U.struct(floor,'FloorDist')
+            if read and (walkable==true or walkable==1) and type(distance)=='number' and distance>=0 and distance<=40
+                and same(hitComponent(U.struct(floor,'HitResult')),platform.mesh) then
+                physical=true
+                write(seat.body.movement,'bForceNextFloorCheck',true)
+            end
+        end
         local stationary=(seat.body.mode==0 or seat.body.mode==5) and mode==seat.body.mode and inPlace
         return physical or stationary,physical,inPlace,mode
     end
@@ -542,13 +616,25 @@ local function supported(seat,platform)
         local to={X=top.X,Y=top.Y,Z=top.Z+seat.body.half+3}
         local dx,dy,dz=to.X-from.X,to.Y-from.Y,to.Z-from.Z
         if dx*dx+dy*dy>1300^2 or math.abs(dz)>850 then return false end
-        if combat and not returning and not combat:beginHop(seat) then return false end
-        local flight={platform=platform,returning=returning,started=now,first=not seat.confirmed}
+        local first=not seat.confirmed
+        if combat and not returning and not combat:beginHop(seat,first) then return false end
+        if not restoreFlightCollision(seat.flight) then return false end
+        local flight={platform=platform,returning=returning,started=now,first=first,
+            capsule=seat.body.capsule,ignored={},additionalIgnores=0}
         seat.flight=flight
+        if not ignoreForFlight(flight,seat.mesh) or not ignoreForFlight(flight,platform.mesh)
+            or (returning and seat.nextPole and not ignoreForFlight(flight,seat.nextPole.mesh))
+            or not ignoreStageLinks(seat,flight) then
+            say('跳桩碰撞忽略未读回 actor='..seat.key)
+            return false
+        end
         local yaw=math.deg(math.atan(dy,dx))
         if dx*dx+dy*dy<1 then yaw=rotation.Yaw end
         local turn=(yaw-rotation.Yaw+180)%360-180
         local lift=math.max(120,math.abs(dz)*0.42+75)
+        local clearance=35
+        local takeoff,arrival=JUMP_START,JUMP_LAND
+        if first then takeoff,arrival=FIRST_START,FIRST_LAND end
         local landMode=seat.body.mode==2 and 1 or seat.body.mode
         call(movement,'StopMovementImmediately')
         call(movement,'SetMovementMode',5,0)
@@ -556,6 +642,29 @@ local function supported(seat,platform)
         seat.moved=true
         local function fail(reason)
             flight.error=reason
+            stopFlight(seat)
+            if same(options.world(),seat.world) and not restoreFlightCollision(flight) then
+                say('跳桩碰撞恢复待重试 actor='..seat.key)
+            end
+        end
+        local function move(desired,angle)
+            local hit={}
+            local called=call(actor,'K2_SetActorLocationAndRotation',desired,angle,true,hit,false)
+            local actual=location(actor)
+            local reached=called and actual and distance2(actual,desired)<=8^2 and math.abs(actual.Z-desired.Z)<=8
+            return reached,actual,hit
+        end
+        local function blocked(progress,hit)
+            local component=hitComponent(hit)
+            local _,full=call(component,'GetFullName')
+            fail(string.format('跳跃位移未到位 %.0f%% 碰撞部件=%s 深度=%s',
+                progress*100,tostring(full or '未读回'),tostring(U.struct(hit,'PenetrationDepth'))))
+        end
+        local function land(time)
+            call(movement,'StopMovementImmediately')
+            if landMode~=5 then call(movement,'SetMovementMode',landMode,0) end
+            if tonumber((U.field(movement,'MovementMode')))~=landMode then fail('落脚移动模式未读回');return end
+            flight.arrived=time
             stopFlight(seat)
         end
         local function step()
@@ -569,26 +678,43 @@ local function supported(seat,platform)
             if type(time)~='number' then fail('跳跃时钟未读回');return end
             local elapsed=time-flight.started
             if elapsed>3.5 then fail('跳跃动画没有推进');return end
-            local frame=not returning and combat and combat.jumpPosition and combat:jumpPosition(seat)
-            if type(frame)~='number' then frame=elapsed end
-            local progress=returning and elapsed/0.65 or (frame-JUMP_START)/(JUMP_LAND-JUMP_START)
-            progress=math.min(1,math.max(0,progress))
-            local horizontal=progress*progress*(3-2*progress)
-            local desired={X=from.X+dx*horizontal,Y=from.Y+dy*horizontal,
-                Z=from.Z+dz*progress+4*lift*progress*(1-progress)}
-            local angle={Pitch=rotation.Pitch,Yaw=rotation.Yaw+turn*math.min(1,elapsed/JUMP_START),Roll=rotation.Roll}
-            local called=call(actor,'K2_SetActorLocationAndRotation',desired,angle,true,{},false)
-            local actual=location(actor)
-            if not called or not actual or distance2(actual,desired)>8^2 or math.abs(actual.Z-desired.Z)>8 then
-                fail(string.format('跳跃被碰撞截断 %.0f%%',progress*100))
+            local angle={Pitch=rotation.Pitch,Yaw=rotation.Yaw+turn*math.min(1,elapsed/takeoff),Roll=rotation.Roll}
+            if flight.descending then
+                local alpha=math.min(1,(time-flight.descending)/0.13)
+                local desired={X=to.X,Y=to.Y,Z=to.Z+clearance*(1-alpha)}
+                local reached,actual,hit=move(desired,angle)
+                if not reached then
+                    local onTop=actual and distance2(actual,to)<=8^2 and actual.Z>=to.Z-8
+                        and actual.Z<=to.Z+clearance and same(hitComponent(hit),platform.mesh)
+                    if onTop then land(time) else blocked(1,hit) end
+                elseif alpha>=1 then land(time) end
                 return
             end
+            local frame=not returning and combat and combat.jumpPosition and combat:jumpPosition(seat)
+            if type(frame)~='number' then frame=elapsed end
+            local progress=returning and elapsed/0.65 or (frame-takeoff)/(arrival-takeoff)
+            progress=math.min(1,math.max(0,progress))
+            if progress<=0 then
+                call(actor,'K2_SetActorRotation',angle,false)
+                return
+            end
+            local horizontal=progress*progress*(3-2*progress)
+            local desired={X=from.X+dx*horizontal,Y=from.Y+dy*horizontal,
+                Z=from.Z+(dz+clearance)*progress+4*lift*progress*(1-progress)}
+            local reached,_,hit=move(desired,angle)
+            while not reached and flight.additionalIgnores<4 do
+                local component=hitComponent(hit)
+                if not stageHit(seat,component) or contains(ignoredComponents(flight.capsule),component)
+                    or not ignoreForFlight(flight,component) then break end
+                flight.additionalIgnores=flight.additionalIgnores+1
+                say('跳跃暂让场地部件 actor='..seat.key..' 部件='..tostring(U.key(component))..' 忽略读回=true')
+                reached,_,hit=move(desired,angle)
+            end
+            if not reached then blocked(progress,hit);return end
             if progress>=1 then
-                call(movement,'StopMovementImmediately')
-                if landMode~=5 then call(movement,'SetMovementMode',landMode,0) end
-                if tonumber((U.field(movement,'MovementMode')))~=landMode then fail('落脚移动模式未读回');return end
-                flight.arrived=time
-                stopFlight(seat)
+                if not restoreFlightCollision(flight) then fail('落脚前碰撞恢复未读回');return end
+                flight.descending=time
+                say('到达目标桩正上方 actor='..seat.key..' 临时碰撞已恢复，开始落脚')
             end
         end
         local registered,handle=pcall(loop,16,function()

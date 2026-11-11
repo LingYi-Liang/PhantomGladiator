@@ -13,13 +13,32 @@ local function object(fields)
     fields.GetAddress=function(self)assert(not self.gone);return self.address end
     return fields
 end
+local function ignores(component,other)
+    for _,ignored in ipairs(component.MoveIgnoreComponents)do
+        if ignored==other then return true end
+    end
+    return false
+end
 local function collider(outer,channel)
-    return object({outer=outer,channel=channel,responses={},
+    return object({outer=outer,channel=channel,responses={},MoveIgnoreComponents={},
         GetCollisionObjectType=function(self)return self.channel end,
         GetCollisionResponseToChannel=function(self,key)return self.responses[key] or 0 end,
         SetCollisionResponseToChannel=function(self,key,value)self.responses[key]=value end,
         SetCollisionEnabled=function(self,value)self.mode=value end,
         GetCollisionEnabled=function(self)return self.mode end,
+        CopyArrayOfMoveIgnoreComponents=function(self)
+            return {table.unpack(self.MoveIgnoreComponents)}
+        end,
+        IgnoreComponentWhenMoving=function(self,other,ignore)
+            assert(other:IsValid())
+            for i,component in ipairs(self.MoveIgnoreComponents)do
+                if component==other then
+                    if not ignore then table.remove(self.MoveIgnoreComponents,i) end
+                    return
+                end
+            end
+            if ignore then self.MoveIgnoreComponents[#self.MoveIgnoreComponents+1]=other end
+        end,
         SetGenerateOverlapEvents=function(self,value)self.overlapEvents=value end})
 end
 local function fixture(combat)
@@ -37,9 +56,9 @@ local function fixture(combat)
             a.CharacterMovement.base=nil
             return true
         end
-        actor.K2_SetActorLocationAndRotation=function(a,dest,_,sweep,_,teleport)
+        actor.K2_SetActorLocationAndRotation=function(a,dest,_,sweep,hit,teleport)
             assert(not a.gone and sweep and not teleport)
-            if self.block and self.block(a,dest) then return false end
+            if self.block and self.block(a,dest,hit) then return false end
             a.at=dest
             a.moves[#a.moves+1]=dest
             a.CharacterMovement.base=nil
@@ -57,7 +76,9 @@ local function fixture(combat)
                 if value~=1 or self.noBase then return end
                 for _,pole in ipairs(self.area.ActivatedPoles)do
                     local top=pole.StandPoint:K2_GetComponentLocation()
-                    if pole.SM_WoodPost_001 and not pole.gone and math.abs(actor.at.Z-top.Z-radius*2-3)<1
+                    if pole.SM_WoodPost_001 and not pole.gone
+                        and not ignores(actor.CapsuleComponent,pole.SM_WoodPost_001)
+                        and math.abs(actor.at.Z-top.Z-radius*2-3)<1
                         and (actor.at.X-top.X)^2+(actor.at.Y-top.Y)^2<1 then
                         move.base=pole.SM_WoodPost_001
                         break
@@ -279,6 +300,32 @@ test('the original scatter resumes only after a real physical floor readback',fu
     assert(#h.resume==0 and npc.at.Z==73 and #npc.teleports==1 and h.poles[1].gone)
 end)
 
+test('a nearby walkable floor hit on the intended pole can confirm landing before the movement base updates',function()
+    local h=fixture()
+    local npc=enemy(h)
+    local reportedComponent=collider(h.world,1)
+    local distance=3
+    h.noBase=true
+    function npc.CharacterMovement:K2_FindFloor(at,out)
+        assert(at.X==npc.at.X and at.Y==npc.at.Y and at.Z==npc.at.Z and self.MovementMode==1)
+        assert(not ignores(npc.CapsuleComponent,h.poles[1].SM_WoodPost_001),'restore pole collision before checking its floor')
+        out.bWalkableFloor=true
+        out.FloorDist=distance
+        out.HitResult={Component=reportedComponent}
+    end
+    h:tick();h:tick();h:frames(1.4)
+    h:tick(0.01)
+    assert(#h.resume==0 and not npc.CharacterMovement.bForceNextFloorCheck,'an unrelated floor must not confirm the target pole')
+    reportedComponent=h.poles[1].SM_WoodPost_001
+    distance=80
+    h:tick(0.1)
+    assert(#h.resume==0 and not npc.CharacterMovement.bForceNextFloorCheck,'a distant floor must not confirm landing')
+    distance=3
+    h:tick(0.1);h:tick(0.1)
+    assert(#h.resume==1 and npc.CharacterMovement.base==nil and npc.CharacterMovement.bForceNextFloorCheck)
+    assert(#npc.teleports==0 and h.adapter:holds(npc) and h.adapter:stop())
+end)
+
 test('partial relocation and actor invalidation both clean up owned poles',function()
     local h=fixture()
     local npc=enemy(h)
@@ -337,6 +384,32 @@ local function combatFixture()
     return combat
 end
 
+local function modelPoleRims(h)
+    local bypassed={}
+    h.block=function(actor,dest,hit)
+        if dest.Z>=actor.at.Z then return false end
+        for _,pole in ipairs(h.area.ActivatedPoles)do
+            local mesh=pole.SM_WoodPost_001
+            if mesh and not pole.gone then
+                local top=pole.StandPoint:K2_GetComponentLocation()
+                local offset=(dest.X-top.X)^2+(dest.Y-top.Y)^2
+                local clearance=dest.Z-top.Z-actor.CapsuleComponent:GetScaledCapsuleHalfHeight()
+                if offset>2^2 and offset<70^2 and clearance>8 and clearance<140 then
+                    -- An oversized rim can intercept the capsule before its center reaches StandPoint.
+                    if not ignores(actor.CapsuleComponent,mesh) then
+                        hit.bBlockingHit=true
+                        hit.Component=mesh
+                        return true
+                    end
+                    bypassed[pole]=true
+                end
+            end
+        end
+        return false
+    end
+    return bypassed
+end
+
 test('a staged pickup selects the newly registered pole at the native warp target',function()
     local combat=combatFixture()
     local h=fixture(combat)
@@ -385,6 +458,113 @@ test('confirmed poles can be reused for a second and third landing without a gro
     assert(h.adapter:stop() and h.poles[1].gone and h.poles[2].gone and #h.area.ActivatedPoles==1)
 end)
 
+test('a blocking target rim allows the centered landing on both the first and next pole',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h,1,95)
+    npc.at.X=620
+    local bypassed=modelPoleRims(h)
+    local previousIgnore=collider(h.world,1)
+    npc.CapsuleComponent:IgnoreComponentWhenMoving(previousIgnore,true)
+    h:tick();h:tick();h:tick(1.8);h:tick()
+    assert(combat.landings==1 and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001,'first jump must land on the modeled rim')
+    assert(#npc.CapsuleComponent.MoveIgnoreComponents==1 and ignores(npc.CapsuleComponent,previousIgnore))
+    combat.turn=true
+    h:tick();h:tick();h:tick(1.8);h:tick()
+    assert(combat.landings==2 and npc.CharacterMovement.base==h.poles[2].SM_WoodPost_001,'the next jump must land on the modeled rim')
+    assert(bypassed[h.poles[1]] or bypassed[h.poles[2]],'at least one angled descent must exercise the pole ignore')
+    assert(#npc.teleports==0 and #npc.CapsuleComponent.MoveIgnoreComponents==1 and ignores(npc.CapsuleComponent,previousIgnore))
+    assert(h.adapter:stop())
+end)
+
+test('takeoff bypasses a same-area active link box and restores it after landing',function()
+    local h=fixture()
+    local npc=enemy(h)
+    local startZ=npc.at.Z
+    local secondPole=object({outer=h.world,Area=h.area})
+    local link=object({outer=h.world,LinkedPoleA=h.anchor,LinkedPoleB=secondPole})
+    local box=collider(link,1)
+    box.mode=1
+    box.responses[19]=2
+    box.responses[2]=0
+    function box:GetOwner()return link end
+    link.Box=box
+    local otherArea=object({outer=h.world})
+    local foreignLink=object({outer=h.world,LinkedPoleA=h.anchor,LinkedPoleB=object({Area=otherArea})})
+    foreignLink.Box=collider(foreignLink,1)
+    h.area.ActivatedLinks={link,foreignLink}
+    local passed,blocked=0,0
+    h.block=function(actor,dest,hit)
+        if dest.Z<=startZ or dest.Z>=startZ+80 then return false end
+        if box:GetCollisionResponseToChannel(actor.CapsuleComponent:GetCollisionObjectType())~=2 then return false end
+        if ignores(actor.CapsuleComponent,box) then passed=passed+1;return false end
+        blocked=blocked+1
+        hit.bBlockingHit=true
+        hit.bStartPenetrating=true
+        hit.Component=box
+        return true
+    end
+    h:tick();h:tick()
+    assert(ignores(npc.CapsuleComponent,box),'the selected stage link must be ignored before the first move')
+    assert(not ignores(npc.CapsuleComponent,foreignLink.Box),'a link with a foreign-area endpoint must keep its collision')
+    h:tick(1.8);h:tick()
+    assert(passed>0 and blocked==0 and #h.resume==1 and #npc.teleports==0)
+    assert(npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001)
+    assert(not ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==0)
+    assert(box.mode==1 and box.responses[19]==2 and box.responses[2]==0)
+    assert(h.adapter:stop())
+end)
+
+test('two registered stage components can block the same sweep without canceling the jump',function()
+    local h=fixture()
+    local npc=enemy(h)
+    h:tick()
+    local components={}
+    for i=1,2 do
+        local pole=object({outer=h.world,Area=h.area,Activated=true,Occupied=false,
+            StandPoint=object({K2_GetComponentLocation=function()return {X=2000+i*100,Y=0,Z=500} end})})
+        local mesh=collider(pole,1)
+        function mesh:GetOwner()return pole end
+        pole.SM_WoodPost_001=mesh
+        h.area.ActivatedPoles[#h.area.ActivatedPoles+1]=pole
+        components[i]=mesh
+    end
+    local blocks={0,0}
+    local passed=0
+    local startZ=npc.at.Z
+    h.block=function(actor,dest,hit)
+        if dest.Z<=startZ or dest.Z>=startZ+80 then return false end
+        for i,component in ipairs(components)do
+            if not ignores(actor.CapsuleComponent,component) then
+                blocks[i]=blocks[i]+1
+                hit.bBlockingHit=true
+                hit.Component=component
+                return true
+            end
+        end
+        passed=passed+1
+        return false
+    end
+    h:tick();h:tick(1.8);h:tick()
+    assert(blocks[1]==1 and blocks[2]==1 and passed>0,'both blockers must be handled during the same move')
+    assert(#h.resume==1 and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001 and #npc.teleports==0)
+    assert(#npc.CapsuleComponent.MoveIgnoreComponents==0 and h.adapter:stop())
+end)
+
+test('leaving the phase in midair restores only the temporary pole collision ignore',function()
+    local h=fixture()
+    local npc=enemy(h)
+    local previousIgnore=collider(h.world,1)
+    npc.CapsuleComponent:IgnoreComponentWhenMoving(previousIgnore,true)
+    h:tick();h:tick();h:frames(0.8)
+    assert(ignores(npc.CapsuleComponent,h.poles[1].SM_WoodPost_001) and next(h.timers))
+    h.boss.tags[onPole]=0
+    h:tick()
+    assert(h.poles[1].gone and not next(h.timers) and h.adapter:count()==0)
+    assert(#npc.CapsuleComponent.MoveIgnoreComponents==1 and ignores(npc.CapsuleComponent,previousIgnore))
+    assert(npc.CharacterMovement.MovementMode==1 and npc.CapsuleComponent.responses[1]==0)
+end)
+
 test('an obstructed hop returns to the last supported pole and keeps the weapon mode',function()
     local combat=combatFixture()
     local h=fixture(combat)
@@ -393,9 +573,15 @@ test('an obstructed hop returns to the last supported pole and keeps the weapon 
     local first={X=npc.at.X,Y=npc.at.Y,Z=npc.at.Z}
     combat.turn=true
     h:tick()
-    h.block=function(_,dest)return (dest.X-first.X)^2+(dest.Y-first.Y)^2>30^2 end
+    local obstacles=0
+    h.block=function(_,dest)
+        if (dest.X-first.X)^2+(dest.Y-first.Y)^2<=30^2 then return false end
+        obstacles=obstacles+1
+        return true
+    end
     h:tick();h:tick(1.4);h:tick(0.8)
     assert(h.poles[2].gone and not h.poles[1].gone and h.adapter:holds(npc))
     assert(npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001 and #npc.teleports==0)
+    assert(obstacles>0 and #npc.CapsuleComponent.MoveIgnoreComponents==0)
     assert(combat.landings==2 and h.adapter:stop())
 end)
