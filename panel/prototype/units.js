@@ -185,5 +185,11 @@ window.PG_UNITS = [
   {"id":"BP_Monster_FengXueDaoKe_NPC","name":"风雪刀客（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":11,"status":"special","source":"冷荼战第三阶段援军","sourceKey":"unit.source.cold3","note":"手动召唤时跳过与冷荼战玉鼎和玉璧的剧情配对。"},
   {"id":"BP_Monster_LionDancer_P2_NPC","name":"舞狮（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":12,"status":"special","source":"冷荼战第四阶段援军","sourceKey":"unit.source.cold4","note":"手动召唤时跳过与冷荼战金色人偶的剧情配对。"},
   {"id":"BP_Monster_LeiDang_NPC","name":"雷当（剧情援军）","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":13,"status":"special","source":"冷荼战第五阶段援军","sourceKey":"unit.source.cold5","note":"手动召唤时跳过与冷荼的剧情配对。召唤需要存档已记录击杀雷当。"},
-  {"id":"BP_Monster_XianZhe","name":"弦者","boss":true,"species":"Special","ch":2,"chName":"林中血，镜中蛇","map":"血色森林","order":29,"status":"special","source":"白赤练二阶段援军","note":"手动召唤时跳过与白赤练二阶段的剧情配对。"}
+  {"id":"BP_Monster_XianZhe","name":"弦者","boss":true,"species":"Special","ch":2,"chName":"林中血，镜中蛇","map":"血色森林","order":29,"status":"special","source":"白赤练二阶段援军","note":"手动召唤时跳过与白赤练二阶段的剧情配对。"},
+  {"id":"BP_Monster_GuiFengKe","name":"鬼斩客","boss":true,"species":"Special","ch":12,"chName":"断魂","map":"断魂山","order":14,"status":"special","source":"鬼斩客支线·断魂山战斗版本","note":"使用鬼斩客原版属性、陌刀和战斗AI。独立参战待测试。"},
+  {"id":"BP_Monster_IronMaskMan_Boss","name":"铁面杀手（首领版）","boss":true,"species":"Special","ch":6,"chName":"背叛与监禁","map":"枷笼山","order":10,"status":"special","source":"枷笼山原生首领战斗版本","note":"使用独立的首领AI和原版属性，与普通铁面分开。独立参战待测试。"},
+  {"id":"BP_Monster_HookMan","name":"追命（一阶段）","boss":true,"species":"Special","ch":1,"chName":"逆流而上","map":"悲泣溪谷","order":27,"status":"special","source":"悲泣溪谷原生一阶段战斗版本","note":"与序章马车版、六绝凶镰形态分开，保留原版配置。独立参战待测试。"},
+  {"id":"BP_Monster_EMei_Sword_JianZhen","name":"红衣女剑客（剑阵版）","boss":true,"species":"Special","ch":5,"chName":"英雄？罪人？","map":"正道大营","order":10,"status":"special","source":"正道大营原生剑阵战斗版本","note":"保留剑阵版本的原生AI和属性。独立参战及剑阵表现待测试。"},
+  {"id":"BP_Monster_TieGui_Solo","name":"铁鬼（独战版）","boss":true,"species":"Special","ch":5,"chName":"英雄？罪人？","map":"正道大营","order":11,"status":"special","source":"正道大营原生独战版本","note":"使用原版独战配置，与少主护卫版本分开。独立参战待测试。"},
+  {"id":"BP_Monster_YuCong","name":"玉琮（原版战斗体）","boss":true,"species":"Special","ch":2,"chName":"林中血，镜中蛇","map":"血色森林","order":34,"status":"special","source":"血色森林原生战斗体","note":"与单独列出的玉琮形态分开，保留本体AI和原版属性。独立参战待测试。"}
 ];

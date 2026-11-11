@@ -98,7 +98,7 @@ function LionNPC.new(options)
         end
         return nil
     end
-    local function shape(actor)
+    local function shape(actor,geometryOnly)
         local capsule=U.field(actor,'CapsuleComponent')
         local okRadius,radius=call(capsule,'GetScaledCapsuleRadius')
         local okHalf,half=call(capsule,'GetScaledCapsuleHalfHeight')
@@ -106,12 +106,14 @@ function LionNPC.new(options)
         local mode=tonumber((U.field(movement,'MovementMode')))
         if not okRadius or not okHalf or type(radius)~='number' or type(half)~='number'
             or radius<=0 or half<radius or not U.valid(movement) then return nil end
-        if mode~=0 and mode~=1 and mode~=2 and mode~=5 then return nil end
+        if geometryOnly then
+            if not mode or mode<0 or mode>6 then return nil end
+        elseif mode~=0 and mode~=1 and mode~=2 and mode~=5 then return nil end
         return {capsule=capsule,radius=radius,half=half,movement=movement,mode=mode}
     end
     local function sourceAnchor(source)
         local at=location(source.actor)
-        local body=shape(source.actor)
+        local body=shape(source.actor,true)
         if not at or not body then return nil,'烈焰位置或胶囊未读回' end
         local feet=at.Z-body.half
         local best,closest
@@ -143,7 +145,7 @@ function LionNPC.new(options)
     end
     local function chooseSpot(actor,carrier,source,body,anchor)
         local at=location(carrier)
-        local bossBody=shape(source.actor)
+        local bossBody=shape(source.actor,true)
         if not at or not bossBody then return nil end
         local gap=body.radius+bossBody.radius+45
         local range=options.range(actor)
@@ -803,9 +805,15 @@ function LionNPC.new(options)
         end
         if seat.otherPole and not removePole(seat,seat.otherPole.pole) then seat.failed=true;return end
         seat.otherPole=nil
-        local anchor=sourceAnchor(seat.source)
+        local anchor,anchorRead=sourceAnchor(seat.source)
         local top=anchor and chooseSpot(seat.actor,seat.carrier,seat.source,seat.body,anchor)
         if top and distance2(top,seat.top)<=1300^2 then seat.nextPole=spawnPole(seat,top,now) end
+        if not seat.nextPole then
+            local why=not anchor and anchorRead or not top and '没有满足体型间距的候选点'
+                or distance2(top,seat.top)>1300^2 and '目标桩超过跳跃范围' or '独立桩生成未读回'
+            say('本轮换桩未开始 actor='..seat.key..' 原因='..tostring(why)
+                ..' 烈焰移动模式='..tostring(U.field(U.field(seat.source.actor,'CharacterMovement'),'MovementMode')))
+        end
         if not seat.nextPole and not combat:endHop(seat,now) then seat.failed=true end
     end
 

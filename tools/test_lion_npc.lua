@@ -458,6 +458,20 @@ test('confirmed poles can be reused for a second and third landing without a gro
     assert(h.adapter:stop() and h.poles[1].gone and h.poles[2].gone and #h.area.ActivatedPoles==1)
 end)
 
+test('a native custom movement mode does not hide the source pole from a pending hop',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h)
+    h:board()
+    h.boss.CharacterMovement.MovementMode=6
+    combat.turn=true
+    h:tick()
+    assert(#h.poles==2,'the source geometry remains readable in native custom movement')
+    assert(combat.landings==1,'a requested hop is not a completed landing')
+    h:tick();h:tick(1.4)
+    assert(combat.landings==2 and npc.CharacterMovement.base==h.poles[2].SM_WoodPost_001)
+end)
+
 test('a blocking target rim allows the centered landing on both the first and next pole',function()
     local combat=combatFixture()
     local h=fixture(combat)
