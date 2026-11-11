@@ -147,7 +147,7 @@ function Exec.new(options)
     local humanoidLines=0
     local tagRead=nil   -- how the executable tags read back the first time, logged once
     local active=nil
-    local grabPose,pendingGrabControl
+    local grabPoses,pendingGrabControls={},{}
     local finish
     local callingNative=false
     local pendingBodies={}
@@ -501,7 +501,7 @@ function Exec.new(options)
 
     -- Temporary presentation for the pole controller. Combat, targeting and input remain on the NPC.
     function self:borrowPolePose(actor,clip,looping)
-        if active or grabPose or next(pendingBodies) then return nil end
+        if active or next(grabPoses) or next(pendingBodies) then return nil end
         local mesh=U.field(actor,'Mesh')
         if not U.valid(mesh) or U.valid(weak(U.field(mesh,'LeaderPoseComponent'))) then return nil end
         local body,why=borrowBody(actor,{clip=clip,same_skeleton=true,loop=looping,ignoreRootMotion=true})
@@ -561,6 +561,13 @@ function Exec.new(options)
     local function moveMode(component)
         return tonumber((U.field(component,'MovementMode'))),tonumber((U.field(component,'CustomMovementMode')))
     end
+    local function hitState(component)
+        local ok,state=call(component,'GetCurrentHitState')
+        local tag=ok and U.struct(state,'TagName')
+        if type(tag)=='string' then return tag end
+        local named,text=pcall(function()return tag:ToString()end)
+        return named and text or nil
+    end
     local function restoreGrabControl(control)
         local outcomes={}
         if control.changedMode then
@@ -579,8 +586,19 @@ function Exec.new(options)
                 end
             end
         end
+        if control.changedHitState then
+            local current=hitState(control.hitreact)
+            if not U.valid(control.hitreact) or (current and current~='CharacterState.Hitreact.State.Custom') then
+                control.changedHitState=false
+            elseif current then
+                call(control.hitreact,'ChangeHitState',{TagName=name(control.hitState)},nil,false)
+                control.changedHitState=hitState(control.hitreact)~=control.hitState
+            end
+            outcomes[#outcomes+1]='恢复受击状态='..tostring(not control.changedHitState)
+        end
         if control.changedPause then
-            if not U.valid(control.brain) or brainPaused(control.brain)==false then
+            local hp=U.valid(control.actor) and read(control.actor,'Health')
+            if not U.valid(control.brain) or (type(hp)=='number' and hp<=0) or brainPaused(control.brain)==false then
                 control.changedPause=false
             else
                 local resumed,detail=setBrainPause(control.brain,false,GUILLOTINE_PAUSE)
@@ -588,8 +606,8 @@ function Exec.new(options)
                 outcomes[#outcomes+1]=detail
             end
         end
-        local restored=not control.changedMode and not control.changedPause
-        pendingGrabControl=not restored and control or nil
+        local restored=not control.changedMode and not control.changedPause and not control.changedHitState
+        pendingGrabControls[control.movementKey]=not restored and control or nil
         return restored,#outcomes>0 and table.concat(outcomes,'；') or '控制状态已恢复'
     end
     local function grabControlHeld(actor,control)
@@ -605,7 +623,7 @@ function Exec.new(options)
         if not brainKey or not movementKey or paused==nil or mode==nil or custom==nil then
             return nil,'读不到目标的 AI 暂停或移动模式'
         end
-        local control={brain=brain,brainKey=brainKey,movement=movement,movementKey=movementKey,mode=mode,custom=custom}
+        local control={actor=actor,brain=brain,brainKey=brainKey,movement=movement,movementKey=movementKey,mode=mode,custom=custom}
         if not paused then
             control.changedPause=true
             local ok,why=setBrainPause(brain,true,GUILLOTINE_PAUSE)
@@ -617,6 +635,18 @@ function Exec.new(options)
         if mode~=MOVE_NONE then
             control.changedMode=true
             call(movement,'SetMovementMode',MOVE_NONE,0)
+        end
+        local hitreact=U.field(actor,'Hitreact Component')
+        local oldHit=hitState(hitreact)
+        if oldHit and oldHit~='CharacterState.Hitreact.State.Custom' then
+            control.hitreact,control.hitState,control.changedHitState=hitreact,oldHit,true
+            call(hitreact,'ChangeHitState',{TagName=name('CharacterState.Hitreact.State.Custom')},nil,false)
+            local afterHit=hitState(hitreact)
+            say('血滴子原版受击状态 '..className(actor)..' '..oldHit..' -> '..tostring(afterHit))
+            if afterHit~='CharacterState.Hitreact.State.Custom' then
+                restoreGrabControl(control)
+                return nil,'原版自定义受击状态未读回'
+            end
         end
         if not grabControlHeld(actor,control) then
             local _,restored=restoreGrabControl(control)
@@ -646,41 +676,56 @@ function Exec.new(options)
         return true
     end
 
-    local function closeGrabPose(why,restore)
-        local pose=grabPose
-        if not pose then
-            if restore and pendingGrabControl then return restoreGrabControl(pendingGrabControl) end
-            return next(pendingBodies)==nil
-        end
-        grabPose=nil
+local function closeOneGrab(pose,why,restore)
+        grabPoses[pose.targetKey]=nil
         if pose.handle then pcall(pose.cancel,pose.handle) end
         if not restore then return false,'未在游戏线程恢复控制' end
-        local bodyBack=returnBody(pose.body)
+        local bodyBack=pose.body and returnBody(pose.body) or '沿用原骨架'
         local restored,detail=restoreGrabControl(pose.control)
         say(string.format('血滴子控制结束（%s）片段读回=%.3f；%s；%s',tostring(why or '停止'),pose.position,bodyBack,detail))
-        return restored and pendingBodies[pose.body.key]==nil,detail
+        return restored and (not pose.body or pendingBodies[pose.body.key]==nil),detail
+    end
+    local function closeGrabPose(why,restore,actor)
+        if actor then
+            local key=U.key(actor)
+            local pose=key and grabPoses[key]
+            if not pose then
+                for _,other in pairs(grabPoses)do if other.actor==actor then pose=other;break end end
+            end
+            if pose then return closeOneGrab(pose,why,restore) end
+            for _,control in pairs(pendingGrabControls)do
+                if control.actor==actor then return restore and restoreGrabControl(control) end
+            end
+            return true
+        end
+        local complete=true
+        for _,pose in pairs(grabPoses)do if not closeOneGrab(pose,why,restore) then complete=false end end
+        if restore then
+            for _,control in pairs(pendingGrabControls)do if not restoreGrabControl(control) then complete=false end end
+        end
+        return complete
     end
 
-    function self:stopGrabPose(why)
-        return closeGrabPose(why,true)
+    function self:stopGrabPose(why,actor)
+        return closeGrabPose(why,true,actor)
     end
-
     local function validGrabTarget(stillValid)
         local ok,valid=pcall(stillValid)
         return ok and valid==true
     end
-
     function self:guillotineHeld(actor)
-        local pose=grabPose
-        if not pose or U.key(actor)~=pose.targetKey or not validGrabTarget(pose.stillValid)
-            or not U.valid(pose.body.comp)
-            or U.key(weak(U.field(pose.body.main,'LeaderPoseComponent')))~=pose.body.key
-            or not grabControlHeld(actor,pose.control) then return false,false end
+        local pose=grabPoses[U.key(actor)]
+        if not pose or not validGrabTarget(pose.stillValid) then return false,false end
+        local hp=read(actor,'Health')
+        local deathVisual=pose.finishingAt~=nil and type(hp)=='number' and hp<=0
+        if not deathVisual and not grabControlHeld(actor,pose.control) then return false,false end
+        if pose.body and (not U.valid(pose.body.comp)
+            or U.key(weak(U.field(pose.body.main,'LeaderPoseComponent')))~=pose.body.key) then return false,false end
         return true,pose.stage==#GUILLOTINE_POSES
     end
-
     local function advanceGrabPose(pose)
         local stage=GUILLOTINE_POSES[pose.stage+1]
+        if not pose.body then pose.stage=pose.stage+1;return true end
         local comp=pose.body.comp
         local moved=call(comp,'SetPosition',stage.from,false)
         local rated=call(comp,'SetPlayRate',stage.rate)
@@ -689,67 +734,88 @@ function Exec.new(options)
         position=gotPosition and U.unwrap(position)
         rate=gotRate and U.unwrap(rate)
         if not moved or not rated or type(position)~='number' or position~=position
-            or math.abs(position-stage.from)>0.002 or rate~=stage.rate then
-            return false
-        end
+            or math.abs(position-stage.from)>0.002 or rate~=stage.rate then return false end
         pose.position=position
         pose.stage=pose.stage+1
         say(string.format('血滴子受击片段=%d 读回位置=%.3f 速率=%s',pose.stage,position,tostring(rate)))
         return true
     end
-
+    function self:finishGuillotineHold(actor)
+        local pose=grabPoses[U.key(actor)]
+        if not pose then return false,'受抓控制未读回' end
+        if pose.finishingAt then return true end
+        pose.finishingAt=now()
+        if not self:guillotineHeld(actor) then pose.finishingAt=nil;return false,'受抓收尾状态未读回' end
+        if not advanceGrabPose(pose) then pose.finishingAt=nil;return false,'原版后半段起点或速率未读回' end
+        return true,'原版受抓收尾已启动'
+    end
     function self:startGuillotineHold(actor,stillValid)
-        if active or grabPose or pendingGrabControl or next(pendingBodies) then return false,'另一段抓取或处决尚未结束' end
+        local targetKey=U.key(actor)
+        local conflict=active and (U.key(active.executor)==targetKey or U.key(active.boss)==targetKey)
+        if not targetKey or conflict or grabPoses[targetKey] or next(pendingBodies) then return false,'目标已有抓取或处决' end
         local loop=options.loop or LoopInGameThreadWithDelay
         local cancel=options.cancel or CancelDelayedAction
-        if type(loop)~='function' or type(cancel)~='function' then return false,'缺少游戏线程动画定时器' end
-        local targetKey=U.key(actor)
-        if not targetKey or not validGrabTarget(stillValid) then return false,'被抓目标已离场或倒下' end
+        if type(loop)~='function' or type(cancel)~='function' or not validGrabTarget(stillValid) then return false,'目标或游戏线程计时器未就绪' end
         local started=now()
-        if type(started)~='number' then return false,'读不到抓取开始时间' end
-        local body,why=borrowBody(actor,GUILLOTINE_GRAB)
-        if not body then return false,why end
-        local leader=weak(U.field(body.main,'LeaderPoseComponent'))
-        local got,playing=call(body.comp,'IsPlaying')
-        if why or not U.valid(leader) or U.key(leader)~=body.key or not got or U.unwrap(playing)~=true then
-            return false,(why or '被抓动画或主网格跟随未读回')..'；'..returnBody(body)
+        if type(started)~='number' then return false,'抓取时间未读回' end
+        local control,why=beginGrabControl(actor)
+        if not control then return false,why end
+        if not stopGrabAction(actor) then
+            restoreGrabControl(control)
+            return false,'目标当前招式未确认已中断'
         end
-        local control,controlWhy=beginGrabControl(actor)
-        if not control then return false,controlWhy..'；'..returnBody(body) end
-        local pose={body=body,control=control,cancel=cancel,started=started,position=0,stage=1,
-            targetKey=targetKey,stillValid=stillValid}
-        grabPose=pose
-        local ok,handle=pcall(loop,16,function()
-            if grabPose~=pose then return end
-            if not self:guillotineHeld(actor) then closeGrabPose('目标或控制状态变化',true);return end
-            local t=now()
-            if type(t)~='number' or t<pose.started or t-pose.started>=GUILLOTINE_TIMEOUT then
-                closeGrabPose('未收到完整收尾信号',true);return
+        local body,bodyWhy=borrowBody(actor,GUILLOTINE_GRAB)
+        if body then
+            local _,playing=call(body.comp,'IsPlaying')
+            if bodyWhy or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key or playing~=true then
+                returnBody(body)
+                body=nil
             end
-            local stage=GUILLOTINE_POSES[pose.stage]
-            if not stage.limit then return end -- Keep the last frame and the hold until the owner's release.
+        end
+        local pose={actor=actor,body=body,control=control,cancel=cancel,started=started,position=0,stage=1,
+            targetKey=targetKey,stillValid=stillValid}
+        grabPoses[targetKey]=pose
+        local ok,handle=pcall(loop,16,function()
+            if grabPoses[targetKey]~=pose then return end
+            if not self:guillotineHeld(actor) then closeOneGrab(pose,'目标或控制状态变化',true);return end
+            local time=now()
+            if type(time)~='number' or time<pose.started or time-pose.started>=GUILLOTINE_TIMEOUT then
+                closeOneGrab(pose,'抓取更新超时',true);return
+            end
+            if not body then
+                if pose.finishingAt and time-pose.finishingAt>=3.788884 then pose.stage=#GUILLOTINE_POSES end
+                return
+            end
             local read,position=call(body.comp,'GetPosition')
-            position=read and U.unwrap(position)
-            if type(position)~='number' or position~=position then closeGrabPose('动画位置不可读',true);return end
+            if not read or type(position)~='number' or position~=position then closeOneGrab(pose,'动画位置未读回',true);return end
             pose.position=position
-            if position>=stage.limit-0.001 and not advanceGrabPose(pose) then
-                closeGrabPose('下一段动画写后读回失败',true)
+            if pose.stage==1 then
+                -- The original start montage waits for the 0.9 s native commit before its finish montage.
+                if not pose.waiting and position>=0.54 then
+                    call(body.comp,'SetPosition',0.54,false)
+                    call(body.comp,'SetPlayRate',0)
+                    local _,heldPosition=call(body.comp,'GetPosition')
+                    local _,heldRate=call(body.comp,'GetPlayRate')
+                    if type(heldPosition)~='number' or math.abs(heldPosition-0.54)>0.002 or heldRate~=0 then
+                        closeOneGrab(pose,'起手等待帧未读回',true)
+                        return
+                    end
+                    pose.waiting=true
+                end
+            else
+                local stage=GUILLOTINE_POSES[pose.stage]
+                if stage.limit and position>=stage.limit-0.001 and not advanceGrabPose(pose) then
+                    closeOneGrab(pose,'下一段动画未读回',true)
+                end
             end
         end)
-        if not ok or not handle then
-            closeGrabPose('定时器未登记',true)
-            return false,'被抓动画定时器未登记'
+        if not ok or handle==nil or handle==false then
+            closeOneGrab(pose,'动画任务未登记',true)
+            return false,'动画任务未登记'
         end
-        if grabPose~=pose then
-            pcall(cancel,handle)
-            return false,'被抓动画启动时目标已离场'
-        end
+        if grabPoses[targetKey]~=pose then pcall(cancel,handle);return false,'目标在接管时离场' end
         pose.handle=handle
-        if not stopGrabAction(actor) or not self:guillotineHeld(actor) then
-            closeGrabPose('目标当前动作无法确认已中断',true)
-            return false,'目标当前动作无法确认已中断'
-        end
-        say('血滴子被抓姿势开始 '..className(actor)..' 播放和主网格跟随读回=true')
+        say('血滴子受抓开始 '..className(actor)..' 控制读回=true 原版动画='..tostring(body~=nil)..' '..tostring(bodyWhy or ''))
         return true
     end
 
@@ -1143,8 +1209,9 @@ function Exec.new(options)
         if next(pendingBodies) or not (U.valid(event.executor) and U.valid(event.target)) then return end
         local timing=animationData(short(event.execution))
         if not timing then return end
-        self:stopGrabPose('转入原生处决')
-        if pendingGrabControl or next(pendingBodies) then return end
+        self:stopGrabPose('转入原生处决',event.executor)
+        self:stopGrabPose('转入原生处决',event.target)
+        if next(pendingGrabControls) or next(pendingBodies) then return end
         local continuing,paused=false,false
         if active then
             if U.key(active.executor)==U.key(event.executor) and U.key(active.boss)==U.key(event.target)
@@ -1284,13 +1351,16 @@ function Exec.new(options)
                 if not unit.foe then say('单位已离场，清除处决判断 读回=不在当前名单') end
             end
         end
-        if pendingGrabControl then
-            local restored,detail=restoreGrabControl(pendingGrabControl)
+        for _,control in pairs(pendingGrabControls)do
+            local restored,detail=restoreGrabControl(control)
             if not restored then self.message='血滴子控制恢复待重试';return end
             say('血滴子控制恢复重试读回=true；'..detail)
         end
         if not self.enabled then return end
-        if grabPose then return end
+        if next(grabPoses) then
+            if active then watch() end
+            return
+        end
         chain:auditExisting()
         opportunities:tick()
         for key,body in pairs(pendingBodies) do if not U.valid(body.comp) then pendingBodies[key]=nil end end

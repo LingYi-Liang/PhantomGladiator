@@ -202,15 +202,23 @@ do
         K2_CancelAbility=function(self)self.bIsActive=false end,
     })
     victim.AbilitySystemComponent.LocalAnimMontageInfo={AnimatingAbility=action}
+    local currentHit='None'
+    victim['Hitreact Component']=object('Hitreact',{
+        GetCurrentHitState=function()return {TagName={ToString=function()return currentHit end}}end,
+        ChangeHitState=function(_,tag)currentHit=tag.TagName end,
+    })
     assert(exec:startGuillotineHold(victim,function()return alive end))
     local pose=h.components[1]
     assert(pose.playing=='Hun_EXD_ByMBoss' and pose.rate==0.6000000238418579 and victim.Mesh.LeaderPoseComponent==pose)
     assert(victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==0 and action.bIsActive==false)
+    assert(currentHit=='CharacterState.Hitreact.State.Custom')
     assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
     assert(not exec:startGuillotineHold(victim,function()return true end),'duplicate capture must not borrow another skeleton')
     pose.position=0.53;timers[1]()
     assert(not pose.destroyed and pose.rate==0.6000000238418579)
     pose.position=0.54;timers[1]()
+    assert(pose.position==0.54 and pose.rate==0,'wait for the native lethal point rather than advancing independently')
+    assert(exec:finishGuillotineHold(victim))
     assert(pose.position==0.4 and pose.rate==3 and victim.brain:IsPaused())
     pose.position=0.7;timers[1]()
     assert(pose.position==0.7 and pose.rate==1.5 and victim.CharacterMovement.MovementMode==0)
@@ -223,6 +231,7 @@ do
     assert(exec:stopGrabPose('收尾读回'))
     assert(cancelled[1] and pose.destroyed and victim.Mesh.LeaderPoseComponent==nil)
     assert(not victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==1 and not exec:guillotineHeld(victim))
+    assert(currentHit=='None')
     assert(victim.nativeAnim.montage=='NativeHitReaction' and h.attrs[victim].Health==500)
 
     victim.brain.paused=true
@@ -236,6 +245,42 @@ do
     exec:stop('F4')
     assert(cancelled[3] and h.components[3].destroyed and victim.brain:IsPaused() and victim.CharacterMovement.MovementMode==6)
     print('PASS guillotine hold advances both original victim segments, waits for release, and restores on completion, invalidation and F4')
+end
+
+do
+    local h=harness()
+    local first=h.enemy({X=100,Y=0,Z=0},{})
+    local second=h.enemy({X=200,Y=0,Z=0},{})
+    local timers={}
+    local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,cancel=function()end})
+    assert(exec:startGuillotineHold(first,function()return true end))
+    assert(exec:startGuillotineHold(second,function()return true end))
+    assert(first.Mesh.LeaderPoseComponent~=second.Mesh.LeaderPoseComponent)
+    assert(exec:finishGuillotineHold(first) and exec:finishGuillotineHold(second))
+    assert(exec:stopGrabPose('只释放第一组',first))
+    assert(not exec:guillotineHeld(first) and exec:guillotineHeld(second))
+    assert(exec:stopGrabPose('停止全部') and not exec:guillotineHeld(second))
+    print('PASS concurrent guillotine victims own separate poses, controls and restoration')
+end
+
+do
+    local h=harness()
+    local victim=h.enemy({X=100,Y=0,Z=0},{})
+    local timers={}
+    local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,cancel=function()end})
+    assert(exec:startGuillotineHold(victim,function()return true end))
+    h.attrs[victim].Health=0
+    victim.brain.paused=false
+    victim.CharacterMovement:SetMovementMode(3,0)
+    assert(exec:finishGuillotineHold(victim))
+    local pose=h.components[1]
+    pose.position=0.7;timers[1]()
+    pose.position=6.24;timers[1]()
+    local held,finished=exec:guillotineHeld(victim)
+    assert(held and finished,'native death taking over AI or movement does not discard the finishing pose')
+    assert(exec:stopGrabPose('尸体收尾',victim))
+    assert(victim.CharacterMovement.MovementMode==3 and h.attrs[victim].Health==0)
+    print('PASS native death control changes preserve the full victim finish without reviving it')
 end
 
 do
