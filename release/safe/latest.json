@@ -1,152 +1,194 @@
 {
-  "version": "0.40.10",
-  "date": "2026-11-10T22:15:00+08:00",
-  "size": 21091011,
-  "sha256": "c1326e02b1891f0874e4256dff20e8bd16c806bffbebe69877243b02e62a5ad2",
+  "version": "0.40.11",
+  "date": "2026-11-11T22:08:51+08:00",
+  "size": 21267996,
+  "sha256": "4b919f55ab4e917e5eabf1e23d2792db26eb9096025abef7b574d73bc6441589",
   "notes": {
     "zh": [
-      "移除普通召唤时可能触发闪退的旧诊断查询。进入剧情时退出观战跟随并交还镜头，召回随从时会核对传送结果。",
-      "修复普通左殇转入二阶段时被打断后卡住的问题。即使没有开启蓝红对战，队伍 NPC 的投技也能对随从生效。",
-      "AI 参数保存后会读回确认，写入失败时保留上一次保存的设置。",
-      "组件安装先校验文件，失败时恢复原组件。助手更新只清理自己创建的临时备份，回退至 v0.40.9 或更早版本时从独立目录打开。",
-      "从 v0.40.9 或更早版本首次升级时，请下载 ZIP，解压到新目录并启动新版，然后按提示更新游戏内模组。"
+      "修复诊断报告导出失败，并调整召唤对象销毁期间的检查，减少对已进入销毁流程对象的访问。",
+      "快捷键改为在游戏线程读取；普通快捷键召唤不再先做全场状态扫描，减少高频操作的额外开销。",
+      "新增可选的排队召唤：默认关闭，最多接收 100 条请求，上一笔完成后间隔约 0.25 秒执行下一笔；停止清理、换图或关闭开关会取消未执行请求。",
+      "新增命名怪物池：可创建多个池，分别设置阵营、数量和快捷键，支持复制、搜索筛选、批量加怪；一次召唤的每只单位各自随机，并遵守单位原有召唤上限。",
+      "对战右栏按「召唤／规则／观战」分类，怪物池在左侧独立显示。新增召唤周目选择，默认跟随存档，可选一至七周目，只影响新召唤单位，自定义固定等级优先。",
+      "新增虚空、弦者及剧情援军等特殊单位的独立召唤卡，标注来源与特性；调整剧情配对、阵营和援军激活确认，避免部分援军影响后续召唤。",
+      "虚空新增常驻闪避无敌开关，下次召唤生效；技能自身带来的无敌效果仍按原版处理。",
+      "实验适配荒行子血滴子对 NPC 的抓取、受控、原生致死与收尾流程；实验适配烈焰舞狮场地、首次上桩、跨桩、狮头火焰弹及退出后的武器恢复。",
+      "新增手动内测检查入口，凭内测码查看指定版本并在独立目录安装，不自动弹出内测提醒。",
+      "左侧新增独立「赞赏」栏目，展示微信赞赏码，支持点击查看大图；新增界面文字补齐六种语言。",
+      "保留旧版迁移通道，新版仍可通过助手检查更新；已发布的 Nexus 专用包保持原样。",
+      "已通过离线回归测试。高频按键、怪物池、血滴子和舞狮适配仍需更多实机验证；镜头反复操作闪退尚未定位，不能承诺本版已解决所有闪退。每池独立数值及禁止脱战回血开关本版尚未提供。"
     ],
     "en": [
-      "Removed an old diagnostic query that could crash during a regular summon. Story scenes now end camera follow and return control to the game. Companion recall checks whether the teleport succeeded.",
-      "Fixed normal Zuo Shang getting stuck when his transition to phase two was interrupted. Team NPCs can now grab companions even with Blue vs Red disabled.",
-      "The app reads AI settings back after saving. If writing fails, it keeps the last saved settings.",
-      "Component installation checks files first and restores the previous components on failure. The updater cleans up only its own temporary backups. Versions v0.40.9 and earlier open in a separate folder when rolled back.",
-      "To upgrade from v0.40.9 or earlier, download the ZIP and extract it to a new folder. Open the new app and follow the prompt to update the in-game mod."
+      "Fixed diagnostic report export failures and adjusted summon cleanup checks to avoid accessing actors already being destroyed.",
+      "Hotkeys are now read on the game thread. Regular hotkey summons skip the full-field status scan to reduce overhead during frequent input.",
+      "Added an optional summon queue, off by default. It accepts up to 100 requests and waits about 0.25 seconds after one finishes before starting the next. Stop and clear, map changes or disabling the queue cancel pending requests.",
+      "Added named monster pools with separate teams, counts and hotkeys. Pools support copying, search filters and batch selection. Each requested unit is drawn independently, respecting each unit's summon limit.",
+      "The battle side panel now has Summon, Rules and Spectate tabs, with a separate pool page. New summons can follow the save's cycle or use cycles 1–7; a fixed custom level takes priority.",
+      "Added independent cards for special units such as Xu Kong, Xian Zhe and story reinforcements, with source and trait descriptions. Adjusted story pairing, teams and activation checks that could interfere with later summons.",
+      "Xu Kong now has a permanent dodge-invulnerability toggle, applied to the next summon. Invulnerability granted by skills retains its native behavior.",
+      "Experimental NPC support covers Huang Xing Zi's Blood Guillotine capture, restraint, native lethal event and recovery, plus the Lion Dancer arena, initial pole jump, pole changes, lion-head fireballs and weapon restoration.",
+      "Added manual test-build checks using an invite code. Assigned builds install in a separate folder, without automatic test-build prompts.",
+      "Added a separate Support page in the left navigation, with the WeChat donation image and an enlarged view. New interface text is available in all six languages.",
+      "The legacy migration feed remains available and current builds still check for updates in the app. Previously published Nexus-specific packages are unchanged.",
+      "Offline regression tests passed. Frequent hotkeys, pools, Blood Guillotine and pole combat still need more in-game verification. Repeated camera-operation crash reports remain unresolved; this release does not claim to fix every crash. Per-pool combat stats and a switch to disable out-of-combat healing are not included."
     ],
     "ja": [
-      "通常召喚でクラッシュを起こすことがあった古い診断処理を削除しました。イベントシーンが始まると観戦カメラの追従を解除してゲームにカメラを戻します。随行ユニットの呼び戻しでは、瞬間移動の結果を確認します。",
-      "通常の左殤が第2段階への移行中に中断されると動かなくなる問題を修正しました。青対赤の対戦が無効でも、チーム所属のNPCの投げ技が随行ユニットに効くようになりました。",
-      "AI設定は保存後に読み戻して確認します。書き込みに失敗した場合は前回の保存内容を保持します。",
-      "コンポーネントは確認してからインストールし、失敗時は元に戻します。更新時に削除するのは更新処理が作った一時バックアップだけです。v0.40.9以前に戻すときは別のフォルダーから起動します。",
-      "v0.40.9以前から更新する場合は、ZIPをダウンロードして新しいフォルダーに展開してください。新しいアプリを起動し、案内に従ってゲーム内Modを更新してください。"
+      "診断レポートの書き出し失敗を修正し、召喚ユニットの破棄中に無効なオブジェクトへアクセスしないよう確認処理を調整しました。",
+      "ショートカットをゲームスレッドで読み取る方式に変更しました。通常のキー召喚では全体の状態走査を省き、連続操作の負荷を減らします。",
+      "任意の召喚待機列を追加しました。初期状態はオフ、最大100件。前の要求が完了して約0.25秒後に次を実行し、停止・一括削除、マップ移動、機能オフで残りを取り消します。",
+      "名前付きモンスタープールを追加しました。陣営・数量・キーを個別設定でき、複製、検索、絞り込み、一括追加に対応。1体ごとに抽選し、各ユニットの召喚上限を守ります。",
+      "対戦画面の右欄を「召喚／ルール／観戦」に整理し、左側にプール画面を追加しました。召喚の周回数はセーブ準拠または1～7周目を選べ、新規召喚にのみ適用。指定レベルが優先です。",
+      "虚空、弦者、イベント援軍などの独立召喚カードを追加し、出典と特性を表示します。イベント連携、陣営、援軍の有効化確認を調整し、後続の召喚への干渉を軽減しました。",
+      "虚空の常時回避無敵を切り替え可能にしました。次回召喚から適用し、技による無敵は原作のままです。",
+      "試験的に荒行子の血滴子によるNPCの捕獲・拘束・原作の致死イベント・復帰、および舞獅の場地、最初の杭への跳躍、杭移動、獅子頭の火球、終了時の武器復元に対応しました。",
+      "招待コードで指定テスト版を手動確認する機能を追加しました。別フォルダーにインストールし、自動通知は行いません。",
+      "左側に独立した支援画面を追加しました。WeChat支援画像を表示・拡大でき、新しい画面の文言を6言語に対応しました。",
+      "旧版の移行用更新先を維持し、新版は引き続きアプリ内から更新できます。公開済みのNexus専用パッケージは変更しません。",
+      "オフライン回帰テストは通過しました。連続キー操作、プール、血滴子、杭上戦闘は追加の実機確認が必要です。カメラ連続操作のクラッシュは原因未特定で、すべてのクラッシュ修正を保証しません。プール別能力値と非戦闘時回復の無効化設定は未実装です。"
     ],
     "fr": [
-      "Suppression d’un ancien diagnostic qui pouvait faire planter le jeu lors d’une invocation ordinaire. Une scène du jeu arrête désormais le suivi de la caméra et rend la main au jeu. Le rappel d’un compagnon vérifie que la téléportation a réussi.",
-      "Correction du blocage de Zuo Shang standard si son passage en phase 2 était interrompu. Les prises des PNJ d’une équipe fonctionnent sur les compagnons même lorsque Bleu contre Rouge est désactivé.",
-      "L’application relit les paramètres de l’IA après leur enregistrement. En cas d’échec, elle conserve la dernière configuration enregistrée.",
-      "L’installation vérifie les composants et restaure les fichiers précédents en cas d’échec. La mise à jour efface uniquement ses propres sauvegardes temporaires. Le retour à la v0.40.9 ou à une version antérieure ouvre cette version dans un dossier séparé.",
-      "Pour passer de la v0.40.9 ou d’une version antérieure à celle-ci, téléchargez le ZIP et extrayez-le dans un nouveau dossier. Lancez la nouvelle application et suivez l’invite de mise à jour du mod en jeu."
+      "Correction des échecs d'export du rapport de diagnostic et ajustement des vérifications pour éviter l'accès aux acteurs déjà en cours de destruction.",
+      "Les raccourcis sont désormais lus sur le thread du jeu. Les invocations ordinaires par touche évitent le balayage de tous les états, réduisant le travail lors d'entrées fréquentes.",
+      "Ajout d'une file d'invocation facultative, désactivée par défaut : jusqu'à 100 demandes, avec environ 0,25 seconde entre la fin d'une demande et la suivante. Arrêter et nettoyer, changer de carte ou désactiver la file annule les demandes restantes.",
+      "Ajout de groupes aléatoires nommés avec camp, quantité et raccourci individuels. Ils peuvent être copiés et remplis par recherche, filtres et sélection multiple. Chaque unité est tirée séparément dans le respect de sa limite d'invocation.",
+      "Le panneau latéral regroupe Invocation, Règles et Observation, et les groupes disposent de leur propre page. Les nouvelles invocations suivent le cycle de la sauvegarde ou un cycle de 1 à 7 ; un niveau fixé est prioritaire.",
+      "Ajout de cartes indépendantes pour les unités spéciales, dont Xu Kong, Xian Zhe et les renforts scénarisés, avec origine et propriétés. Ajustement des associations, camps et confirmations d'activation pouvant bloquer les invocations suivantes.",
+      "L'invulnérabilité d'esquive permanente de Xu Kong peut être désactivée à sa prochaine invocation. Celle de ses techniques conserve son fonctionnement natif.",
+      "Adaptation expérimentale de la capture, de l'immobilisation, de l'événement mortel natif et de la récupération du Blood Guillotine de Huang Xing Zi, ainsi que de l'arène du danseur-lion, des sauts entre piliers, des boules de feu et de la restauration des armes.",
+      "Ajout d'une vérification manuelle des versions de test par code d'invitation. Elles s'installent dans un dossier séparé, sans notification automatique.",
+      "Ajout d'une page Soutenir indépendante dans la navigation de gauche, avec image WeChat agrandissable. Les nouveaux textes sont disponibles dans les six langues.",
+      "Le canal de migration des anciennes versions est conservé ; les versions récentes utilisent toujours la mise à jour intégrée. Les paquets Nexus déjà publiés restent inchangés.",
+      "Les tests de régression hors jeu ont réussi. Les raccourcis fréquents, groupes, captures et combats sur piliers nécessitent davantage de vérifications en jeu. Les signalements de crash après des opérations de caméra répétées restent non résolus ; tous les crashes ne sont pas annoncés corrigés. Les statistiques par groupe et la désactivation de la régénération hors combat ne sont pas incluses."
     ],
     "de": [
-      "Eine alte Diagnoseabfrage wurde entfernt, die bei normalen Beschwörungen einen Absturz auslösen konnte. Zwischensequenzen beenden die Kameraverfolgung und geben die Kamera an das Spiel zurück. Beim Rückruf eines Begleiters wird der Teleport überprüft.",
-      "Der normale Zuo Shang bleibt nicht mehr hängen, wenn sein Wechsel in Phase 2 unterbrochen wird. Team-NPCs können Begleiter nun auch bei deaktiviertem Blau-gegen-Rot-Modus greifen.",
-      "Die App liest die KI-Einstellungen nach dem Speichern zur Kontrolle ein. Schlägt das Schreiben fehl, bleibt der zuletzt gespeicherte Stand erhalten.",
-      "Die Installation prüft die Komponenten und stellt bei Fehlern die bisherigen Dateien wieder her. Das Update entfernt nur seine eigenen temporären Sicherungen. Bei einer Rückkehr zu v0.40.9 oder älter startet diese Version in einem separaten Ordner.",
-      "Für ein Upgrade von v0.40.9 oder älter lade die ZIP-Datei herunter und entpacke sie in einen neuen Ordner. Starte die neue App und folge dem Hinweis, um den Mod im Spiel zu aktualisieren."
+      "Fehler beim Export des Diagnoseberichts behoben. Prüfungen beim Entfernen von Beschwörungen vermeiden Zugriffe auf bereits in Zerstörung befindliche Akteure.",
+      "Schnelltasten werden jetzt im Spielthread gelesen. Normale Tastenbeschwörungen überspringen die vollständige Statusabfrage aller Einheiten und reduzieren so den Aufwand bei häufigen Eingaben.",
+      "Optionale Beschwörungswarteschlange hinzugefügt, standardmäßig aus: bis zu 100 Anfragen, mit etwa 0,25 Sekunden Abstand nach Abschluss der vorigen Anfrage. Stoppen und Aufräumen, Kartenwechsel oder Ausschalten verwirft offene Anfragen.",
+      "Benannte Monster-Pools mit eigenem Team, eigener Anzahl und Taste hinzugefügt. Kopieren, Suche, Filter und Mehrfachauswahl werden unterstützt. Jede Einheit wird einzeln gezogen; ihre Beschwörungsgrenze bleibt gültig.",
+      "Die Seitenleiste gliedert sich in Beschwören, Regeln und Zuschauen; Pools haben eine eigene Seite. Neue Beschwörungen können dem Spielstand oder Durchlauf 1–7 folgen. Eine festgelegte Stufe hat Vorrang.",
+      "Unabhängige Karten für besondere Einheiten wie Xu Kong, Xian Zhe und Handlungsverstärkungen mit Herkunft und Eigenschaften hinzugefügt. Handlungszuordnung, Teams und Aktivierungsbestätigung wurden angepasst, damit spätere Beschwörungen nicht blockiert werden.",
+      "Xu Kongs dauerhafte Ausweich-Unverwundbarkeit lässt sich ab der nächsten Beschwörung abschalten. Fähigkeiten behalten ihre ursprüngliche Unverwundbarkeit.",
+      "Experimentelle NPC-Anpassung für Huang Xing Zis Blood Guillotine: Fang, Festhalten, ursprüngliches Todesereignis und Wiederherstellung. Dazu kommen Löwentänzer-Arena, erster Pfahlsprung, Pfahlwechsel, Feuerbälle und Waffenwiederherstellung.",
+      "Manuelle Prüfung zugewiesener Testversionen per Einladungscode hinzugefügt. Installation in einem separaten Ordner, ohne automatische Testhinweise.",
+      "Eigene Unterstützen-Seite in der linken Navigation mit vergrößerbarem WeChat-Spendenbild hinzugefügt. Neue Oberflächentexte sind in allen sechs Sprachen verfügbar.",
+      "Der bisherige Migrationskanal bleibt erhalten; aktuelle Versionen können weiterhin im Programm aktualisiert werden. Bereits veröffentlichte Nexus-Pakete bleiben unverändert.",
+      "Offline-Regressionstests bestanden. Häufige Eingaben, Pools, Blood Guillotine und Pfahlkämpfe benötigen weitere Spieltests. Abstürze nach wiederholter Kamerabedienung sind noch nicht zugeordnet; diese Version verspricht keine Behebung aller Abstürze. Eigene Kampfwerte je Pool und ein Schalter gegen Heilung außerhalb des Kampfes fehlen weiterhin."
     ],
     "es": [
-      "Se eliminó una consulta de diagnóstico antigua que podía provocar un cierre al invocar una unidad. Al empezar una escena, la cámara deja de seguir al objetivo y vuelve al juego. La llamada de un compañero comprueba que el teletransporte se haya realizado.",
-      "Se corrigió el bloqueo de Zuo Shang normal si se interrumpía su paso a la fase 2. Los agarres de los PNJ de equipo ya funcionan contra compañeros aunque Azul contra Rojo esté desactivado.",
-      "La aplicación vuelve a leer los ajustes de la IA después de guardarlos. Si la escritura falla, conserva los últimos ajustes guardados.",
-      "La instalación comprueba los componentes y restaura los anteriores si algo falla. El actualizador limpia solo sus propias copias temporales. Al volver a la v0.40.9 o anterior, esa versión se abre en una carpeta independiente.",
-      "Para actualizar desde la v0.40.9 o anterior, descarga el ZIP y extráelo en una carpeta nueva. Abre la nueva aplicación y sigue el aviso para actualizar el mod del juego."
+      "Corregidos los fallos al exportar diagnósticos y ajustadas las comprobaciones para evitar acceder a actores que ya se están destruyendo.",
+      "Los atajos se leen ahora en el hilo del juego. Las invocaciones normales mediante teclas omiten el barrido de estados de todas las unidades para reducir el trabajo con entradas frecuentes.",
+      "Añadida una cola de invocación opcional, desactivada por defecto: hasta 100 solicitudes, con unos 0,25 segundos entre el final de una y el inicio de la siguiente. Detener y limpiar, cambiar de mapa o desactivarla cancela las pendientes.",
+      "Añadidos grupos aleatorios con nombre, bando, cantidad y atajo propios. Admiten copias, búsqueda, filtros y selección múltiple. Cada unidad se elige por separado y respeta su límite de invocación.",
+      "El panel lateral se divide en Invocar, Reglas y Espectador; los grupos tienen su propia página. Las nuevas unidades pueden seguir el ciclo de la partida o usar los ciclos 1–7. El nivel personalizado fijo tiene prioridad.",
+      "Añadidas tarjetas independientes para unidades especiales como Xu Kong, Xian Zhe y refuerzos de historia, con su origen y características. Ajustados los emparejamientos, bandos y confirmaciones de activación que podían bloquear invocaciones posteriores.",
+      "La invulnerabilidad de esquiva permanente de Xu Kong puede desactivarse desde su próxima invocación. La de sus habilidades mantiene su comportamiento original.",
+      "Adaptación experimental de la captura, inmovilización, evento letal original y recuperación del Blood Guillotine de Huang Xing Zi, y de la arena del bailarín león, saltos entre postes, bolas de fuego y restauración de armas.",
+      "Añadida la búsqueda manual de versiones de prueba mediante un código de invitación. Se instalan en una carpeta separada, sin avisos automáticos de pruebas.",
+      "Añadida una página independiente de Apoyar en la navegación izquierda, con la imagen de aportación WeChat ampliable. Los nuevos textos están disponibles en los seis idiomas.",
+      "Se conserva el canal de migración antiguo; las versiones actuales siguen actualizándose desde la aplicación. Los paquetes específicos de Nexus ya publicados no cambian.",
+      "Superadas las pruebas de regresión sin acceder al juego. Los atajos frecuentes, grupos, capturas y combates sobre postes necesitan más pruebas dentro del juego. Los cierres tras operar repetidamente la cámara siguen sin localizarse; no se afirma haber corregido todos los cierres. No se incluyen estadísticas por grupo ni un interruptor para desactivar la curación fuera de combate."
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.11/PhantomGladiator-0.40.11-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.11/PhantomGladiator-0.40.11-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.10/PhantomGladiator-0.40.10-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.11/PhantomGladiator-0.40.11-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.000",
+        "name": "PhantomGladiator-0.40.11-win64.zip.000",
         "size": 2097152,
-        "sha256": "88a7da20843e376d80b2fed1abe68e82a438cb2a77387ad36649a0f272402e29"
+        "sha256": "bf80fa9f1a6a99c83794005930c01794ba9296649c503a6f523c3d3096edc5dd"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.001",
+        "name": "PhantomGladiator-0.40.11-win64.zip.001",
         "size": 2097152,
-        "sha256": "1fb754bce6d169651e9a2c421f8728a795cf5d293b160c3160597a0c5b47b258"
+        "sha256": "e007858e39a9f3960ffdec6fe9ca5e90c1e47f629dedfd26df4f82e5a50bb4d6"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.002",
+        "name": "PhantomGladiator-0.40.11-win64.zip.002",
         "size": 2097152,
-        "sha256": "88865acf557e156ddc8bd0060602ae4c98b8d45a836b41fde1c277b4bde201d8"
+        "sha256": "e982369236cf06e7995418bc3b750cdd4fbd938f2260c71e6c4c6c2e4011fffa"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.003",
+        "name": "PhantomGladiator-0.40.11-win64.zip.003",
         "size": 2097152,
-        "sha256": "18dd91fa68a74a16642c3d127e0981ead33651e49fdd46027c93c0e42e0266ab"
+        "sha256": "aead5bd8eed9fbd1e662da53676d45fc272d84d1881b142ae1787f3c5113c65b"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.004",
+        "name": "PhantomGladiator-0.40.11-win64.zip.004",
         "size": 2097152,
-        "sha256": "5d40d7526c4b8fc92f30f76bbb11a199d53d87c3e4672150ceceebc97d16abda"
+        "sha256": "3d14428494b23e1fd86675a983c7646c0cae5913c7be4334a85733f7edeac617"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.005",
+        "name": "PhantomGladiator-0.40.11-win64.zip.005",
         "size": 2097152,
-        "sha256": "dd737c0f9c11a1a288ab5c0b77bd4c6406eb241f183e5c188f18a4d3168dadd4"
+        "sha256": "edc682b073972fc1238f6721cca72892898d1bf5470c57bbf46e52cb835cc1e4"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.006",
+        "name": "PhantomGladiator-0.40.11-win64.zip.006",
         "size": 2097152,
-        "sha256": "c21914e46612e92bfe8bdf21ece3158754551bc195a690d96fd2878c5414a016"
+        "sha256": "290e32c2305ec783d15d3e5c7dd33502a439fa9a1a58af0fcc6188f1f09d6c8e"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.007",
+        "name": "PhantomGladiator-0.40.11-win64.zip.007",
         "size": 2097152,
-        "sha256": "4f6afbca9ff5dde7619b3e284f93e0676a6968cd085e846aeb36f40de504cd3b"
+        "sha256": "39ac3471941d9989ba0b1e01fb64afcba2e5d5275f187ce8b40ba63f91e6c531"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.008",
+        "name": "PhantomGladiator-0.40.11-win64.zip.008",
         "size": 2097152,
-        "sha256": "75e0730c9728e922a68c445dff6823367a079f8ebf9bfe4a117a945bcf2b6132"
+        "sha256": "6c1c92257e15f266e2360260f315228ac91f4f012c9c8d28a81cc29cdfbb26a7"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.009",
+        "name": "PhantomGladiator-0.40.11-win64.zip.009",
         "size": 2097152,
-        "sha256": "064602915ce31daf6ff7bc236ab5e1cc2a00cf848f0cef70405e8bf42b7dea5d"
+        "sha256": "9d7ecce16f70b76f6cf4b167ae8e136bebbe4465a9f623193dbcf6edf57b1de6"
       },
       {
-        "name": "PhantomGladiator-0.40.10-win64.zip.010",
-        "size": 119491,
-        "sha256": "58c596e0171a792c6862843c7a319c0e169863544080449f7b7e9d1381b798dc"
+        "name": "PhantomGladiator-0.40.11-win64.zip.010",
+        "size": 296476,
+        "sha256": "bcef85e8e89f9a18e7a33ed9a76af191e38c99496b6aa1c0ad255f6b869e27a3"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.11/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.11/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.11/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.10/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.11/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.11/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.11/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.10/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.11/"
       }
     ]
   }
