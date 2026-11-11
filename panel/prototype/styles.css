@@ -1062,6 +1062,14 @@ details.advanced[open] > summary { border-bottom: 1px solid var(--border); }
 .progress-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--text-3); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
 /* ---------- About ---------- */
+.support-page { width: min(760px, 100%); margin-inline: auto; }
+.support-card { display: flex; align-items: center; flex-direction: column; gap: 14px; padding: 20px; margin-top: 20px; }
+.support-code { display: block; width: 100%; max-width: 520px; padding: 0; border: 0; background: #fff; cursor: zoom-in; }
+.support-code:focus-visible { outline: 3px solid #bd8a2d; outline-offset: 5px; }
+.support-code img { display: block; width: 100%; height: auto; object-fit: contain; }
+.support-hint { margin: 0; color: var(--text-2); font-size: 13px; text-align: center; }
+.support-large { padding: 12px; background: #fff; }
+.support-large img { display: block; width: 100%; height: auto; object-fit: contain; }
 .about-hero { display: flex; align-items: center; gap: 20px; padding: 24px; }
 .about-hero h2 { font-size: 21px; font-weight: 750; }
 .about-hero p { color: var(--text-2); font-size: 13px; margin-top: 2px; }

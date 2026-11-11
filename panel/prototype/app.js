@@ -138,7 +138,7 @@
   const teamName = team => t("team." + team);
   const speciesName = sp => t("species." + sp);
   const chapterName = ch => (ch === 0 ? t("chapter.prologue") : t("chapter.n", { n: ch }));
-  const unitMeta = u => [speciesName(u.species), u.source || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
+  const unitMeta = u => [speciesName(u.species), (u.sourceKey ? t(u.sourceKey) : u.source) || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
   const langName = id => I18N.LANGS.find(l => l.id === id)?.name || id;
 
   // ---------- Keys ----------
@@ -181,7 +181,7 @@
     const pool = pools.find(p => p.id !== poolId && p.key_code === code && p.modifiers === mods);
     return pool ? { kind: "pool", pool } : null;
   }
-  const poolClash = pool => `${vkLabel(pool.key_code, pool.modifiers)} 已被怪物池「${pool.name}」占用，请先解除该池的绑定。`;
+  const poolClash = pool => t("pool.keyClash", { key: vkLabel(pool.key_code, pool.modifiers), name: pool.name });
   function readCapture(e) {
     if (e.metaKey) return { error: t("keys.err.win") };
     const code = vkFromEvent(e);
@@ -366,6 +366,7 @@
     if (ui.demoOpen) renderDemo();
     if (dlg?.kind === "update") setDialog(updateHTML());
     if (dlg?.kind === "history") setDialog(historyHTML());
+    if (dlg?.kind === "support-image") setDialog(supportImageHTML());
   }
   function go(page) {
     if (ui.capture) cancelCapture();
@@ -386,7 +387,7 @@
       renderDock();
       return;
     }
-    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML }[ui.page]();
+    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML }[ui.page]();
     content.innerHTML = `<div class="page page-scroll scroll">${html}</div>`;
     if (ui.page === "pool") renderPoolSummon();
   }
@@ -406,7 +407,7 @@
         <div id="grid" role="list"></div>
       </section>
       <aside class="dock" id="dock" data-tab="${ui.dockTab}" aria-label="${esc(t("dock.label"))}">
-        <div class="dock-tabs" id="dock-tabs" role="tablist" aria-label="右侧分栏"></div>
+        <div class="dock-tabs" id="dock-tabs" role="tablist" aria-label="${esc(t("dock.label"))}"></div>
         <div class="dock-scroll scroll" id="dock-scroll">
           <div id="dock-banner"></div>
           <section class="dock-section" data-tab="summon" id="dock-sel"></section>
@@ -463,14 +464,14 @@
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
   const unitRuleLabel = (id, rule, value) => xukongDodgeRule(id, rule)
-    ? (value === "off" ? "常驻无敌：关" : "常驻无敌：开")
+    ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
     const rule = UNIT_RULE_OF[u.id];
     if (!rule || (RT.online() && !S.unitRulesSupported)) return "";
     const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
     const tip = xukongDodgeRule(u.id, rule)
-      ? "关闭虚空出生时自带的常驻闪避无敌。技能自己的闪避无敌照常生效。下次召唤生效。"
+      ? t("unit.permanent.help")
       : t(`unitRule.${rule}.tip`);
     return `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
   }
@@ -578,14 +579,14 @@
 
   // ---------- Arena: dock ----------
   // The dock's three tabs. Every section stays rendered; styles.css shows the ones of the chosen tab.
-  const DOCK_TABS = [["summon", "召唤", "user-plus"], ["rules", "规则", "sliders"], ["view", "观战", "video"]];
+  const DOCK_TABS = [["summon", "dock.summon", "user-plus"], ["rules", "dock.rules", "sliders"], ["view", "dock.view", "video"]];
   function renderDockTabs() {
     const el = $("#dock-tabs");
     if (!el) return;
     const waiting = S.summonQueue?.on ? (S.summonQueue.waiting || 0) + (S.summonQueue.transit || 0) : 0;
-    const marks = { rules: S.summonQueue?.on ? `<span class="count">排队${waiting ? " " + waiting : ""}</span>` : "",
-      view: S.freeCam ? `<span class="tab-dot" title="自由观战中"></span>` : "" };
-    el.innerHTML = DOCK_TABS.map(([id, label, glyph]) => `<button class="seg-btn" type="button" role="tab" id="dock-tab-${id}" aria-selected="${ui.dockTab === id}" aria-controls="dock-scroll" data-action="dock-tab" data-tab="${id}">${icon(glyph, "icon-sm")}${label}${marks[id] || ""}</button>`).join("");
+    const marks = { rules: S.summonQueue?.on ? `<span class="count">${esc(t("dock.queued"))}${waiting ? " " + waiting : ""}</span>` : "",
+      view: S.freeCam ? `<span class="tab-dot" title="${esc(t("dock.observing"))}"></span>` : "" };
+    el.innerHTML = DOCK_TABS.map(([id, label, glyph]) => `<button class="seg-btn" type="button" role="tab" id="dock-tab-${id}" aria-selected="${ui.dockTab === id}" aria-controls="dock-scroll" data-action="dock-tab" data-tab="${id}">${icon(glyph, "icon-sm")}${esc(t(label))}${marks[id] || ""}</button>`).join("");
   }
   function showDockTab(tab) {
     if (ui.dockTab === tab) return;
@@ -641,7 +642,7 @@
   function statusNote(u) {
     const map = { verified: ["verified", "check-circle"], spawn: ["spawn", "info"], experimental: ["experimental", "flask"], special: ["special", "alert"] };
     const [cls, ic] = map[u.status];
-    const note = [u.source, u.note || t("status." + u.status)].filter(Boolean).join("。");
+    const note = [u.sourceKey ? t(u.sourceKey) : u.source, u.noteKey ? t(u.noteKey) : u.note || t("status." + u.status)].filter(Boolean).join("。");
     return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(note)}</span></div>`;
   }
   function renderSelection() {
@@ -860,7 +861,7 @@
   // Summon level (set_spawn_level, home_levels.lua): each unit's own level in the game (HOME, the default), the level
   // of the map enemies near the player (HERE), or one level for every summon (CUSTOM).
   const LEVEL_MODES = ["HOME", "HERE", "CUSTOM"];
-  const CYCLE_CHOICES = ["跟随当前存档", "一周目", "二周目", "三周目", "四周目", "五周目", "六周目", "七周目"];
+  const CYCLE_CHOICES = Array.from({ length: 8 }, (_, i) => "cycle." + i);
   function levelBlock() {
     const L = S.level, online = RT.online(), busy = ui.busy.has("set_spawn_level");
     const mode = ui.levelDraft || L.mode, usable = online && L.supported && !busy;
@@ -871,11 +872,11 @@
         <input class="stat-input" id="level-custom" type="text" inputmode="numeric" value="${esc(ui.levelCustom ?? L.custom ?? "")}" placeholder="1–${LEVEL_MAX}" aria-label="${esc(t("level.custom"))}" ${usable ? "" : "disabled"}>
         <button class="btn btn-secondary btn-sm" type="button" data-action="level-apply" ${usable ? "" : "disabled"}>${esc(t("level.apply"))}</button>
       </div>` : "";
-    const cycle = L.cycle != null ? `<div class="dock-title level-title"><span id="spawn-cycle-title">召唤周目</span></div>
+    const cycle = L.cycle != null ? `<div class="dock-title level-title"><span id="spawn-cycle-title">${esc(t("cycle.title"))}</span></div>
       <select class="select diff-select" id="spawn-cycle" aria-labelledby="spawn-cycle-title" aria-describedby="spawn-cycle-help" ${usable && mode !== "CUSTOM" ? "" : "disabled"}>
-        ${CYCLE_CHOICES.map((name, i) => `<option value="${i}"${L.cycle === i ? " selected" : ""}>${name}</option>`).join("")}
+        ${CYCLE_CHOICES.map((name, i) => `<option value="${i}"${L.cycle === i ? " selected" : ""}>${esc(t(name))}</option>`).join("")}
       </select>
-      <p class="diff-desc" id="spawn-cycle-help">${mode === "CUSTOM" ? "自定义等级直接用于召唤。" : "只影响新召唤的单位。手动固定的等级优先。"}</p>` : "";
+      <p class="diff-desc" id="spawn-cycle-help">${mode === "CUSTOM" ? t("cycle.custom") : t("cycle.help")}</p>` : "";
     return `<div class="dock-title level-title"><span id="level-title">${esc(t("level.title"))}</span></div>
       <select class="select diff-select" id="level-mode" aria-labelledby="level-title" aria-describedby="level-desc" ${usable ? "" : "disabled"}>${LEVEL_MODES.map(v => `<option value="${v}"${v === mode ? " selected" : ""}>${esc(t("level.mode." + v))}</option>`).join("")}</select>
       ${custom}
@@ -903,7 +904,7 @@
   }
   async function sendLevel(mode, level) {
     const job = await run("set_spawn_level", { payload: { mode, level },
-      ok: () => ({ title: mode === "CYCLE" ? "召唤周目已设为" + CYCLE_CHOICES[level]
+      ok: () => ({ title: mode === "CYCLE" ? t("cycle.changed") + t(CYCLE_CHOICES[level])
         : t("toast.level.set", { name: mode === "CUSTOM" ? t("level.customN", { n: level }) : t("level.mode." + mode) }),
         body: t("toast.level.body") }) });
     if (job?.status === "succeeded") ui.levelDraft = null;
@@ -1483,12 +1484,12 @@
       try {
         const job = await RT.command("queue_spawn", { unit_id: id, team, count });
         if (job.status === "failed" || job.status === "uncertain") {
-          toast({ id: "summon-queue-intake", kind: "warning", title: "入队未确认", body: reasonText(job.code, job.message) });
+          toast({ id: "summon-queue-intake", kind: "warning", title: t("spawnQueue.unconfirmed"), body: reasonText(job.code, job.message) });
         } else {
-          toast({ id: "summon-queue-intake", kind: "info", title: "已提交排队", body: "进度在对战页右边栏的「规则」里。" });
+          toast({ id: "summon-queue-intake", kind: "info", title: t("spawnQueue.sent"), body: t("spawnQueue.sentHelp") });
         }
       } catch (error) {
-        toast({ id: "summon-queue-intake", kind: "error", title: "未提交召唤", body: reasonText(error.code, error.detail) });
+        toast({ id: "summon-queue-intake", kind: "error", title: t("spawnQueue.failed"), body: reasonText(error.code, error.detail) });
       }
       return;
     }
@@ -1573,7 +1574,7 @@
   }
   async function rematch() {
     if (S.summonQueue?.on) {
-      toast({ kind: "warning", title: "关闭排队召唤后才能一键重赛" });
+      toast({ kind: "warning", title: t("spawnQueue.disableFailed") });
       return;
     }
     // The stop below makes equal stats pick a new baseline, so the old baseline is summoned first
@@ -1824,27 +1825,27 @@
   function summonQueueSettingsHTML() {
     const q = S.summonQueue || {};
     const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue");
-    const unavailable = !RT.online() ? "启动游戏并进入地图后可开启。"
-      : !q.supported ? "游戏内模组还不支持排队召唤，请更新并重载模组。"
-      : !q.on && !q.ready ? "进入可操作的地图后可开启。" : "";
-    return `<div class="dock-title">排队召唤</div>
+    const unavailable = !RT.online() ? t("spawnQueue.offline")
+      : !q.supported ? t("spawnQueue.old")
+      : !q.on && !q.ready ? t("spawnQueue.notReady") : "";
+    return `<div class="dock-title">${esc(t("spawnQueue.title"))}</div>
       <div class="control-list">
         <div class="control-row${q.on ? " is-on" : ""}">
           <span class="control-icon">${icon("history")}</span>
-          <div class="control-main"><div class="control-title">一条一条按顺序召唤<span class="chip chip-amber">测试</span></div>
-            <div class="control-desc">连续点召唤或连按召唤键时，每一次都排进队里，最多 100 条。停止清理、换图或关闭开关会取消还没执行的。</div>
+          <div class="control-main"><div class="control-title">${esc(t("spawnQueue.ordered"))}<span class="chip chip-amber">${esc(t("common.experimental"))}</span></div>
+            <div class="control-desc">${esc(t("spawnQueue.help"))}</div>
             ${unavailable ? `<div class="control-desc" id="summon-queue-unavailable">${esc(unavailable)}</div>` : ""}
           </div>
-          <button class="switch" type="button" role="switch" aria-label="启用排队召唤" aria-checked="${!!q.on}"
+          <button class="switch" type="button" role="switch" aria-label="${esc(t("spawnQueue.enable"))}" aria-checked="${!!q.on}"
             ${unavailable ? 'aria-describedby="summon-queue-unavailable"' : ""} data-action="toggle-summon-queue"
             ${busy || unavailable ? "disabled" : ""}></button>
         </div>
         ${q.on ? `<div class="control-row">
           <span class="control-icon">${q.running ? '<span class="spinner" style="width:14px;height:14px"></span>' : icon("clock")}</span>
-          <div class="control-main"><div class="control-title">待执行 ${q.waiting} · 待游戏接收 ${q.transit} · 已完成 ${q.completed}</div>
-            <div class="control-desc">${esc(q.running ? "正在召唤" : q.message)}</div></div>
+          <div class="control-main"><div class="control-title">${esc(t("spawnQueue.progress", { waiting: q.waiting, transit: q.transit, completed: q.completed }))}</div>
+            <div class="control-desc">${esc(q.running ? t("spawnQueue.working") : q.message)}</div></div>
           <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-summon-queue"
-            ${busy || !RT.online() || !(q.waiting || q.transit) ? "disabled" : ""}>取消待执行</button></div>` : ""}
+            ${busy || !RT.online() || !(q.waiting || q.transit) ? "disabled" : ""}>${esc(t("spawnQueue.cancel"))}</button></div>` : ""}
       </div>`;
   }
 
@@ -1855,7 +1856,7 @@
   }
 
   async function changeSummonQueue(action, payload) {
-    const result = run(action, { payload, ok: job => job.message || "召唤队列设置已更新" });
+    const result = run(action, { payload, ok: job => job.message || t("spawnQueue.changed") });
     renderSummonQueueSettings();
     await result;
     renderSummonQueueSettings();
@@ -1868,7 +1869,7 @@
     if (ui.poolDraft) return ui.poolDraft.pools;
     if (!S.monsterPools) return [];
     if (S.monsterPools.revision > 0) return S.monsterPools.pools;
-    return [{ id: "pool-default", name: "我的怪物池", team: ui.team, count: ui.count,
+    return [{ id: "pool-default", name: t("pool.default"), team: ui.team, count: ui.count,
       key_code: 0, modifiers: 0, unit_ids: ui.legacyPool }];
   }
 
@@ -1899,41 +1900,41 @@
   function poolKeyStatus(pool) {
     if (!pool?.key_code) return "";
     const previous = S.monsterPools?.pools.find(p => p.id === pool.id);
-    if (!previous || pool.key_code !== previous.key_code || pool.modifiers !== previous.modifiers) return "保存后注册。";
-    if (!RT.online()) return "启动游戏后会注册。";
-    if (!S.poolStatus.supported) return "请更新并重载游戏内模组。";
-    if (S.poolStatus.revision !== S.monsterPools.revision) return "等待游戏确认注册。";
+    if (!previous || pool.key_code !== previous.key_code || pool.modifiers !== previous.modifiers) return t("pool.afterSave");
+    if (!RT.online()) return t("pool.connectRegister");
+    if (!S.poolStatus.supported) return t("pool.old");
+    if (S.poolStatus.revision !== S.monsterPools.revision) return t("pool.waitRegister");
     const status = S.poolStatus.keys[pool.id];
-    return status?.active ? "已注册，在游戏窗口内按键召唤。"
-      : status?.message || "等待游戏确认注册。";
+    return status?.active ? t("pool.registered")
+      : status?.message || t("pool.waitRegister");
   }
 
-  const POOL_TEAM_HINT = { blue: "加入蓝方，和红方对打", red: "加入红方，和蓝方对打", neutral: "像游戏里的敌人一样来打你", companion: "跟着你，帮你打" };
+  const POOL_TEAM_HINT = { blue: "pool.team.blue", red: "pool.team.red", neutral: "pool.team.neutral", companion: "pool.team.companion" };
   const poolMemberIds = pool => pool.unit_ids.map(RT.poolUnitId);
   // Units a pool can hold: the mod must know the unit's path in the game.
   const poolAddable = u => RT.demo || RT.poolUnitPath(u.id) !== u.id;
 
   function poolItemMeta(pool) {
-    return `${teamName(pool.team)} · 每次 ${pool.count} 只 · ${pool.unit_ids.length} 种`;
+    return t("pool.meta", { team: teamName(pool.team), count: pool.count, kinds: pool.unit_ids.length });
   }
 
   function poolListHTML(pools, pool, frozen) {
-    return `<div class="pool-list" role="listbox" aria-label="怪物池">${pools.map(p => `<button class="pool-item${p.id === pool?.id ? " is-selected" : ""}" type="button" role="option" aria-selected="${p.id === pool?.id}" data-action="pool-open" data-id="${esc(p.id)}">
+    return `<div class="pool-list" role="listbox" aria-label="${esc(t("nav.pool"))}">${pools.map(p => `<button class="pool-item${p.id === pool?.id ? " is-selected" : ""}" type="button" role="option" aria-selected="${p.id === pool?.id}" data-action="pool-open" data-id="${esc(p.id)}">
         <span class="team-dot" style="background:var(--${p.team})"></span>
-        <span class="pool-item-main"><span class="pool-item-name">${esc(p.name || "未命名")}</span><span class="pool-item-meta">${esc(poolItemMeta(p))}</span></span>
-        ${p.key_code ? kbd(vkLabel(p.key_code, p.modifiers)) : '<span class="pool-item-nokey">未绑键</span>'}
+        <span class="pool-item-main"><span class="pool-item-name">${esc(p.name || t("pool.unnamed"))}</span><span class="pool-item-meta">${esc(poolItemMeta(p))}</span></span>
+        ${p.key_code ? kbd(vkLabel(p.key_code, p.modifiers)) : `<span class="pool-item-nokey">${esc(t("pool.noKey"))}</span>`}
       </button>`).join("")}
-      <button class="pool-item pool-item-new" type="button" data-action="pool-new" ${!S.monsterPools || frozen || pools.length >= 24 ? "disabled" : ""}>${icon("plus", "icon-sm")}<span>新建怪物池</span></button>
+      <button class="pool-item pool-item-new" type="button" data-action="pool-new" ${!S.monsterPools || frozen || pools.length >= 24 ? "disabled" : ""}>${icon("plus", "icon-sm")}<span>${esc(t("pool.new"))}</span></button>
     </div>`;
   }
 
   function poolMembersHTML(pool, disabled) {
-    if (!pool.unit_ids.length) return `<div class="pool-empty">${icon("grid")}<p>池里还没有怪。点「添加怪物」，可以按小怪、BOSS、章节筛选后整批加入。</p></div>`;
+    if (!pool.unit_ids.length) return `<div class="pool-empty">${icon("grid")}<p>${esc(t("pool.empty"))}</p></div>`;
     return `<div class="pool-members">${pool.unit_ids.map(member => {
       const id = RT.poolUnitId(member), u = byId.get(id);
       return `<span class="pool-member${u?.boss ? " is-boss" : ""}"><span class="avatar sp-${u?.species || "GuaiMian"}${u ? artClass(u) : ""}">${u ? avatarArt(u) : ""}<span class="avatar-initial">${esc(u?.initial || "?")}</span></span>
         <span class="pool-member-name" title="${esc(u?.name || id)}">${esc(u?.name || id)}</span>
-        <button class="icon-btn icon-btn-sm" type="button" data-action="pool-remove" data-id="${esc(member)}" aria-label="移除 ${esc(u?.name || id)}" title="移除" ${disabled}>${icon("x", "icon-sm")}</button></span>`;
+        <button class="icon-btn icon-btn-sm" type="button" data-action="pool-remove" data-id="${esc(member)}" aria-label="${esc(t("pool.remove"))} ${esc(u?.name || id)}" title="${esc(t("pool.remove"))}" ${disabled}>${icon("x", "icon-sm")}</button></span>`;
     }).join("")}</div>`;
   }
 
@@ -1946,59 +1947,59 @@
     const detail = pool ? `<div class="pool-detail">
         <section class="card">
           <div class="pool-head">
-            <input class="pool-name" id="pool-name" value="${esc(pool.name)}" maxlength="48" placeholder="给这个池起个名字" aria-label="怪物池名称" ${disabled}>
-            <button class="btn btn-ghost btn-sm" type="button" data-action="pool-duplicate" title="复制成一个新池，成员和设置都一样" ${frozen || pools.length >= 24 ? "disabled" : ""}>${icon("copy", "icon-sm")}复制</button>
-            <button class="btn btn-ghost btn-sm" type="button" data-action="pool-delete" ${disabled}>${icon("trash", "icon-sm")}删除</button>
+            <input class="pool-name" id="pool-name" value="${esc(pool.name)}" maxlength="48" placeholder="${esc(t("pool.name"))}" aria-label="${esc(t("pool.nameLabel"))}" ${disabled}>
+            <button class="btn btn-ghost btn-sm" type="button" data-action="pool-duplicate" title="${esc(t("pool.duplicateHelp"))}" ${frozen || pools.length >= 24 ? "disabled" : ""}>${icon("copy", "icon-sm")}${esc(t("common.copy"))}</button>
+            <button class="btn btn-ghost btn-sm" type="button" data-action="pool-delete" ${disabled}>${icon("trash", "icon-sm")}${esc(t("common.delete"))}</button>
           </div>
           <div class="pool-fields">
             <div class="field">
-              <div class="field-label">召唤到<small id="pool-team-hint">${esc(POOL_TEAM_HINT[pool.team])}</small></div>
-              <div class="team-seg" role="radiogroup" aria-label="队伍">
+              <div class="field-label">${esc(t("pool.to"))}<small id="pool-team-hint">${esc(t(POOL_TEAM_HINT[pool.team]))}</small></div>
+              <div class="team-seg" role="radiogroup" aria-label="${esc(t("pool.team"))}">
                 ${TEAMS.map(team => `<button class="team-btn team-${team}" type="button" role="radio" aria-checked="${pool.team === team}" data-action="pool-team" data-team="${team}" ${disabled}><span class="team-dot"></span>${esc(teamName(team))}</button>`).join("")}
               </div>
             </div>
             <div class="field">
-              <div class="field-label">每次召唤<small>每只各自从池里随机抽</small></div>
+              <div class="field-label">${esc(t("pool.each"))}<small>${esc(t("pool.eachHelp"))}</small></div>
               <div class="count-row">
                 <div class="stepper">
-                  <button type="button" data-action="pool-count-step" data-step="-1" aria-label="减少" ${frozen || pool.count <= 1 ? "disabled" : ""}>${icon("minus")}</button>
-                  <input id="pool-count" type="text" inputmode="numeric" value="${pool.count}" aria-label="每次召唤数量" ${disabled}>
-                  <button type="button" data-action="pool-count-step" data-step="1" aria-label="增加" ${frozen || pool.count >= 100 ? "disabled" : ""}>${icon("plus")}</button>
+                  <button type="button" data-action="pool-count-step" data-step="-1" aria-label="${esc(t("common.decrease"))}" ${frozen || pool.count <= 1 ? "disabled" : ""}>${icon("minus")}</button>
+                  <input id="pool-count" type="text" inputmode="numeric" value="${pool.count}" aria-label="${esc(t("pool.countLabel"))}" ${disabled}>
+                  <button type="button" data-action="pool-count-step" data-step="1" aria-label="${esc(t("common.increase"))}" ${frozen || pool.count >= 100 ? "disabled" : ""}>${icon("plus")}</button>
                 </div>
                 <div class="count-presets">${[1, 3, 5, 10].map(n => `<button class="preset" type="button" data-action="pool-count-set" data-n="${n}" aria-pressed="${pool.count === n}" ${disabled}>${n}</button>`).join("")}</div>
               </div>
             </div>
             <div class="field">
-              <div class="field-label">快捷键<small>在游戏窗口里按下就召唤，连按会排队</small></div>
+              <div class="field-label">${esc(t("pool.hotkey"))}<small>${esc(t("pool.hotkeyHelp"))}</small></div>
               <div class="pool-key">
-                <button class="${capturing ? "capture-box" : "btn btn-secondary btn-sm"}" type="button" data-action="pool-key" ${disabled}>${capturing ? "请按组合键（Esc 取消）"
-                  : pool.key_code ? kbd(vkLabel(pool.key_code, pool.modifiers)) + "<span>更换</span>" : icon("keyboard", "icon-sm") + "绑定快捷键"}</button>
-                ${pool.key_code && !capturing ? `<button class="btn btn-ghost btn-sm" type="button" data-action="pool-unbind" ${disabled}>解除</button>` : ""}
+                <button class="${capturing ? "capture-box" : "btn btn-secondary btn-sm"}" type="button" data-action="pool-key" ${disabled}>${capturing ? t("pool.capture")
+                  : pool.key_code ? kbd(vkLabel(pool.key_code, pool.modifiers)) + `<span>${esc(t("common.change"))}</span>` : icon("keyboard", "icon-sm") + t("pool.bind")}</button>
+                ${pool.key_code && !capturing ? `<button class="btn btn-ghost btn-sm" type="button" data-action="pool-unbind" ${disabled}>${esc(t("pool.unbind"))}</button>` : ""}
                 <span id="pool-key-status" class="pool-key-status"></span>
               </div>
               ${ui.poolKeyError ? `<div class="key-note err">${esc(ui.poolKeyError)}</div>` : ""}
             </div>
           </div>
           <div class="pool-try">
-            <button class="btn btn-primary" type="button" id="pool-summon" data-action="pool-summon" disabled>${icon("zap", "icon-sm")}随机召唤一次</button>
+            <button class="btn btn-primary" type="button" id="pool-summon" data-action="pool-summon" disabled>${icon("zap", "icon-sm")}${esc(t("pool.summon"))}</button>
             <span id="pool-summon-note" class="muted"></span>
           </div>
         </section>
         <section class="card">
-          <div class="card-head"><h2 class="card-title">池里的怪<span class="chip">${pool.unit_ids.length} 种</span></h2>
+          <div class="card-head"><h2 class="card-title">${esc(t("pool.members"))}<span class="chip">${esc(t("pool.kinds", { n: pool.unit_ids.length }))}</span></h2>
             <div class="row-side">
-              ${pool.unit_ids.length ? `<button class="btn btn-ghost btn-sm" type="button" data-action="pool-clear" ${disabled}>清空</button>` : ""}
-              <button class="btn btn-secondary btn-sm" type="button" data-action="pool-add-open" ${frozen || pool.unit_ids.length >= 256 ? "disabled" : ""}>${icon("plus", "icon-sm")}添加怪物</button>
+              ${pool.unit_ids.length ? `<button class="btn btn-ghost btn-sm" type="button" data-action="pool-clear" ${disabled}>${esc(t("common.clear"))}</button>` : ""}
+              <button class="btn btn-secondary btn-sm" type="button" data-action="pool-add-open" ${frozen || pool.unit_ids.length >= 256 ? "disabled" : ""}>${icon("plus", "icon-sm")}${esc(t("pool.add"))}</button>
             </div></div>
           ${poolMembersHTML(pool, disabled)}
         </section>
-      </div>` : `<div class="pool-detail"><section class="card"><div class="pool-empty">${icon("grid")}<p>${S.monsterPools ? "还没有怪物池。新建一个，给它加怪、绑一个快捷键。" : "正在读取怪物池。"}</p></div></section></div>`;
+      </div>` : `<div class="pool-detail"><section class="card"><div class="pool-empty">${icon("grid")}<p>${S.monsterPools ? t("pool.none") : t("pool.loading")}</p></div></section></div>`;
     return `<div class="pool-page">
-      <div class="page-head"><div><h1 class="page-title">怪物池</h1><p class="page-sub">把一批怪放进一个池，绑一个快捷键，按一下随机召唤。不用给每只怪单独设键。</p></div></div>
+      <div class="page-head"><div><h1 class="page-title">${esc(t("nav.pool"))}</h1><p class="page-sub">${esc(t("pool.help"))}</p></div></div>
       <div class="pool-savebar" id="pool-savebar" hidden>
         <span id="pool-edit-note"></span>
-        <button class="btn btn-ghost btn-sm" type="button" id="pool-discard" data-action="pool-discard" disabled>放弃修改</button>
-        <button class="btn btn-primary btn-sm" type="button" id="pool-save" data-action="pool-save" disabled>${busy ? "保存中…" : "保存"}</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="pool-discard" data-action="pool-discard" disabled>${esc(t("common.discard"))}</button>
+        <button class="btn btn-primary btn-sm" type="button" id="pool-save" data-action="pool-save" disabled>${busy ? t("common.saving") : t("common.save")}</button>
       </div>
       <div class="pool-cols">${poolListHTML(pools, pool, frozen)}${detail}</div>
     </div>`;
@@ -2021,8 +2022,8 @@
   }
 
   function poolSummonBlocker(pool, choices) {
-    return ui.poolDraft ? "保存后可以试召唤。" : (!RT.ready() || S.summonQueue?.ready === false) ? "启动游戏并进入地图后可召唤。"
-      : cleanupBlocker() || (ui.busy.has("spawn") || ui.busy.has("pool-summon") ? "正在召唤。" : !choices.length ? "池里没有现在能召唤的怪。" : "");
+    return ui.poolDraft ? t("pool.saveFirst") : (!RT.ready() || S.summonQueue?.ready === false) ? t("pool.needMap")
+      : cleanupBlocker() || (ui.busy.has("spawn") || ui.busy.has("pool-summon") ? t("pool.working") : !choices.length ? t("pool.noneAllowed") : "");
   }
 
   function renderPoolSummon() {
@@ -2032,8 +2033,8 @@
     if (save) save.disabled = !ui.poolDraft || stale || ui.busy.has("pool-save");
     if (discard) discard.disabled = !ui.poolDraft || ui.busy.has("pool-save");
     const note = S.poolStatus.error ||
-      (stale ? "已在另一处修改，请放弃当前修改后重新载入。"
-        : ui.poolDraft ? "有未保存的修改。保存后游戏里才会生效。" : !S.monsterPools ? "正在读取怪物池。" : "");
+      (stale ? t("pool.stale")
+        : ui.poolDraft ? t("pool.unsaved") : !S.monsterPools ? t("pool.loading") : "");
     if (editNote) editNote.textContent = note;
     if (bar) { bar.hidden = !note; bar.classList.toggle("is-error", !!(S.poolStatus.error || stale)); }
     if ($("#pool-key-status")) $("#pool-key-status").textContent = poolKeyStatus(pool);
@@ -2049,8 +2050,8 @@
     const id = "pool-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
     const taken = name => pools.some(p => p.name === name);
     let name, n = 1;
-    if (from) { name = from.name + " 副本"; while (taken(name)) name = from.name + " 副本 " + ++n; name = name.slice(0, 48); }
-    else { while (taken("怪物池 " + n)) n++; name = "怪物池 " + n; }
+    if (from) { name = from.name + t("pool.copySuffix"); while (taken(name)) name = from.name + t("pool.copySuffixCounter") + ++n; name = name.slice(0, 48); }
+    else { while (taken(t("pool.namePrefix") + n)) n++; name = t("pool.namePrefix") + n; }
     // A copy keeps the members, team and count; a key belongs to one pool only.
     pools.push(from ? { ...from, id, name, key_code: 0, modifiers: 0, unit_ids: [...from.unit_ids] }
       : { id, name, team: "neutral", count: 1, key_code: 0, modifiers: 0, unit_ids: [] });
@@ -2105,17 +2106,17 @@
       return `<button class="pool-pick-item" type="button" role="option" aria-selected="${inPool || pick.checked.has(u.id)}" data-action="pool-pick-toggle" data-id="${esc(u.id)}" ${inPool ? "disabled" : ""}>
         <span class="avatar sp-${u.species}${u.boss ? " is-boss" : ""}${artClass(u)}">${avatarArt(u)}<span class="avatar-initial">${esc(u.initial || "?")}</span></span>
         <span class="pool-pick-main"><span class="pool-pick-name">${esc(u.name)}</span><span class="pool-pick-meta">${u.boss ? "BOSS · " : ""}${esc(u.map || chapterName(u.ch))}</span></span>
-        <span class="pool-pick-state">${inPool ? "已在池里" : icon("check", "icon-sm")}</span></button>`;
-    }).join("") || '<p class="pool-pick-none">没有符合条件的怪。</p>';
+        <span class="pool-pick-state">${inPool ? t("pool.inPool") : icon("check", "icon-sm")}</span></button>`;
+    }).join("") || `<p class="pool-pick-none">${esc(t("pool.noMatches"))}</p>`;
   }
   function poolPickFootHTML() {
     const pool = selectedPool(), have = new Set(pool ? poolMemberIds(pool) : []), pick = ui.poolPick;
     const open = poolPickUnits().filter(u => !have.has(u.id)), room = 256 - (pool?.unit_ids.length || 0);
     const unchecked = open.filter(u => !pick.checked.has(u.id)).length, n = pick.checked.size;
-    return `<span class="muted grow">${n ? `已选 ${n} 种` : "点怪选中，可以多选"}${n > room ? `，池里最多再放 ${room} 种` : ""}</span>
-      ${n ? '<button class="btn btn-ghost" type="button" data-action="pool-pick-none">清除选择</button>' : ""}
-      <button class="btn btn-secondary" type="button" data-action="pool-pick-all" ${unchecked ? "" : "disabled"}>全选筛出的 ${open.length} 种</button>
-      <button class="btn btn-primary" type="button" data-action="pool-pick-add" ${n ? "" : "disabled"}>加入${n ? ` ${Math.min(n, room)} 种` : ""}</button>`;
+    return `<span class="muted grow">${n ? t("pool.selected", { n }) : t("pool.pickHint")}${n > room ? t("pool.room", { n: room }) : ""}</span>
+      ${n ? `<button class="btn btn-ghost" type="button" data-action="pool-pick-none">${esc(t("pool.clearSelection"))}</button>` : ""}
+      <button class="btn btn-secondary" type="button" data-action="pool-pick-all" ${unchecked ? "" : "disabled"}>${esc(t("pool.selectAll", { n: open.length }))}</button>
+      <button class="btn btn-primary" type="button" data-action="pool-pick-add" ${n ? "" : "disabled"}>${esc(n ? t("pool.addCount", { n: Math.min(n, room) }) : t("pool.addButton"))}</button>`;
   }
   function poolPickHTML() {
     const pool = selectedPool(), pick = ui.poolPick;
@@ -2125,15 +2126,15 @@
       const label = c.ch === 0 ? chapterName(0) : `${chapterName(c.ch)} · ${c.name}`;
       return `<option value="${c.ch}" ${pick.chapter === String(c.ch) ? "selected" : ""}>${esc(label)}</option>`;
     }).join("");
-    return `<div class="dialog-head"><h2 id="dlg-title">添加怪物到「${esc(pool?.name || "")}」</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
+    return `<div class="dialog-head"><h2 id="dlg-title">${esc(t("pool.addTitle", { name: pool?.name || "" }))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
       <div class="pool-pick-bar">
         <div class="seg" role="radiogroup" aria-label="${esc(t("filter.type"))}">
           ${["all", "minion", "boss"].map(k => `<button class="seg-btn" type="button" role="radio" aria-checked="${pick.type === k}" data-action="pool-pick-type" data-type="${k}">${k === "boss" ? icon("crown", "icon-sm") : ""}${esc(t("filter." + k))}<span class="count">${counts[k]}</span></button>`).join("")}
         </div>
         <select class="select" id="pool-pick-chapter" aria-label="${esc(t("filter.chapter"))}"><option value="all">${esc(t("filter.allChapters"))}</option>${chapters}</select>
-        <label class="search">${icon("search")}<input id="pool-search" type="search" autocomplete="off" spellcheck="false" placeholder="搜索怪物名称" aria-label="搜索怪物名称" value="${esc(pick.query)}" data-autofocus></label>
+        <label class="search">${icon("search")}<input id="pool-search" type="search" autocomplete="off" spellcheck="false" placeholder="${esc(t("pool.search"))}" aria-label="${esc(t("pool.search"))}" value="${esc(pick.query)}" data-autofocus></label>
       </div>
-      <div class="pool-pick-list scroll" id="pool-pick-list" role="listbox" aria-multiselectable="true" aria-label="可加入的怪物">${poolPickListHTML()}</div>
+      <div class="pool-pick-list scroll" id="pool-pick-list" role="listbox" aria-multiselectable="true" aria-label="${esc(t("pool.addable"))}">${poolPickListHTML()}</div>
       <div class="dialog-foot" id="pool-pick-foot">${poolPickFootHTML()}</div>`;
   }
   function openPoolPick() {
@@ -2195,16 +2196,16 @@
     if (!ui.poolDraft || poolDraftStale() || ui.busy.has("pool-save")) return;
     const { revision, pools } = ui.poolDraft;
     if (pools.some(pool => !pool.name.trim())) {
-      toast({ kind: "error", title: "请给每个怪物池起个名字" }); return;
+      toast({ kind: "error", title: t("pool.needName") }); return;
     }
     ui.busy.add("pool-save");
     renderPage();
     try {
       await RT.saveMonsterPools(pools, revision);
       ui.poolDraft = null;
-      toast({ kind: "success", title: "怪物池已保存" });
+      toast({ kind: "success", title: t("pool.saved") });
     } catch (error) {
-      toast({ kind: "error", title: "怪物池未保存", body: error.detail || error.message });
+      toast({ kind: "error", title: t("pool.saveFailed"), body: error.detail || error.message });
     } finally {
       ui.busy.delete("pool-save");
       if (ui.page === "pool") renderPage();
@@ -2224,21 +2225,21 @@
   function betaDialogHTML() {
     const v = ui.manualBeta;
     const busy = v.checking || v.installing;
-    const header = `<div class="dialog-head"><h2 id="dlg-title">检查内测版</h2>
-      <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="关闭">${icon("x")}</button></div>`;
-    const identity = v.installation ? `<p class="muted">本机编号 <code>${esc(v.installation)}</code>
-      <button class="btn-link" type="button" data-action="copy-beta-id">复制</button></p>` : "";
+    const header = `<div class="dialog-head"><h2 id="dlg-title">${esc(t("beta.checkTitle"))}</h2>
+      <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>`;
+    const identity = v.installation ? `<p class="muted">${esc(t("beta.identity"))} <code>${esc(v.installation)}</code>
+      <button class="btn-link" type="button" data-action="copy-beta-id">${esc(t("common.copy"))}</button></p>` : "";
     const error = v.error ? `<p class="callout callout-amber">${esc(v.error)}</p>` : "";
-    const offer = v.offer ? `<div class="callout callout-green"><div class="callout-body"><strong>指定内测版 ${esc(v.offer.version)}</strong>
+    const offer = v.offer ? `<div class="callout callout-green"><div class="callout-body"><strong>${esc(t("beta.offer"))} ${esc(v.offer.version)}</strong>
       <span>${esc(v.offer.build)} · ${fmtBytes(v.offer.size)}</span><span>${esc(v.offer.note)}</span></div></div>` : "";
     return header + `<div class="dialog-body">${identity}${error}${offer}
-      <p>把本机编号发给作者领取内测码。之后由你手动检查，内测版安装在独立目录。</p>
+      <p>${esc(t("beta.help"))}</p>
       <input id="manual-beta-code" type="password" autocomplete="off" maxlength="16384"
-        placeholder="${store.get("manualBetaInvite", "") ? "已保存内测码，可粘贴新码替换" : "粘贴内测码"}" style="width:100%" ${busy ? "disabled" : ""}>
+        placeholder="${store.get("manualBetaInvite", "") ? t("beta.savedCode") : t("beta.pasteCode")}" style="width:100%" ${busy ? "disabled" : ""}>
       </div><div class="dialog-foot">
-      <button class="btn btn-secondary" type="button" data-action="check-manual-beta" ${busy || !v.installation ? "disabled" : ""}>${v.checking ? "检查中…" : "检查"}</button>
+      <button class="btn btn-secondary" type="button" data-action="check-manual-beta" ${busy || !v.installation ? "disabled" : ""}>${v.checking ? t("beta.checking") : t("beta.check")}</button>
       ${v.offer ? `<button class="btn btn-primary" type="button" data-action="install-manual-beta"
-        ${busy || S.gameRunning ? "disabled" : ""}>${v.installing ? "下载并校验中…" : S.gameRunning ? "请先关闭游戏" : "安装内测版"}</button>` : ""}
+        ${busy || S.gameRunning ? "disabled" : ""}>${v.installing ? t("beta.downloading") : S.gameRunning ? t("beta.closeGame") : t("beta.install")}</button>` : ""}
       </div>`;
   }
 
@@ -2251,7 +2252,7 @@
     if (!view?.installation || view.checking || view.installing) return;
     code = code || $("#manual-beta-code")?.value?.trim() || store.get("manualBetaInvite", "");
     if (typeof code !== "string" || !code.trim()) {
-      view.error = "请先输入内测码。";
+      view.error = t("beta.needCode");
       renderBetaDialog(view);
       return;
     }
@@ -2311,8 +2312,8 @@
     return `<div class="stack">
       <div class="page-head"><div><h1 class="page-title">${esc(t("settings.title"))}</h1><p class="page-sub">${esc(t("settings.subtitle"))}</p></div></div>
       ${!fromNexus() && RT.beta ? `<section class="card"><div class="card-head">
-        <h2 class="card-title">内测版推送</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-manual-beta">检查内测版</button></div>
-        <div class="card-body"><p class="muted">凭内测码手动查看作者指定的版本。正式更新仍从原来的入口检查。</p></div></section>` : ""}
+        <h2 class="card-title">${esc(t("beta.title"))}</h2><button class="btn btn-secondary btn-sm" type="button" data-action="open-manual-beta">${esc(t("beta.checkTitle"))}</button></div>
+        <div class="card-body"><p class="muted">${esc(t("beta.description"))}</p></div></section>` : ""}
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.language"))}</h2></div>
         <div class="card-body"><div class="option-list" role="radiogroup" aria-label="${esc(t("settings.language"))}">
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
@@ -2354,6 +2355,24 @@
 
   // ---------- About page ----------
   const QQ_GROUP = "1038314448";
+  function supportHTML() {
+    return `<div class="support-page">
+      <div class="page-head"><div><h1 class="page-title">${esc(t("nav.support"))}</h1>
+        <p class="page-sub">${esc(t("support.description"))}</p></div></div>
+      <section class="card support-card">
+        <button class="support-code" type="button" data-action="support-enlarge" aria-label="${esc(t("support.enlarge"))}">
+          <img src="support-wechat.png" width="1152" height="1152" alt="${esc(t("support.imageAlt"))}">
+        </button>
+        <p class="support-hint">${esc(t("support.scan"))}</p>
+        <button class="btn btn-secondary btn-sm" type="button" data-action="support-enlarge">${esc(t("support.enlarge"))}</button>
+      </section></div>`;
+  }
+  function supportImageHTML() {
+    return `<div class="dialog-head"><h2 id="dlg-title">${esc(t("nav.support"))}</h2>
+      <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
+      <div class="dialog-body support-large"><img src="support-wechat.png" width="1152" height="1152" alt="${esc(t("support.imageAlt"))}"></div>`;
+  }
+
   function aboutHTML() {
     const u = ui.update;
     const status = fromNexus() ? "" : u.phase === "checking" ? `<span class="spinner"></span>${esc(t("update.checking"))}`
@@ -2590,15 +2609,15 @@
   function jobTitle(job) {
     const p = job.payload || {}, u = byId.get(p.unit_id);
     switch (job.action) {
-      case "queue_spawn": return "排队召唤 " + (u?.name || p.unit_id || "") + " ×" + p.count;
-      case "set_summon_queue": return p.enabled ? "开启排队召唤" : "关闭排队召唤";
-      case "cancel_summon_queue": return "取消待执行召唤";
+      case "queue_spawn": return t("history.queuePrefix") + (u?.name || p.unit_id || "") + " ×" + p.count;
+      case "set_summon_queue": return p.enabled ? t("history.queueEnable") : t("history.queueDisable");
+      case "cancel_summon_queue": return t("history.cancelSummon");
       case "spawn": return p.team === "neutral" ? t("action.spawnNeutral", { name: u?.name, n: p.count })
         : p.team === "companion" ? t("action.spawnCompanion", { name: u?.name, n: p.count }) : t("action.spawn", { name: u?.name, n: p.count, team: teamName(p.team) });
       case "configure_unit_key": return t("action.configure_unit_key", { name: u?.name });
       case "set_spawn_difficulty": return t("action.set_spawn_difficulty", { name: diffName(p.difficulty) });
       case "set_spawn_level": {
-        if (p.level_mode === "CYCLE") return "召唤周目 · " + CYCLE_CHOICES[p.level];
+        if (p.level_mode === "CYCLE") return t("history.cyclePrefix") + t(CYCLE_CHOICES[p.level]);
         // The app's own payload says mode/unit; a job read back from backend.py says level_mode/unit_id.
         const mode = p.mode || p.level_mode, unit = byId.get(p.unit || p.unit_id);
         return mode === "UNIT" ? t("action.set_spawn_level.unit", { name: unit?.name || p.unit || p.unit_id, label: p.level == null ? t("level.backToDefault") : t("level.levelN", { n: p.level }) })
@@ -2643,7 +2662,7 @@
       const r = await RT.clearQueue();
       const n = (r.cleared || 0) + (r.interrupted || 0);
       if (r.files_left?.length) toast({ kind: "warning", title: n ? t("toast.queue.cleared", { n }) : t("toast.queue.empty"), body: t("toast.queue.filesLeft") });
-      else if (r.summon_cancel_requested) toast({ kind: "info", title: "已请求清空待执行召唤", body: "游戏确认后可在排队召唤页查看。" });
+      else if (r.summon_cancel_requested) toast({ kind: "info", title: t("history.clearRequested"), body: t("history.clearHelp") });
       else if (n) toast({ kind: "success", title: t("toast.queue.cleared", { n }), body: t("toast.queue.cleared.body") });
       else toast({ kind: "info", title: t("toast.queue.empty") });
     } catch (error) {
@@ -2860,10 +2879,10 @@
       ${group("安装更新时游戏", "gameRunning", [["true", "仍在运行"], ["false", "已退出"]])}
       <div class="demo-group"><span>其他</span><div class="demo-opts">
         <button class="demo-opt" type="button" data-action="demo-f2">模拟游戏内按切队键</button>
-        <button class="demo-opt" type="button" data-action="demo-f6" aria-pressed="${S.freeCam}">模拟游戏内按自由观战键</button>
+        <button class="demo-opt" type="button" data-action="demo-f6" aria-pressed="${S.freeCam}">${esc(t("demo.freeKey"))}</button>
         <button class="demo-opt" type="button" data-action="demo-defeat" ${S.neutral ? "" : "disabled"}>你打倒 1 个暂不配队的</button>
         <button class="demo-opt" type="button" data-action="onboarding">重看新手引导</button>
-        <button class="demo-opt" type="button" data-action="demo-reset">清空原型数据</button>
+        <button class="demo-opt" type="button" data-action="demo-reset">${esc(t("demo.reset"))}</button>
       </div></div>`;
   }
 
@@ -2915,6 +2934,7 @@
     "toggle-summon-queue": () => changeSummonQueue("set_summon_queue", { enabled: !S.summonQueue?.on }),
     "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
+    "support-enlarge": () => openDialog("support-image", supportImageHTML(), "dialog-wide"),
     "conn-popover": el => (pop?.anchor === el ? closePopover() : openPopover(el, connPopoverHTML(), { align: "center", role: "dialog" })),
     "lang-menu": el => (pop?.anchor === el ? closePopover() : openPopover(el, langMenuHTML(), { align: "end" })),
     "help-menu": el => (pop?.anchor === el ? closePopover() : openPopover(el, helpMenuHTML(), { align: "end" })),
@@ -3158,7 +3178,7 @@
       // Typing keeps its focus: only the list entry and the save bar follow.
       const pool = selectedPool(), item = $(".pool-item.is-selected");
       if (pool && item) {
-        item.querySelector(".pool-item-name").textContent = pool.name || "未命名";
+        item.querySelector(".pool-item-name").textContent = pool.name || t("pool.unnamed");
         item.querySelector(".pool-item-meta").textContent = poolItemMeta(pool);
       }
       renderPoolSummon();

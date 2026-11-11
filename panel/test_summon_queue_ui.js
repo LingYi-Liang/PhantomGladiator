@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const i18n = require("./test_i18n_runtime")();
 
 const app = readFileSync(path.join(__dirname, "prototype", "app.js"), "utf8");
 function section(start, end) {
@@ -25,7 +26,7 @@ const context = {
   },
   byId: new Map([["unit-a", { name: "甲" }]]),
   cleanupBlocker: () => "", renderSelection() {}, renderDock() {},
-  toast: event => notices.push(event), icon: () => "", t: key => key, teamName: team => team, matchNote: () => "",
+  toast: event => notices.push(event), icon: () => "", t: (key, params) => i18n.t(key, params), teamName: team => team, matchNote: () => "",
 };
 vm.createContext(context);
 vm.runInContext(section("  function summonQueueSettingsHTML()", "  function renderSummonQueueSettings()") +

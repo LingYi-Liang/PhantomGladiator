@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const i18n = require("./test_i18n_runtime")();
 
 const app = readFileSync(path.join(__dirname, "prototype", "app.js"), "utf8");
 function section(start, end) {
@@ -19,6 +20,7 @@ const S = { summonLimits: { alpha: 100, beta: 1 }, gameRunning: false,
 const values = new Map(), calls = [], button = { disabled: true };
 let code = "", nexus = false;
 const context = {
+  t: (key, params) => i18n.t(key, params),
   ui, S, UNITS: units, byId: new Map(units.map(u => [u.id, u])),
   RT: { ready: () => true, online: () => false, demo: true, poolUnitId: id => id, poolUnitPath: id => id,
     async saveMonsterPools(pools, revision) { S.monsterPools = { revision: revision + 1, pools }; },
