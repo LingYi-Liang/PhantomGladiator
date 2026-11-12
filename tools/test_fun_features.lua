@@ -11,7 +11,7 @@ end
 local function harness(files)
     local h={files=files or {},lines={},attrs={},writes={},now=100,clock=0,loops={},cancelled={},injected={}}
     h.io={open=function(path,mode)
-        if mode=='w' and h.failSave then return nil end
+        if mode=='w' and (h.failSave or h.failPath==path) then return nil end
         if mode=='r' and h.files[path]==nil then return nil end
         local text=h.files[path] or ''
         return {read=function()return text end,write=function(_,s)text=s;return true end,
@@ -312,5 +312,82 @@ do
     fun:set('DEFLECT','ON');fun:tick()
     h.frames[5]={HitGameTime=100.05,IsDodge=false,IsHit=false};h.frame()
     assert(#h.injected==0 and fun:status().guard_state=='failed',h.all())
+end
+do
+    local h=harness();local fun=h.new()
+    assert(fun:set('SHACHI','ON').ok);fun:tick()
+    h.stuck='Shachi_Min';assert(fun:set('SHACHI','OFF').ok)
+    assert(h.attrs.Shachi_Min.base==800)
+    assert(h.files['R/fun-shachi-floor.tsv']~='','an unsuccessful restore must keep the original-floor journal')
+    h.stuck=nil;h.clock=h.clock+2;fun:tick()
+    assert(h.attrs.Shachi_Min.base==0 and fun:status().shachi_state=='off','turning off must retry a failed floor restore')
+end
+do
+    local h=harness();local fun=h.new()
+    fun:set('SHACHI','ON');fun:tick();h.stuck='Shachi_Min';fun:set('SHACHI','OFF')
+    local writes=#h.writes
+    fun:set('SHACHI','ON')
+    for _=1,50 do fun:tick()end
+    assert(#h.writes==writes,'restore retries must be bounded when the feature is enabled again')
+    h.stuck=nil;h.clock=2;fun:tick();fun:set('SHACHI','OFF')
+    assert(h.attrs.Shachi_Min.base==0,'re-enabling must not treat the raised floor as the original')
+end
+
+do
+    local h=harness();local fun=h.new()
+    fun:set('SHACHI','ON');fun:tick()
+    local pawn=h.pawn;h.pawn=nil;fun:set('SHACHI','OFF')
+    assert(h.files['R/fun-shachi-floor.tsv']~='' and fun:status().shachi_state=='restoring')
+    h.pawn=pawn;h.clock=2;fun:tick()
+    assert(h.attrs.Shachi_Min.base==0 and fun:status().shachi_state=='off','temporary pawn unavailability must retain the original floor')
+end
+
+do
+    local h=harness();local first=h.new()
+    first:set('SHACHI','ON');first:tick();first:silence()
+    h.files['R/fun-features.tsv']='FunFeaturesV1\tSHACHI=0\tDEFLECT=0\tDODGE=0\n';h.stuck='Shachi_Min'
+    local second=h.new();second:tick()
+    assert(h.files['R/fun-shachi-floor.tsv']~='')
+    h.stuck=nil;h.clock=2;second:tick()
+    assert(h.attrs.Shachi_Min.base==0 and second:status().shachi_state=='off','failed reload restoration must retry')
+end
+
+do
+    local h=harness();local fun=h.new();fun:set('SHACHI','ON')
+    h.failPath='R/fun-shachi-floor.tsv';fun:tick()
+    assert(h.attrs.Shachi_Min.base==0 and #h.writes==0,'a failed journal save must not raise the player floor')
+    h.failPath=nil;fun:tick()
+    assert(h.attrs.Shachi_Min.base==800)
+    h.failPath='R/fun-shachi-floor.tsv';fun:set('SHACHI','OFF')
+    assert(h.attrs.Shachi_Min.base==0 and fun:status().shachi_state=='restoring')
+    h.failPath=nil;h.clock=2;fun:tick()
+    assert(h.files['R/fun-shachi-floor.tsv']=='' and fun:status().shachi_state=='off','journal cleanup failures must also retry')
+end
+
+do
+    local h=harness();local fun=h.new();fun:set('SHACHI','ON');fun:tick()
+    local write=h.stats.writeBase
+    h.stats.writeBase=function(self,pawn,field,value)
+        local ok=write(self,pawn,field,value)
+        if field=='Shachi_Min' then h.attrs[field].current=value+5 end
+        return ok
+    end
+    fun:set('SHACHI','OFF')
+    assert(h.attrs.Shachi_Min.base==0 and fun:status().shachi_state=='off','restore readback must compare the written base, not an effect-modified current value')
+end
+
+do
+    local h=harness();local fun=h.new();fun:set('SHACHI','ON');fun:tick()
+    h.stuck='Shachi_Min';fun:set('SHACHI','OFF');h.stuck=nil;h.clock=2
+    h.attrs.Shachi_Min={base=50,current=50};fun:tick()
+    assert(h.attrs.Shachi_Min.base==50 and fun:status().shachi_state=='off','restore must not overwrite a floor changed by another mechanism')
+end
+
+do
+    local h=harness();local fun=h.new();fun:set('SHACHI','ON');fun:tick()
+    h.stuck='Shachi_Min';fun:set('SHACHI','OFF');h.stuck=nil;h.clock=2
+    local old=h.pawn;h.pawn=object({},'NewPawn');h.pawn.GetAddress=old.GetAddress
+    fun:tick()
+    assert(h.attrs.Shachi_Min.base==800 and fun:status().shachi_state=='off','a reused address must not receive the previous pawn restore')
 end
 print('fun_features ok')

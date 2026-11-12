@@ -94,7 +94,7 @@ function Fun.new(options)
     local function writeFile(path,text)
         local f=fs.open(path,'w');if not f then return false end
         local wrote=f:write(text);local closed=f:close()
-        return wrote~=nil and wrote~=false and closed~=false and readFile(path)==text
+        return wrote~=nil and wrote~=false and closed==true and readFile(path)==text
     end
     do
         local text=readFile(settings)
@@ -113,30 +113,43 @@ function Fun.new(options)
     -- ---------- Infinite Shachi ----------
     -- lock = the pawn whose floor is raised and the floor it had before.
     local lock={}
+    local releaseShachi
     local logged={relock=0,refill=0}
     local function readJournal()
         local key,floor=(readFile(journal) or ''):match('^ShachiFloorV1\t(%S+)\t(%S+)\n$')
-        return key,num(tonumber(floor))
+        floor=tonumber(floor)
+        if key and Stats.finite(floor) then return key,floor end
+    end
+    local function pawnIdentity(pawn)
+        local value=name(pawn)
+        return value~='?' and value~='nil' and value or nil
     end
     local function lockShachi(pawn)
+        if lock.restoring and not releaseShachi('重新开启前恢复') then return end
         local key=U.key(pawn);if not key then return end
+        local owner=pawnIdentity(pawn);if not owner then return end
         local shachi,why=stats:read(pawn,'Shachi')
         local floor=stats:read(pawn,'Shachi_Min');local max=stats:read(pawn,'Shachi_Max')
         if not shachi or not floor or not max or max.current<=0 then
             if self.shachi.state~='failed' then say('无限杀气：属性不可读 '..tostring(why)) end
             self.shachi.state='failed';self.shachi.message='杀气属性不可读';return
         end
-        if lock.key~=key then
+        if lock.key~=key or (lock.identity and lock.identity~=owner) then
             -- A new pawn (first lock, map change, load). A floor journaled for this same pawn is its
             -- original: this one was raised by an earlier Lua instance before a mod reload.
             local journaled,original=readJournal()
-            original=journaled==key and original or floor.base
-            lock={key=key,floor=original}
+            original=journaled==key and lock.key~=key and original or floor.base
             local kept=writeFile(journal,'ShachiFloorV1\t'..key..'\t'..string.format('%.6f',original)..'\n')
+            if not kept then
+                if self.shachi.message~='原始杀气下限没能保存，未加锁' then say('无限杀气：原始下限保存未读回，不修改属性') end
+                self.shachi.state='failed';self.shachi.message='原始杀气下限没能保存，未加锁';return
+            end
+            lock={key=key,floor=original,identity=owner}
             say(string.format('无限杀气开始 pawn=%s 杀气=%.1f 下限=%.1f(原始%.1f) 上限=%.1f 记录原始下限=%s',
                 key,shachi.current,floor.current,original,max.current,tostring(kept)))
         end
         local target=max.current
+        lock.target=target
         if floor.current>=target-EPS then lock.raised=true end
         if floor.current<target-EPS then
             local ok,err=stats:writeBase(pawn,'Shachi_Min',target)
@@ -165,29 +178,50 @@ function Fun.new(options)
         self.shachi.state=lock.raised and 'locked' or 'failed'
         self.shachi.message=lock.raised and '杀气已锁满' or '杀气下限写入未读回'
     end
-    local function releaseShachi(reason)
+    local function restorePending(reason)
+        lock.restoring=true;lock.retryAt=clock()+1
+        if not lock.restoreFailed then
+            lock.restoreFailed=true;self.shachi.failures=self.shachi.failures+1
+            say('无限杀气恢复待重试：'..reason)
+        end
+        self.shachi.state='restoring';self.shachi.message='原杀气下限恢复待确认，将继续重试'
+        return false
+    end
+    releaseShachi=function(reason)
         if not lock.key then
             -- Nothing locked by this instance; an earlier one may have left a raised floor behind.
             local key,original=readJournal()
-            local pawn=options.getPlayer and options.getPlayer()
-            if key and original and U.valid(pawn) and U.key(pawn)==key then lock={key=key,floor=original}
-            else
-                if key then writeFile(journal,'') end
-                self.shachi.state='off';self.shachi.message='';return
-            end
+            if not key then self.shachi.state='off';self.shachi.message='';return true end
+            lock={key=key,floor=original}
         end
+        if lock.retryAt and clock()<lock.retryAt then return false end
         local pawn=options.getPlayer and options.getPlayer()
-        if U.valid(pawn) and U.key(pawn)==lock.key then
-            local ok,err=stats:writeBase(pawn,'Shachi_Min',lock.floor)
-            local after=stats:read(pawn,'Shachi_Min')
-            say(string.format('无限杀气关闭（%s）恢复下限 写入=%s 目标=%.1f 读回=%s %s',reason,tostring(ok),lock.floor,
-                after and fmt(after.current) or 'nil',err and ('错误='..tostring(err)) or ''))
-            if not ok or not after or math.abs(after.current-lock.floor)>EPS then self.shachi.failures=self.shachi.failures+1 end
+        local key=U.key(pawn)
+        local owner=pawnIdentity(pawn)
+        if not key or not owner then return restorePending('当前角色尚不可读，保留原值记录') end
+        if key==lock.key and (not lock.identity or owner==lock.identity) then
+            local before=stats:read(pawn,'Shachi_Min')
+            if not before then return restorePending('杀气下限不可读') end
+            if math.abs(before.base-lock.floor)>EPS then
+                if lock.target and math.abs(before.base-lock.target)>EPS then
+                    say('无限杀气关闭：下限已被其他机制改变，不覆盖 读回='..fmt(before.base))
+                else
+                    local ok,err=stats:writeBase(pawn,'Shachi_Min',lock.floor)
+                    local after=stats:read(pawn,'Shachi_Min')
+                    local verified=ok and after and math.abs(after.base-lock.floor)<=EPS
+                    if verified or not lock.restoreFailed then
+                        say(string.format('无限杀气关闭（%s）恢复下限 写入=%s 目标=%.1f 读回=%s/%s %s',reason,tostring(ok),lock.floor,
+                            after and fmt(after.base) or 'nil',after and fmt(after.current) or 'nil',err and ('错误='..tostring(err)) or ''))
+                    end
+                    if not verified then return restorePending('恢复写入未读回') end
+                end
+            end
         else
             say('无限杀气关闭（'..reason..'）：锁定过的角色已不在，不用恢复')
         end
-        writeFile(journal,'')
+        if not writeFile(journal,'') then return restorePending('恢复记录清理未读回') end
         lock={};self.shachi.state='off';self.shachi.message=''
+        return true
     end
 
     -- ---------- Auto deflect / dodge ----------
@@ -541,7 +575,8 @@ function Fun.new(options)
         if feature=='SHACHI' and not self.on.SHACHI then releaseShachi('开关关闭') end
         syncLoop()
         local labels={SHACHI='无限杀气',DEFLECT='自动精准防御',DODGE='自动闪避红光'}
-        return {ok=true,message=labels[feature]..(self.on[feature] and '已开启' or '已关闭'),spawned_count=0}
+        local pending=feature=='SHACHI' and not self.on.SHACHI and lock.restoring
+        return {ok=true,message=pending and '无限杀气已关闭，原下限恢复待确认' or labels[feature]..(self.on[feature] and '已开启' or '已关闭'),spawned_count=0}
     end
     local minute=clock()
     function self:tick()

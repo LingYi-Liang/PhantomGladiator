@@ -4,16 +4,23 @@ local address=0
 local function actor(name)
     address=address+1;local a=address
     return {IsValid=function()return true end,GetAddress=function()return a end,
+        GetFName=function()return {ToString=function()return name..'_'..a end}end,
         GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return name..'_C' end}end}end}
 end
 local function harness(files)
-    local h={files=files or {},lines={},writes={},attrs={},members={},ready=true}
+    local h={files=files or {},lines={},writes={},attrs={},members={},ready=true,now=0,journalWrites=0}
     h.io={open=function(path,mode)
-        if mode=='w' and h.failSave then return nil end
+        if mode=='w' and (h.failSave or h.failPath==path) then return nil end
         if mode=='r' and h.files[path]==nil then return nil end
         local text=h.files[path] or ''
         return {read=function()return text end,write=function(_,s)text=s;return true end,
-            close=function()if mode=='w' then h.files[path]=text end;return true end}
+            close=function()
+                if mode=='w' then
+                    h.files[path]=text
+                    if path=='R/immortal-floors.tsv' then h.journalWrites=h.journalWrites+1 end
+                end
+                return true
+            end}
     end}
     -- Per-actor attributes; a stuck field ignores writes, like a floor the game holds elsewhere.
     function h.unit(name,hp,floor)
@@ -29,6 +36,7 @@ local function harness(files)
         end}
     function h.new()
         return Immortal.new({path='R',io=h.io,attributes=h.stats,log=function(s)h.lines[#h.lines+1]=s end,
+            clock=function()return h.now end,isDestroying=function(actor)return actor.destroying==true end,
             members=function()return h.members end,collect=function()return h.npcs or {} end,ready=function()return h.ready end})
     end
     function h.all()return table.concat(h.lines,'\n')end
@@ -203,5 +211,93 @@ do
     s.members={{actor=unit,team='blue'}}
     local x=s.new();x:set('blue','ON');x:silence();x:tick()
     assert(#s.writes==0)
+end
+do
+    local s=harness()
+    local unit=s.unit('ReleaseRetry',400)
+    s.members={{actor=unit,team='blue'}}
+    local x=s.new();assert(x:set('blue','ON').ok);x:tick()
+    s.stuck='Health_Min';assert(x:set('blue','OFF').ok);x:tick()
+    assert(s.attrs[unit].Health_Min.base==400)
+    assert(s.files['R/immortal-floors.tsv']:find('\t0.000\t400.000',1,true),'a failed unlock must keep its recovery journal')
+    s.stuck=nil;s.now=2;x:tick()
+    assert(s.attrs[unit].Health_Min.base==0 and x:status().locked==0,'a later tick must retry the failed unlock')
+end
+
+do
+    local s=harness()
+    local unit=s.unit('ReloadRetry',400,400)
+    s.npcs={unit}
+    s.files['R/immortal-floors.tsv']='ImmortalFloorsV1\n'..unit.GetAddress()..'\t0.000\t400.000\n'
+    s.stuck='Health_Min'
+    local x=s.new();x:tick()
+    assert(s.files['R/immortal-floors.tsv']:find('\t0.000\t400.000',1,true),'a failed reload recovery must not erase the journal')
+    s.stuck=nil;s.now=2;x:tick()
+    assert(s.attrs[unit].Health_Min.base==0,'reload recovery must retry even when the actor is outside the new roster')
+end
+do
+    local s=harness();local unit=s.unit('JournalDenied',500)
+    s.members={{actor=unit,team='blue'}}
+    local x=s.new();assert(x:set('blue','ON').ok)
+    s.failPath='R/immortal-floors.tsv';x:tick()
+    assert(s.attrs[unit].Health_Min.base==0,'a unit must not stay locked if its original floor cannot be journaled')
+    for _=1,20 do x:tick()end
+    assert(x:status().failures==1 and #s.writes==6,'journal failures must stop after three lock-and-restore attempts')
+end
+
+do
+    local s=harness();local unit=s.unit('ReloadEnabled',400,400)
+    s.npcs={unit};s.members={{actor=unit,team='blue'}}
+    s.files['R/immortal-floors.tsv']='ImmortalFloorsV1\n'..unit.GetAddress()..'\t0.000\t400.000\n'
+    local x=s.new();assert(x:set('blue','ON').ok);s.stuck='Health_Min';x:tick()
+    local writes=#s.writes
+    for _=1,50 do x:tick()end
+    assert(#s.writes==writes,'failed reload recovery must be rate limited and must not re-lock the raised floor')
+    assert(s.files['R/immortal-floors.tsv']:find('\t0.000\t400.000',1,true))
+    s.stuck=nil;s.now=2;x:tick();assert(x:set('blue','OFF').ok);x:tick()
+    assert(s.attrs[unit].Health_Min.base==0,'re-enabled units must keep their original floor after recovery')
+end
+
+do
+    local s=harness();local unit=s.unit('ExternalFloor',400)
+    s.members={{actor=unit,team='blue'}}
+    local x=s.new();x:set('blue','ON');x:tick();s.stuck='Health_Min';x:set('blue','OFF');x:tick()
+    s.stuck=nil;s.attrs[unit].Health_Min={base=50,current=50};s.now=2;x:tick()
+    assert(s.attrs[unit].Health_Min.base==50 and x:status().pending_restore==0,'retry must not overwrite an external floor change')
+end
+
+do
+    local s=harness();local old=s.unit('OldOwner',400)
+    s.members={{actor=old,team='blue'}}
+    local x=s.new();x:set('blue','ON');x:tick();s.stuck='Health_Min';x:set('blue','OFF');x:tick()
+    local fresh=s.unit('NewOwner',400,400);fresh.GetAddress=old.GetAddress
+    s.members={{actor=fresh,team='blue'}};s.stuck=nil;s.now=2;x:tick()
+    assert(s.attrs[fresh].Health_Min.base==400,'address reuse must not restore an old actor floor into a new actor')
+end
+
+do
+    local s=harness();local unit=s.unit('Destroying',400)
+    s.members={{actor=unit,team='blue'}}
+    local x=s.new();x:set('blue','ON');x:tick();unit.destroying=true
+    local writes=#s.writes;x:set('blue','OFF');x:tick()
+    assert(#s.writes==writes and x:status().pending_restore==0,'destroying actors must not receive restore writes')
+end
+
+do
+    local s=harness();local unit=s.unit('IdentityWait',400)
+    s.members={{actor=unit,team='blue'}}
+    local x=s.new();x:set('blue','ON');x:tick();x:set('blue','OFF')
+    local getName=unit.GetFName;unit.GetFName=function()error('identity not readable')end;x:tick()
+    assert(x:status().pending_restore==1,'a temporary identity read failure must keep the recovery record')
+    unit.GetFName=getName;s.now=2;x:tick()
+    assert(s.attrs[unit].Health_Min.base==0)
+end
+do
+    local s=harness()
+    for i=1,100 do s.members[i]={actor=s.unit('Batch'..i,400),team='blue'}end
+    local x=s.new();x:set('blue','ON');x:tick()
+    assert(x:status().locked==100 and s.journalWrites==1,'a 100-unit batch must persist its floor journal once')
+    x:tick()
+    assert(s.journalWrites==1,'holding a stable batch must not rewrite the journal')
 end
 print('immortal_teams: PASS (settings, lock, hold, refill, join/leave, release, companions, retries, ready gate, reload journal, unload)')

@@ -75,7 +75,7 @@ function Rules.new(options)
         local f=fs.open(file,'w')
         local wrote=f and f:write(text)
         local closed=f and f:close()
-        local saved=f~=nil and wrote~=nil and wrote~=false and closed~=false and readFile()==text
+        local saved=f~=nil and wrote~=nil and wrote~=false and closed==true and readFile()==text
         if saved then rules=copy end
         log(string.format('[UnitRules] 设置 单位=%s %s=%s 保存读回=%s',id,rule,value,tostring(saved)))
         return {ok=saved,spawned_count=0,message=saved and labelFor(id,rule,value) or '单位规则没有保存'}

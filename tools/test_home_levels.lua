@@ -1,6 +1,28 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Levels=require('home_levels')
 
+do
+    local deny=false
+    local files={}
+    local fs={open=function(path,mode)
+        if mode=='r' then
+            if not files[path] then return nil,'missing',2 end
+            return {read=function()return files[path] end,close=function()return true end}
+        end
+        if deny then return nil,'read-only',13 end
+        return {write=function(_,text)files[path]=text;return true end,close=function()return true end}
+    end}
+    local h=Levels.new({path='readonly',io=fs,native={Demo={{20,'A','Map',1}}},places={},context=function()return {cycle=0} end})
+    assert(h:configure('','HOME','').ok)
+    local saved=files['readonly/spawn-level-settings.tsv']
+    deny=true
+    assert(not h:configure('','CUSTOM','60').ok)
+    assert(h:status().mode=='HOME' and h:target('Demo').level==20,'a failed save must not change the runtime level mode')
+    assert(not h:configure('Demo','UNIT','40').ok)
+    assert(h:target('Demo').level==20,'a failed per-unit save must not change future summons')
+    assert(files['readonly/spawn-level-settings.tsv']==saved)
+end
+
 local function fs(files)
     return {open=function(path,mode)
         if mode=='r' then

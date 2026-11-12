@@ -15,6 +15,7 @@ local JOURNAL='ImmortalFloorsV1'
 local EPS=0.5       -- HP: a floor or health this close to the target counts as the target
 local RETRIES=3     -- lock attempts per unit before it counts as a failure
 local LOG_CAP=40    -- repeated lines (relocks, health below the floor) per Lua lifetime
+local RESTORE_RETRY=1
 
 local function short(actor)
     if not U.valid(actor) then return '?' end
@@ -27,15 +28,27 @@ function Immortal.new(options)
     local log=options.log or function()end
     local fs=options.io or io
     local stats=options.attributes or Stats.new()
+    local clock=options.clock or os.clock
     local settings=options.path..'/immortal-teams.tsv'
     local journal=options.path..'/immortal-floors.tsv'
     local self={alive=true,on={blue=false,red=false,companion=false},failures=0,relocks=0,breaches=0,message=''}
     local locked={}     -- actor key -> {team, original floor base, target HP, unit name}
     local tries={}      -- actor key -> lock attempts that did not read back
+    local recovering={} -- matched reload records whose original floor is not restored yet
+    local release
     local lines=0
     local orphansChecked=false
     local function say(m)log('[Immortal] '..m)end
     local function again(m)if lines<LOG_CAP then lines=lines+1;say(m)end end
+    local function identity(actor)
+        if not U.valid(actor) then return nil end
+        local ok,value=pcall(function()return actor:GetFName():ToString()end)
+        return ok and type(value)=='string' and value or nil
+    end
+    local function gone(actor)
+        if not U.valid(actor) then return true end
+        return options.isDestroying and options.isDestroying(actor)==true or false
+    end
     local function readFile(path)
         local f=fs.open(path,'r');if not f then return nil end
         local text=f:read('*a');f:close();return text
@@ -43,7 +56,7 @@ function Immortal.new(options)
     local function writeFile(path,text)
         local f=fs.open(path,'w');if not f then return false end
         local wrote=f:write(text);local closed=f:close()
-        return wrote~=nil and wrote~=false and closed~=false and readFile(path)==text
+        return wrote~=nil and wrote~=false and closed==true and readFile(path)==text
     end
     do
         local text=readFile(settings)
@@ -59,12 +72,15 @@ function Immortal.new(options)
         return writeFile(settings,table.concat(parts,'\t')..'\n')
     end
     local function saveJournal()
+        local records={}
+        for key,record in pairs(recovering)do records[key]=record end
+        for key,record in pairs(locked)do records[key]=record end
         local keys={}
-        for key in pairs(locked)do keys[#keys+1]=key end
+        for key in pairs(records)do keys[#keys+1]=key end
         table.sort(keys)
         local rows={JOURNAL}
         for _,key in ipairs(keys)do
-            local r=locked[key]
+            local r=records[key]
             rows[#rows+1]=key..'\t'..string.format('%.3f',r.original)..'\t'..string.format('%.3f',r.target)
         end
         return writeFile(journal,table.concat(rows,'\n')..'\n')
@@ -93,46 +109,45 @@ function Immortal.new(options)
                 local row=key and rows[key]
                 if row then
                     rows[key]=nil
-                    local floor=stats:read(actor,'Health_Min')
-                    if floor and math.abs(floor.base-row.target)<=EPS then
-                        local ok,err=stats:writeBase(actor,'Health_Min',row.original)
-                        local after=stats:read(actor,'Health_Min')
-                        if ok and after and math.abs(after.base-row.original)<=EPS then restored=restored+1 else self.failures=self.failures+1 end
-                        say(string.format('恢复上次留下的单位 unit=%s 下限 %s→%s 写入=%s 读回=%s %s',short(actor),fmt(floor.base),fmt(row.original),
-                            tostring(ok),after and fmt(after.base) or 'nil',err and ('错误='..tostring(err)) or ''))
-                    else
-                        say('上次记录的单位下限已经变了，未改 unit='..short(actor)..' 下限='..(floor and fmt(floor.base) or 'nil'))
-                    end
+                    row.actor,row.identity,row.name=actor,identity(actor),short(actor)
+                    local done,verified=release(row,actor,'恢复上次留下的下限')
+                    if verified then restored=restored+1 end
+                    if not done then recovering[key]=row end
                 end
             end
             say(string.format('检查上次留下的不倒下单位：记录%d只，恢复%d只',count,restored))
         end
-        writeFile(journal,'')
+        if next(recovering) then saveJournal() else writeFile(journal,'') end
     end
 
+    local function failedLock(actor,key)
+        tries[key]=(tries[key] or 0)+1
+        if tries[key]>=RETRIES then
+            self.failures=self.failures+1;self.message=short(actor)..' 没能锁住血量'
+            say('放弃锁定 unit='..short(actor)..'：'..RETRIES..' 次写入都没有读回')
+        end
+    end
     local function lock(actor,team,key)
+        local owner=identity(actor)
+        if not owner then return false end
         local health=stats:read(actor,'Health');local floor=stats:read(actor,'Health_Min')
         -- Not readable yet (just spawned) or already down: nothing to lock this tick.
         if not health or not floor or health.current<=0 then return false end
         local target=health.current
+        local record={team=team,original=floor.base,target=target,name=short(actor),actor=actor,identity=owner}
+        locked[key]=record
         local ok,err=stats:writeBase(actor,'Health_Min',target)
         local after=stats:read(actor,'Health_Min')
         local good=ok and after and after.current>=target-EPS
         say(string.format('锁定 %s unit=%s HP=%s 原下限=%s 写入=%s 读回=%s %s',LABEL[team],short(actor),fmt(target),fmt(floor.base),
             tostring(ok),after and fmt(after.current) or 'nil',err and ('错误='..tostring(err)) or ''))
         if good then
-            locked[key]={team=team,original=floor.base,target=target,name=short(actor)}
-            tries[key]=nil
-            return true
+            return true,true
         end
         -- Not held: put the original floor back and try again on a later tick, a few times at most.
-        if ok then stats:writeBase(actor,'Health_Min',floor.base) end
-        tries[key]=(tries[key] or 0)+1
-        if tries[key]>=RETRIES then
-            self.failures=self.failures+1;self.message=short(actor)..' 没能锁住血量'
-            say('放弃锁定 unit='..short(actor)..'：'..RETRIES..' 次写入都没有读回')
-        end
-        return false
+        if release(record,actor,'锁定未确认') then locked[key]=nil end
+        failedLock(actor,key)
+        return true
     end
     local function hold(record,actor)
         -- Health at the lock means the floor holds: one read, not two full attribute reads per unit.
@@ -157,12 +172,32 @@ function Immortal.new(options)
                 floor and fmt(floor.current) or 'nil',fmt(record.target),tostring(filled),after and fmt(after.current) or 'nil'))
         end
     end
-    local function release(record,actor,reason)
-        local ok,err=stats:writeBase(actor,'Health_Min',record.original)
-        local after=stats:read(actor,'Health_Min')
-        if not ok or not after or math.abs(after.base-record.original)>EPS then self.failures=self.failures+1 end
-        say(string.format('恢复（%s）unit=%s 下限→%s 写入=%s 读回=%s %s',reason,record.name,fmt(record.original),tostring(ok),
-            after and fmt(after.base) or 'nil',err and ('错误='..tostring(err)) or ''))
+    release=function(record,actor,reason)
+        if gone(actor) then return true,false end
+        if record.retryAt and clock()<record.retryAt then return false,false end
+        local owner=identity(actor)
+        if owner and record.identity and owner~=record.identity then return true,false end
+        local before=owner and stats:read(actor,'Health_Min')
+        if before and math.abs(before.base-record.original)<=EPS then return true,true end
+        if before and math.abs(before.base-record.target)>EPS then
+            again('原下限已被其他机制改变，不覆盖 unit='..record.name..' 读回='..fmt(before.base))
+            return true,false
+        end
+        local ok,err=false,'对象身份或属性未读回'
+        if before then ok,err=stats:writeBase(actor,'Health_Min',record.original) end
+        if gone(actor) then return true,false end
+        local after=before and stats:read(actor,'Health_Min')
+        local verified=ok and after and math.abs(after.base-record.original)<=EPS
+        if not verified then
+            record.pendingRestore=true;record.retryAt=clock()+RESTORE_RETRY
+            if not record.restoreFailed then
+                record.restoreFailed=true;self.failures=self.failures+1
+                again(string.format('恢复待重试（%s）unit=%s 目标=%s 写入=%s 读回=%s',reason,record.name,fmt(record.original),tostring(ok),after and fmt(after.base) or 'nil'))
+            end
+            return false,false
+        end
+        say(string.format('恢复（%s）unit=%s 下限→%s 写入=true 读回=%s',reason,record.name,fmt(record.original),fmt(after.base)))
+        return true,true
     end
 
     -- Saved and read back here; the units are locked or released on the next tick.
@@ -182,18 +217,25 @@ function Immortal.new(options)
     function self:tick()
         if not self.alive or (options.ready and not options.ready()) then return end
         if not orphansChecked then orphansChecked=true;restoreOrphans() end
-        local seen,changed={},false
+        local seen,changed,newLocks={},false,{}
+        for key,record in pairs(recovering)do
+            if release(record,record.actor,'重试上次恢复') then recovering[key]=nil;changed=true end
+        end
         for _,member in ipairs(options.members())do
             local actor=member.actor
             local key=U.key(actor)
-            if key then
+            if key and not gone(actor) then
                 seen[key]=true
                 local record=locked[key]
-                if record and not self.on[member.team] then
-                    release(record,actor,'已关闭不倒下');locked[key]=nil;changed=true
-                elseif record then hold(record,actor)
-                elseif self.on[member.team] and (tries[key] or 0)<RETRIES then
-                    changed=lock(actor,member.team,key) or changed
+                local owner=record and identity(actor)
+                if record and owner and record.identity~=owner then locked[key]=nil;record=nil;tries[key]=nil;changed=true end
+                if record and (record.pendingRestore or not self.on[member.team]) then
+                    if release(record,actor,'已关闭不倒下') then locked[key]=nil;record=nil;changed=true end
+                elseif record and owner then hold(record,actor) end
+                if not record and not recovering[key] and self.on[member.team] and (tries[key] or 0)<RETRIES then
+                    local touched,held=lock(actor,member.team,key)
+                    changed=touched or changed
+                    if held then newLocks[key]=locked[key] end
                 end
             end
         end
@@ -203,13 +245,28 @@ function Immortal.new(options)
         for key in pairs(tries)do
             if not seen[key] then tries[key]=nil;again('单位已离场，清除失败重试次数 读回=不在当前名单') end
         end
-        if changed then saveJournal() end
+        if changed then
+            local saved=saveJournal()
+            if saved then
+                for key in pairs(newLocks)do tries[key]=nil end
+            else
+                -- Keep one journal write for the whole batch. A batch that cannot save its originals
+                -- must release its new locks; failed releases stay in the ledger for later retries.
+                for key,record in pairs(newLocks)do
+                    if release(record,record.actor,'原值记录保存未确认') then locked[key]=nil end
+                    failedLock(record.actor,key)
+                end
+                again('生命下限记录保存未读回，本次新加锁已请求恢复')
+            end
+        end
     end
     function self:status()
-        local n=0
-        for _ in pairs(locked)do n=n+1 end
+        local n,pending=0,0
+        for _,record in pairs(locked)do n=n+1;if record.pendingRestore then pending=pending+1 end end
+        for _ in pairs(recovering)do pending=pending+1 end
         return {blue=self.on.blue,red=self.on.red,companion=self.on.companion,locked=n,failures=self.failures,
-            breaches=self.breaches,relocks=self.relocks,message=self.message}
+            breaches=self.breaches,relocks=self.relocks,pending_restore=pending,
+            message=pending>0 and ('还有'..pending..'个单位生命下限等待恢复') or self.message}
     end
     -- On unload nothing is written to the game; the journal lets the next instance put the floors back.
     function self:silence()self.alive=false end

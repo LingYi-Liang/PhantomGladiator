@@ -111,7 +111,7 @@ function Match.new(options)
         local file=fs.open(settings,'w')
         if not file then return false end
         local wrote=file:write(text);local closed=file:close()
-        return wrote~=nil and wrote~=false and closed~=false and readFile(settings)==text
+        return wrote~=nil and wrote~=false and closed==true and readFile(settings)==text
     end
     local function switch(mode,custom,reason)
         if not save(mode,custom) then return {ok=false,message='数值设定保存未读回，未修改',spawned_count=0} end

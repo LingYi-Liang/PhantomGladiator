@@ -113,7 +113,8 @@ function Levels.new(options)
         for unit in pairs(self.picks)do units[#units+1]=unit end
         table.sort(units)
         for _,unit in ipairs(units)do lines[#lines+1]='unit\t'..unit..'\t'..self.picks[unit] end
-        return write(SETTINGS,table.concat(lines,'\n')..'\n')
+        local text=table.concat(lines,'\n')..'\n'
+        return write(SETTINGS,text) and read(SETTINGS)==text
     end
     local function loadSettings()
         local list=rows(read(SETTINGS))
@@ -295,6 +296,8 @@ function Levels.new(options)
 
     -- CYCLE selects 0 (follow the save) or 1–7. Fixed levels remain absolute.
     function self:configure(unit,token,level)
+        local previous={mode=self.mode,custom=self.custom,picks={}}
+        for id,value in pairs(self.picks)do previous.picks[id]=value end
         if token=='CYCLE' then
             local cycle=cycleChoice(level)
             if not cycle then return {ok=false,message='召唤周目必须是跟随存档或一到七周目',spawned_count=0} end
@@ -320,6 +323,9 @@ function Levels.new(options)
             self.mode=token
         else return {ok=false,message='未知的召唤等级模式',spawned_count=0} end
         local saved=saveSettings()
+        if not saved then
+            self.mode,self.custom,self.picks=previous.mode,previous.custom,previous.picks
+        end
         self:export()
         say(string.format('设置 模式=%s 自定义=%s 单位=%s 等级=%s 保存读回=%s',self.mode,tostring(self.custom),tostring(unit),tostring(level),tostring(saved)))
         return {ok=saved,message=saved and '召唤等级已设置' or '召唤等级没能保存',spawned_count=0}

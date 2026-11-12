@@ -45,7 +45,7 @@ function Clock.new(options)
     local function writeFile(path,value)
         local f=fs.open(path,'w');if not f then return false end
         local wrote=f:write(value);local closed=f:close()
-        return wrote~=nil and wrote~=false and closed~=false and readFile(path)==value
+        return wrote~=nil and wrote~=false and closed==true and readFile(path)==value
     end
     do
         local saved=readFile(settings)

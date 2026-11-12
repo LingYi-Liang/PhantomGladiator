@@ -23,7 +23,7 @@ function Setting.new(options)
         local f=fs.open(file,'w')
         local wrote=f and f:write(text)
         local closed=f and f:close()
-        local saved=f~=nil and wrote~=nil and wrote~=false and closed~=false and readFile()==text
+        local saved=f~=nil and wrote~=nil and wrote~=false and closed==true and readFile()==text
         if saved then self.on=wanted end
         log('[CompanionExecution] 设置 开关='..value..' 保存读回='..tostring(saved)..' 当前='..tostring(self.on))
         return {ok=saved,spawned_count=0,message=saved and (wanted and '随从处决已开启' or '随从处决已关闭') or '随从处决设置没有保存'}
