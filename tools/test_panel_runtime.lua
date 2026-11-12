@@ -177,6 +177,26 @@ test("an accepted ordinary summon key is cancelled when its game session changes
     assert(count(h,'spawn')==1,'a separate key press in the new world still works')
 end)
 
+test("stop cancels an ordinary summon already waiting for its game-thread callback",function()
+    local h=harness();h.runtime:start();h:tick()
+    h.keys.F9();assert(h.runtime.summonPending and #h.queue==1)
+    h:run(function()return h.runtime.handlers.stop()end)
+    assert(count(h,'stop')==1,'the cleanup handler must have run before the pending callback')
+    h:drain()
+    assert(count(h,'spawn')==0,'stop must invalidate a summon accepted before cleanup')
+    h.keys.F9();h:drain()
+    assert(count(h,'spawn')==1,'a separate new request after cleanup must still work')
+end)
+
+test("a new summon queued after stop survives the stale callback that was cancelled",function()
+    local h=harness();h.runtime:start();h:tick()
+    h.keys.F9();h:run(function()return h.runtime.handlers.stop()end)
+    h.keys.F9()
+    assert(#h.queue==2,'fixture must retain both the old and the new callback')
+    h:drain()
+    assert(count(h,'spawn')==1 and not h.runtime.summonPending,'the stale callback must not run or clear the new request')
+end)
+
 test("game-thread input snapshots the live session without waiting for the status pump",function()
     local h=harness()
     h.env.IsInGameThread=function()return h.inGame end

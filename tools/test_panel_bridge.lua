@@ -487,12 +487,59 @@ test("a full journal keeps the newest 500 commands and the next one runs", funct
     assert(calls == 1 and fs.files["runtime/ack.tsv"] == "new\tok\tok\t1\n")
     assert(journal:find("^" .. string.format("id%05d", n - 499) .. "\tstarted\n") and not journal:find(string.format("id%05d", n - 500), 1, true), journal:sub(1, 40))
     assert(journal:find("new\tstarted\nnew\tdone\tok\tok\t1\n$") and #journal < 300000 and fs.files["runtime/command-journal.compact.tsv"] == nil)
+    local cached=0;for _ in pairs(bridge.records)do cached=cached+1 end
+    assert(cached==501,'compaction must release old completed records from memory as well as disk; cached='..cached)
     assert(table.concat(lines):find("只留最近 500 条指令（原有 " .. n .. " 条）", 1, true), table.concat(lines))
     -- A kept command delivered again still only gets its stored answer.
     local kept = string.format("id%05d", n - 1)
     deliver(fs, command(kept))
     bridge:tick()
     assert(calls == 1 and fs.files["runtime/ack.tsv"] == kept .. "\tok\t" .. string.rep("m", 500) .. "\t1\n")
+end)
+
+test("a live compaction rename failure resumes its verified copy without losing the started record", function()
+    local fs,calls=filesystem(),0
+    local start='new\tstarted\n'
+    fs.files[JOURNAL_PATH]=fullJournal(2097152-#start-1)
+    local os2=withOs(fs);local rename=os2.rename;local denied=true
+    os2.rename=function(from,to)
+        if denied and from=='runtime/command-journal.compact.tsv' then denied=false;return nil,'temporarily locked' end
+        return rename(from,to)
+    end
+    local function handler()calls=calls+1;return {ok=true,message='ok',spawned_count=1}end
+    local bridge=create(fs,handler,{os=os2})
+    deliver(fs,command('new'));bridge:tick()
+    assert(calls==1 and bridge.pending and bridge.pending.phase=='done')
+    assert(fs.files[JOURNAL_PATH]==nil and fs.files['runtime/command-journal.compact.tsv'])
+    bridge:tick()
+    assert(calls==1 and fs.files['runtime/ack.tsv']=='new\tok\tok\t1\n','retry must never execute the handler twice')
+    assert(fs.files[JOURNAL_PATH]:find('new\tstarted\nnew\tdone\tok\tok\t1\n',1,true),'retry must restore the verified journal copy before appending done')
+    assert(fs.files['runtime/command-journal.compact.tsv']==nil)
+    create(fs,handler,{os=withOs(fs)}):tick()
+    assert(calls==1 and fs.files['runtime/ack.tsv']=='new\tok\tok\t1\n','a reload must retain the confirmed completion')
+end)
+
+test("a temporarily unreadable compact copy blocks retries until it can be recovered", function()
+    local fs,calls=filesystem(),0
+    fs.files[JOURNAL_PATH]=fullJournal(2097152-5)
+    local os2=withOs(fs);local rename=os2.rename;local denied=true
+    os2.rename=function(from,to)
+        if denied and from=='runtime/command-journal.compact.tsv' then denied=false;return nil,'temporarily locked' end
+        return rename(from,to)
+    end
+    local bridge=create(fs,function()calls=calls+1;return {ok=true,message='ok',spawned_count=1}end,{os=os2})
+    deliver(fs,command('after-lock'));bridge:tick()
+    assert(calls==0 and bridge.pending.phase=='start' and fs.files[JOURNAL_PATH]==nil)
+    local open=fs.open
+    fs.open=function(path,mode)
+        if path=='runtime/command-journal.compact.tsv' and mode=='rb' then return nil,'temporarily unreadable',13 end
+        return open(path,mode)
+    end
+    bridge:tick()
+    assert(calls==0 and fs.files[JOURNAL_PATH]==nil and fs.files['runtime/command-journal.compact.tsv'],'an unreadable copy must not be treated as an absent journal')
+    fs.open=open;bridge:tick()
+    assert(calls==1 and fs.files['runtime/ack.tsv']=='after-lock\tok\tok\t1\n')
+    bridge:tick();assert(calls==1,'a recovered command must still be idempotent')
 end)
 
 test("a journal already over the limit is compacted when it is loaded", function()

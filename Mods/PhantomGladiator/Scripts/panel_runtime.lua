@@ -208,6 +208,9 @@ function Runtime.new(options)
             return options.arena:start()
         end,
         stop=function()
+            local pending=self.summonPending~=nil
+            self.summonPending=nil;self.summonSkipped=0
+            if pending then self.log('[SummonKey] 停止并清理：旧召唤回调已失效；待执行槽读回=空') end
             if self.summonQueue.enabled then self.summonQueue:cancel('停止并清理') end
             if #self.poolQueue.jobs>0 then self.poolQueue:cancel('停止并清理') end
             if options.support then options.support:discover() end

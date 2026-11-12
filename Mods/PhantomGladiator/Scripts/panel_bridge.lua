@@ -194,14 +194,40 @@ local function newest(content)
             local list = lines[id]; list[#list + 1] = line .. "\n"
         end
     end
-    local out = {}
-    for i = math.max(1, #order - KEEP_COMMANDS + 1), #order do out[#out + 1] = table.concat(lines[order[i]]) end
-    return table.concat(out), math.min(#order, KEEP_COMMANDS), #order
+    local out, retained = {}, {}
+    for i = math.max(1, #order - KEEP_COMMANDS + 1), #order do
+        local id = order[i]
+        out[#out + 1] = table.concat(lines[id]); retained[id] = true
+    end
+    return table.concat(out), math.min(#order, KEEP_COMMANDS), #order, retained
 end
 
--- Written beside the journal and renamed over it; a stop in between leaves the copy, which _loadJournal takes.
+local function retireCompleted(records, retained)
+    for id, record in pairs(records) do
+        if record.state == "done" and not retained[id] then records[id] = nil end
+    end
+end
+
+-- A failed rename can leave only the verified compact copy while this Lua instance is still alive.
+-- Recover that copy before either loading records or appending another line.
+function Bridge:_readJournal()
+    local content, errorText, missing = self:_read(JOURNAL, MAX_JOURNAL)
+    if content ~= nil or not missing then return content, errorText, missing end
+    local copy, copyError, copyMissing = self:_read(COMPACT, MAX_JOURNAL)
+    if copy == nil then return nil, copyError, copyMissing end
+    local okRename, renamed, renameError = pcall(self.os.rename, self.path .. "/" .. COMPACT, self.path .. "/" .. JOURNAL)
+    if not okRename or not renamed then return nil, "compact journal not restored: " .. clean(renameError or renamed), false end
+    local actual, readError = self:_read(JOURNAL, MAX_JOURNAL)
+    if actual ~= copy then return nil, "restored compact journal readback differs: " .. clean(readError), false end
+    local _, _, _, retained = newest(copy)
+    retireCompleted(self.records, retained)
+    self.log("指令日志压缩时中断过，已用压缩后的副本接上；目标文件读回一致")
+    return copy, nil, false
+end
+
+-- Written beside the journal and renamed over it; a stop in between leaves the copy for _readJournal.
 function Bridge:_compactJournal(content)
-    local kept, count, total = newest(content)
+    local kept, count, total, retained = newest(content)
     local ok, errorText = self:_writeVerified(COMPACT, kept, false)
     if not ok then return nil, "compact copy not confirmed: " .. errorText end
     local journal, copy = self.path .. "/" .. JOURNAL, self.path .. "/" .. COMPACT
@@ -209,6 +235,9 @@ function Bridge:_compactJournal(content)
     if not okRemove or not removed then return nil, "old journal not removed: " .. clean(removeError or removed) end
     local okRename, renamed, renameError = pcall(self.os.rename, copy, journal)
     if not okRename or not renamed then return nil, "compact copy not renamed: " .. clean(renameError or renamed) end
+    -- Match the persisted replay window only after compaction succeeds. Unfinished commands keep
+    -- their in-memory recovery records; only completed entries outside that window are retired.
+    retireCompleted(self.records, retained)
     self.log(string.format("指令日志到了 %d 字节上限，只留最近 %d 条指令（原有 %d 条）", MAX_JOURNAL, count, total))
     return kept
 end
@@ -237,7 +266,7 @@ function Bridge:_setAside(reason)
 end
 
 function Bridge:_appendJournal(line)
-    local content, errorText, missing = self:_read(JOURNAL, MAX_JOURNAL)
+    local content, errorText, missing = self:_readJournal()
     if content == nil then
         if missing then content = "" else return false, errorText end
     end
@@ -252,16 +281,7 @@ function Bridge:_appendJournal(line)
 end
 
 function Bridge:_loadJournal()
-    local content, errorText, missing = self:_read(JOURNAL, MAX_JOURNAL)
-    if content == nil and missing then
-        local copy = self:_read(COMPACT, MAX_JOURNAL)
-        if copy then
-            local okRename, renamed, renameError = pcall(self.os.rename, self.path .. "/" .. COMPACT, self.path .. "/" .. JOURNAL)
-            if not okRename or not renamed then self:_unknown("compact journal not restored: " .. clean(renameError or renamed)) return false end
-            self.log("指令日志压缩时中断过，已用压缩后的副本接上")
-            content, missing = copy, false
-        end
-    end
+    local content, errorText, missing = self:_readJournal()
     if content == nil and errorText == "file exceeds size limit" then
         content = self:_read(JOURNAL, 4 * MAX_JOURNAL)
         if content then content, errorText = self:_compactJournal(content) end
