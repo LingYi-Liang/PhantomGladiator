@@ -4544,3 +4544,67 @@ I18N.add("es", {
   "support.imageAlt": "Código de aportación del autor en WeChat",
   "support.enlarge": "Ampliar imagen"
 });
+
+// Additional native combat variants.
+I18N.add("ja", {
+  "unit.source.guizhan": "断魂山・鬼斩客サブクエストの戦闘版",
+  "unit.source.ironboss": "枷笼山・原作のボス戦闘版",
+  "unit.source.hookfirst": "悲泣溪谷・原作の第1段階戦闘版",
+  "unit.source.swordarray": "正道大营・原作の剣陣戦闘版",
+  "unit.source.ironsolo": "正道大营・原作の単独戦闘版",
+  "unit.source.yucongbase": "血色森林・原作の戦闘本体",
+  "unit.note.guizhan": "原作の能力値・武器・戦闘AIを使用します。独立対戦は実機確認が必要です。",
+  "unit.note.ironboss": "通常の鉄面とは別に、専用のボスAIと原作の能力値を使用します。独立対戦は要検証です。",
+  "unit.note.hookfirst": "序章の馬車版・第2段階とは別の、原作設定を保った版です。独立対戦は要検証です。",
+  "unit.note.swordarray": "剣陣版の原作AIと能力値を保持します。独立対戦と剣陣の動作は要検証です。",
+  "unit.note.ironsolo": "護衛版とは別に原作の単独戦闘設定を使用します。独立対戦は要検証です。",
+  "unit.note.yucongbase": "個別に表示される形態とは別の本体です。原作AIと能力値を保持し、独立対戦は要検証です。"
+});
+
+// Additional native combat variants.
+I18N.add("fr", {
+  "unit.source.guizhan": "断魂山 : variante de combat de la quête de 鬼斩客",
+  "unit.source.ironboss": "枷笼山 : variante de combat du boss natif",
+  "unit.source.hookfirst": "悲泣溪谷 : variante native de première phase",
+  "unit.source.swordarray": "正道大营 : variante native de formation de sabres",
+  "unit.source.ironsolo": "正道大营 : variante native de combat en solo",
+  "unit.source.yucongbase": "血色森林 : forme de combat native",
+  "unit.note.guizhan": "Conserve les attributs, l'arme et l'IA de combat natifs. Le combat indépendant reste à tester en jeu.",
+  "unit.note.ironboss": "Utilise sa propre IA de boss et ses attributs natifs, séparément de la variante ordinaire. Le combat indépendant reste à tester.",
+  "unit.note.hookfirst": "Distinct des formes du carrosse du prologue et de deuxième phase, avec la configuration native. Le combat indépendant reste à tester.",
+  "unit.note.swordarray": "Conserve l'IA et les attributs natifs de la variante de formation. Combat indépendant et formation restent à tester.",
+  "unit.note.ironsolo": "Utilise la configuration native en solo, séparément de la variante de garde. Le combat indépendant reste à tester.",
+  "unit.note.yucongbase": "Distinct des formes listées séparément, avec l'IA et les attributs natifs du personnage de base. Le combat indépendant reste à tester."
+});
+
+// Additional native combat variants.
+I18N.add("de", {
+  "unit.source.guizhan": "断魂山: Kampfvariante der 鬼斩客-Nebenquest",
+  "unit.source.ironboss": "枷笼山: ursprüngliche Boss-Kampfvariante",
+  "unit.source.hookfirst": "悲泣溪谷: ursprüngliche erste Kampfphase",
+  "unit.source.swordarray": "正道大营: ursprüngliche Schwertformationsvariante",
+  "unit.source.ironsolo": "正道大营: ursprüngliche Einzelkampfvariante",
+  "unit.source.yucongbase": "血色森林: ursprüngliche Kampfform",
+  "unit.note.guizhan": "Verwendet ursprüngliche Werte, Waffe und Kampf-KI. Eigenständige Kämpfe müssen noch im Spiel geprüft werden.",
+  "unit.note.ironboss": "Eigene Boss-KI und ursprüngliche Werte, getrennt von der normalen Variante. Eigenständige Kämpfe sind noch zu prüfen.",
+  "unit.note.hookfirst": "Getrennt von der Prolog-Kutschenform und der zweiten Phase; ursprüngliche Konfiguration bleibt erhalten. Eigenständige Kämpfe sind noch zu prüfen.",
+  "unit.note.swordarray": "Behält KI und Werte der ursprünglichen Schwertformation. Eigenständige Kämpfe und die Formation sind noch zu prüfen.",
+  "unit.note.ironsolo": "Ursprüngliche Einzelkampfkonfiguration, getrennt von der Leibwächtervariante. Eigenständige Kämpfe sind noch zu prüfen.",
+  "unit.note.yucongbase": "Getrennt von den einzeln aufgeführten Formen; ursprüngliche KI und Werte der Grundform. Eigenständige Kämpfe sind noch zu prüfen."
+});
+
+// Additional native combat variants.
+I18N.add("es", {
+  "unit.source.guizhan": "断魂山: variante de combate de la misión de 鬼斩客",
+  "unit.source.ironboss": "枷笼山: variante de combate del jefe original",
+  "unit.source.hookfirst": "悲泣溪谷: variante original de la primera fase",
+  "unit.source.swordarray": "正道大营: variante original de formación de espadas",
+  "unit.source.ironsolo": "正道大营: variante original de combate individual",
+  "unit.source.yucongbase": "血色森林: forma de combate original",
+  "unit.note.guizhan": "Conserva los atributos, el arma y la IA de combate originales. El combate independiente requiere pruebas en el juego.",
+  "unit.note.ironboss": "Usa su propia IA de jefe y atributos originales, aparte de la variante normal. Falta probar el combate independiente.",
+  "unit.note.hookfirst": "Distinta de las formas del carruaje del prólogo y de la segunda fase, con su configuración original. Falta probar el combate independiente.",
+  "unit.note.swordarray": "Conserva la IA y los atributos de la formación original. Falta probar el combate independiente y la formación.",
+  "unit.note.ironsolo": "Usa la configuración original de combate individual, aparte de la variante de guardaespaldas. Falta probar el combate independiente.",
+  "unit.note.yucongbase": "Distinta de las formas enumeradas por separado, con la IA y atributos de la forma base. Falta probar el combate independiente."
+});

@@ -2315,3 +2315,35 @@ I18N.add("en", {
   "support.imageAlt": "Author’s WeChat donation code",
   "support.enlarge": "Enlarge image"
 });
+
+// Additional native combat variants.
+I18N.add("zh", {
+  "unit.source.guizhan": "鬼斩客支线·断魂山战斗版本",
+  "unit.source.ironboss": "枷笼山原生首领战斗版本",
+  "unit.source.hookfirst": "悲泣溪谷原生一阶段战斗版本",
+  "unit.source.swordarray": "正道大营原生剑阵战斗版本",
+  "unit.source.ironsolo": "正道大营原生独战版本",
+  "unit.source.yucongbase": "血色森林原生战斗体",
+  "unit.note.guizhan": "使用鬼斩客原版属性、陌刀和战斗AI。独立参战待测试。",
+  "unit.note.ironboss": "使用独立的首领AI和原版属性，与普通铁面分开。独立参战待测试。",
+  "unit.note.hookfirst": "与序章马车版、六绝凶镰形态分开，保留原版配置。独立参战待测试。",
+  "unit.note.swordarray": "保留剑阵版本的原生AI和属性。独立参战及剑阵表现待测试。",
+  "unit.note.ironsolo": "使用原版独战配置，与少主护卫版本分开。独立参战待测试。",
+  "unit.note.yucongbase": "与单独列出的玉琮形态分开，保留本体AI和原版属性。独立参战待测试。"
+});
+
+// Additional native combat variants.
+I18N.add("en", {
+  "unit.source.guizhan": "断魂山: 鬼斩客 side-quest combat variant",
+  "unit.source.ironboss": "枷笼山: native boss combat variant",
+  "unit.source.hookfirst": "悲泣溪谷: native first-phase combat variant",
+  "unit.source.swordarray": "正道大营: native sword-formation combat variant",
+  "unit.source.ironsolo": "正道大营: native solo combat variant",
+  "unit.source.yucongbase": "血色森林: native combat form",
+  "unit.note.guizhan": "Uses native attributes, the original weapon and combat AI. Independent battles still need in-game testing.",
+  "unit.note.ironboss": "Uses its own boss AI and native attributes, separately from the regular Iron Mask variant. Independent battles still need testing.",
+  "unit.note.hookfirst": "Separate from the prologue carriage and second-phase forms, with native configuration retained. Independent battles still need testing.",
+  "unit.note.swordarray": "Retains the formation variant's native AI and attributes. Independent combat and formation behavior still need testing.",
+  "unit.note.ironsolo": "Uses the native solo configuration, separately from the guard variant. Independent battles still need testing.",
+  "unit.note.yucongbase": "Separate from the individually listed forms, with the base character's native AI and attributes. Independent battles still need testing."
+});
