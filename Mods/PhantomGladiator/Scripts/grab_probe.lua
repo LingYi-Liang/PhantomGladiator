@@ -11,8 +11,7 @@ local CHECKS={0.4,1.5}
 
 local function className(actor)
     if not U.valid(actor) then return '无效' end
-    local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    return U.className(actor) or '?'
 end
 local function short(object)
     if not U.valid(object) then return '无' end

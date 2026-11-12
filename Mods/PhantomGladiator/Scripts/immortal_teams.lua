@@ -18,8 +18,8 @@ local LOG_CAP=40    -- repeated lines (relocks, health below the floor) per Lua 
 
 local function short(actor)
     if not U.valid(actor) then return '?' end
-    local ok,cls=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(cls)=='string' and (cls:gsub('_C$','')) or '?'
+    local cls=U.className(actor)
+    return cls and (cls:gsub('_C$','')) or '?'
 end
 local function fmt(v)return v and string.format('%.1f',v) or 'nil' end
 

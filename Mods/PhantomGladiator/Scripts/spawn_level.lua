@@ -27,8 +27,8 @@ local COMPARE={'Level','Health_Max','Attack','Shachi_Max','ShachiAttack','Resist
 
 local function num(v)return type(v)=='number' and v==v and v or nil end
 local function short(actor)
-    local ok,cls=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(cls)=='string' and cls:gsub('_C$','') or '?'
+    local cls=U.className(actor)
+    return cls and cls:gsub('_C$','') or '?'
 end
 local function fmt(v)return v and string.format('%.2f',v) or 'nil' end
 -- The game's own enemies come out of an AI spawner, which leaves itself and the unit's group on the character

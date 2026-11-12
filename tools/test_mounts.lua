@@ -6,7 +6,7 @@ local function object(fields,name)
     fields.alive=true
     fields.IsValid=function(self)return self.alive end
     fields.GetAddress=function()return a end
-    local class={GetFName=function()return {ToString=function()return name end}end}
+    local class={IsValid=function()return true end,GetFName=function()return {ToString=function()return name end}end}
     fields.GetClass=function()return class end
     return fields
 end

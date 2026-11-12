@@ -32,8 +32,8 @@ local TEAMS={blue=true,red=true,companion=true}
 local TRIES=10   -- support ticks to wait for the passive or the effect's class
 
 local function className(actor)
-    local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and (name:gsub('_C$','')) or nil
+    local name=U.className(actor)
+    return name and (name:gsub('_C$','')) or nil
 end
 
 function Break.new(options)

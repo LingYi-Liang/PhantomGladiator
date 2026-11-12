@@ -7,6 +7,7 @@ local PoolKeys=require("monster_pool_keys")
 local Runtime = {}
 Runtime.__index = Runtime
 local ACTIONS = FunctionKeys.actions
+local GLOBAL_KEYS={stop=true,exit_camera=true,refresh_catalog=true,cycle_team=true}
 
 local function read(path)
     local file=io.open(path,'r');if not file then return nil end
@@ -30,10 +31,11 @@ function Runtime.new(options)
         local unit=options.unitKeys and options.unitKeys:owner(vk,mask)
         return unit and ((unit:match('%.([^%.]+)$') or unit):gsub('_C$',''))
     end
-    local function sessionStatus()return options.session and options.session:status() or {} end
+    local function sessionStatus()return self:sessionStatus() end
     self.functionKeys=FunctionKeys.new({path=options.path,router=self.router,log=self.log,
         unitOwner=unitOwner,poolOwner=function(vk,mask)return self.poolKeys:owner(vk,mask)end,
         queueSpawn=function(callback)self:queueSummon(callback)end,
+        queue=function(callback,action)self:queueAction(callback,action)end,
         dispatch=function(action)self:dispatch(action,{})end})
     self.poolKeys=PoolKeys.new({path=options.path,router=self.router,log=self.log,session=sessionStatus,
         conflict=function(vk,mask)
@@ -523,6 +525,58 @@ function Runtime:summon(path,team,count)
     return result
 end
 
+function Runtime:sessionStatus()
+    local ok,state=pcall(function()return self.options.session and self.options.session:status()end)
+    if not ok or type(state)~='table' then state={} end
+    self.hotkeySession=type(state.game_session)=='string' and state.game_session~='' and state.game_session or nil
+    self.hotkeyReady=state.game_ready==true and self.hotkeySession~=nil
+    return state
+end
+
+function Runtime:inputContext()
+    -- Native game state is read only when this input already runs on the game thread.
+    local readyAtInput
+    if type(IsInGameThread)=='function' and IsInGameThread() then
+        self:sessionStatus()
+        readyAtInput=self.hotkeyReady
+    end
+    return {session=self.hotkeySession,ready=readyAtInput}
+end
+
+function Runtime:inputCurrent(request)
+    self:sessionStatus()
+    return request.ready~=false and self.hotkeyReady and (not request.session or request.session==self.hotkeySession)
+end
+
+function Runtime:existingModeInput(action,request)
+    if action~='toggle_camera' and action~='toggle_track' and action~='toggle_time_stop' then return false end
+    local mode=action=='toggle_track' and self.options.track or self.options.camera
+    if not mode then return false end
+    local ok,status=pcall(function()return mode:status()end)
+    if not ok or type(status)~='table' then return false end
+    if action=='toggle_camera' then return status.active==true or status.pending==true end
+    if action=='toggle_track' then return status.on==true end
+    if action=='toggle_time_stop' and status.active==true then
+        return status.frozen==true or not request.session or request.session==self.hotkeySession
+    end
+    return false
+end
+
+function Runtime:queueAction(callback,action)
+    if not self.alive then return end
+    local request=not GLOBAL_KEYS[action] and self:inputContext() or nil
+    local queued,err=pcall(ExecuteInGameThread,function()
+        if not self.alive then return end
+        if request and not self:inputCurrent(request) and not self:existingModeInput(action,request) then
+            self.log('[InputKey] 取消旧会话或未就绪的待执行操作 action='..tostring(action)
+                ..' 原会话='..tostring(request.session)..' 当前会话='..tostring(self.hotkeySession))
+            return
+        end
+        callback()
+    end)
+    if not queued then self.log('[InputKey] 无法排入游戏线程：'..tostring(err)) end
+end
+
 -- A held or rapidly repeated summon key must not fill the engine's callback queue.
 -- Both summon shortcuts share one pending request and leave a gap after it runs.
 function Runtime:queueSummon(callback,path,team,count)
@@ -535,10 +589,16 @@ function Runtime:queueSummon(callback,path,team,count)
         self.summonSkipped=(self.summonSkipped or 0)+1
         return
     end
-    local request={}
+    local request=self:inputContext()
     self.summonPending=request
     local queued,queueError=pcall(ExecuteInGameThread,function()
         if not self.alive or self.summonPending~=request then return end
+        if not self:inputCurrent(request) then
+            self.summonPending=nil;self.summonSkipped=0
+            self.log('[SummonKey] 取消待执行召唤；原会话='..tostring(request.session)
+                ..' 当前会话='..tostring(self.hotkeySession)..' 就绪读回='..tostring(self.hotkeyReady))
+            return
+        end
         local skipped=self.summonSkipped or 0
         self.summonSkipped=0
         local ok,err=xpcall(callback,debug.traceback)

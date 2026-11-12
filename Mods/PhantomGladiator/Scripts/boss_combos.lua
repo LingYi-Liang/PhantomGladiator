@@ -48,12 +48,12 @@ local OFFSET={X=150,Y=-150}
 local LINES=48
 
 local function nameOf(object)
+    if not U.valid(object) then return nil end
     local ok,name=pcall(function()return object:GetFName():ToString()end)
     return ok and type(name)=='string' and name or nil
 end
 local function className(object)
-    local ok,name=pcall(function()return object:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    return U.className(object) or '?'
 end
 
 function Combos.new(options)

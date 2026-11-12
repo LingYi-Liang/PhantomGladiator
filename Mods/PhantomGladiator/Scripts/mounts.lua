@@ -64,8 +64,7 @@ function Mounts.new(options)
     local fightLines=0
     local function say(text)log('[Mount] '..text)end
     local function className(actor)
-        local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
-        return ok and type(name)=='string' and name or '?'
+        return U.className(actor) or '?'
     end
     local function where(actor)
         local at=U.valid(actor) and options.location and options.location(actor) or nil

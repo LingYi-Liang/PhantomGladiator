@@ -40,8 +40,7 @@ local function text(name)
 end
 local function className(object)
     if not U.valid(object) then return '?' end
-    local ok,value=pcall(function()return object:GetClass():GetFName():ToString()end)
-    return ok and type(value)=='string' and value or '?'
+    return U.className(object) or '?'
 end
 
 function Guard.new(options)

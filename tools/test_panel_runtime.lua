@@ -164,6 +164,59 @@ test("explicit saved fixture keys dispatch only in game thread",function()
     for _,name in ipairs({"spawn","start","stop","refresh_catalog"})do assert(count(h,name)==1) end
 end)
 
+test("an accepted ordinary summon key is cancelled when its game session changes before execution",function()
+    local h=harness()
+    h.runtime:start();h:tick()
+    h.keys.F9()
+    assert(#h.queue==1 and count(h,'spawn')==0)
+    h.sessionState.game_session='different-world'
+    h:drain()
+    assert(count(h,'spawn')==0,'a key from the previous world must not summon in the next one')
+    assert(h.runtime.summonPending==nil,'cancelled requests must release the shared summon slot')
+    h:tick();h.keys.F9();h:drain()
+    assert(count(h,'spawn')==1,'a separate key press in the new world still works')
+end)
+
+test("game-thread input snapshots the live session without waiting for the status pump",function()
+    local h=harness()
+    h.env.IsInGameThread=function()return h.inGame end
+    h.runtime:start()
+    h:run(function()h.keys.F9()end)
+    h.sessionState.game_session='world-after-input'
+    h:drain()
+    assert(count(h,'spawn')==0,'the first game-thread key also belongs to its original world')
+    h:run(function()h.keys.F9()end);h:drain()
+    assert(count(h,'spawn')==1,'a fresh game-thread key must not inherit an old cached session')
+end)
+
+test("a queued battle action cannot cross worlds but cleanup remains available",function()
+    local h=harness()
+    h.runtime:start();h:tick()
+    h.keys.F3();h.keys.F4()
+    h.sessionState.game_session='different-world'
+    h:drain()
+    assert(count(h,'start')==0,'an old start key must not start a battle in the next world')
+    assert(count(h,'stop')==1,'cleanup must still run after a world transition')
+end)
+
+test("repeated game-thread world changes discard old input and keep fresh summons usable",function()
+    local h=harness()
+    local now=10
+    h.env.os.clock=function()return now end
+    h.env.IsInGameThread=function()return h.inGame end
+    h.runtime:start()
+    for i=1,100 do
+        now=now+1
+        h.sessionState.game_session='old-world-'..i
+        h:run(function()h.keys.F9();h.keys.F3()end)
+        h.sessionState.game_session='new-world-'..i
+        h:drain()
+        assert(count(h,'spawn')==i-1 and count(h,'start')==0)
+        h:run(function()h.keys.F9()end);h:drain()
+        assert(count(h,'spawn')==i and h.runtime.summonPending==nil)
+    end
+end)
+
 test("unit and general summon shortcuts share a single pending game-thread request",function()
     local h=harness()
     local now=10

@@ -29,6 +29,13 @@ function U.key(v)
     local ok,key=pcall(function() return v:GetAddress() end)
     return ok and key~=nil and tostring(key) or nil
 end
+function U.className(v)
+    if not U.valid(v) then return nil end
+    local ok,cls=pcall(function()return v:GetClass()end)
+    if not ok or not U.valid(cls) then return nil end
+    local named,name=pcall(function()return cls:GetFName():ToString()end)
+    return named and type(name)=='string' and name or nil
+end
 function U.field(v,name)
     if not U.valid(v) then return nil,false end
     local ok,value=pcall(function() return v[name] end)

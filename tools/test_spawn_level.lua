@@ -9,7 +9,7 @@ local function object(name,level,at,attrs,loose)
     return {IsValid=function()return true end,GetAddress=function()return a end,Level=level,at=at,attrs=attrs or {},
         Spawner=not loose and {IsValid=function()return true end} or nil,
         GetCombatLevel=function(self)return self.Level end,
-        GetClass=function()return {GetFName=function()return {ToString=function()return name..'_C' end}end}end}
+        GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return name..'_C' end}end}end}
 end
 local function harness(npcs,files,homeLevels,world)
     local h={lines={},scans=0,clock=0,files=files or {},world=world or 'PBZ_Test_WP'}

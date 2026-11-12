@@ -148,12 +148,13 @@ function Keys.new(options)
         local action=self:owner(vk,mask)
         if not action or not self.active[action] or self.entries[action].modifiers~=mask then return false end
         local revision=self.revision
-        local queue=(action=='spawn' and options.queueSpawn) or options.queue or ExecuteInGameThread
-        queue(function()
+        local queue=(action=='spawn' and options.queueSpawn) or options.queue
+        local function invoke()
             if not self.alive or revision~=self.revision then return end
             local e=self.entries[action]
             if self.active[action] and e.key_code==vk and e.modifiers==mask then options.dispatch(action)end
-        end)
+        end
+        if queue then queue(invoke,action) else ExecuteInGameThread(invoke) end
         return true
     end
     function self:token(action)

@@ -18,8 +18,7 @@ local function band(distance)
 end
 local function modeName(mode)return mode==nil and '?' or MODES[mode] or tostring(mode) end
 local function className(actor)
-    local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    return U.className(actor) or '?'
 end
 
 function Watch.new(options)

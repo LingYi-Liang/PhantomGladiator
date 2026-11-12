@@ -8,7 +8,7 @@ local function object(name,fields)
     o.IsValid=function(self)return self.alive end
     o.GetAddress=function()return a end
     o.GetFName=function()return {ToString=function()return name end} end
-    o.GetClass=function()return {GetFName=function()return {ToString=function()return name end} end} end
+    o.GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return name end} end} end
     return o
 end
 FName=function(text)return text end

@@ -9,7 +9,7 @@ local function unit(class,x,y,z,fields)
     o.live=true
     o.IsValid=function(self)return self.live end
     o.GetAddress=function()return address end
-    o.GetClass=function()return {GetFName=function()return {ToString=function()return class end}end}end
+    o.GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class end}end}end
     o.at={X=x,Y=y,Z=z}
     o.hp=100
     o.CapsuleComponent={IsValid=function()return true end,GetAddress=function()return address+100000 end,
@@ -58,6 +58,17 @@ local function harness(extra)
     end
     function h.all()return table.concat(h.lines,'\n')end
     return h
+end
+
+do
+    local h=harness()
+    local a=h.add('BP_StaleClass_C',3000,0,100)
+    local unsafeReads=0
+    a.GetClass=function()return {IsValid=function()return false end,GetFName=function()
+        unsafeReads=unsafeReads+1;error('invalid class reached a native name read')
+    end}end
+    assert(h.track:start().ok,'an unavailable class name does not prevent following a live actor')
+    assert(unsafeReads==0,'every UObject returned by GetClass must be validated before GetFName')
 end
 
 -- Not in the free camera, nobody on the field: says so, nothing starts.

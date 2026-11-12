@@ -14,7 +14,7 @@ local function harness()
     local h={lines={},members={},rules={},abilities={},classes={},removed={},cancels=0}
     function h.unit(class,team)
         local actor=object(class)
-        actor.GetClass=function()return {GetFName=function()return {ToString=function()return class..'_C' end}end}end
+        actor.GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class..'_C' end}end}end
         actor.effects=1
         actor.AbilitySystemComponent=object('ASC',{
             GetGameplayEffectCount=function(_,effect,instigator,ongoing)

@@ -4,7 +4,7 @@ local address=0
 local function actor(name)
     address=address+1;local a=address
     return {IsValid=function()return true end,GetAddress=function()return a end,
-        GetClass=function()return {GetFName=function()return {ToString=function()return name..'_C' end}end}end}
+        GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return name..'_C' end}end}end}
 end
 local function harness(files)
     local h={files=files or {},lines={},writes={},attrs={},members={},ready=true}

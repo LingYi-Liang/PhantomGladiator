@@ -12,7 +12,7 @@ local function object(name,fields)
 end
 local function unit(class,tags,montage,position)
     local actor=object(class)
-    actor.GetClass=function()return {GetFName=function()return {ToString=function()return class end}end}end
+    actor.GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class end}end}end
     actor.AbilitySystemComponent=object('ASC',{GetGameplayTagCount=function(_,tag)return tags[tag.TagName] or 0 end})
     local current=montage and object(montage) or nil
     actor.Mesh=object('Mesh',{GetAnimInstance=function()return object('Anim',{

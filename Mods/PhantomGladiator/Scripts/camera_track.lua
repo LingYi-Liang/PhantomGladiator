@@ -61,8 +61,7 @@ local function direction(yaw,pitch)
 end
 local function className(actor)
     if not U.valid(actor) then return '无' end
-    local ok,name=pcall(function()return actor:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    return U.className(actor) or '?'
 end
 local function capsule(actor)
     local comp=U.field(actor,'CapsuleComponent')

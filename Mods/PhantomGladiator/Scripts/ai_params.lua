@@ -39,8 +39,7 @@ local PROBE={'近距离进攻概率','中距离进攻概率','远距离进攻概
 local SECONDS,TENSION_SECONDS,APPLY_LINES,CLASS_LINES,TENSION_LINES,RETRIES=1,15,30,30,8,5
 
 local function className(object)
-    local ok,name=pcall(function()return object:GetClass():GetFName():ToString()end)
-    return ok and type(name)=='string' and name or '?'
+    return U.className(object) or '?'
 end
 local function addr(object)
     if object==nil then return nil end

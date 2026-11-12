@@ -1369,11 +1369,27 @@ namespace PhantomGladiator
         }
 
         // Logs the author needs to look into a problem, zipped onto the desktop.
+        internal static ZipArchive CreateReportArchive(string directory, DateTime time, out string target)
+        {
+            var prefix = Path.Combine(directory, "斗蛐蛐诊断-" + time.ToString("yyyyMMdd-HHmmss"));
+            for (var index = 0; index < 1000; index++)
+            {
+                target = prefix + (index == 0 ? "" : "-" + index) + ".zip";
+                try { return ZipFile.Open(target, ZipArchiveMode.Create); }
+                catch (IOException error)
+                {
+                    var code = error.HResult & 0xffff;
+                    if ((code != 80 && code != 183 && code != 32) || !File.Exists(target)) throw;
+                }
+            }
+            throw new IOException("同一时间的诊断报告过多，请稍后再导出。");
+        }
+
         string ExportReport()
         {
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            var target = Path.Combine(desktop, "斗蛐蛐诊断-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".zip");
-            using (var zip = ZipFile.Open(target, ZipArchiveMode.Create))
+            string target;
+            using (var zip = CreateReportArchive(desktop, DateTime.Now, out target))
             {
                 Action<string, string> add = (file, name) =>
                 {
@@ -1389,7 +1405,8 @@ namespace PhantomGladiator
                 {
                     add(Path.Combine(game.Ue4ssDir, "UE4SS.log"), "UE4SS.log");
                     foreach (var name in new[] { "status.tsv", "ack.tsv", "command-journal.tsv", "function-keybinds-state.tsv", "spawn-attempts.tsv",
-                        "ai-params-settings.tsv", "unit-rules.tsv", "function-keybinds.tsv", "unit-keybinds.tsv" })
+                        "ai-params-settings.tsv", "unit-rules.tsv", "function-keybinds.tsv", "unit-keybinds.tsv",
+                        "monster-pools.tsv", "monster-pools-state.tsv", "spawn-level-settings.tsv" })
                         add(Path.Combine(game.RuntimeDir, name), "Runtime/" + name);
                     if (Directory.Exists(game.RuntimeDir))
                         foreach (var run in Directory.GetFiles(game.RuntimeDir, "run-*.log").OrderByDescending(f => f).Take(2))
