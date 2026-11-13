@@ -280,6 +280,11 @@ const RealRuntime = (() => {
       completed: online ? num("summon_queue_completed") : 0,
       running: online && yes("summon_queue_running"),
       message: online ? (v.summon_queue_message || "") : "",
+      settingsSupported: online && v.summon_queue_settings_schema === "1",
+      mode: v.summon_queue_mode || "TIMED", intervalMs: num("summon_queue_interval_ms") || 250,
+      blueSlots: num("summon_queue_blue_slots") || 3, redSlots: num("summon_queue_red_slots") || 3,
+      relayStarted: online && yes("summon_queue_relay_started"), generated: num("summon_queue_generated"),
+      blueReserve: num("summon_queue_blue_reserve"), redReserve: num("summon_queue_red_reserve"),
     };
 
     if (data.monster_pools && data.runtime_dir) {
@@ -308,8 +313,8 @@ const RealRuntime = (() => {
       s.spectator = yes("spectator_enabled");
       if (TEAMS.includes(v.current_team)) s.team = v.current_team;
       s.synced = v.current_unit ? { unit_id: shortOf(v.current_unit), team: v.current_team, count: num("current_count") } : null;
-      const battle = v.arena_state === "battle_requested";
-      s.fight = !battle ? "idle" : s.blue > 0 && s.red > 0 ? "fighting" : "ended";
+      const battle = yes("arena_battle_active") || v.arena_state === "battle_requested";
+      s.fight = s.summonQueue.relayStarted ? "fighting" : !battle ? "idle" : s.blue > 0 && s.red > 0 ? "fighting" : "ended";
       s.winner = s.fight === "ended" ? (s.blue ? "blue" : s.red ? "red" : "draw") : "";
       s.cleanup = ["cleanup_pending", "restore_pending", "spawn_uncertain"].includes(v.arena_state) ? v.arena_state : "";
       const m = s.statMatch, base = v.stat_match_baseline_unit;
@@ -490,6 +495,7 @@ const RealRuntime = (() => {
     }
     else if (action === "set_fun_feature") body = { action, feature: payload.feature, enabled: payload.enabled };
     else if (action === "set_boss_combos" || action === "set_summon_queue") body = { action, enabled: payload.enabled };
+    else if (action === "configure_summon_queue") body = { action, ...payload };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };

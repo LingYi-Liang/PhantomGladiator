@@ -17,8 +17,11 @@ end
 function Runtime.new(options)
     local self=setmetatable({options=options,alive=true,pumpReady=false},Runtime)
     self.log=options.log or function() end
-    self.summonQueue=SummonQueue.new({log=self.log,
+    self.summonQueue=SummonQueue.new({log=self.log,path=options.path,
         session=function()return options.session and options.session:status() end,
+        state=function()return options.arena:status()end,
+        begin=function()return options.arena:start()end,
+        pending=function(enabled,blue,red,epoch)if options.arena.setRelayPending then options.arena:setRelayPending(enabled,blue,red,epoch)end end,
         spawn=function(path,team,count)return self:summon(path,team,count)end})
     -- Monster pool keys while the summon queue above is off: every press is kept here instead of being dropped as a
     -- held key would be (queueSummon). It is always on, and takes turns with the other summon shortcuts.
@@ -83,6 +86,9 @@ function Runtime.new(options)
         set_summon_queue=function(command)
             if command.key_start~='ON' and command.key_start~='OFF' then return {ok=false,message='无效的排队召唤设置'} end
             return self:setSummonQueue(command.key_start=='ON')
+        end,
+        configure_summon_queue=function(command)
+            return self.summonQueue:configure(command.key_spawn,tonumber(command.key_start),tonumber(command.key_stop),tonumber(command.key_refresh_catalog))
         end,
         cancel_summon_queue=function()
             local cancelled=self.summonQueue:cancel('清空召唤队列')
@@ -205,6 +211,7 @@ function Runtime.new(options)
         end,
         start=function()
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
+            if self.summonQueue.enabled and self.summonQueue:isRelay() then return self.summonQueue:startRelay() end
             return options.arena:start()
         end,
         stop=function()
@@ -302,6 +309,12 @@ function Runtime.new(options)
         out.summon_queue_running=queue.running==true
         out.summon_queue_completed=queue.completed
         out.summon_queue_message=queue.message
+        out.summon_queue_settings_schema=1
+        out.summon_queue_mode=queue.mode;out.summon_queue_interval_ms=queue.intervalMs
+        out.summon_queue_blue_slots=queue.blueSlots;out.summon_queue_red_slots=queue.redSlots
+        out.summon_queue_relay_started=queue.relayStarted==true;out.summon_queue_generated=queue.generated
+        local reserves=queue:reserves();out.summon_queue_blue_reserve=reserves.blue;out.summon_queue_red_reserve=reserves.red
+        out.arena_battle_active=arena.battle_active==true
         out.monster_pool_queue_waiting=#self.poolQueue.jobs
         local policy=options.spawnPolicy and options.spawnPolicy.status() or {}
         out.spawn_trial_policy=policy.version or ''
@@ -504,9 +517,9 @@ function Runtime:setSummonQueue(enabled)
         self.summonPending=nil
         queue.enabled=true
         if #self.poolQueue.jobs>0 then self.poolQueue:cancel('排队召唤已开启') end
-        if self.nextSummonAt and (not queue.nextAt or self.nextSummonAt>queue.nextAt) then queue.nextAt=self.nextSummonAt end
-        queue.completed=0
+        queue.completed=0;queue.generated=0
         queue:cancel('排队召唤已开启')
+        if self.nextSummonAt then queue.nextAt=self.nextSummonAt end
         return {ok=true,message='排队召唤已开启'}
     end
 

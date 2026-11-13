@@ -793,4 +793,29 @@ test('unit rules: the card reaches the module, its value goes lower case, and th
     none.inbox={action='set_unit_rule',unit_id='BP_Monster_MoTian',key_spawn='LOCK',key_start='KILL'};none:tick()
     assert(not none.result.ok and none.reported.unit_rules_supported==false and none.reported.unit_rules=='')
 end)
+test('relay settings, intake and start use the same panel and key dispatcher',function()
+    local h=harness();local time=0;h.env.os.clock=function()return time end
+    local state={blue_count=0,red_count=0,blue_unreadable=0,red_unreadable=0,battle_active=false,total=0}
+    local calls,begins={},0
+    local arena={status=function()return state end,selection=function()return '/Game/B.B_C','blue',1 end,
+        spawn=function(_,path,team,n)assert(h.inGame);calls[#calls+1]={path,team,n};state[team..'_count']=state[team..'_count']+n;return {ok=true,spawned_count=n}end,
+        start=function()assert(h.inGame);begins=begins+1;state.battle_active=true;return {ok=true}end,
+        stop=function()state.battle_active=false;return {ok=true}end,
+        setRelayPending=function(_,enabled,blue,red)state.pending={enabled,blue,red}end}
+    h.runtime=h.new({arena=arena});h.runtime:start()
+    h.inbox={action='configure_summon_queue',key_spawn='SINGLE',key_start='1500',key_stop='2',key_refresh_catalog='3'};h:tick()
+    assert(h.result.ok and h.reported.summon_queue_interval_ms==1500 and h.reported.summon_queue_mode=='SINGLE')
+    assert(h.new().summonQueue.mode=='SINGLE','saved mode survives runtime restart while the switch stays off')
+    h.inbox={action='set_summon_queue',key_start='ON'};h:tick()
+    local loop=h.loops[2]
+    h:run(function()h.runtime.handlers.queue_spawn({unit_id='/Game/B.B_C',team='blue',count=1});h.runtime.handlers.queue_spawn({unit_id='/Game/R.R_C',team='red',count=2})end)
+    h:run(loop.fn);assert(#calls==0)
+    h.inbox={action='start'};h:tick();assert(h.result.ok)
+    for _=1,4 do time=time+1.5;h:run(loop.fn)end
+    assert(#calls==2 and begins==1 and state.pending[3]==1)
+    state.red_count=0
+    for _=1,3 do time=time+1.5;h:run(loop.fn)end
+    assert(#calls==3 and begins==1 and calls[3][2]=='red')
+    h.inbox={action='stop'};h:tick();assert(not h.runtime.summonQueue.relayStarted and #h.runtime.summonQueue.jobs==0)
+end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

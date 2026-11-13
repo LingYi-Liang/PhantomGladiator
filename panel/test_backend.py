@@ -114,6 +114,20 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(inbox.read_text(encoding="utf-8").split("\t")[0], str(stop["id"]))
         self.assertEqual(self.bridge._command(rows[0]["id"])["spawned_count"], 0)
 
+    def test_queue_settings_validate_and_reach_the_wire(self):
+        request = {"action": "configure_summon_queue", "mode": "WAVE", "interval_ms": 1750, "blue_slots": 3, "red_slots": 2}
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue(request)
+        with (self.bridge.runtime / "status.tsv").open("a", encoding="utf-8") as stream:
+            stream.write("summon_queue_settings_schema\t1\n")
+        for change in ({"interval_ms": 0}, {"interval_ms": 600001}, {"interval_ms": True}, {"blue_slots": 0}, {"red_slots": 1.5}, {"mode": "OTHER"}):
+            with self.subTest(change=change), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(dict(request, **change))
+        row = self.bridge.enqueue(request);self.bridge.tick()
+        fields = (self.bridge.runtime / "inbox.tsv").read_text(encoding="utf-8").split("\t")
+        self.assertEqual(fields[:2], [str(row["id"]), "configure_summon_queue"])
+        self.assertEqual(fields[5:9], ["WAVE", "1750", "3", "2"])
+
     def test_queue_epoch_retires_waiting_transit_and_honors_game_capacity(self):
         request = {"action": "queue_spawn", "unit_id": UNIT, "count": 1}
         self.queue_status(waiting=99)

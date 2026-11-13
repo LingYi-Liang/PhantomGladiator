@@ -988,4 +988,30 @@ do
     local r=f.arena:adoptSummon(helper,f.actors[1],'/Catalog/BP_Helper_NPC.BP_Helper_NPC_C','fixture','opposing')
     assert(r.ok and r.team=='companion' and not r.aid)
 end
-print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side)")
+do
+    local f=fixture()
+    f.arena:setRelayPending(true,1,1,1)
+    assert(f.arena:spawn(nil,'blue',1).ok)
+    f.actors[1].hp=0
+    f.options.getLocation=function()return {X=50000,Y=50000,Z=100}end
+    assert(f.arena:spawn(nil,'blue',1).ok)
+    assert(f.transforms[2].Translation.X==f.transforms[1].Translation.X and f.transforms[2].Translation.Y==f.transforms[1].Translation.Y)
+    f.arena:setRelayPending(true,1,1,2);f.actors[2].hp=0
+    assert(f.arena:spawn(nil,'blue',1).ok and f.transforms[3].Translation.X>40000,'a new relay epoch must drop its old anchor')
+end
+do
+    local clock=0
+    local f=fixture({now=function()return clock end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok)
+    assert(f.arena:start().ok);assert(f.arena:status().battle_clock=='running')
+    f.arena:setRelayPending(true,0,1)
+    f.actors[2].hp=0;clock=2
+    assert(f.arena:status().battle_clock=='running','relay reserve prevents ending the clock during substitution')
+    assert(f.arena:spawn(nil,'red',1).ok)
+    assert(f.transforms[3].Translation.Y==f.transforms[2].Translation.Y,'confirmed dead relay slots are reused without deleting the corpse')
+    f.arena:setRelayPending(true,0,0);clock=3
+    assert(f.arena:status().battle_seconds==3,'the whole relay retains its original start time')
+    f.actors[3].hp=0;clock=5
+    assert(f.arena:status().battle_clock=='ended' and f.arena:status().battle_seconds==5)
+end
+print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side, relay clock and slots)")

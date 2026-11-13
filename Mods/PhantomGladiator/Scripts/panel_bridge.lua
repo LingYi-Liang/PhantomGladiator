@@ -15,7 +15,7 @@ local JOURNAL, COMPACT = "command-journal.tsv", "command-journal.compact.tsv"
 -- and each Lua state dropped a random few (the battle clock, fun_supported, current_count...).
 local MAX_STATUS = 256
 local MAX_COUNT = 100   -- units per summon, as arena_controller.lua MAX_BATCH
-local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, cancel_summon_queue = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
+local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, configure_summon_queue=true,cancel_summon_queue = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
     toggle_track = true, track_pick = true, track_next = true, set_camera_track = true,
     configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
     toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }

@@ -1,0 +1,70 @@
+local Queue=dofile('Mods/PhantomGladiator/Scripts/summon_queue.lua')
+local function fixture()
+    local h={now=0,files={},calls={},began=0,world='A',ready=true,state={blue_count=0,red_count=0,blue_unreadable=0,red_unreadable=0,battle_active=false},hp=137}
+    local fs={open=function(path,mode)
+        if mode=='w' and h.failSave then return nil end
+        if mode=='r' and not h.files[path] then return nil end
+        local value=h.files[path]
+        return {read=function()return value end,write=function(_,s)value=s;return true end,close=function()if mode=='w' then h.files[path]=value end;return true end}
+    end}
+    h.options={path='fixture',io=fs,now=function()return h.now end,
+        session=function()return {game_session=h.world,game_ready=h.ready}end,state=function()return h.state end,
+        begin=function()h.began=h.began+1;h.state.battle_active=true;return {ok=true}end,
+        pending=function(enabled,blue,red)h.pending={enabled,blue,red}end,
+        spawn=function(path,team,n)
+            h.calls[#h.calls+1]={path=path,team=team,count=n,time=h.now}
+            h.state[team..'_count']=(h.state[team..'_count'] or 0)+n
+            return {ok=not h.failSpawn,uncertain=h.failSpawn,spawned_count=n,message='spawn verified'}
+        end}
+    h.q=Queue.new(h.options);h.q.enabled=true;h.q:sync(h.options.session())
+    function h.tick(n)for _=1,n or 1 do h.now=h.now+0.25;h.q:tick()end end
+    function h.mode(mode,blue,red)h.q.enabled=false;assert(h.q:configure(mode,250,blue or 1,red or 1).ok);h.q.enabled=true end
+    return h
+end
+do
+    local h=fixture();assert(h.q:configure('TIMED',1250,3,3).ok)
+    assert(h.q:enqueue('A','blue',1).ok and h.q:enqueue('B','red',1).ok)
+    h.q:tick();h.now=1.249;h.q:tick();assert(#h.calls==1);h.now=1.25;h.q:tick();assert(#h.calls==2)
+    h.failSave=true;assert(not h.q:configure('TIMED',50,3,3).ok and h.q.intervalMs==1250)
+    h.failSave=false;local loaded=Queue.new(h.options);assert(loaded.intervalMs==1250 and not loaded.enabled)
+    for _,bad in ipairs({0,49,600001,0/0,math.huge})do assert(not h.q:configure('TIMED',bad,3,3).ok)end
+    h.q:cancel('stop');assert(h.q.nextAt==h.now)
+end
+do
+    local h=fixture();h.mode('SINGLE')
+    for _,v in ipairs({{'blueA','blue'},{'redA','red'},{'blueB','blue'},{'redB','red'}})do assert(h.q:enqueue(v[1],v[2],1).ok)end
+    h.tick(3);assert(#h.calls==0,'relay reserves stay unspawned before start')
+    assert(h.q:startRelay().ok);h.tick(4)
+    assert(#h.calls==2 and h.began==1 and h.q.relayStarted)
+    h.tick(20);assert(#h.calls==2,'living starters prevent reserve entry')
+    h.state.red_count=0;h.state.red_unreadable=1;h.tick(8);assert(#h.calls==2,'unreadable does not mean dead')
+    h.state.red_unreadable=0;h.tick(4)
+    assert(#h.calls==3 and h.calls[3].path=='redB','blocked blue FIFO must not stall a ready red reserve')
+    assert(h.began==1 and h.hp==137,'continuing a relay must not restart battle preparation or refill the survivor')
+    h.state.red_count=0;h.tick(3);assert(not h.q.relayStarted and #h.calls==3 and #h.q.jobs==1,'an exhausted side ends the match; winner reserves stay waiting')
+end
+do
+    local h=fixture();h.mode('WAVE',2,2)
+    for _,v in ipairs({{'blueA','blue',1},{'blueB','blue',1},{'blueC','blue',2},{'redA','red',1},{'redB','red',1},{'redC','red',3}})do assert(h.q:enqueue(table.unpack(v)).ok)end
+    assert(h.q:startRelay().ok);h.tick(8)
+    assert(h.state.blue_count==2 and h.state.red_count==2 and h.began==1)
+    h.state.red_count=1;h.tick(10);assert(#h.calls==4,'one remaining member keeps the current wave active')
+    h.state.red_count=0;h.tick(5)
+    assert(h.state.red_count==2 and #h.calls==6 and h.calls[5].path=='redC' and h.calls[6].path=='redC')
+    assert(h.q:reserves().red==1 and h.q:reserves().blue==2 and h.began==1)
+    h.q:cancel('stop');h.tick(8);assert(#h.calls==6 and not h.q.relayStarted and h.pending[2]==0 and h.pending[3]==0)
+end
+do
+    local h=fixture();h.mode('WAVE',3,3)
+    h.q:enqueue('B','blue',1);h.q:enqueue('R','red',1);assert(h.q:startRelay().ok);h.tick(4)
+    h.q:enqueue('late','red',2);h.tick(8);assert(#h.calls==2,'a partial wave is fixed when it begins; late entries wait for the next wave')
+    h.world='B';h.q:sync(h.options.session());h.tick(3);assert(#h.q.jobs==0 and not h.q.relayStarted and #h.calls==2)
+end
+do
+    local h=fixture();h.mode('SINGLE');h.state.blue_count=2;h.state.red_count=1;h.state.battle_active=true
+    h.q:enqueue('next','red',1);assert(h.q:startRelay().ok);h.tick(4)
+    assert(#h.calls==0 and h.began==0,'existing combatants are the first wave and are not re-prepared')
+    h.state.red_count=0;h.failSpawn=true;h.tick(5)
+    assert(#h.calls==1 and #h.q.jobs==0 and not h.q.relayStarted,'uncertain generation cancels the remainder, never retries')
+end
+print('relay_queue: PASS (saved interval, single and mixed team waves, unreadable health, survivor preservation, late reserves, scene cancellation and failure)')

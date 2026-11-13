@@ -1258,9 +1258,11 @@
     const el = $("#dock-battle");
     if (!el) return;
     const summoned = team => Object.values(ui.roster[team]).reduce((a, b) => a + b, 0);
-    const fighting = S.fight === "fighting";
+    const relay = S.summonQueue?.on && S.summonQueue?.mode && S.summonQueue.mode !== "TIMED";
+    const fighting = relay ? S.summonQueue.relayStarted : S.fight === "fighting";
+    const relayReady = relay && !S.summonQueue.relayStarted && S.blue + S.summonQueue.blueReserve > 0 && S.red + S.summonQueue.redReserve > 0;
     // Once someone summons into the beaten side again, the result gives way to a new start.
-    const showResult = S.fight === "ended" && !(S.blue > 0 && S.red > 0);
+    const showResult = S.fight === "ended" && !(S.blue > 0 && S.red > 0) && !relayReady;
     const side = team => `<div class="side side-${team}${showResult && S.winner === team ? " is-winner" : ""}${showResult && S.winner && S.winner !== team ? " is-loser" : ""}">
         <div class="side-name"><span class="team-dot" style="background:var(--${team})"></span>${esc(teamName(team))}</div>
         <div class="side-count" id="count-${team}">${S[team]}</div>
@@ -1275,9 +1277,9 @@
       ? `<div class="field-note">${fallen ? `<span>${esc(t("field.down", { n: fmtNum(fallen) }))}</span>` : ""}${S.unreadable ? `<span class="field-note-warn" title="${esc(t("field.unreadableHelp"))}">${icon("alert", "icon-sm")}${esc(t("field.unreadable", { n: fmtNum(S.unreadable) }))}</span>` : ""}${unlocked ? `<span class="field-note-warn">${icon("alert", "icon-sm")}${esc(t("immortal.failed", { n: fmtNum(unlocked) }))}</span>` : ""}</div>`
       : "";
     const time = S.clock.state === "ended" ? ` · ${t("field.time", { time: fmtClock(S.clock.seconds) })}` : "";
-    const startBlocked = gameBlocker("field") || (fighting ? "" : !(S.blue > 0 && S.red > 0) ? t("field.needBoth") : "");
+    const startBlocked = gameBlocker("field") || (fighting || relayReady ? "" : !(S.blue > 0 && S.red > 0) ? t("field.needBoth") : "");
     const startBusy = ui.busy.has("start");
-    const rematchable = Object.keys(ui.roster.blue).length && Object.keys(ui.roster.red).length;
+    const rematchable = !relay && Object.keys(ui.roster.blue).length && Object.keys(ui.roster.red).length;
     const stopDisabled = !RT.online() || (fieldTotal() === 0 && S.fight === "idle" && !S.cleanup && !summonsWaiting()) || ui.busy.has("stop");
     const unfinished = S.cleanup && RT.online()
       ? S.cleanup === "spawn_uncertain"
@@ -1289,7 +1291,7 @@
         <div class="result-actions">${rematchable ? `<button class="btn btn-primary btn-sm" type="button" data-action="rematch" ${ui.busy.has("rematch") ? "disabled" : ""}>${icon("refresh", "icon-sm")}${esc(t("field.rematch"))}</button>` : ""}<button class="btn btn-secondary btn-sm" type="button" data-action="stop">${icon("trash", "icon-sm")}${esc(t("field.cleanup"))}</button></div>`
       : `<div class="battle-actions">
           <button class="btn btn-lg btn-block btn-primary" type="button" data-action="start" ${startBlocked || fighting || startBusy ? "disabled" : ""}>
-            ${startBusy ? '<span class="spinner"></span>' : fighting ? '<span class="dot" style="background:var(--red);animation:pulse 1s infinite"></span>' : icon("play")}<span>${esc(fighting ? t("field.fighting") : t("field.start"))}</span>${fighting || startBusy ? "" : keyCap(S.keys.start)}
+            ${startBusy ? '<span class="spinner"></span>' : fighting ? '<span class="dot" style="background:var(--red);animation:pulse 1s infinite"></span>' : icon("play")}<span>${esc(relay ? (fighting ? "接力进行中" : "开始接力") : fighting ? t("field.fighting") : t("field.start"))}</span>${fighting || startBusy ? "" : keyCap(S.keys.start)}
           </button>
           ${startBlocked ? `<p class="reason">${esc(startBlocked)}</p>` : fighting ? `<p class="reason">${esc(t("field.fightingHint"))}</p>` : ""}
         </div>`;
@@ -1824,16 +1826,17 @@
   }
   function summonQueueSettingsHTML() {
     const q = S.summonQueue || {};
-    const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue");
+    const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue") || ui.busy.has("configure_summon_queue");
     const unavailable = !RT.online() ? t("spawnQueue.offline")
       : !q.supported ? t("spawnQueue.old")
       : !q.on && !q.ready ? t("spawnQueue.notReady") : "";
     return `<div class="dock-title">${esc(t("spawnQueue.title"))}</div>
       <div class="control-list">
+        ${q.settingsSupported ? `<div class="control-row"><div class="control-main"><div class="control-title">${esc(({TIMED:"按时间排队",SINGLE:"一对一接力",WAVE:"整队接力"})[q.mode] || "按时间排队")}</div><div class="control-desc">执行间隔 ${esc(q.intervalMs / 1000)} 秒${q.mode === "WAVE" ? ` · 每批蓝 ${q.blueSlots} / 红 ${q.redSlots} 人` : ""}</div></div><button class="btn btn-secondary btn-sm" data-action="queue-settings" ${busy ? "disabled" : ""}>配置</button></div>` : ""}
         <div class="control-row${q.on ? " is-on" : ""}">
           <span class="control-icon">${icon("history")}</span>
           <div class="control-main"><div class="control-title">${esc(t("spawnQueue.ordered"))}<span class="chip chip-amber">${esc(t("common.experimental"))}</span></div>
-            <div class="control-desc">${esc(t("spawnQueue.help"))}</div>
+            <div class="control-desc">${esc(q.settingsSupported && q.mode !== "TIMED" ? "蓝红召唤先加入候补，点击开始接力后分批出场；本方全部退场才补下一批。随从和未配队仍按时间生成。" : t("spawnQueue.help"))}</div>
             ${unavailable ? `<div class="control-desc" id="summon-queue-unavailable">${esc(unavailable)}</div>` : ""}
           </div>
           <button class="switch" type="button" role="switch" aria-label="${esc(t("spawnQueue.enable"))}" aria-checked="${!!q.on}"
@@ -1842,7 +1845,7 @@
         </div>
         ${q.on ? `<div class="control-row">
           <span class="control-icon">${q.running ? '<span class="spinner" style="width:14px;height:14px"></span>' : icon("clock")}</span>
-          <div class="control-main"><div class="control-title">${esc(t("spawnQueue.progress", { waiting: q.waiting, transit: q.transit, completed: q.completed }))}</div>
+          <div class="control-main"><div class="control-title">${esc(q.settingsSupported && q.mode !== "TIMED" ? `候补：蓝 ${q.blueReserve} / 红 ${q.redReserve} · 已生成 ${q.generated}` : t("spawnQueue.progress", { waiting: q.waiting, transit: q.transit, completed: q.completed }))}</div>
             <div class="control-desc">${esc(q.running ? t("spawnQueue.working") : q.message)}</div></div>
           <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-summon-queue"
             ${busy || !RT.online() || !(q.waiting || q.transit) ? "disabled" : ""}>${esc(t("spawnQueue.cancel"))}</button></div>` : ""}
@@ -1860,6 +1863,28 @@
     renderSummonQueueSettings();
     await result;
     renderSummonQueueSettings();
+  }
+
+  function openQueueSettings() {
+    const q = S.summonQueue;
+    if (!q?.settingsSupported) return;
+    openDialog("queue-settings", `<div class="dialog-head"><h2 id="dlg-title">召唤排队与接力</h2><button class="icon-btn" data-action="dialog-close">${icon("x")}</button></div>
+      <div class="dialog-body stack">
+        <label>出场方式 <select id="queue-mode" ${q.on ? "disabled" : ""}>${[["TIMED","按时间排队"],["SINGLE","一对一接力"],["WAVE","整队接力"]].map(([v,n]) => `<option value="${v}" ${q.mode===v?"selected":""}>${n}</option>`).join("")}</select></label>
+        <label>上一笔生成完成后的间隔（秒） <input id="queue-seconds" type="number" min="0.05" max="600" step="0.05" value="${q.intervalMs/1000}"></label>
+        <div class="callout">接力先加蓝红候补，再点“开始接力”。整队模式可混合不同单位，按每队的加入顺序分批。已在场单位作为首批；不重置胜方血量，原版回血和技能仍生效。</div>
+        <label>整队模式：蓝方每批人数 <input id="queue-blue" type="number" min="1" max="100" value="${q.blueSlots}" ${q.on ? "disabled" : ""}></label>
+        <label>整队模式：红方每批人数 <input id="queue-red" type="number" min="1" max="100" value="${q.redSlots}" ${q.on ? "disabled" : ""}></label>
+        <p class="muted">一对一每批各1名；候补不足时按实际人数。接力首笔生成后固定本场落点，补位也会等所设间隔。未知存活不当阵亡，原生召唤物沿用现有存活判定。改模式/人数前需关闭排队；关闭、停止清理或换图会取消候补。</p>
+      </div><div class="dialog-foot"><button class="btn btn-primary" data-action="queue-settings-save">保存</button></div>`);
+  }
+  async function saveQueueSettings() {
+    const payload = { mode: $("#queue-mode").value, interval_ms: Math.round(Number($("#queue-seconds").value)*1000), blue_slots: Number($("#queue-blue").value), red_slots: Number($("#queue-red").value) };
+    if (!Number.isInteger(payload.interval_ms) || payload.interval_ms<50 || payload.interval_ms>600000 || [payload.blue_slots,payload.red_slots].some(n=>!Number.isInteger(n)||n<1||n>100)) {
+      toast({kind:"warning",title:"间隔须为0.05–600秒，每批人数须为1–100的整数"});return;
+    }
+    const job = await run("configure_summon_queue", {payload, ok: j=>j.message});
+    if (job?.status === "succeeded") closeDialog();
   }
 
   // ---------- Monster pool page ----------
@@ -2613,6 +2638,7 @@
     switch (job.action) {
       case "queue_spawn": return t("history.queuePrefix") + (u?.name || p.unit_id || "") + " ×" + p.count;
       case "set_summon_queue": return p.enabled ? t("history.queueEnable") : t("history.queueDisable");
+      case "configure_summon_queue": return "排队与接力设置 · " + (p.interval_ms / 1000) + " 秒";
       case "cancel_summon_queue": return t("history.cancelSummon");
       case "spawn": return p.team === "neutral" ? t("action.spawnNeutral", { name: u?.name, n: p.count })
         : p.team === "companion" ? t("action.spawnCompanion", { name: u?.name, n: p.count }) : t("action.spawn", { name: u?.name, n: p.count, team: teamName(p.team) });
@@ -2934,6 +2960,8 @@
     "pool-unbind": () => { ui.poolKeyError = ""; updatePool({ key_code: 0, modifiers: 0 }); renderPage(); },
     "dock-tab": el => showDockTab(el.dataset.tab),
     "toggle-summon-queue": () => changeSummonQueue("set_summon_queue", { enabled: !S.summonQueue?.on }),
+    "queue-settings": () => openQueueSettings(),
+    "queue-settings-save": () => saveQueueSettings(),
     "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
     "support-enlarge": () => openDialog("support-image", supportImageHTML(), "dialog-wide"),
@@ -2968,7 +2996,7 @@
     "count-preset": el => setCount(Number(el.dataset.n)),
     "level-apply": () => applyCustomLevel($("#level-custom")?.value),
     summon: () => summon(),
-    start: () => run("start", { ok: () => t("toast.fight.start") }),
+    start: () => run("start", { ok: job => S.summonQueue?.on && S.summonQueue?.mode !== "TIMED" ? job.message : t("toast.fight.start") }),
     stop: () => confirmStop(),
     "stop-confirm": () => stopAll(),
     "stop-again": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); stopAll(); },

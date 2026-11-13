@@ -30,7 +30,7 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
+ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
@@ -978,6 +978,17 @@ class Bridge:
             if rule not in UNIT_RULES or value not in UNIT_RULES[rule]:
                 raise ValidationError('rule and value must be one of the unit rules')
             payload.update(unit_id=unit, rule=rule, value=value)
+        elif action == 'configure_summon_queue':
+            allowed |= {'mode', 'interval_ms', 'blue_slots', 'red_slots'}
+            mode, interval = request.get('mode'), request.get('interval_ms')
+            blue, red = request.get('blue_slots'), request.get('red_slots')
+            if mode not in ('TIMED', 'SINGLE', 'WAVE') or type(interval) is not int or not 50 <= interval <= 600000:
+                raise ValidationError('模式无效或间隔不在0.05–600秒内')
+            if any(type(n) is not int or not 1 <= n <= 100 for n in (blue, red)):
+                raise ValidationError('每批人数须为1–100的整数')
+            if self.game_status().get('values', {}).get('summon_queue_settings_schema') != '1':
+                raise ValidationError('请更新并重载支持接力的游戏内Mod')
+            payload.update(mode=mode, interval_ms=interval, blue_slots=blue, red_slots=red)
         elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions', 'set_summon_queue'):
             allowed.add('enabled')
             enabled = request.get('enabled')
@@ -1104,6 +1115,8 @@ class Bridge:
             bindings={'spawn':str(payload['speed']),'start':str(payload['turn']),'stop':str(payload['smooth'])}
         elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions','set_summon_queue'):
             bindings={'start':'ON' if payload['enabled'] else 'OFF'}
+        elif payload['action']=='configure_summon_queue':
+            bindings={'spawn':payload['mode'],'start':str(payload['interval_ms']),'stop':str(payload['blue_slots']),'refresh_catalog':str(payload['red_slots'])}
         elif payload['action']=='queue_spawn':
             bindings={'spawn':payload['queue_epoch']}
         elif payload['action']=='set_unit_rule':

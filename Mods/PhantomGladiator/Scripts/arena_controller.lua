@@ -31,6 +31,7 @@ function Arena.new(options)
     local lastRestoreConfirmed = true
     local unknownSpawn = false
     local battleActive=false
+    local relay={enabled=false,blue=0,red=0}
     -- Battle clock in game seconds (options.now): from the first status after the start in which both
     -- sides stand, to the first in which one side has nobody alive or unreadable. It starts over when a
     -- beaten side gets new units; stop clears it.
@@ -278,7 +279,9 @@ function Arena.new(options)
 
     local function next_slot(whichTeam)
         local used = {}
-        for _, unit in ipairs(units) do if unit.team == whichTeam then used[unit.slot] = true end end
+        for _, unit in ipairs(units) do
+            if unit.team == whichTeam and (not relay.enabled or alive_readback(unit)~=false) then used[unit.slot] = true end
+        end
         for slot = 1, #units+1 do if not used[slot] then return slot end end
     end
 
@@ -608,7 +611,10 @@ function Arena.new(options)
             location, forward = okLoc and vector(location) or nil, okForward and vector(forward) or nil
             if not location or not forward then return response(false, "位置或朝向读回无效", { spawned_count = 0 }) end
             -- In the free camera the batch goes where the view points (spawn_spot.lua).
-            if options.spawnOrigin then
+            local relaySide=relay.enabled and (team=='blue' or team=='red')
+            if relaySide and relay.anchor then
+                location,forward=vector(relay.anchor.location),vector(relay.anchor.forward)
+            elseif options.spawnOrigin then
                 local okOrigin,at,look=invoke('spawnOrigin',location,forward,team,world)
                 at,look=okOrigin and vector(at) or nil,okOrigin and vector(look) or nil
                 if at and look then location,forward=at,look end
@@ -704,6 +710,10 @@ function Arena.new(options)
                 local actor,stop=spawn_one(cls,entry.path,slot,transform,nil)
                 if stop then break end
                 if actor and options.escortsFor and spawn_escorts(actor) then break end
+            end
+            if relaySide and spawned>0 and not relay.anchor then
+                relay.anchor={location=vector(location),forward=vector(forward)}
+                log('接力落点已固定；后续批次复用位置和朝向，停止/换图后重置')
             end
             state = unknownSpawn and 'spawn_uncertain' or (cleanupRequired and 'cleanup_pending'
                 or (spawned > 0 and "units_ready" or "spawn_failed"))
@@ -893,6 +903,13 @@ function Arena.new(options)
     function instance:clearNeutral() return clear_team('neutral','未配队') end
     function instance:clearCompanions() return clear_team('companion','随从') end
 
+    function instance:setRelayPending(enabled,blue,red,epoch)
+        if not enabled or epoch~=relay.epoch then relay.anchor=nil end
+        relay.epoch=epoch
+        relay.enabled=enabled==true
+        relay.blue=relay.enabled and blue or 0;relay.red=relay.enabled and red or 0
+    end
+
     function instance:status()
         prune()
         local blue, red, neutral, unreadable, dead,neutralOwned,summons = 0, 0, 0, 0, 0,0,0
@@ -926,7 +943,7 @@ function Arena.new(options)
         end
         local okNow,now=invoke('now')
         if okNow and finite(now) then
-            local over=battleActive and (blue+(unread.blue or 0)==0 or red+(unread.red or 0)==0)
+            local over=battleActive and (blue+(unread.blue or 0)+relay.blue==0 or red+(unread.red or 0)+relay.red==0)
             if battleActive and blue>0 and red>0 and (not fight.started or fight.ended) then
                 fight={started=now};log('战斗计时开始 蓝='..blue..' 红='..red..' 游戏时间='..string.format('%.2f',now))
             elseif over and fight.started and not fight.ended then
@@ -934,7 +951,7 @@ function Arena.new(options)
             end
             fight.now=now
         end
-        return { blue_count = blue, red_count = red, neutral_count = neutral, total = blue + red + neutral,
+        return { blue_count = blue, red_count = red, blue_unreadable=unread.blue or 0,red_unreadable=unread.red or 0,neutral_count = neutral, total = blue + red + neutral,
             owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,stand_count=stands,aid_count=aids,battle_active=battleActive,current_unit = selected or "", current_team = team,
             current_count = count,team_revision=teamRevision, state = state, message = message, busy = busy,
             battle_clock=fight.started and (fight.ended and 'ended' or 'running') or '',
