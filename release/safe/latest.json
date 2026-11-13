@@ -1,194 +1,159 @@
 {
-  "version": "0.40.12",
-  "date": "2026-11-13T01:28:39+08:00",
-  "size": 21280069,
-  "sha256": "7d86f33d23852151ebecad6cf738487a72991a24e1820aa7b84567cbb31ff702",
+  "version": "0.40.13",
+  "modBuild": "v0.40.13",
+  "date": "2026-11-13T15:24:04+08:00",
+  "size": 21288865,
+  "sha256": "401944b104c13abb8c980e89fcf509c27b972385c26b56ce66d6d2af5f154bdc",
   "notes": {
     "zh": [
-      "调整当前玩家和场景识别，避免换图、复活后继续沿用仍有效的旧控制器、旧玩家或旧场景。",
-      "修复旧快捷键请求跨场景执行，以及停止清理后待执行的普通召唤回调仍把怪补出来的问题；清理和解除现有模式在加载期间仍可用。",
-      "加强类对象和协作树名称读取前的有效性检查，减少访问失效对象的风险。",
-      "修复指令日志轮换后旧内存记录持续积累，并补全轮换中断后的副本恢复；未确认完成的指令不会重复执行。",
-      "修复等级模式、全局自定义等级和单怪等级保存失败后仍改变运行设置；修正部分设置把文件关闭错误当作保存成功的判断。",
-      "修复关闭“不倒下”和“无限杀气”时恢复失败却丢弃原值记录的问题；保留记录并限频重试，避免覆盖新对象或其他机制修改的下限。",
-      "修复同一秒或同时导出诊断报告时重名导致的失败，各份报告分别保留；诊断包补充怪物池、召唤周目、AI自定义、卡面规则与按键配置。",
-      "新增六张标明来源的特殊单位卡：鬼斩客、铁面杀手首领版、追命一阶段、红衣女剑客剑阵版、铁鬼独战版、玉琮原版战斗体，保留各自原生配置。",
-      "调整烈焰舞狮的桩体／横杆避让和桩位几何读取，补充换桩未开始或位移失败的原因记录；连续跨桩仍为实验适配。",
-      "补齐六张新卡来源和说明的六语显示。角色、地图等游戏数据名称保留原文。",
-      "数值说明：从0.40.11起，跟随周目时不再把叠加后的生成等级截到60级，因此高周目老家模式的血量可能比旧版高；自定义固定等级仍优先，且不随周目叠加。",
-      "126组离线回归检查通过。新增特殊卡的独立参战、特殊协作、烈焰连续跨桩及长时间高频操作仍需实机验证，尚不能承诺解决全部闪退。此版更新游戏内Mod，请按助手提示完成安装。"
+      "更新检查增加防缓存请求和有限重试，并交叉读取版本列表与 GitHub 正式发布信息，减少旧 CDN 清单遮住新版本的问题。",
+      "仅取得旧缓存、无法完成交叉核对时，显示“暂未确认最新版本”，不再直接显示“已是最新”或误称所有线路离线。",
+      "内测版可通过普通“检查更新”原地切换到正式版，包括数字版本相同的情况。手动操作会明确显示目标正式版；后台检查不会反复提示同版本切换或主动降回较旧公版。",
+      "切换正式版前核对下载校验值、包版本和正式构建标记，目标仍是内测包时拒绝替换，保留已有安装和设置。",
+      "诊断报告加入更新检查记录，记录当前软件/内测标签及各线路读到的版本；版本列表同时携带正式构建标记和公告。",
+      "128组离线回归检查通过。保持原有正式更新入口，现有内测用户可沿普通更新流程升级，无需手动下载解压。本次只调整助手更新流程，不改变 NPC 数值、AI 或战斗逻辑。"
     ],
     "en": [
-      "Adjusted current-player and world selection so map changes and respawns do not retain an obsolete controller, pawn or world merely because it is still valid.",
-      "Fixed queued hotkeys crossing worlds and ordinary summon callbacks spawning after Stop and Clear. Cleanup and disabling existing modes remain available while loading.",
-      "Added validity checks before reading class objects and cooperation-tree names to reduce access to expired objects.",
-      "Fixed completed command records accumulating in memory after journal rotation and restored interrupted compaction copies before further writes. Unconfirmed commands are never replayed.",
-      "Fixed failed level-setting saves changing the running level mode, global custom level or per-unit level. Settings no longer treat a failed file close as a successful save.",
-      "Fixed losing original-floor records when disabling Not Down or Infinite Sha-Chi failed to restore them. Records are kept for paced retries, without overwriting new objects or externally changed floors.",
-      "Fixed diagnostic export failures caused by same-second or concurrent filename collisions; each report is kept separately. Reports now include pool, summon-cycle, custom AI, unit-rule and hotkey settings.",
-      "Added six source-labeled special-unit cards: 鬼斩客, 铁面杀手 boss variant, 追命 first phase, 红衣女剑客 formation variant, 铁鬼 solo variant and 玉琮 native combat form. Each keeps its native configuration.",
-      "Adjusted Lion Dancer pole/link collision handling and pole geometry reads, with more reasons logged when a hop cannot start or reach its destination. Continuous pole hopping remains experimental.",
-      "Localized the six new cards' origins and descriptions in all six UI languages. Game-data names, including characters and maps, retain their original text.",
-      "Stats clarification: since 0.40.11, cycle-adjusted spawn levels are no longer capped at 60. Home-level HP can therefore be higher on later cycles. Fixed custom levels still take priority and do not receive cycle increments.",
-      "All 126 offline regression groups passed. Independent special-unit battles, native cooperation, continuous pole hopping and sustained frequent input still need in-game testing; this release does not promise to resolve every crash. Follow the app prompt to update the in-game mod."
+      "Update checks now bypass caches, retry within bounded timeouts and cross-check the version list against the latest stable GitHub release, reducing stale-CDN update misses.",
+      "When only cached information is available and independent checks cannot finish, the app reports that the latest version is unconfirmed instead of claiming it is up to date or that every source is offline.",
+      "Test builds can switch to stable in place through the normal update check, including an equal numeric version. Manual checks clearly show the stable target; background checks do not repeatedly suggest an equal-version switch or a downgrade to an older stable build.",
+      "Stable promotion checks the download hash, package version and stable build tag. A package that is still a test build is rejected before replacing the existing installation or settings.",
+      "Diagnostic reports include the installed version/build tag and versions returned by each update source. Version lists also carry the stable build tag and release notes.",
+      "All 128 offline regression groups passed. Existing public update addresses remain supported. Current test users can use the normal update flow without manually downloading or extracting another package. NPC stats, AI and combat logic are unchanged."
     ],
     "ja": [
-      "現在のプレイヤーとワールドの選択を調整し、マップ移動や復活後に有効なまま残った古いコントローラー・キャラクター・ワールドを使い続けないようにしました。",
-      "待機中のキー操作が別ワールドで実行される問題と、停止・削除後に通常召喚の旧コールバックが実行される問題を修正。ロード中も清理と既存モードの解除は利用できます。",
-      "クラスオブジェクトと協力行動ツリーの名前を読む前の有効性確認を強化しました。",
-      "ログ整理後に古い完了記録がメモリに蓄積する問題を修正し、中断した圧縮コピーを追加書き込み前に復元します。完了未確認の指令は再実行しません。",
-      "レベル設定の保存失敗後に実行中のモード・共通指定レベル・個別レベルが変わる問題と、ファイルを閉じる際のエラーを保存成功と判定する問題を修正しました。",
-      "不倒・無限殺気の解除時に元の下限を復元できないと記録が失われる問題を修正。記録を保持して間隔を空けて再試行し、新しい対象や他の仕組みが変更した値を上書きしません。",
-      "同じ秒や同時に診断を出力した際の名前衝突による失敗を修正し、各レポートを個別に保持します。プール、召喚周回、AI設定、ユニットルール、キー設定も含めます。",
-      "出典付き特殊カード6枚を追加：鬼斩客、铁面杀手の首領版、追命の第1段階、红衣女剑客の剣陣版、铁鬼の単独版、玉琮の原作戦闘本体。各自の原作設定を保持します。",
-      "舞獅の杭・横杆の衝突回避と杭位置の形状読み取りを調整し、跳躍開始不能や移動失敗の原因ログを追加。連続杭移動は引き続き試験対応です。",
-      "新カード6枚の出典・説明をUIの6言語に対応しました。キャラクター・マップなどゲームデータの名称は原文を保持します。",
-      "能力値の補足：0.40.11以降、周回加算後の召喚レベルを60で打ち切らなくなったため、高周回の本来レベル設定では旧版よりHPが高くなる場合があります。固定指定レベルは優先され、周回加算されません。",
-      "オフライン回帰チェック126組を通過。特殊カードの独立対戦・連携、連続杭移動、長時間の連続操作は実機確認が必要で、全クラッシュの解決を保証しません。アプリの案内に従ってゲーム内Modを更新してください。"
+      "更新確認にキャッシュ回避と時間制限付き再試行を追加し、バージョン一覧とGitHubの正式リリースを照合して、古いCDN情報による見落としを減らしました。",
+      "古い情報だけで照合を完了できない場合は「最新版を確認できていません」と表示します。最新と断定したり、全経路がオフラインと誤表示したりしません。",
+      "テスト版から通常の更新確認で同じ場所の正式版へ移行できます。同じ数字の版にも対応し、手動時は移行先を明示。自動確認では同版への移行や古い正式版への変更を繰り返し勧めません。",
+      "移行前にハッシュ、パッケージ版、正式ビルド表示を確認します。対象がまだテスト版なら既存のインストールや設定を置き換えません。",
+      "診断にソフトウェア版・テスト表示・各経路の応答版を追加。一覧にも正式ビルド表示と更新内容を含めます。",
+      "オフライン回帰チェック128組を通過。既存の正式更新先を維持。テスト利用者も通常の更新から移行でき、手動の再ダウンロード・展開は不要です。NPC能力値、AI、戦闘処理は変更しません。"
     ],
     "fr": [
-      "Ajustement du choix du joueur et du monde actuels pour ne pas conserver un ancien contrôleur, personnage ou monde après un changement de carte ou une réapparition.",
-      "Correction des raccourcis exécutés dans un autre monde et des invocations ordinaires encore déclenchées après Arrêter et nettoyer. Le nettoyage et la désactivation des modes existants restent possibles pendant le chargement.",
-      "Renforcement des vérifications de validité avant de lire les objets de classe et les noms des arbres de coopération.",
-      "Correction de l'accumulation des anciennes commandes terminées en mémoire après rotation du journal. Une copie de compactage interrompu est restaurée avant toute nouvelle écriture ; les commandes non confirmées ne sont pas rejouées.",
-      "Correction des réglages de niveau modifiés en mémoire malgré un échec de sauvegarde, ainsi que des erreurs de fermeture de fichier prises pour une sauvegarde réussie.",
-      "Correction de la perte de la valeur minimale d'origine si sa restauration échoue en désactivant les fonctions de maintien de vie ou de Sha-Chi. Les enregistrements sont conservés pour des tentatives espacées, sans écraser un nouvel objet ni une valeur modifiée ailleurs.",
-      "Correction des échecs d'export dus aux collisions de noms lors d'exports simultanés ou dans la même seconde ; chaque rapport est conservé séparément. Le diagnostic inclut groupes, cycles, réglages d'IA, règles d'unités et raccourcis.",
-      "Ajout de six cartes spéciales avec leur origine : 鬼斩客, 铁面杀手 boss, 追命 phase 1, 红衣女剑客 formation, 铁鬼 solo et 玉琮 forme de combat native. Leurs configurations natives sont conservées.",
-      "Ajustement des collisions des poteaux et traverses du danseur-lion, de la lecture de leur géométrie et des diagnostics d'échec de saut. Les sauts successifs restent expérimentaux.",
-      "Origines et descriptions des six nouvelles cartes disponibles dans les six langues de l'interface. Les noms issus du jeu conservent leur texte d'origine.",
-      "Précision sur les statistiques : depuis 0.40.11, le niveau après ajout des cycles n'est plus plafonné à 60. Les PV au niveau d'origine peuvent donc être plus élevés dans les cycles avancés. Un niveau personnalisé fixe reste prioritaire, sans ajout de cycle.",
-      "Les 126 groupes de régression hors ligne sont passés. Combats indépendants, coopération, sauts successifs et entrées fréquentes prolongées restent à tester en jeu ; tous les plantages ne sont pas déclarés résolus. Suivez l'application pour mettre à jour le Mod du jeu."
+      "Les vérifications contournent les caches, réessaient avec des délais limités et croisent la liste des versions avec la dernière publication stable GitHub.",
+      "Si seules des données en cache sont disponibles sans confirmation indépendante, l'application indique que la dernière version n'est pas confirmée, sans affirmer être à jour ni déclarer toutes les sources hors ligne.",
+      "Une version de test peut passer à la stable sur place par la vérification normale, même avec le même numéro. La cible est explicite lors d'une action manuelle ; les contrôles automatiques ne proposent pas sans cesse la même version ou une stable plus ancienne.",
+      "Le passage vérifie le hachage, la version et le marquage stable. Un paquet encore expérimental est refusé avant de remplacer l'installation ou ses réglages.",
+      "Le diagnostic inclut la version installée, le marquage de test et les versions renvoyées par les sources. Les listes incluent le marquage stable et les notes.",
+      "Les 128 groupes de régression hors ligne sont passés. Les adresses publiques existantes restent valables. Les testeurs passent par la mise à jour normale, sans téléchargement ni extraction manuels. Statistiques, IA et combats des NPC inchangés."
     ],
     "de": [
-      "Auswahl des aktuellen Spielers und der Welt angepasst, damit nach Kartenwechsel oder Wiederbelebung keine veralteten Controller, Figuren oder Welten weiterverwendet werden.",
-      "Fehler bei weltübergreifenden wartenden Tasteneingaben und bei Beschwörungen nach Stoppen und Aufräumen behoben. Aufräumen und das Abschalten bestehender Modi bleiben beim Laden möglich.",
-      "Gültigkeitsprüfungen vor dem Lesen von Klassenobjekten und Namen der Kooperationsbäume verstärkt.",
-      "Ansammlung alter abgeschlossener Befehle im Speicher nach der Journalrotation behoben. Unterbrochene Kompaktkopien werden vor weiteren Schreibvorgängen wiederhergestellt; unbestätigte Befehle werden nicht erneut ausgeführt.",
-      "Fehlgeschlagene Stufenspeicherungen ändern nicht mehr den laufenden Modus oder feste Stufen. Fehler beim Schließen einer Datei gelten nicht mehr als erfolgreiche Speicherung.",
-      "Verlust der ursprünglichen Untergrenzen bei fehlgeschlagener Wiederherstellung nach Abschalten von Nicht fallen oder unendlichem Sha-Chi behoben. Datensätze bleiben für begrenzte Wiederholungen erhalten; neue Objekte und extern geänderte Werte werden nicht überschrieben.",
-      "Fehlgeschlagene Diagnoseexporte durch Namenskollisionen bei gleichzeitigen Exporten behoben; jeder Bericht bleibt separat erhalten. Berichte enthalten Pools, Beschwörungszyklen, eigene KI-Werte, Einheitenregeln und Tastenbelegungen.",
-      "Sechs besondere Karten mit Herkunft ergänzt: 鬼斩客, 铁面杀手 als Boss, 追命 Phase 1, 红衣女剑客 als Formation, 铁鬼 im Einzelkampf und 玉琮 in ursprünglicher Kampfform. Ursprüngliche Konfigurationen bleiben erhalten.",
-      "Pfosten- und Querstangenkollisionen, Geometrieabfragen und Fehlerprotokolle für Sprünge des Löwentänzers angepasst. Fortlaufende Pfostensprünge bleiben experimentell.",
-      "Herkunft und Beschreibung der sechs neuen Karten in allen sechs UI-Sprachen ergänzt. Namen aus den Spieldaten bleiben im Original.",
-      "Wertehinweis: Seit 0.40.11 wird die Stufe nach Zyklusaufschlägen nicht mehr auf 60 begrenzt. Im Heimatstufenmodus können spätere Zyklen daher mehr LP als ältere Versionen ergeben. Feste eigene Stufen haben Vorrang und erhalten keinen Zyklusaufschlag.",
-      "Alle 126 Offline-Regressionsgruppen bestanden. Eigenständige Kämpfe, Zusammenarbeit, fortlaufende Pfostensprünge und lange Eingabeserien benötigen weitere Spieltests; nicht alle Abstürze sind als behoben bestätigt. Die Mod nach dem Hinweis der App aktualisieren."
+      "Updateprüfungen umgehen Caches, wiederholen Anfragen mit festen Zeitgrenzen und gleichen die Versionsliste mit der neuesten stabilen GitHub-Veröffentlichung ab.",
+      "Sind nur Cacheangaben ohne unabhängige Bestätigung verfügbar, wird die neueste Version als unbestätigt angezeigt statt fälschlich als aktuell oder mit allen Quellen offline.",
+      "Testversionen wechseln über die normale Updateprüfung im selben Ordner zur stabilen Version, auch bei gleicher Versionsnummer. Manuelle Prüfungen zeigen das Ziel klar; automatische Prüfungen drängen nicht wiederholt zu derselben oder einer älteren stabilen Version.",
+      "Vor dem Wechsel werden Hash, Paketversion und stabile Buildkennung geprüft. Ein noch experimentelles Paket ersetzt weder vorhandene Installation noch Einstellungen.",
+      "Diagnosen enthalten installierte Version, Testkennung und Antworten der Updatequellen. Versionslisten enthalten auch stabile Buildkennung und Versionshinweise.",
+      "Alle 128 Offline-Regressionsgruppen bestanden. Bestehende öffentliche Updateadressen bleiben erhalten. Testnutzer können regulär aktualisieren, ohne manuelles Herunterladen oder Entpacken. NPC-Werte, KI und Kämpfe bleiben unverändert."
     ],
     "es": [
-      "Ajustada la selección del jugador y mundo actuales para no conservar controladores, personajes o mundos antiguos tras cambiar de mapa o reaparecer.",
-      "Corregidos los atajos pendientes que cruzaban de mundo y las invocaciones normales que se ejecutaban después de Detener y limpiar. La limpieza y desactivación de modos existentes siguen disponibles durante la carga.",
-      "Reforzadas las comprobaciones de validez antes de leer objetos de clase y nombres de árboles de cooperación.",
-      "Corregida la acumulación en memoria de comandos antiguos completados tras rotar el registro. Las copias de compactación interrumpida se recuperan antes de escribir; los comandos sin confirmar no se repiten.",
-      "Los fallos al guardar niveles ya no cambian el modo o los niveles fijos en ejecución. Los errores al cerrar archivos ya no se consideran guardados correctos.",
-      "Corregida la pérdida de los mínimos originales si su restauración fallaba al desactivar No caer o Sha-Chi infinito. Los registros se conservan para reintentos espaciados, sin sobrescribir objetos nuevos ni valores modificados por otros sistemas.",
-      "Corregidos los fallos de exportación por colisiones de nombres en diagnósticos simultáneos o del mismo segundo; cada informe se conserva por separado. Se incluyen grupos, ciclos, ajustes de IA, reglas de unidades y atajos.",
-      "Añadidas seis cartas especiales con origen indicado: 鬼斩客, 铁面杀手 jefe, 追命 fase 1, 红衣女剑客 formación, 铁鬼 individual y 玉琮 en forma de combate original. Conservan sus configuraciones originales.",
-      "Ajustadas las colisiones de postes y travesaños, las lecturas geométricas y los diagnósticos de salto de la danza del león. Los saltos continuos siguen siendo experimentales.",
-      "Orígenes y descripciones de las seis cartas nuevas disponibles en los seis idiomas. Los nombres procedentes del juego conservan su texto original.",
-      "Aclaración de estadísticas: desde 0.40.11, el nivel tras sumar los ciclos ya no se limita a 60. La vida en el modo de nivel de origen puede ser mayor en ciclos avanzados. Los niveles personalizados fijos conservan prioridad y no suman ciclos.",
-      "Superados los 126 grupos de regresión sin conexión. Combates independientes, cooperación, saltos continuos y entradas frecuentes prolongadas aún requieren pruebas en el juego; no se garantiza resolver todos los cierres inesperados. Sigue el aviso de la aplicación para actualizar el Mod del juego."
+      "Las comprobaciones evitan cachés, reintentan con límites de tiempo y contrastan la lista de versiones con la última publicación estable de GitHub.",
+      "Si solo hay datos en caché sin confirmación independiente, se indica que la última versión no está confirmada en vez de afirmar que ya está actualizado o que todas las fuentes están desconectadas.",
+      "Las versiones de prueba pueden pasar a la estable en la misma carpeta mediante la actualización normal, incluso con el mismo número. La comprobación manual muestra el destino; la automática no insiste en cambiar a la misma versión ni a una estable anterior.",
+      "Antes del cambio se verifican el hash, la versión del paquete y su etiqueta estable. Un paquete aún experimental no sustituye la instalación ni sus ajustes.",
+      "El diagnóstico incluye la versión instalada, la etiqueta de prueba y las versiones de cada fuente. Las listas incluyen también la etiqueta estable y las notas.",
+      "Superados los 128 grupos de regresión sin conexión. Las direcciones públicas existentes se mantienen. Los usuarios de prueba pueden actualizar normalmente, sin descargar ni descomprimir a mano. No cambian las estadísticas, IA ni combates de los NPC."
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.12/PhantomGladiator-0.40.12-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.12/PhantomGladiator-0.40.12-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.12/PhantomGladiator-0.40.12-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
     }
   ],
   "parts": {
     "files": [
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.000",
+        "name": "PhantomGladiator-0.40.13-win64.zip.000",
         "size": 2097152,
-        "sha256": "27d3e83ae8bd17b54a5f5e59908f50585e3e40e1d6fb58aa55f062aab205a40a"
+        "sha256": "2d4f9a68b771d5dd455286f17b9d18cb14e162022535ddadd5ae1e28fd4e5b0d"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.001",
+        "name": "PhantomGladiator-0.40.13-win64.zip.001",
         "size": 2097152,
         "sha256": "45bf070e0989340abac82a18f1213619c77f2108466ed2237a40c94852318ad1"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.002",
+        "name": "PhantomGladiator-0.40.13-win64.zip.002",
         "size": 2097152,
         "sha256": "d64f5b9cd81c4a338dbdaa5f1ae03e9b2a25d83d50bfb91fae922514c4d3966d"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.003",
+        "name": "PhantomGladiator-0.40.13-win64.zip.003",
         "size": 2097152,
         "sha256": "0624d39fcd4e2f2313bf0d059d6122bf471ea46967d86bfc43b9d366280347a8"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.004",
+        "name": "PhantomGladiator-0.40.13-win64.zip.004",
         "size": 2097152,
-        "sha256": "46c2cd118827f44babbe5fe185d11e538cc74582a4ff6a677b9cc0dae0d620f7"
+        "sha256": "7027ebac74dd50611199a086514547663fee7605a14e92330c7b161950602a28"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.005",
+        "name": "PhantomGladiator-0.40.13-win64.zip.005",
         "size": 2097152,
-        "sha256": "5e54e252d016fbb9469b17ae114b241320155b3a804b122cc7748fd54a01ea01"
+        "sha256": "bd4ae589e44ed4699c5ff32f4149a7a5aba79373e001125947b5e9197f0a169a"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.006",
+        "name": "PhantomGladiator-0.40.13-win64.zip.006",
         "size": 2097152,
-        "sha256": "9cfe5f785585c2fdb387b68b081db8db8b473b7346865934162c10fbb52245a1"
+        "sha256": "eafea4219a04f4933cba9a80b9ecd36034d9ab01fa3ccceb0f8626f9c4888126"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.007",
+        "name": "PhantomGladiator-0.40.13-win64.zip.007",
         "size": 2097152,
-        "sha256": "a5709a70b65fd115851ec227cd61320f36806ff75e5a14d5ce81118efcc538f0"
+        "sha256": "0dcca72010fccc91a1826999bff923d579752327cff8b03d786f2aea38f02e6b"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.008",
+        "name": "PhantomGladiator-0.40.13-win64.zip.008",
         "size": 2097152,
         "sha256": "51a11e9d369a98637a769d92916358cc682711a71cc4ab9b0e37a4a80934eca2"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.009",
+        "name": "PhantomGladiator-0.40.13-win64.zip.009",
         "size": 2097152,
-        "sha256": "6f125b98165ef3eeb6381b836ed34ef8b7aa77fee0a7e7eac6b1511d95b9bb14"
+        "sha256": "ce44afcff110def1031a55859784cc42993aef0f36e1a38ddfbe50e7c37bddce"
       },
       {
-        "name": "PhantomGladiator-0.40.12-win64.zip.010",
-        "size": 308549,
-        "sha256": "e156fdbc584fa8f7bef0e894a8b5da3fb9a9c7da8d010d402f808f3be5c421e0"
+        "name": "PhantomGladiator-0.40.13-win64.zip.010",
+        "size": 317345,
+        "sha256": "61716273f65998b83d705de4ee4681fd6a122cc6d2021bc3c0f2f767714c615d"
       }
     ],
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.12/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.12/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.12/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.12/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.12/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.12/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.12/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
       }
     ]
   }

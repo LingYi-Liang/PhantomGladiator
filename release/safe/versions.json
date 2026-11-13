@@ -1,6 +1,166 @@
 {
   "versions": [
     {
+      "version": "0.40.13",
+      "modBuild": "v0.40.13",
+      "date": "2026-11-13T15:24:04+08:00",
+      "size": 21288865,
+      "sha256": "401944b104c13abb8c980e89fcf509c27b972385c26b56ce66d6d2af5f154bdc",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.13/PhantomGladiator-0.40.13-win64.zip"
+        }
+      ],
+      "notes": {
+        "zh": [
+          "更新检查增加防缓存请求和有限重试，并交叉读取版本列表与 GitHub 正式发布信息，减少旧 CDN 清单遮住新版本的问题。",
+          "仅取得旧缓存、无法完成交叉核对时，显示“暂未确认最新版本”，不再直接显示“已是最新”或误称所有线路离线。",
+          "内测版可通过普通“检查更新”原地切换到正式版，包括数字版本相同的情况。手动操作会明确显示目标正式版；后台检查不会反复提示同版本切换或主动降回较旧公版。",
+          "切换正式版前核对下载校验值、包版本和正式构建标记，目标仍是内测包时拒绝替换，保留已有安装和设置。",
+          "诊断报告加入更新检查记录，记录当前软件/内测标签及各线路读到的版本；版本列表同时携带正式构建标记和公告。",
+          "128组离线回归检查通过。保持原有正式更新入口，现有内测用户可沿普通更新流程升级，无需手动下载解压。本次只调整助手更新流程，不改变 NPC 数值、AI 或战斗逻辑。"
+        ],
+        "en": [
+          "Update checks now bypass caches, retry within bounded timeouts and cross-check the version list against the latest stable GitHub release, reducing stale-CDN update misses.",
+          "When only cached information is available and independent checks cannot finish, the app reports that the latest version is unconfirmed instead of claiming it is up to date or that every source is offline.",
+          "Test builds can switch to stable in place through the normal update check, including an equal numeric version. Manual checks clearly show the stable target; background checks do not repeatedly suggest an equal-version switch or a downgrade to an older stable build.",
+          "Stable promotion checks the download hash, package version and stable build tag. A package that is still a test build is rejected before replacing the existing installation or settings.",
+          "Diagnostic reports include the installed version/build tag and versions returned by each update source. Version lists also carry the stable build tag and release notes.",
+          "All 128 offline regression groups passed. Existing public update addresses remain supported. Current test users can use the normal update flow without manually downloading or extracting another package. NPC stats, AI and combat logic are unchanged."
+        ],
+        "ja": [
+          "更新確認にキャッシュ回避と時間制限付き再試行を追加し、バージョン一覧とGitHubの正式リリースを照合して、古いCDN情報による見落としを減らしました。",
+          "古い情報だけで照合を完了できない場合は「最新版を確認できていません」と表示します。最新と断定したり、全経路がオフラインと誤表示したりしません。",
+          "テスト版から通常の更新確認で同じ場所の正式版へ移行できます。同じ数字の版にも対応し、手動時は移行先を明示。自動確認では同版への移行や古い正式版への変更を繰り返し勧めません。",
+          "移行前にハッシュ、パッケージ版、正式ビルド表示を確認します。対象がまだテスト版なら既存のインストールや設定を置き換えません。",
+          "診断にソフトウェア版・テスト表示・各経路の応答版を追加。一覧にも正式ビルド表示と更新内容を含めます。",
+          "オフライン回帰チェック128組を通過。既存の正式更新先を維持。テスト利用者も通常の更新から移行でき、手動の再ダウンロード・展開は不要です。NPC能力値、AI、戦闘処理は変更しません。"
+        ],
+        "fr": [
+          "Les vérifications contournent les caches, réessaient avec des délais limités et croisent la liste des versions avec la dernière publication stable GitHub.",
+          "Si seules des données en cache sont disponibles sans confirmation indépendante, l'application indique que la dernière version n'est pas confirmée, sans affirmer être à jour ni déclarer toutes les sources hors ligne.",
+          "Une version de test peut passer à la stable sur place par la vérification normale, même avec le même numéro. La cible est explicite lors d'une action manuelle ; les contrôles automatiques ne proposent pas sans cesse la même version ou une stable plus ancienne.",
+          "Le passage vérifie le hachage, la version et le marquage stable. Un paquet encore expérimental est refusé avant de remplacer l'installation ou ses réglages.",
+          "Le diagnostic inclut la version installée, le marquage de test et les versions renvoyées par les sources. Les listes incluent le marquage stable et les notes.",
+          "Les 128 groupes de régression hors ligne sont passés. Les adresses publiques existantes restent valables. Les testeurs passent par la mise à jour normale, sans téléchargement ni extraction manuels. Statistiques, IA et combats des NPC inchangés."
+        ],
+        "de": [
+          "Updateprüfungen umgehen Caches, wiederholen Anfragen mit festen Zeitgrenzen und gleichen die Versionsliste mit der neuesten stabilen GitHub-Veröffentlichung ab.",
+          "Sind nur Cacheangaben ohne unabhängige Bestätigung verfügbar, wird die neueste Version als unbestätigt angezeigt statt fälschlich als aktuell oder mit allen Quellen offline.",
+          "Testversionen wechseln über die normale Updateprüfung im selben Ordner zur stabilen Version, auch bei gleicher Versionsnummer. Manuelle Prüfungen zeigen das Ziel klar; automatische Prüfungen drängen nicht wiederholt zu derselben oder einer älteren stabilen Version.",
+          "Vor dem Wechsel werden Hash, Paketversion und stabile Buildkennung geprüft. Ein noch experimentelles Paket ersetzt weder vorhandene Installation noch Einstellungen.",
+          "Diagnosen enthalten installierte Version, Testkennung und Antworten der Updatequellen. Versionslisten enthalten auch stabile Buildkennung und Versionshinweise.",
+          "Alle 128 Offline-Regressionsgruppen bestanden. Bestehende öffentliche Updateadressen bleiben erhalten. Testnutzer können regulär aktualisieren, ohne manuelles Herunterladen oder Entpacken. NPC-Werte, KI und Kämpfe bleiben unverändert."
+        ],
+        "es": [
+          "Las comprobaciones evitan cachés, reintentan con límites de tiempo y contrastan la lista de versiones con la última publicación estable de GitHub.",
+          "Si solo hay datos en caché sin confirmación independiente, se indica que la última versión no está confirmada en vez de afirmar que ya está actualizado o que todas las fuentes están desconectadas.",
+          "Las versiones de prueba pueden pasar a la estable en la misma carpeta mediante la actualización normal, incluso con el mismo número. La comprobación manual muestra el destino; la automática no insiste en cambiar a la misma versión ni a una estable anterior.",
+          "Antes del cambio se verifican el hash, la versión del paquete y su etiqueta estable. Un paquete aún experimental no sustituye la instalación ni sus ajustes.",
+          "El diagnóstico incluye la versión instalada, la etiqueta de prueba y las versiones de cada fuente. Las listas incluyen también la etiqueta estable y las notas.",
+          "Superados los 128 grupos de regresión sin conexión. Las direcciones públicas existentes se mantienen. Los usuarios de prueba pueden actualizar normalmente, sin descargar ni descomprimir a mano. No cambian las estadísticas, IA ni combates de los NPC."
+        ]
+      },
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.000",
+            "size": 2097152,
+            "sha256": "2d4f9a68b771d5dd455286f17b9d18cb14e162022535ddadd5ae1e28fd4e5b0d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.001",
+            "size": 2097152,
+            "sha256": "45bf070e0989340abac82a18f1213619c77f2108466ed2237a40c94852318ad1"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.002",
+            "size": 2097152,
+            "sha256": "d64f5b9cd81c4a338dbdaa5f1ae03e9b2a25d83d50bfb91fae922514c4d3966d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.003",
+            "size": 2097152,
+            "sha256": "0624d39fcd4e2f2313bf0d059d6122bf471ea46967d86bfc43b9d366280347a8"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.004",
+            "size": 2097152,
+            "sha256": "7027ebac74dd50611199a086514547663fee7605a14e92330c7b161950602a28"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.005",
+            "size": 2097152,
+            "sha256": "bd4ae589e44ed4699c5ff32f4149a7a5aba79373e001125947b5e9197f0a169a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.006",
+            "size": 2097152,
+            "sha256": "eafea4219a04f4933cba9a80b9ecd36034d9ab01fa3ccceb0f8626f9c4888126"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.007",
+            "size": 2097152,
+            "sha256": "0dcca72010fccc91a1826999bff923d579752327cff8b03d786f2aea38f02e6b"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.008",
+            "size": 2097152,
+            "sha256": "51a11e9d369a98637a769d92916358cc682711a71cc4ab9b0e37a4a80934eca2"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.009",
+            "size": 2097152,
+            "sha256": "ce44afcff110def1031a55859784cc42993aef0f36e1a38ddfbe50e7c37bddce"
+          },
+          {
+            "name": "PhantomGladiator-0.40.13-win64.zip.010",
+            "size": 317345,
+            "sha256": "61716273f65998b83d705de4ee4681fd6a122cc6d2021bc3c0f2f767714c615d"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.13/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.13/"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.12",
       "date": "2026-11-13T01:28:39+08:00",
       "size": 21280069,
