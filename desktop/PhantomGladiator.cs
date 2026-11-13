@@ -707,7 +707,7 @@ namespace PhantomGladiator
         // or install: new versions come from the mod page. The calls keep their shape and refuse without connecting.
         public UpdateClient(BuildInfo b) { }
         static HostError Off() { return new HostError("updatesOff", "这个版本不联网检查或下载更新。"); }
-        public Dictionary<string, object> Check(string lang) { throw Off(); }
+        public Dictionary<string, object> Check(string lang, bool manual = true) { throw Off(); }
         public Dictionary<string, object> SelectVersion(string version, string lang) { throw Off(); }
         public void Download(string line, Action<long, long, double> progress) { throw Off(); }
         public void Cancel() { }
@@ -718,22 +718,27 @@ namespace PhantomGladiator
         readonly BuildInfo build;
         readonly bool preview;
         readonly string workDirectory;
+        readonly string releaseApi;
         Dictionary<string, object> manifest;
         List<PartDownload.Part> partFiles;
         List<PartDownload.Source> partSources;
         string downloaded;
         volatile bool cancel;
+        bool switchingToStable;
 
-        public UpdateClient(BuildInfo b, bool preview = false)
+        public UpdateClient(BuildInfo b, bool preview = false, string releaseApi = null)
         {
             build=b;
             this.preview=preview;
             workDirectory=Paths.In(preview ? "beta-updates" : "updates");
+            this.releaseApi=releaseApi ?? (Regex.IsMatch(b.Repo ?? "", @"^[\w.-]+/[\w.-]+$")
+                ? "https://api.github.com/repos/" + b.Repo + "/releases/latest" : null);
         }
 
         public void UseBetaOffer(BetaOffer offer)
         {
             if (!preview) throw new InvalidOperationException();
+            switchingToStable=false;
             manifest=new Dictionary<string, object> {
                 { "version", offer.Version }, { "modBuild", offer.Build },
                 { "size", offer.Size }, { "sha256", offer.Sha256 },
@@ -750,9 +755,95 @@ namespace PhantomGladiator
             req.Timeout = timeout;
             req.ReadWriteTimeout = timeout;
             req.UserAgent = "PhantomGladiator";
+            req.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
+            req.Headers[HttpRequestHeader.CacheControl] = "no-cache, no-store";
+            req.Headers[HttpRequestHeader.Pragma] = "no-cache";
             using (var res = (HttpWebResponse)req.GetResponse())
             using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8))
                 return r.ReadToEnd();
+        }
+
+        static string FreshUrl(string url)
+        {
+            var uri = new UriBuilder(url);
+            uri.Query = (uri.Query.Length > 1 ? uri.Query.Substring(1) + "&" : "") + "pg_check=" + Guid.NewGuid().ToString("N");
+            return uri.Uri.AbsoluteUri;
+        }
+
+        bool IsTestBuild
+        {
+            get { return !preview && !string.IsNullOrEmpty(build.AppVersion)
+                && Regex.IsMatch(build.ModBuild ?? "", "^v?" + Regex.Escape(build.AppVersion) + @"-.+$"); }
+        }
+
+        static bool StableVersion(string version)
+        { return Regex.IsMatch(version ?? "", @"^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$"); }
+
+        static bool StableManifest(Dictionary<string, object> value)
+        {
+            object tag;
+            return Installable(value) && StableVersion((string)value["version"])
+                && (!value.TryGetValue("modBuild", out tag) || (tag as string) == "v" + (string)value["version"]);
+        }
+
+        static void Consider(ref Dictionary<string, object> best, Dictionary<string, object> value)
+        {
+            if (StableManifest(value) && (best == null || Newer((string)value["version"], (string)best["version"]))) best=value;
+        }
+
+        sealed class ReleaseInfo
+        {
+            public string Version;
+            public Dictionary<string, object> Package;
+        }
+
+        ReleaseInfo FetchRelease()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(releaseApi)) return null;
+                var data=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(Get(FreshUrl(releaseApi),6000));
+                if (data == null || !data.ContainsKey("tag_name") || !(data["tag_name"] is string)
+                    || !data.ContainsKey("draft") || !(data["draft"] is bool) || (bool)data["draft"]
+                    || !data.ContainsKey("prerelease") || !(data["prerelease"] is bool) || (bool)data["prerelease"]) return null;
+                var tag=(string)data["tag_name"];
+                var version=tag.StartsWith("v",StringComparison.Ordinal) ? tag.Substring(1) : tag;
+                if (!StableVersion(version)) return null;
+                var result=new ReleaseInfo { Version=version };
+                var assets=data.ContainsKey("assets") ? data["assets"] as System.Collections.ArrayList : null;
+                if (assets == null) return result;
+                var name="PhantomGladiator-"+version+"-win64.zip";
+                var asset=assets.OfType<Dictionary<string,object>>().FirstOrDefault(a=>a.ContainsKey("name") && (a["name"] as string)==name);
+                if (asset == null || !asset.ContainsKey("digest") || !(asset["digest"] is string)
+                    || !Regex.IsMatch((string)asset["digest"],@"^sha256:[a-fA-F0-9]{64}$")
+                    || !asset.ContainsKey("size") || Convert.ToInt64(asset["size"])<=0
+                    || !asset.ContainsKey("browser_download_url")) return result;
+                var url=asset["browser_download_url"] as string;
+                Uri parsed;
+                if (!Uri.TryCreate(url,UriKind.Absolute,out parsed) || (parsed.Scheme!="https" && parsed.Scheme!="http")) return result;
+                var downloads=new System.Collections.ArrayList();
+                if (url.StartsWith("https://github.com/",StringComparison.Ordinal))
+                {
+                    downloads.Add(new Dictionary<string,object>{{"id","cn1"},{"url","https://ghfast.top/"+url}});
+                    downloads.Add(new Dictionary<string,object>{{"id","cn2"},{"url","https://gh-proxy.com/"+url}});
+                }
+                downloads.Add(new Dictionary<string,object>{{"id","github"},{"url",url}});
+                result.Package=new Dictionary<string,object>{{"version",version},{"modBuild","v"+version},
+                    {"date",data.ContainsKey("published_at") ? data["published_at"] : ""},
+                    {"size",Convert.ToInt64(asset["size"])},{"sha256",((string)asset["digest"]).Substring(7).ToLowerInvariant()},
+                    {"downloads",downloads}};
+                return result;
+            }
+            catch (Exception) { return null; }
+        }
+
+        Dictionary<string,object> Offer(Dictionary<string,object> value,string lang)
+        {
+            manifest=value;
+            switchingToStable=IsTestBuild;
+            var result=Describe(lang);
+            if (switchingToStable) { result["switchToStable"]=true; result["currentBuild"]=build.ModBuild; }
+            return result;
         }
 
         static int[] Ver(string v)
@@ -767,24 +858,75 @@ namespace PhantomGladiator
             return false;
         }
 
-        // latest.json lives in the repository and is fetched through every source at once (the CDNs that work
-        // in mainland China are listed first). A CDN can keep serving an old copy for hours after a release
-        // (jsDelivr did after v0.37.0), so the newest version any source reports wins; on a tie the source
-        // listed first is kept.
-        public Dictionary<string, object> Check(string lang)
+        // A cached matching version is not proof that no new release exists. Retry independently through
+        // versions.json and the latest stable release before reporting a confirmed current installation.
+        public Dictionary<string, object> Check(string lang, bool manual = true)
         {
             var sources = build.Manifests.Select(entry => entry.Split(new[] { '|' }, 2)).ToList();
-            var fetching = sources.Select(parts => Task.Run(() => Fetch(parts[1]))).ToArray();
+            var checks=new List<object>();
+            var outcome="failed";
             manifest = null;
-            foreach (var task in fetching)
+            downloaded=null;
+            switchingToStable=false;
+            try
             {
-                var found = task.Result;
-                if (found != null && (manifest == null || Newer((string)found["version"], (string)manifest["version"]))) manifest = found;
+                Dictionary<string,object> best=null;
+                var fetching=sources.Select(p=>Task.Run(()=>Fetch(p[1],true))).ToArray();
+                var found=fetching.Select(t=>t.Result).ToArray();
+                for (var i=0;i<found.Length;i++)
+                {
+                    Consider(ref best,found[i]);
+                    checks.Add(new { source=sources[i][0],stage="fresh-latest",version=found[i]==null ? null : found[i]["version"] });
+                }
+                if (best!=null && Newer((string)best["version"],build.AppVersion))
+                { outcome="available"; return Offer(best,lang); }
+                var listed=sources.Select(p=>Task.Run(()=>FetchNewestListed(p[1]))).ToArray();
+                var retry=sources.Select((p,i)=>Task.Run(()=>found[i]==null ? Fetch(p[1]) : null)).ToArray();
+                var release=Task.Run(()=>FetchRelease());
+                for (var i=0;i<sources.Count;i++)
+                {
+                    var list=listed[i].Result;var fallback=retry[i].Result;
+                    Consider(ref best,list);Consider(ref best,fallback);
+                    checks.Add(new { source=sources[i][0],stage="fresh-versions",version=list==null ? null : list["version"] });
+                    if (found[i]==null) checks.Add(new { source=sources[i][0],stage="plain-retry",version=fallback==null ? null : fallback["version"] });
+                }
+                var verified=release.Result;
+                checks.Add(new { source="release",stage="stable-release",version=verified==null ? null : verified.Version });
+                if (verified!=null && verified.Package!=null)
+                {
+                    if (best!=null && (string)best["version"]==verified.Version)
+                    {
+                        if (!string.Equals((string)best["sha256"],(string)verified.Package["sha256"],StringComparison.OrdinalIgnoreCase))
+                        { if (best.ContainsKey("notes")) verified.Package["notes"]=best["notes"]; best=verified.Package; }
+                    }
+                    else Consider(ref best,verified.Package);
+                }
+                if (verified!=null && (best==null || Newer(verified.Version,(string)best["version"]))
+                    && (Newer(verified.Version,build.AppVersion) || (manual && IsTestBuild)))
+                    throw new HostError("updateUnconfirmed","发现了较新正式版，但下载信息暂未确认。",sources.Select(p=>p[0]).ToArray());
+                if (best!=null && (Newer((string)best["version"],build.AppVersion) || (manual && IsTestBuild)))
+                { outcome="available"; return Offer(best,lang); }
+                if (verified!=null && Newer(verified.Version,build.AppVersion))
+                    throw new HostError("updateUnconfirmed","发现了较新版本，但下载信息暂未确认。",sources.Select(p=>p[0]).ToArray());
+                if (verified!=null && !(manual && IsTestBuild))
+                {
+                    outcome="latest-confirmed";
+                    return new Dictionary<string,object>{{"latest",true},{"version",build.AppVersion},{"confirmed",true}};
+                }
+                throw new HostError(best==null && verified==null ? "offline" : "updateUnconfirmed","最新版本尚未确认。",sources.Select(p=>p[0]).ToArray());
             }
-            if (manifest == null) throw new HostError("offline", "", sources.Select(parts => parts[0]).ToArray());
-            var version = (string)manifest["version"];
-            if (!Newer(version, build.AppVersion)) return new Dictionary<string, object> { { "latest", true }, { "version", build.AppVersion } };
-            return Describe(lang);
+            catch (HostError e) { outcome=e.Code;manifest=null;throw; }
+            finally
+            {
+                try
+                {
+                    Directory.CreateDirectory(Paths.Data);
+                    File.WriteAllText(Paths.In("update-check.json"),new JavaScriptSerializer().Serialize(new {
+                        schema=1,checkedUtc=DateTime.UtcNow.ToString("o"),appVersion=build.AppVersion,modBuild=build.ModBuild,
+                        result=outcome,sources=checks }),new UTF8Encoding(false));
+                }
+                catch (Exception) { }
+            }
         }
 
         // versions.json beside each latest.json lists the rollback packages. A stale source may omit new entries.
@@ -792,6 +934,7 @@ namespace PhantomGladiator
         {
             manifest = null;
             downloaded = null;
+            switchingToStable=false;
             var sources = build.Manifests.Select(entry => entry.Split(new[] { '|' }, 2)).ToList();
             var fetching = sources.Select(parts => Task.Run(() => FetchListed(parts[1].Replace("latest.json", "versions.json"), version))).ToArray();
             foreach (var task in fetching)
@@ -878,12 +1021,27 @@ namespace PhantomGladiator
         }
 
         // A manifest an update can be installed from (version, size, SHA-256 and download lines), or null.
-        static Dictionary<string, object> Fetch(string url)
+        static Dictionary<string, object> Fetch(string url, bool fresh=false)
         {
             try
             {
-                var found = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Get(url, 6000));
+                var found = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Get(fresh ? FreshUrl(url) : url, 6000));
                 return Installable(found) ? found : null;
+            }
+            catch (Exception) { return null; }
+        }
+
+        static Dictionary<string,object> FetchNewestListed(string url)
+        {
+            try
+            {
+                if (!url.Contains("latest.json")) return null;
+                var data=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(
+                    Get(FreshUrl(url.Replace("latest.json","versions.json")),6000));
+                var versions=data!=null && data.ContainsKey("versions") ? data["versions"] as System.Collections.ArrayList : null;
+                Dictionary<string,object> best=null;
+                if (versions!=null) foreach (var version in versions.OfType<Dictionary<string,object>>()) Consider(ref best,version);
+                return best;
             }
             catch (Exception) { return null; }
         }
@@ -1007,6 +1165,11 @@ namespace PhantomGladiator
             object packagedBuild;
             if (preview && (!packaged.TryGetValue("modBuild", out packagedBuild) || (packagedBuild as string) != (string)manifest["modBuild"]))
                 throw new HostError("verify","内测包构建标记与签名清单不一致。");
+            if (switchingToStable && (!packaged.TryGetValue("modBuild",out packagedBuild) || (packagedBuild as string)!="v"+version))
+                throw new HostError("verify","目标包不是对应的正式构建，未替换当前内测版。");
+            if (!preview && manifest.ContainsKey("modBuild")
+                && (!packaged.TryGetValue("modBuild",out packagedBuild) || (packagedBuild as string)!=(manifest["modBuild"] as string)))
+                throw new HostError("verify","更新包构建标记与正式清单不一致。");
             var installed = Paths.AppDir;
             try
             {
@@ -1330,7 +1493,7 @@ namespace PhantomGladiator
                 case "checkUpdate":
                     if (updateTransfer) throw new HostError("updateBusy","另一个更新操作正在进行。");
                     if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
-                    return await Task.Run(() => updates.Check(lang));
+                    return await Task.Run(() => updates.Check(lang, !(p.ContainsKey("silent") && p["silent"] is bool && (bool)p["silent"])));
                 case "selectVersion":
                     if (updateTransfer) throw new HostError("updateBusy","另一个更新操作正在进行。");
                     if (p.ContainsKey("lang")) lang = p["lang"] as string ?? lang;
@@ -1399,6 +1562,7 @@ namespace PhantomGladiator
                         src.CopyTo(dst);
                 };
                 add(Paths.In("logs", "backend.log"), "backend.log");
+                add(Paths.In("update-check.json"), "update-check.json");
                 using (var w = new StreamWriter(zip.CreateEntry("app.txt").Open(), new UTF8Encoding(false)))
                     w.Write("app " + build.AppVersion + " " + BuildInfo.Channel + "\r\nmod " + build.ModBuild + "\r\ngame " + (game != null ? game.Root + " build " + game.Build : "not found") + "\r\nwindows " + Environment.OSVersion + "\r\n");
                 if (game != null)

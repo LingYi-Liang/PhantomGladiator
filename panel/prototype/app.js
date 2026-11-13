@@ -2452,7 +2452,7 @@
       case "latest":
         return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t("update.latest.title"), t("update.latest.body", { v: S.appVersion }))}${releaseHistoryHTML()}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(t("common.done"))}</button></div>`;
       case "error":
-        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t("update.error.title"), t("update.error.body"), `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: u.error.tried.map(s => t("update.source." + s)).join(" · ") }))}</p>`)}${releaseHistoryHTML()}</div>
+        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedTitle" : "update.error.title"), t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedBody" : "update.error.body"), `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: (u.error?.tried || []).map(s => t("update.source." + s)).join(" · ") }))}</p>`)}${releaseHistoryHTML()}</div>
           <div class="dialog-foot"><a class="btn btn-ghost" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.manual"))}</a><button class="btn btn-primary" type="button" data-action="update-check">${icon("refresh", "icon-sm")}${esc(t("common.retry"))}</button></div>`;
       case "available": {
         const best = lineFor(info, "auto");
@@ -2474,14 +2474,15 @@
           <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="update-check">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t("update.rollback.confirm"))}</button></div>`;
         }
         return head(t("update.title")) + `<div class="dialog-body">
-            <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t("update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
+            <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t(info.switchToStable ? "update.stableTitle" : "update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
+            ${info.switchToStable ? `<p class="callout">${esc(t("update.stableBody", { build: info.currentBuild }))}</p>` : ""}
             <div class="section-label">${esc(t("update.notes"))}</div>
-            <ul class="notes">${(info.notes?.length ? info.notes : [1, 2, 3].map(i => t("update.note" + i))).map(n => `<li>${esc(n)}</li>`).join("")}</ul>
+            ${info.notes?.length ? `<ul class="notes">${info.notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : `<p class="muted">${esc(t("update.notesUnavailable"))} <a href="${REPO}/releases/tag/v${encodeURIComponent(info.version)}" target="_blank" rel="noopener noreferrer">${esc(t("update.manual"))}</a></p>`}
             <div class="section-label">${esc(t("update.line"))}</div>
             <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>
             ${releaseHistoryHTML()}
           </div>
-          <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("update.later"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t("update.download"))}</button></div>`;
+          <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("update.later"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t(info.switchToStable ? "update.stableDownload" : "update.download"))}</button></div>`;
       }
       case "downloading":
       case "verifying": {
@@ -2518,14 +2519,15 @@
     if (dlg?.kind === "update") setDialog(updateHTML());
     if (ui.page === "about") renderPage();
     try {
-      const info = await RT.update.check();
+      const info = await RT.update.check({ silent });
       u.info = info;
       u.phase = info.latest ? "latest" : "available";
       u.line = "auto";
       if (!info.latest && silent && dlg?.kind !== "update") toast({ kind: "info", title: t("toast.update.available", { v: info.version }), body: t("toast.update.body"), actions: [{ label: t("toast.update.view"), action: "open-update" }], timeout: 10000 });
     } catch (error) {
       u.phase = "error";
-      u.error = { tried: error.tried || [] };
+      u.info = null;
+      u.error = { code: error.code || "offline", tried: error.tried || [] };
       // The Nexus Mods build refuses without connecting; the page learns its channel here if "info" never answered.
       if (error.code === "updatesOff") { S.channel = "nexus"; u.phase = "idle"; renderPage(); }
       if (silent) u.phase = "idle";

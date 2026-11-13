@@ -21,7 +21,7 @@ namespace PhantomGladiator
                 ? Directory.GetFileSystemEntries(Paths.In("updates")).Select(Path.GetFileName).OrderBy(p => p, StringComparer.Ordinal)
                 : Enumerable.Empty<string>();
             return status + "\n" + string.Join("\n", entries) + "\nupdates=" + string.Join(",", updates)
-                + "\nversion=" + BuildInfo.Load().AppVersion + "\ndirectory=" + dir;
+                + "\nversion=" + BuildInfo.Load().AppVersion + "\nbuild=" + BuildInfo.Load().ModBuild + "\ndirectory=" + dir;
         }
 
         static int Main(string[] args)
@@ -52,7 +52,7 @@ namespace PhantomGladiator
             }
             try
             {
-                var client = new UpdateClient(BuildInfo.Load());
+                var client = new UpdateClient(BuildInfo.Load(),false,Environment.GetEnvironmentVariable("PG_TEST_RELEASE_API"));
                 var back = Environment.GetEnvironmentVariable("PG_TEST_ROLLBACK");
                 var found = string.IsNullOrEmpty(back) ? client.Check("zh") : client.SelectVersion(back, "zh");
                 if ((bool)found["latest"]) throw new Exception("no newer version found");

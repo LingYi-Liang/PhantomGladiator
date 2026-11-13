@@ -9,6 +9,7 @@ Needs a folder with the WebView2 assemblies, by default the newest built dist/Ph
     python -I tools/test_update_install.py [webview2 folder]
 """
 import hashlib, http.server, io, json, os, pathlib, shutil, subprocess, sys, tempfile, threading, time, zipfile
+from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSC = pathlib.Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
@@ -26,8 +27,8 @@ def webview2_folder():
     return max(built, key=lambda p: p.stat().st_mtime)
 
 
-def version_json(version, base):
-    return json.dumps({"appVersion": version, "modBuild": "test", "verifiedGameBuild": "0", "repo": "test/test",
+def version_json(version, base, mod_build=None):
+    return json.dumps({"appVersion": version, "modBuild": mod_build or "v" + version, "verifiedGameBuild": "0", "repo": "test/test",
                        "manifests": [f"local|{base}/latest.json"]})
 
 
@@ -43,7 +44,7 @@ def main():
             self.end_headers()
 
         def do_GET(self):
-            body = files.get(self.path)
+            body = files.get(urlsplit(self.path).path)
             self.send_response(200 if body is not None else 404)
             self.end_headers()
             if body is not None:
@@ -62,14 +63,14 @@ def main():
                         str(ROOT / "desktop/AppUpdate.cs"), str(ROOT / "desktop/ManualBeta.cs"), str(ROOT / "tools/test_update_install.cs")], check=True)
 
         # A version as a release zip: one top folder holding the exe, its DLLs and app\.
-        def release(version):
+        def release(version, mod_build=None):
             package = io.BytesIO()
             with zipfile.ZipFile(package, "w") as z:
                 top = f"PhantomGladiator-{version}/"
                 z.write(exe, top + "PhantomGladiator.exe")
                 for dll in WEBVIEW2:
                     z.write(wv / dll, top + dll)
-                z.writestr(top + "app/version.json", version_json(version, base))
+                z.writestr(top + "app/version.json", version_json(version, base, mod_build))
                 z.writestr(top + "app/python/lib.txt", version)
                 z.writestr(top + "licenses/new.txt", "B")
             package = package.getvalue()
@@ -87,7 +88,14 @@ def main():
                 parts.append({"name": name, "size": len(piece), "sha256": hashlib.sha256(piece).hexdigest()})
             return {"files": parts, "sources": [{"id": "local", "url": f"{base}/parts/"}]}
 
-        files["/latest.json"] = json.dumps(release("0.40.12")).encode("utf-8")
+        def publish(entry):
+            files["/latest.json"] = json.dumps(entry).encode("utf-8")
+            files["/release-info.json"] = json.dumps({"tag_name": "v" + entry["version"], "draft": False, "prerelease": False,
+                "published_at": entry["date"], "assets": [{"name": "PhantomGladiator-" + entry["version"] + "-win64.zip",
+                    "size": entry["size"], "digest": "sha256:" + entry["sha256"],
+                    "browser_download_url": entry["downloads"][0]["url"]}]}).encode("utf-8")
+
+        publish(release("0.40.12"))
         files["/versions.json"] = json.dumps({"versions": [release("0.40.11"), release("0.40.10"), release("0.40.9")]}).encode("utf-8")
 
         def setup(name):
@@ -103,6 +111,7 @@ def main():
             (installed / "licenses" / "old.txt").write_text("A", encoding="utf-8")
             (installed / "my-notes.txt").write_text("mine", encoding="utf-8")
             (data / "updates").mkdir(parents=True)
+            (data / "settings.json").write_text('{"keep":"personal-settings"}', encoding="utf-8")
             (data / "updates" / "updater.exe").write_bytes(b"left by an old update")
             (data / "updates" / "Microsoft.Web.WebView2.Core.dll").write_bytes(b"left by an old update")
             return installed, data
@@ -124,6 +133,8 @@ def main():
             runtime = mod / "Runtime"
             runtime.mkdir()
             (runtime / "catalog.tsv").write_text("existing catalog", encoding="utf-8")
+            (runtime / "monster-pools.tsv").write_text("existing pools", encoding="utf-8")
+            (runtime / "unit-keybinds.tsv").write_text("existing unit keys", encoding="utf-8")
             mods_txt = mods / "mods.txt"
             if case == "registration-error":
                 mods_txt.mkdir()
@@ -153,13 +164,16 @@ def main():
                 assert (live / "main.lua").read_text(encoding="utf-8") == "old scripts"
                 assert (live / "obsolete.lua").is_file()
             assert (runtime / "catalog.tsv").read_text(encoding="utf-8") == "existing catalog"
+            assert (runtime / "monster-pools.tsv").read_text(encoding="utf-8") == "existing pools"
+            assert (runtime / "unit-keybinds.tsv").read_text(encoding="utf-8") == "existing unit keys"
             assert not list(mod.glob(".pg-install-*")), case
             print(f"PASS components {case}: read back scripts and Runtime")
 
         def run_app(installed, data, back="", line=""):
             report = work / "report.txt"
             report.unlink(missing_ok=True)
-            env = dict(os.environ, PG_DATA_DIR=str(data), PG_TEST_REPORT=str(report), PG_TEST_ROLLBACK=back, PG_TEST_LINE=line)
+            env = dict(os.environ, PG_DATA_DIR=str(data), PG_TEST_REPORT=str(report), PG_TEST_ROLLBACK=back, PG_TEST_LINE=line,
+                       PG_TEST_RELEASE_API=base + "/release-info.json")
             run = subprocess.run([str(installed / "PhantomGladiator.exe")], env=env, timeout=120)
             for _ in range(300):
                 if report.exists():
@@ -169,6 +183,7 @@ def main():
             time.sleep(0.3)
             lines = report.read_text(encoding="utf-8").splitlines()
             assert run.returncode == 0 and lines[0] == "ok", "\n".join(lines)
+            assert (data / "settings.json").read_text(encoding="utf-8") == '{"keep":"personal-settings"}'
             return lines
 
         installed, data = setup("installed")
@@ -217,6 +232,25 @@ def main():
         updates = next(line for line in lines if line.startswith("updates=")).split("=", 1)[1].split(",")
         assert updates == ["PhantomGladiator-0.40.12.zip"], f"the parts are joined and gone: {updates}"
         print("PASS a split download joins, passes SHA-256 and installs the same way")
+
+        installed, data = setup("same-version-beta")
+        (installed / "app/version.json").write_text(version_json("0.40.12", base, "v0.40.12-beta-3"), encoding="utf-8")
+        lines = run_app(installed, data, line="parts")
+        assert "version=0.40.12" in lines and "build=v0.40.12" in lines, "\n".join(lines)
+        assert "directory=" + str(installed) in lines, "stable promotion must stay in the beta app's current directory"
+        assert (installed / "my-notes.txt").read_text(encoding="utf-8") == "mine"
+        print("PASS same-version beta promotes to stable in place, with personal files preserved")
+
+        installed, data = setup("bad-stable-package")
+        (installed / "app/version.json").write_text(version_json("0.40.12", base, "v0.40.12-beta-3"), encoding="utf-8")
+        publish(release("0.40.12", "v0.40.12-beta-99"))
+        report = work / "bad-stable-report.txt"
+        run = subprocess.run([str(installed / "PhantomGladiator.exe")], timeout=60,
+            env=dict(os.environ, PG_DATA_DIR=str(data), PG_TEST_REPORT=str(report), PG_TEST_RELEASE_API=base + "/release-info.json"))
+        assert run.returncode != 0 and "目标包不是对应的正式构建" in report.read_text(encoding="utf-8")
+        assert json.loads((installed / "app/version.json").read_text(encoding="utf-8"))["modBuild"] == "v0.40.12-beta-3"
+        assert (installed / "my-notes.txt").read_text(encoding="utf-8") == "mine"
+        print("PASS a beta package mislabeled as stable is rejected before replacing the existing app")
     finally:
         server.shutdown()
         for _ in range(20):

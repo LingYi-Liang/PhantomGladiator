@@ -590,7 +590,7 @@ const RealRuntime = (() => {
   };
 
   const update = {
-    check: () => host("checkUpdate", { lang: (document.documentElement.lang || "zh").slice(0, 2) }),
+    check: ({ silent = false } = {}) => host("checkUpdate", { lang: (document.documentElement.lang || "zh").slice(0, 2), silent }),
     selectVersion: version => host("selectVersion", { version, lang: (document.documentElement.lang || "zh").slice(0, 2) }),
     download(lineId, size, onProgress) {
       const stop = trackProgress("download", m => onProgress({ done: m.done, total: m.total || size, speed: m.speed || 0 }));

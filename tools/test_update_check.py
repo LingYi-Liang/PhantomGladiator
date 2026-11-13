@@ -8,6 +8,7 @@ newest built dist/PhantomGladiator-* folder:
     python -I tools/test_update_check.py [webview2 folder]
 """
 import collections, hashlib, http.server, json, os, pathlib, shutil, subprocess, sys, tempfile, threading, time
+from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CSC = pathlib.Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
@@ -37,6 +38,7 @@ def main():
             self.end_headers()
 
         def do_GET(self):
+            self.path = urlsplit(self.path).path
             if self.path == "/hits":
                 data = json.dumps(sorted(hits)).encode("utf-8")
                 self.send_response(200)

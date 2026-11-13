@@ -40,7 +40,7 @@ namespace PhantomGladiator
             Expect(Outcome(() => UpdateClient.CleanUp()) == "none", "start-up cleanup still runs");
 #else
             Expect(BuildInfo.Channel == "github", "the build says it is the github channel");
-            Expect(Outcome(() => updates.Check("zh")) == "none", "Check asks the update sources");
+            Expect(Outcome(() => updates.Check("zh")) == "updateUnconfirmed", "Check asks the sources but does not trust their unconfirmed older cache");
 #endif
             Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILED");
             return failures == 0 ? 0 : 1;

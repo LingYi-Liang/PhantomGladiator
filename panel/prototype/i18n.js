@@ -2347,3 +2347,23 @@ I18N.add("en", {
   "unit.note.ironsolo": "Uses the native solo configuration, separately from the guard variant. Independent battles still need testing.",
   "unit.note.yucongbase": "Separate from the individually listed forms, with the base character's native AI and attributes. Independent battles still need testing."
 });
+
+I18N.add("zh", {
+  "update.unconfirmedTitle": "暂未确认最新版本",
+  "update.unconfirmedBody": "已连上部分更新线路，但信息还未核对完成。请重试。",
+  "update.stableTitle": "切换到正式版 v{v}",
+  "update.stableBody": "当前内测：{build}。将替换为正式版，设置保留，无需手动下载解压。",
+  "update.stableDownload": "下载并切换正式版"
+});
+
+I18N.add("zh", {"update.notesUnavailable":"更新说明暂未取到，可到发布页查看。"});
+
+// Verified update checks and explicit stable promotion.
+I18N.add("en", {
+  "update.unconfirmedTitle": "Latest version not confirmed",
+  "update.unconfirmedBody": "Some update sources responded, but their information could not be fully checked. Please retry.",
+  "update.stableTitle": "Switch to stable v{v}",
+  "update.stableBody": "Current test build: {build}. The stable release replaces it in place and keeps your settings. No manual download or extraction is needed.",
+  "update.stableDownload": "Download and switch to stable",
+  "update.notesUnavailable": "Release notes could not be retrieved. See the release page."
+});

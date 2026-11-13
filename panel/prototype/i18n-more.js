@@ -4608,3 +4608,43 @@ I18N.add("es", {
   "unit.note.ironsolo": "Usa la configuración original de combate individual, aparte de la variante de guardaespaldas. Falta probar el combate independiente.",
   "unit.note.yucongbase": "Distinta de las formas enumeradas por separado, con la IA y atributos de la forma base. Falta probar el combate independiente."
 });
+
+// Verified update checks and explicit stable promotion.
+I18N.add("ja", {
+  "update.unconfirmedTitle": "最新版を確認できていません",
+  "update.unconfirmedBody": "一部の更新先には接続できましたが、情報の照合が完了していません。再試行してください。",
+  "update.stableTitle": "正式版 v{v} に切り替える",
+  "update.stableBody": "現在のテスト版：{build}。同じ場所で正式版に置き換え、設定を保持します。手動のダウンロードや展開は不要です。",
+  "update.stableDownload": "ダウンロードして正式版に切り替える",
+  "update.notesUnavailable": "更新内容を取得できませんでした。リリースページで確認できます。"
+});
+
+// Verified update checks and explicit stable promotion.
+I18N.add("fr", {
+  "update.unconfirmedTitle": "Dernière version non confirmée",
+  "update.unconfirmedBody": "Certaines sources répondent, mais leurs informations ne sont pas entièrement vérifiées. Réessayez.",
+  "update.stableTitle": "Passer à la version stable v{v}",
+  "update.stableBody": "Version de test actuelle : {build}. La version stable la remplace sur place en conservant les réglages. Aucun téléchargement ni extraction manuels ne sont nécessaires.",
+  "update.stableDownload": "Télécharger et passer à la version stable",
+  "update.notesUnavailable": "Les notes sont indisponibles. Consultez la page de version."
+});
+
+// Verified update checks and explicit stable promotion.
+I18N.add("de", {
+  "update.unconfirmedTitle": "Neueste Version nicht bestätigt",
+  "update.unconfirmedBody": "Einige Updatequellen antworten, ihre Angaben konnten aber nicht vollständig abgeglichen werden. Bitte erneut versuchen.",
+  "update.stableTitle": "Zur stabilen Version v{v} wechseln",
+  "update.stableBody": "Aktueller Teststand: {build}. Die stabile Version ersetzt ihn im selben Ordner und behält die Einstellungen. Manuelles Herunterladen und Entpacken ist nicht nötig.",
+  "update.stableDownload": "Herunterladen und zur stabilen Version wechseln",
+  "update.notesUnavailable": "Versionshinweise konnten nicht geladen werden. Sie stehen auf der Releaseseite."
+});
+
+// Verified update checks and explicit stable promotion.
+I18N.add("es", {
+  "update.unconfirmedTitle": "Última versión sin confirmar",
+  "update.unconfirmedBody": "Algunas fuentes responden, pero no se ha podido contrastar toda la información. Vuelve a intentarlo.",
+  "update.stableTitle": "Cambiar a la versión estable v{v}",
+  "update.stableBody": "Versión de prueba actual: {build}. La versión estable la sustituye en la misma carpeta y conserva los ajustes. No hace falta descargar ni descomprimir manualmente.",
+  "update.stableDownload": "Descargar y cambiar a la versión estable",
+  "update.notesUnavailable": "No se han podido obtener las notas. Consulta la página de la versión."
+});

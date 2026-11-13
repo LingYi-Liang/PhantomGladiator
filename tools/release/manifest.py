@@ -35,11 +35,11 @@ def main():
     assert set(entry["notes"]) == set(old["notes"]), (set(entry["notes"]), set(old["notes"]))
     assert [d["id"] for d in old["downloads"]] == list(MIRRORS), [d["id"] for d in old["downloads"]]
     asset = f"https://github.com/{REPO}/releases/download/v{version}/PhantomGladiator-{version}-win64.zip"
-    new = {"version": version, "date": entry["date"], "size": size, "sha256": sha, "notes": entry["notes"],
+    new = {"version": version, "modBuild": "v" + version, "date": entry["date"], "size": size, "sha256": sha, "notes": entry["notes"],
            "downloads": [{"id": k, "url": prefix + asset} for k, prefix in MIRRORS.items()]}
     versions = json.loads((listed if listed.is_file() else release / listed.name).read_text(encoding="utf-8"))
     assert all(v["version"] != version for v in versions["versions"]), f"versions.json already lists {version}"
-    versions["versions"].insert(0, {k: new[k] for k in ("version", "date", "size", "sha256", "downloads")})
+    versions["versions"].insert(0, {k: new[k] for k in ("version", "modBuild", "date", "size", "sha256", "downloads", "notes")})
     safe.mkdir(exist_ok=True)
     text = json.dumps(new, ensure_ascii=False, indent=2) + ("\n" if old_text.endswith("\n") else "")
     path.write_text(text, encoding="utf-8", newline="\n")

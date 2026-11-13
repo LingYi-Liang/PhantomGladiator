@@ -84,8 +84,8 @@ namespace PhantomGladiator
             Expect((string)r["version"] == "0.37.1" && clock.ElapsedMilliseconds < 9000,
                 "sources are asked at once (" + clock.ElapsedMilliseconds + " ms with two timeouts)");
 
-            r = Check(server, "0.37.1", "old", "new");
-            Expect((bool)r["latest"], "already on the newest version");
+            ExpectRefused(() => Check(server, "0.37.1", "old", "new"), "updateUnconfirmed",
+                "matching cached versions without an independent confirmation do not claim latest");
 
             r = Check(server, "0.37.0", "new", "new2");
             Expect((string)r["date"] == "first", "on a tie the source listed first is kept");
