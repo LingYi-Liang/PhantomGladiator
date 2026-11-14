@@ -1,6 +1,214 @@
 {
   "versions": [
     {
+      "version": "0.40.14",
+      "modBuild": "v0.40.14",
+      "date": "2026-11-15T02:20:51+08:00",
+      "size": 21330290,
+      "sha256": "c032093e6223c338af22d36f2dc5193cc6fc353affe4be36beb2d4f39fa28486",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.14/PhantomGladiator-0.40.14-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.14/PhantomGladiator-0.40.14-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.14/PhantomGladiator-0.40.14-win64.zip"
+        }
+      ],
+      "notes": {
+        "zh": [
+          "排队召唤新增配置：每笔生成完成后的间隔可设为0.05～600秒，默认0.25秒，设置会保存。排队仍默认关闭，不改变普通召唤的默认行为。",
+          "新增一对一接力与整队接力：先添加蓝红候补，再开始接力。整队每方可设置每批1～100人，允许混合不同单位；本队当前批次全部确认阵亡或退场后才补下一批，胜方不重置血量，原版回血和技能仍生效。",
+          "接力的首批准备完成后及时开战，阵亡补位不再多等一段生成间隔；整场计时连续，后续批次复用本场落点。停止清理、关闭队列或换世界会取消候补，旧召唤及开战回调不再改写已取消的新状态。",
+          "荆野、荆棘暴徒卡片新增“刺盾不反远程”开关，默认保留原版，下次召唤生效。仅关闭刺盾对远程的物理反伤与出血反附加，近战刺盾反伤、正常攻击、通用弹反及飞行物反弹保持原样；悬停可查看原版判定规则。",
+          "修复接地、传送、场地清理及随从跟随／动画检查中继续访问失效组件的问题；跳过危险调用，并明确记录无法确认的恢复结果。",
+          "尸体移出仇恨列表未确认成功时会限频重试，不再把失败标记为完成。清理离场记录并核对演员身份，减少接力长期运行中的旧地址记录积累，以及同地址新单位沿用旧缓存的问题。",
+          "自定义数值部分写入成功但其他项回滚失败时，不再报告安全成功；随行和召唤物流程也会传播失败并保留对象供清理。已安全恢复原值的单位仍可参战。不倒下的失败重试预算绑定演员身份，随从速度恢复异常时保留状态并限频重试。",
+          "修复处决镜头中途启动失败时视角或临时相机未完整回收、取消失败的旧回调继续驱动新镜头，以及借用镜头交接失败的问题；销毁相机未确认时保留回收记录继续处理。",
+          "多人共用场地时，按每个BOSS实际取得的物件记录归属，避免某个BOSS清理时误删另一位补齐的物件；同一演员重复准备不会重复占用归属计数。",
+          "助手只读状态和目录请求增加5秒截止与恢复检查，命令提交及回执读取增加15秒截止。过期目录不再覆盖新映射，目录读取失败可重试；接收结果未知时明确提示，不自动重发召唤，也不生成没有有效编号的指令记录。",
+          "修复在途指令被最近100条可见历史挤出后无法及时确认结果的问题。额外结果跟踪和缓存都有上限，完成或超时后释放；卡片设置保存完成或失败后恢复可点，避免重复提交和无法重试。",
+          "减少空场HUD查找、与刺盾无关事件的会话查询及无工作时的反复挂钩装卸；生成间隔较长时，接力控制观察保持有界频率。诊断导出补充排队配置，便于核对设置和执行情况。",
+          "已通过137组离线回归，以及Lua语法与离线启动检查。接力、刺盾、镜头交接、多人场地和长期帧时间仍需实机验证；离线调用次数减少不等于已测得游戏帧率提升，也不代表所有NPC组合或闪退均已解决。",
+          "已知风险：旧式生命／杀气下限恢复记录在热重载后仍存在对象身份识别风险，本次未迁移该格式。重载前请关闭无仇恨、不倒下与无限杀气，停止清理并确认恢复；无法确认恢复时先保留诊断并退出游戏，不要用热重载代替清理。菜单滚轮失效反馈仍待明确场景复现。"
+        ],
+        "en": [
+          "Summon queue settings now let you choose a 0.05–600 second interval after each generation finishes, with a default of 0.25 seconds. Settings are saved. Queuing remains off by default and does not change normal summoning by default.",
+          "Added one-on-one and team relay modes: add blue and red reserves, then start the relay. Team mode supports 1–100 units per side per wave, including mixed units. The next wave enters only after the current side is confirmed defeated or gone. Survivors keep their health; native healing and skills still work.",
+          "Ready opening waves now start fighting without an extra generation interval, and replacements no longer wait through a duplicated interval. The match clock continues across waves, which reuse the match's spawn positions. Stop and clean, disabling the queue or changing worlds cancels reserves; retired spawn and battle-start callbacks no longer overwrite cancelled state.",
+          "A “No ranged thorns retaliation” switch is available only on the cards for 荆野 and 荆棘暴徒. It defaults to native behavior and applies to subsequent summons. It disables only the physical damage and bleed buildup returned by the shield when a ranged hit triggers its retaliation. Melee thorns, normal attacks, ordinary parries and projectile rebound remain unchanged. Hover for the native rules.",
+          "Fixed unsafe calls to invalid components during grounding, teleportation, stage cleanup and companion follow/animation checks. Such calls are skipped, and recovery that cannot be confirmed is reported explicitly.",
+          "Removing corpses from hatred lists is now retried at a controlled rate until success is confirmed, rather than marking a failed attempt complete. Departed records are cleared and actor identity is checked to reduce stale-address accumulation and cached state leaking into replacement units during long relays.",
+          "Partial custom-stat success no longer hides a failed rollback. Escort and summon flows propagate the failure and retain the actor for cleanup; actors whose original values were safely restored may still fight. Not Down retry budgets now follow actor identity, and failed companion speed restores keep their state for paced retries.",
+          "Fixed incomplete view or temporary-camera recovery when execution-camera startup fails, retired callbacks driving a newer camera run, and failed borrowed-camera handoffs. Camera destruction that cannot be confirmed remains tracked for further cleanup.",
+          "Shared stages now track the objects each boss actually acquired, preventing one boss's cleanup from deleting objects another boss supplied. Preparing the same actor again no longer adds a duplicate ownership reference.",
+          "Read-only status and catalog requests now have a 5-second deadline and recovery checks; command submission and receipt reads have a 15-second deadline. Stale catalogs cannot overwrite newer mappings, and failed catalog reads can be retried. Unconfirmed command acceptance is reported without automatically resending summons or creating records with invalid command IDs.",
+          "Fixed in-flight commands losing timely result confirmation after being pushed out of the latest 100 visible history entries. Additional tracking and caches are bounded and released on completion or timeout. Card-setting controls become usable again after either save success or failure, avoiding duplicate submissions and blocked retries.",
+          "Reduced idle HUD lookups, session queries for unrelated thorns events and repeated hook installation/removal when there is no work. Relay control observations remain rate-limited during long generation intervals. Diagnostics now include queue settings.",
+          "Passed 137 offline regression groups, plus Lua syntax and offline startup checks. Relays, thorns retaliation, camera handoffs, shared stages and long-session frame times still need in-game validation. Fewer offline calls do not establish a measured FPS gain or prove that every NPC combination or crash is resolved.",
+          "Known risk: legacy health/Sha-Chi floor recovery records can still misidentify actors after a hot reload; this release does not migrate that format. Before reloading, disable No Aggro, Not Down and Infinite Sha-Chi, then stop and clean and confirm recovery. If recovery is unconfirmed, retain diagnostics and exit the game instead of using hot reload as cleanup. The menu mouse-wheel report still needs a reproducible game scenario."
+        ],
+        "ja": [
+          "召喚キューに設定を追加。各生成の完了後に待つ間隔を0.05～600秒から選べます。初期値は0.25秒で、設定は保存されます。キューは初期状態では無効のままなので、通常の召喚の初期動作は変わりません。",
+          "一対一リレーとチームリレーを追加。青・赤の控えを登録してから開始します。チームごとの一組を1～100体に設定でき、異なるユニットを混ぜられます。現在の組が全員死亡または退場したことを確認してから次の組を補充します。生き残った側のHPはリセットせず、原作の回復やスキルは引き続き有効です。",
+          "初期の両陣営が揃った後に生成間隔を余分に待たず開戦し、交代時の待ち時間も重複しなくなりました。対戦時計は継続し、次の組は対戦の召喚位置を引き継ぎます。停止・清掃、キューの無効化、ワールド変更で控えを取り消し、古い召喚・開戦コールバックが取消後の状態を上書きしないようにしました。",
+          "荆野・荆棘暴徒のカードだけに「棘盾で遠距離にダメージを返さない」スイッチを追加。初期値は原作どおりで、次回の召喚から適用されます。遠距離の命中に対して棘盾が返す物理ダメージと出血蓄積だけを無効にします。近接への棘盾反射、通常攻撃、通常の弾き、飛び道具の跳ね返しは変わりません。マウスを重ねると原作の判定ルールを確認できます。",
+          "接地、転送、戦闘エリアの清掃、お供の追従・アニメーション確認中に、無効なコンポーネントを呼び出す問題を修正。危険な呼び出しはスキップし、復元を確認できない場合は明示的に記録します。",
+          "死体をヘイトリストから除く処理は、失敗を完了扱いにせず、成功を確認するまで間隔を空けて再試行します。退場済みの記録を整理し、対象の同一性を確認して、長時間リレーでの古いアドレス記録の蓄積や、新しいユニットへのキャッシュの引き継ぎを減らしました。",
+          "カスタム能力値の一部が成功しても、他の項目の復元失敗を安全な成功として報告しなくなりました。随行・召喚ユニットの処理にも失敗を伝え、対象を清掃用に保持します。元の値へ安全に戻せたユニットは引き続き戦えます。不倒の再試行回数は対象の同一性に結び付け、お供の速度復元に失敗した場合は状態を保持して間隔を空けて再試行します。",
+          "処決カメラの開始失敗時に視点や一時カメラを十分に回収できない問題、古いコールバックが新しいカメラ動作を制御する問題、借用カメラの引き継ぎ失敗を修正。カメラの破棄を確認できない場合は、回収記録を残して処理を続けます。",
+          "複数BOSSで戦闘エリアを共有する際は、それぞれが実際に取得した物件を記録します。一方の清掃が他方の追加した物件を消さず、同じ対象を再準備しても所有参照を重複して増やしません。",
+          "状態・図鑑の読取要求に5秒の期限と復帰確認を、指令送信・受付応答の読取りに15秒の期限を追加。古い図鑑が新しい対応表を上書きせず、図鑑の読取り失敗は再試行できます。指令の受付を確認できない場合は明示し、召喚の自動再送や無効な指令IDの記録は行いません。",
+          "処理中の指令が最新100件の表示履歴から外れた後、結果を適時に確認できない問題を修正。追加の追跡とキャッシュには上限を設け、完了・期限切れ時に解放します。カード設定は保存成功・失敗のいずれでも再び操作でき、重複送信や再試行できない状態を防ぎます。",
+          "何も処理しないときのHUD検索、棘盾と無関係なイベントのセッション確認、不要なフックの反復登録・解除を削減。生成間隔が長い場合もリレー状態の確認頻度を制限します。診断にはキュー設定を追加しました。",
+          "オフライン回帰チェック137組と、Lua構文・オフライン起動チェックを通過。リレー、棘盾反射、カメラ引き継ぎ、戦闘エリア共有、長時間プレイ時のフレーム時間は引き続き実機確認が必要です。オフライン呼出回数の減少はFPS向上の実測や、全NPCの組合せ・クラッシュ解消の証明ではありません。",
+          "既知のリスク：旧形式のHP・殺気下限の復元記録は、ホットリロード後に対象を誤認する可能性が残っています。本版ではこの形式を移行しません。再読込み前に無ヘイト・不倒・無限殺気を無効にし、停止・清掃後に復元を確認してください。確認できない場合は診断を残してゲームを終了し、清掃の代わりにホットリロードしないでください。メニューのホイール不具合報告も、再現する場面の確認が必要です。"
+        ],
+        "fr": [
+          "Les réglages de la file d'invocation permettent de choisir un intervalle de 0,05 à 600 secondes après chaque génération, avec une valeur par défaut de 0,25 seconde. Ils sont sauvegardés. La file reste désactivée par défaut et ne change pas le fonctionnement initial des invocations normales.",
+          "Ajout des relais en duel et par équipes : inscrivez les réserves bleues et rouges, puis lancez le relais. Le mode équipe accepte de 1 à 100 unités par camp et par vague, avec des unités différentes. La vague suivante arrive uniquement lorsque la précédente est entièrement confirmée vaincue ou retirée. Les survivants gardent leurs PV ; soins et compétences d'origine restent actifs.",
+          "Le combat commence lorsque les premières vagues sont prêtes, sans attendre un intervalle de génération supplémentaire ; l'attente des remplacements n'est plus doublée. Le chronomètre continue entre les vagues, qui réutilisent les positions du combat. Arrêter et nettoyer, désactiver la file ou changer de monde annule les réserves ; les anciens rappels d'invocation et de démarrage ne réécrivent plus l'état annulé.",
+          "Un interrupteur « Pas de représailles du bouclier épineux à distance » est disponible uniquement sur les cartes de 荆野 et 荆棘暴徒. Le comportement d'origine reste la valeur par défaut, et le changement s'applique aux prochaines invocations. Seuls les dégâts physiques et l'accumulation de saignement renvoyés par le bouclier en réaction à un impact à distance sont désactivés. Représailles au corps à corps, attaques normales, parades ordinaires et renvois de projectiles restent inchangés. Survolez le contrôle pour lire les règles d'origine.",
+          "Correction d'appels dangereux à des composants invalides pendant la mise au sol, la téléportation, le nettoyage des zones de combat et les vérifications de suivi ou d'animation des compagnons. Ces appels sont ignorés et les restaurations non confirmées sont signalées explicitement.",
+          "Le retrait des cadavres des listes de haine est réessayé à une fréquence limitée jusqu'à confirmation, au lieu de considérer un échec comme terminé. Les enregistrements des unités parties sont libérés et leur identité est vérifiée, afin de réduire l'accumulation d'anciennes adresses et la transmission de caches à des unités de remplacement lors des longs relais.",
+          "Une réussite partielle des caractéristiques personnalisées ne masque plus un échec de restauration. Les traitements des escortes et unités invoquées transmettent aussi l'échec et conservent l'acteur pour nettoyage ; une unité dont les valeurs d'origine ont été rétablies sans risque peut toujours combattre. Le budget de tentatives du maintien de vie suit désormais l'identité de l'acteur. Une restauration de vitesse échouée conserve son état pour des tentatives espacées.",
+          "Correction de la récupération incomplète de la vue ou de la caméra temporaire après un échec de démarrage de la caméra d'exécution, des anciens rappels contrôlant une nouvelle séquence et des échecs de transfert de caméra empruntée. Une destruction de caméra non confirmée reste enregistrée pour poursuivre le nettoyage.",
+          "Les zones partagées enregistrent les objets réellement acquis par chaque boss, afin que le nettoyage de l'un ne supprime pas ceux ajoutés par un autre. Préparer à nouveau le même acteur n'ajoute plus une référence de propriété en double.",
+          "Les lectures d'état et de catalogue ont désormais une échéance de 5 secondes avec vérification de reprise ; l'envoi de commande et la lecture de son accusé de réception ont une échéance de 15 secondes. Un ancien catalogue ne remplace plus les correspondances récentes et une lecture de catalogue échouée peut être retentée. Une réception non confirmée est signalée sans renvoyer automatiquement les invocations ni créer de ligne avec un identifiant de commande invalide.",
+          "Correction du suivi des résultats lorsqu'une commande encore en cours sort des 100 dernières lignes visibles de l'historique. Le suivi supplémentaire et les caches sont limités, puis libérés après achèvement ou expiration. Les contrôles des cartes redeviennent utilisables après une sauvegarde réussie ou échouée, évitant les envois en double et permettant de réessayer.",
+          "Réduction des recherches de HUD à vide, des vérifications de session pour les événements sans lien avec le bouclier épineux et des installations/retraits de hooks inutiles. La fréquence d'observation du relais reste limitée pendant les longs intervalles de génération. Les diagnostics incluent les réglages de file.",
+          "Les 137 groupes de régression hors ligne, ainsi que les contrôles de syntaxe Lua et de démarrage hors ligne, sont passés. Relais, représailles des boucliers, transferts de caméra, zones partagées et temps d'image sur la durée nécessitent encore une validation en jeu. Moins d'appels hors ligne ne prouve pas un gain de FPS mesuré ni la résolution de toutes les combinaisons de NPC ou de tous les plantages.",
+          "Risque connu : l'ancien format des enregistrements de restauration des seuils de vie/Sha-Chi peut encore confondre les acteurs après un rechargement à chaud ; cette version ne migre pas ce format. Avant de recharger, désactivez le mode sans aggro, le maintien de vie et le Sha-Chi infini, puis arrêtez et nettoyez en vérifiant la restauration. Si elle n'est pas confirmée, conservez un diagnostic et quittez le jeu plutôt que de remplacer le nettoyage par un rechargement à chaud. Le signalement de la molette dans les menus nécessite encore une situation reproductible."
+        ],
+        "de": [
+          "Die Beschwörungswarteschlange lässt sich jetzt auf 0,05 bis 600 Sekunden Pause nach jeder abgeschlossenen Erzeugung einstellen; der Standard bleibt 0,25 Sekunden. Die Einstellungen werden gespeichert. Die Warteschlange ist standardmäßig weiter ausgeschaltet und ändert das normale Beschwören im Ausgangszustand nicht.",
+          "Einzel- und Teamstaffeln hinzugefügt: Zuerst blaue und rote Reserven eintragen, dann die Staffel starten. Im Teammodus sind 1 bis 100 Einheiten pro Seite und Welle möglich, auch unterschiedliche Einheiten. Die nächste Welle folgt erst, wenn die aktuelle Seite vollständig als besiegt oder ausgeschieden bestätigt ist. Überlebende behalten ihre LP; ursprüngliche Heilung und Fähigkeiten bleiben aktiv.",
+          "Der Kampf startet, sobald die ersten Wellen bereit sind, ohne ein zusätzliches Erzeugungsintervall abzuwarten; Ersatzwellen warten nicht mehr doppelt. Die Kampfuhr läuft weiter und spätere Wellen verwenden dieselben Positionen. Stoppen und bereinigen, Abschalten der Warteschlange oder ein Weltwechsel verwirft Reserven; alte Beschwörungs- und Start-Callbacks überschreiben den abgebrochenen Zustand nicht mehr.",
+          "Nur die Karten von 荆野 und 荆棘暴徒 erhalten den Schalter „Keine Fernkampf-Gegenwirkung des Dornenschilds“. Standard ist das ursprüngliche Verhalten; Änderungen gelten für spätere Beschwörungen. Er schaltet nur den physischen Gegenschaden und den Blutungsaufbau aus, die der Schild als Reaktion auf einen Fernkampftreffer zurückgibt. Nahkampf-Gegenwirkung, normale Angriffe, gewöhnliche Paraden und das Abprallen von Geschossen bleiben unverändert. Beim Darüberfahren erscheinen die ursprünglichen Regeln.",
+          "Gefährliche Aufrufe ungültiger Komponenten beim Aufsetzen auf den Boden, Teleportieren, Bereinigen von Kampfbereichen sowie bei Begleiter- und Animationsprüfungen behoben. Solche Aufrufe werden übersprungen und nicht bestätigte Wiederherstellungen ausdrücklich gemeldet.",
+          "Das Entfernen von Leichen aus Hasslisten wird mit begrenzter Frequenz wiederholt, bis der Erfolg bestätigt ist; ein Fehlschlag zählt nicht mehr als Abschluss. Datensätze ausgeschiedener Einheiten werden freigegeben und die Identität wird geprüft. Das reduziert alte Adressdatensätze und die Übernahme fremder Cachezustände durch neue Einheiten in langen Staffeln.",
+          "Eine teilweise erfolgreiche Anpassung benutzerdefinierter Werte verdeckt keine fehlgeschlagene Rücksetzung mehr. Auch Eskorten und beschworene Helfer geben den Fehler weiter und bleiben für die Bereinigung registriert; sicher auf ihre ursprünglichen Werte zurückgesetzte Einheiten können weiter kämpfen. Das Wiederholungsbudget von Nicht fallen folgt der Identität des Akteurs. Fehlgeschlagene Wiederherstellungen der Begleitergeschwindigkeit behalten ihren Zustand für Wiederholungen in festen Abständen.",
+          "Unvollständige Rückgabe der Ansicht oder Freigabe temporärer Kameras bei fehlgeschlagenem Start einer Hinrichtungskamera, alte Callbacks für einen neueren Kameraablauf und fehlgeschlagene Übergaben geliehener Kameras behoben. Nicht bestätigte Kamerazerstörungen bleiben für weitere Bereinigung vermerkt.",
+          "Gemeinsam genutzte Kampfbereiche erfassen die tatsächlich von jedem Boss übernommenen Objekte. So entfernt die Bereinigung eines Bosses keine Objekte, die ein anderer ergänzt hat. Erneutes Vorbereiten desselben Akteurs erhöht die Besitzreferenz nicht doppelt.",
+          "Nur lesende Status- und Kataloganfragen haben jetzt eine Frist von 5 Sekunden mit Wiederaufnahmeprüfung; Befehlsübermittlung und Empfangsbestätigung eine Frist von 15 Sekunden. Veraltete Kataloge überschreiben keine neueren Zuordnungen, und fehlgeschlagene Kataloglesevorgänge können wiederholt werden. Unbestätigter Empfang wird gemeldet, ohne Beschwörungen automatisch erneut zu senden oder Einträge mit ungültiger Befehls-ID anzulegen.",
+          "Die Ergebnisse laufender Befehle werden auch dann rechtzeitig verfolgt, wenn sie aus den letzten 100 sichtbaren Verlaufseinträgen fallen. Zusätzliche Verfolgung und Caches sind begrenzt und werden bei Abschluss oder Zeitablauf freigegeben. Karteneinstellungen sind nach erfolgreichem oder fehlgeschlagenem Speichern wieder bedienbar, damit keine doppelten Übermittlungen oder blockierten Wiederholungen entstehen.",
+          "Weniger HUD-Suchen im Leerlauf, Sitzungsabfragen bei nicht relevanten Dornenschild-Ereignissen und unnötige wiederholte Hook-Registrierungen. Bei langen Erzeugungsintervallen bleibt die Beobachtungsrate der Staffel begrenzt. Diagnoseberichte enthalten nun die Warteschlangeneinstellungen.",
+          "137 Offline-Regressionsgruppen sowie Lua-Syntax- und Offline-Startprüfungen bestanden. Staffeln, Dornenschild-Gegenwirkung, Kameraübergaben, gemeinsame Kampfbereiche und langfristige Bildzeiten müssen noch im Spiel geprüft werden. Weniger Offline-Aufrufe belegen weder einen gemessenen FPS-Gewinn noch die Behebung aller NPC-Kombinationen oder Abstürze.",
+          "Bekanntes Risiko: Das alte Format zur Wiederherstellung von Lebens-/Sha-Chi-Untergrenzen kann Akteure nach einem Hot-Reload weiterhin verwechseln; diese Version migriert das Format nicht. Vor dem Neuladen Ohne Aggro, Nicht fallen und unendliches Sha-Chi abschalten, dann stoppen und bereinigen sowie die Wiederherstellung bestätigen. Ist sie unbestätigt, Diagnosen sichern und das Spiel beenden, statt die Bereinigung durch einen Hot-Reload zu ersetzen. Für das gemeldete Mausradproblem in Menüs fehlt noch eine reproduzierbare Spielsituation."
+        ],
+        "es": [
+          "Los ajustes de la cola de invocación permiten elegir una pausa de 0,05 a 600 segundos tras cada generación, con un valor predeterminado de 0,25 segundos. Se guardan los ajustes. La cola sigue desactivada por defecto y no cambia el comportamiento inicial de las invocaciones normales.",
+          "Añadidos los relevos individuales y por equipos: añade reservas azules y rojas y después inicia el relevo. El modo por equipos admite de 1 a 100 unidades por bando y tanda, con unidades distintas. La siguiente tanda entra solo cuando se confirma que todo el bando actual ha sido derrotado o ha salido. Los supervivientes conservan su vida; la curación y las habilidades originales siguen activas.",
+          "El combate comienza cuando las tandas iniciales están listas, sin esperar otro intervalo de generación; los reemplazos ya no acumulan una espera duplicada. El cronómetro continúa entre tandas y se reutilizan las posiciones del combate. Detener y limpiar, desactivar la cola o cambiar de mundo cancela las reservas; los callbacks antiguos de invocación e inicio ya no sobrescriben el estado cancelado.",
+          "Solo las tarjetas de 荆野 y 荆棘暴徒 incorporan el interruptor «Sin represalias del escudo de púas a distancia». Conserva el comportamiento original por defecto y se aplica a las siguientes invocaciones. Desactiva únicamente el daño físico y la acumulación de sangrado que el escudo devuelve como respuesta a un impacto a distancia. Las represalias cuerpo a cuerpo, ataques normales, paradas ordinarias y rebotes de proyectiles no cambian. Al pasar el ratón se muestran las reglas originales.",
+          "Corregidas llamadas peligrosas a componentes inválidos al colocar unidades en el suelo, teletransportarlas, limpiar zonas de combate y comprobar el seguimiento o las animaciones de los compañeros. Se omiten esas llamadas y se registran expresamente las restauraciones que no pueden confirmarse.",
+          "La retirada de cadáveres de las listas de odio se reintenta con una frecuencia limitada hasta confirmar el éxito, en lugar de marcar un fallo como terminado. Se liberan los registros de unidades que han salido y se comprueba su identidad para reducir la acumulación de direcciones antiguas y la transferencia de estados de caché a unidades nuevas en relevos largos.",
+          "Un éxito parcial al aplicar atributos personalizados ya no oculta una restauración fallida. Las escoltas y unidades invocadas también propagan el fallo y conservan el actor para su limpieza; las unidades cuyos valores originales se han restaurado de forma segura pueden seguir combatiendo. El límite de reintentos de No caer sigue la identidad del actor. Si falla la restauración de velocidad de un compañero, se conserva el estado para reintentos espaciados.",
+          "Corregida la recuperación incompleta de la vista o de cámaras temporales cuando falla el inicio de la cámara de ejecución, los callbacks antiguos que controlaban una secuencia nueva y los fallos al transferir cámaras prestadas. Si no se confirma la destrucción de una cámara, su registro se conserva para continuar la limpieza.",
+          "Las zonas compartidas registran los objetos que cada jefe ha adquirido realmente, evitando que la limpieza de uno borre objetos añadidos por otro. Preparar de nuevo al mismo actor ya no duplica su referencia de propiedad.",
+          "Las lecturas de estado y catálogo tienen ahora un límite de 5 segundos y comprobaciones de recuperación; el envío de comandos y la lectura de sus confirmaciones tienen un límite de 15 segundos. Un catálogo antiguo no sobrescribe las correspondencias recientes y una lectura fallida puede reintentarse. La recepción no confirmada se indica sin reenviar invocaciones automáticamente ni crear registros de comandos con identificadores inválidos.",
+          "Corregido el seguimiento de resultados de comandos en curso que quedaban fuera de las últimas 100 entradas visibles del historial. El seguimiento adicional y las cachés están limitados y se liberan al terminar o agotar el plazo. Los controles de las tarjetas vuelven a estar disponibles tanto si se guardan correctamente como si falla el guardado, evitando envíos duplicados y permitiendo reintentar.",
+          "Reducidas las búsquedas de HUD sin trabajo pendiente, las consultas de sesión de eventos ajenos al escudo de púas y las instalaciones o retiradas repetidas de hooks innecesarios. La observación del relevo mantiene una frecuencia limitada durante intervalos largos de generación. Los diagnósticos incluyen los ajustes de la cola.",
+          "Superados 137 grupos de regresión sin conexión, además de las comprobaciones de sintaxis Lua e inicio sin conexión. Los relevos, represalias de escudos, transferencias de cámara, zonas compartidas y tiempos de fotograma en sesiones largas aún necesitan validación en el juego. Reducir llamadas sin conexión no demuestra una mejora de FPS medida ni la resolución de todas las combinaciones de NPC o de todos los cierres inesperados.",
+          "Riesgo conocido: el formato antiguo de los registros de restauración de los mínimos de vida/Sha-Chi aún puede confundir actores tras una recarga en caliente; esta versión no migra ese formato. Antes de recargar, desactiva Sin aggro, No caer y Sha-Chi infinito, detén y limpia y confirma la restauración. Si no puede confirmarse, conserva el diagnóstico y sal del juego en vez de usar la recarga en caliente como limpieza. El aviso sobre la rueda del ratón en los menús aún necesita una situación reproducible."
+        ]
+      },
+      "parts": {
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.000",
+            "size": 2097152,
+            "sha256": "33173110700e775a74bf32a7b64f8aecf9d79319e2946dd63152ab3b329983f8"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.001",
+            "size": 2097152,
+            "sha256": "ded5b0ce01aada9762fec80728f305ee23e45b6cc660952bcb4c7653e41c4b0d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.002",
+            "size": 2097152,
+            "sha256": "d79b950405afde64e51174bfc6db22e880c9dfd7c6e08714f231848cb3fc564f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.003",
+            "size": 2097152,
+            "sha256": "d29e05aa9e43df578ad8979bc6d05aab2c546f829cc3d443ef499fa71f3f9476"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.004",
+            "size": 2097152,
+            "sha256": "64dcb40b71984daa2208a22cb30cf7952fb722139245a81a4071de9036fe63dc"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.005",
+            "size": 2097152,
+            "sha256": "012c09915c6564a0cc07f9956009c5ac23563f12a411f112c1fa766d3adb809f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.006",
+            "size": 2097152,
+            "sha256": "e509412a0d486e42769c90f8c6ed493b723a0517c70e1dabbd2fcf08d1b7c637"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.007",
+            "size": 2097152,
+            "sha256": "2bcfe5016d213015c6b43e2c0439eb74969f124b82ae467b6be365ab8b31c7f8"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.008",
+            "size": 2097152,
+            "sha256": "62d2d97bd89bff8eae4a09232508b01aa8b136c1ef14ca42c23da53c2acc9139"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.009",
+            "size": 2097152,
+            "sha256": "01cf29b0f517b8bbab7d7b7437094b25f60d01fb86afa6b82715827638bd3082"
+          },
+          {
+            "name": "PhantomGladiator-0.40.14-win64.zip.010",
+            "size": 358770,
+            "sha256": "217d4d3b70a29a94a2e1b4856bdcda19cd4877288de303f99c721f12fb95d253"
+          }
+        ],
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.14/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.14/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.14/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.14/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.14/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.14/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.14/"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.13",
       "modBuild": "v0.40.13",
       "date": "2026-11-13T15:24:04+08:00",
@@ -266,6 +474,92 @@
             "id": "github",
             "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.12/"
           }
+        ]
+      },
+      "notes": {
+        "zh": [
+          "调整当前玩家和场景识别，避免换图、复活后继续沿用仍有效的旧控制器、旧玩家或旧场景。",
+          "修复旧快捷键请求跨场景执行，以及停止清理后待执行的普通召唤回调仍把怪补出来的问题；清理和解除现有模式在加载期间仍可用。",
+          "加强类对象和协作树名称读取前的有效性检查，减少访问失效对象的风险。",
+          "修复指令日志轮换后旧内存记录持续积累，并补全轮换中断后的副本恢复；未确认完成的指令不会重复执行。",
+          "修复等级模式、全局自定义等级和单怪等级保存失败后仍改变运行设置；修正部分设置把文件关闭错误当作保存成功的判断。",
+          "修复关闭“不倒下”和“无限杀气”时恢复失败却丢弃原值记录的问题；保留记录并限频重试，避免覆盖~~新对象或~~其他机制修改的下限。",
+          "修复同一秒或同时导出诊断报告时重名导致的失败，各份报告分别保留；诊断包补充怪物池、召唤周目、AI自定义、卡面规则与按键配置。",
+          "新增六张标明来源的特殊单位卡：鬼斩客、铁面杀手首领版、追命一阶段、红衣女剑客剑阵版、铁鬼独战版、玉琮原版战斗体，保留各自原生配置。",
+          "调整烈焰舞狮的桩体／横杆避让和桩位几何读取，补充换桩未开始或位移失败的原因记录；连续跨桩仍为实验适配。",
+          "补齐六张新卡来源和说明的六语显示。角色、地图等游戏数据名称保留原文。",
+          "数值说明：从0.40.11起，跟随周目时不再把叠加后的生成等级截到60级，因此高周目老家模式的血量可能比旧版高；自定义固定等级仍优先，且不随周目叠加。",
+          "126组离线回归检查通过。新增特殊卡的独立参战、特殊协作、烈焰连续跨桩及长时间高频操作仍需实机验证，尚不能承诺解决全部闪退。此版更新游戏内Mod，请按助手提示完成安装。"
+        ],
+        "en": [
+          "Adjusted current-player and world selection so map changes and respawns do not retain an obsolete controller, pawn or world merely because it is still valid.",
+          "Fixed queued hotkeys crossing worlds and ordinary summon callbacks spawning after Stop and Clear. Cleanup and disabling existing modes remain available while loading.",
+          "Added validity checks before reading class objects and cooperation-tree names to reduce access to expired objects.",
+          "Fixed completed command records accumulating in memory after journal rotation and restored interrupted compaction copies before further writes. Unconfirmed commands are never replayed.",
+          "Fixed failed level-setting saves changing the running level mode, global custom level or per-unit level. Settings no longer treat a failed file close as a successful save.",
+          "Fixed losing original-floor records when disabling Not Down or Infinite Sha-Chi failed to restore them. Records are kept for paced retries, without overwriting ~~new objects or~~ externally changed floors.",
+          "Fixed diagnostic export failures caused by same-second or concurrent filename collisions; each report is kept separately. Reports now include pool, summon-cycle, custom AI, unit-rule and hotkey settings.",
+          "Added six source-labeled special-unit cards: 鬼斩客, 铁面杀手 boss variant, 追命 first phase, 红衣女剑客 formation variant, 铁鬼 solo variant and 玉琮 native combat form. Each keeps its native configuration.",
+          "Adjusted Lion Dancer pole/link collision handling and pole geometry reads, with more reasons logged when a hop cannot start or reach its destination. Continuous pole hopping remains experimental.",
+          "Localized the six new cards' origins and descriptions in all six UI languages. Game-data names, including characters and maps, retain their original text.",
+          "Stats clarification: since 0.40.11, cycle-adjusted spawn levels are no longer capped at 60. Home-level HP can therefore be higher on later cycles. Fixed custom levels still take priority and do not receive cycle increments.",
+          "All 126 offline regression groups passed. Independent special-unit battles, native cooperation, continuous pole hopping and sustained frequent input still need in-game testing; this release does not promise to resolve every crash. Follow the app prompt to update the in-game mod."
+        ],
+        "ja": [
+          "現在のプレイヤーとワールドの選択を調整し、マップ移動や復活後に有効なまま残った古いコントローラー・キャラクター・ワールドを使い続けないようにしました。",
+          "待機中のキー操作が別ワールドで実行される問題と、停止・削除後に通常召喚の旧コールバックが実行される問題を修正。ロード中も清理と既存モードの解除は利用できます。",
+          "クラスオブジェクトと協力行動ツリーの名前を読む前の有効性確認を強化しました。",
+          "ログ整理後に古い完了記録がメモリに蓄積する問題を修正し、中断した圧縮コピーを追加書き込み前に復元します。完了未確認の指令は再実行しません。",
+          "レベル設定の保存失敗後に実行中のモード・共通指定レベル・個別レベルが変わる問題と、ファイルを閉じる際のエラーを保存成功と判定する問題を修正しました。",
+          "不倒・無限殺気の解除時に元の下限を復元できないと記録が失われる問題を修正。記録を保持して間隔を空けて再試行し、~~新しい対象や~~他の仕組みが変更した値を上書きしません。",
+          "同じ秒や同時に診断を出力した際の名前衝突による失敗を修正し、各レポートを個別に保持します。プール、召喚周回、AI設定、ユニットルール、キー設定も含めます。",
+          "出典付き特殊カード6枚を追加：鬼斩客、铁面杀手の首領版、追命の第1段階、红衣女剑客の剣陣版、铁鬼の単独版、玉琮の原作戦闘本体。各自の原作設定を保持します。",
+          "舞獅の杭・横杆の衝突回避と杭位置の形状読み取りを調整し、跳躍開始不能や移動失敗の原因ログを追加。連続杭移動は引き続き試験対応です。",
+          "新カード6枚の出典・説明をUIの6言語に対応しました。キャラクター・マップなどゲームデータの名称は原文を保持します。",
+          "能力値の補足：0.40.11以降、周回加算後の召喚レベルを60で打ち切らなくなったため、高周回の本来レベル設定では旧版よりHPが高くなる場合があります。固定指定レベルは優先され、周回加算されません。",
+          "オフライン回帰チェック126組を通過。特殊カードの独立対戦・連携、連続杭移動、長時間の連続操作は実機確認が必要で、全クラッシュの解決を保証しません。アプリの案内に従ってゲーム内Modを更新してください。"
+        ],
+        "fr": [
+          "Ajustement du choix du joueur et du monde actuels pour ne pas conserver un ancien contrôleur, personnage ou monde après un changement de carte ou une réapparition.",
+          "Correction des raccourcis exécutés dans un autre monde et des invocations ordinaires encore déclenchées après Arrêter et nettoyer. Le nettoyage et la désactivation des modes existants restent possibles pendant le chargement.",
+          "Renforcement des vérifications de validité avant de lire les objets de classe et les noms des arbres de coopération.",
+          "Correction de l'accumulation des anciennes commandes terminées en mémoire après rotation du journal. Une copie de compactage interrompu est restaurée avant toute nouvelle écriture ; les commandes non confirmées ne sont pas rejouées.",
+          "Correction des réglages de niveau modifiés en mémoire malgré un échec de sauvegarde, ainsi que des erreurs de fermeture de fichier prises pour une sauvegarde réussie.",
+          "Correction de la perte de la valeur minimale d'origine si sa restauration échoue en désactivant les fonctions de maintien de vie ou de Sha-Chi. Les enregistrements sont conservés pour des tentatives espacées, sans écraser ~~un nouvel objet ni~~ une valeur modifiée ailleurs.",
+          "Correction des échecs d'export dus aux collisions de noms lors d'exports simultanés ou dans la même seconde ; chaque rapport est conservé séparément. Le diagnostic inclut groupes, cycles, réglages d'IA, règles d'unités et raccourcis.",
+          "Ajout de six cartes spéciales avec leur origine : 鬼斩客, 铁面杀手 boss, 追命 phase 1, 红衣女剑客 formation, 铁鬼 solo et 玉琮 forme de combat native. Leurs configurations natives sont conservées.",
+          "Ajustement des collisions des poteaux et traverses du danseur-lion, de la lecture de leur géométrie et des diagnostics d'échec de saut. Les sauts successifs restent expérimentaux.",
+          "Origines et descriptions des six nouvelles cartes disponibles dans les six langues de l'interface. Les noms issus du jeu conservent leur texte d'origine.",
+          "Précision sur les statistiques : depuis 0.40.11, le niveau après ajout des cycles n'est plus plafonné à 60. Les PV au niveau d'origine peuvent donc être plus élevés dans les cycles avancés. Un niveau personnalisé fixe reste prioritaire, sans ajout de cycle.",
+          "Les 126 groupes de régression hors ligne sont passés. Combats indépendants, coopération, sauts successifs et entrées fréquentes prolongées restent à tester en jeu ; tous les plantages ne sont pas déclarés résolus. Suivez l'application pour mettre à jour le Mod du jeu."
+        ],
+        "de": [
+          "Auswahl des aktuellen Spielers und der Welt angepasst, damit nach Kartenwechsel oder Wiederbelebung keine veralteten Controller, Figuren oder Welten weiterverwendet werden.",
+          "Fehler bei weltübergreifenden wartenden Tasteneingaben und bei Beschwörungen nach Stoppen und Aufräumen behoben. Aufräumen und das Abschalten bestehender Modi bleiben beim Laden möglich.",
+          "Gültigkeitsprüfungen vor dem Lesen von Klassenobjekten und Namen der Kooperationsbäume verstärkt.",
+          "Ansammlung alter abgeschlossener Befehle im Speicher nach der Journalrotation behoben. Unterbrochene Kompaktkopien werden vor weiteren Schreibvorgängen wiederhergestellt; unbestätigte Befehle werden nicht erneut ausgeführt.",
+          "Fehlgeschlagene Stufenspeicherungen ändern nicht mehr den laufenden Modus oder feste Stufen. Fehler beim Schließen einer Datei gelten nicht mehr als erfolgreiche Speicherung.",
+          "Verlust der ursprünglichen Untergrenzen bei fehlgeschlagener Wiederherstellung nach Abschalten von Nicht fallen oder unendlichem Sha-Chi behoben. Datensätze bleiben für begrenzte Wiederholungen erhalten; ~~neue Objekte und~~ extern geänderte Werte werden nicht überschrieben.",
+          "Fehlgeschlagene Diagnoseexporte durch Namenskollisionen bei gleichzeitigen Exporten behoben; jeder Bericht bleibt separat erhalten. Berichte enthalten Pools, Beschwörungszyklen, eigene KI-Werte, Einheitenregeln und Tastenbelegungen.",
+          "Sechs besondere Karten mit Herkunft ergänzt: 鬼斩客, 铁面杀手 als Boss, 追命 Phase 1, 红衣女剑客 als Formation, 铁鬼 im Einzelkampf und 玉琮 in ursprünglicher Kampfform. Ursprüngliche Konfigurationen bleiben erhalten.",
+          "Pfosten- und Querstangenkollisionen, Geometrieabfragen und Fehlerprotokolle für Sprünge des Löwentänzers angepasst. Fortlaufende Pfostensprünge bleiben experimentell.",
+          "Herkunft und Beschreibung der sechs neuen Karten in allen sechs UI-Sprachen ergänzt. Namen aus den Spieldaten bleiben im Original.",
+          "Wertehinweis: Seit 0.40.11 wird die Stufe nach Zyklusaufschlägen nicht mehr auf 60 begrenzt. Im Heimatstufenmodus können spätere Zyklen daher mehr LP als ältere Versionen ergeben. Feste eigene Stufen haben Vorrang und erhalten keinen Zyklusaufschlag.",
+          "Alle 126 Offline-Regressionsgruppen bestanden. Eigenständige Kämpfe, Zusammenarbeit, fortlaufende Pfostensprünge und lange Eingabeserien benötigen weitere Spieltests; nicht alle Abstürze sind als behoben bestätigt. Die Mod nach dem Hinweis der App aktualisieren."
+        ],
+        "es": [
+          "Ajustada la selección del jugador y mundo actuales para no conservar controladores, personajes o mundos antiguos tras cambiar de mapa o reaparecer.",
+          "Corregidos los atajos pendientes que cruzaban de mundo y las invocaciones normales que se ejecutaban después de Detener y limpiar. La limpieza y desactivación de modos existentes siguen disponibles durante la carga.",
+          "Reforzadas las comprobaciones de validez antes de leer objetos de clase y nombres de árboles de cooperación.",
+          "Corregida la acumulación en memoria de comandos antiguos completados tras rotar el registro. Las copias de compactación interrumpida se recuperan antes de escribir; los comandos sin confirmar no se repiten.",
+          "Los fallos al guardar niveles ya no cambian el modo o los niveles fijos en ejecución. Los errores al cerrar archivos ya no se consideran guardados correctos.",
+          "Corregida la pérdida de los mínimos originales si su restauración fallaba al desactivar No caer o Sha-Chi infinito. Los registros se conservan para reintentos espaciados, sin sobrescribir ~~objetos nuevos ni~~ valores modificados por otros sistemas.",
+          "Corregidos los fallos de exportación por colisiones de nombres en diagnósticos simultáneos o del mismo segundo; cada informe se conserva por separado. Se incluyen grupos, ciclos, ajustes de IA, reglas de unidades y atajos.",
+          "Añadidas seis cartas especiales con origen indicado: 鬼斩客, 铁面杀手 jefe, 追命 fase 1, 红衣女剑客 formación, 铁鬼 individual y 玉琮 en forma de combate original. Conservan sus configuraciones originales.",
+          "Ajustadas las colisiones de postes y travesaños, las lecturas geométricas y los diagnósticos de salto de la danza del león. Los saltos continuos siguen siendo experimentales.",
+          "Orígenes y descripciones de las seis cartas nuevas disponibles en los seis idiomas. Los nombres procedentes del juego conservan su texto original.",
+          "Aclaración de estadísticas: desde 0.40.11, el nivel tras sumar los ciclos ya no se limita a 60. La vida en el modo de nivel de origen puede ser mayor en ciclos avanzados. Los niveles personalizados fijos conservan prioridad y no suman ciclos.",
+          "Superados los 126 grupos de regresión sin conexión. Combates independientes, cooperación, saltos continuos y entradas frecuentes prolongadas aún requieren pruebas en el juego; no se garantiza resolver todos los cierres inesperados. Sigue el aviso de la aplicación para actualizar el Mod del juego."
         ]
       }
     },
@@ -702,6 +996,50 @@
             "id": "github",
             "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.8/"
           }
+        ]
+      },
+      "notes": {
+        "zh": [
+          "修复魔渊、小雪等抓不住荒行子、撕裂锯轮、玉面郎君、力者（两个形态）、铁杀、残钢：这几个单位放在游戏的另一个目录，模组没把它们算作在场，整场都没打开怪打怪的投技，红光打中只会击退。现在能正常抓住，这几个单位自己的投技也能用",
+          "修复清理后一直提示「清理还差一步」，怎么点都清不掉、也不能召唤：有一条恢复记录指向的单位已经不在了，恢复时出错，又一直被留着重试。现在这种记录会直接丢掉",
+          "修复镜头跟踪忽远忽近：树、石头这类东西一挡住视线，镜头就一下拉到很近，挡不住又马上退回去。现在用相机的遮挡判断，连续挡住才拉近，挡住的东西离开一会儿才慢慢退回",
+          "修复一方全部倒下后，赢的一方一直不脱战，还会对观战中的玩家放招（不掉血，但扣杀气）：最后倒下的单位没从赢家的仇恨表里移出。~~现在会移出，打完就收手~~",
+          "日志里每分钟记一行卡顿汇总（自由观战每帧、助手轮询、后台循环的耗时和间隔），报卡顿时附上日志就能查原因"
+        ],
+        "en": [
+          "Fixed Mo Yuan, Xiaoxue and others failing to grab Huang Xingzi, Silie Julun, Yumian Langjun, Lizhe (both forms), Tiesha and Cangang: these units sit in another folder of the game, the mod did not count them as present, so monster-vs-monster grabs stayed off for the whole fight and a red-light hit only knocked back. They are grabbed properly now, and their own grabs work too",
+          "Fixed cleanup showing \"One more cleanup needed\" over and over, however often you clicked, and summoning staying blocked: a restore record pointed to a unit that was already gone, failed, and was kept for retrying. Such records are now dropped",
+          "Fixed Camera tracking jumping near and far: whenever a tree or rock blocked the view, the camera snapped right in and then straight back out. It now uses the camera's own blocking check, pulls in only when the view stays blocked, and backs out slowly once the obstacle has been gone for a moment",
+          "Fixed the winning side never leaving combat once the other side was all down, and attacking the spectating player (no health lost, but Sha-Chi drained): the last unit to fall was not taken off the winners' hatred lists. ~~It is now, so they stop when the fight is over~~",
+          "The log now has a stutter summary every minute (the cost of each free-camera frame, the app's polling and the background loop, and the gaps between them), so a stutter report that comes with the log can be traced"
+        ],
+        "ja": [
+          "魔渊や小雪などが荒行子、撕裂锯轮、玉面郎君、力者（二つの形態）、铁杀、残钢をつかめない問題を修正：これらのユニットはゲームの別のフォルダーにあり、Mod が場にいると数えていなかったため、戦闘中ずっとモンスター同士の投げ技がオフのままで、赤い光の攻撃が当たってもノックバックするだけでした。今は正しくつかめ、これらのユニット自身の投げ技も使えます",
+          "片付け後に「片付けがもう一歩残っています」と出続け、何度押しても片付かず、召喚もできない問題を修正：復元記録の一つがもういないユニットを指していて、復元に失敗したまま再試行用に残っていました。今はこうした記録を捨てます",
+          "カメラ追従が近づいたり離れたりする問題を修正：木や岩が視線をさえぎるとカメラが一気に近づき、さえぎられなくなるとすぐ戻っていました。今はカメラ自身のさえぎり判定を使い、さえぎられ続けた時だけ近づき、障害物が離れてしばらくしてからゆっくり戻ります",
+          "片方が全員倒れた後、勝った側がずっと戦闘をやめず、観戦中のプレイヤーに技を出し続ける問題を修正（体力は減らず、殺気だけ減る）：最後に倒れたユニットが勝った側のヘイトリストから外れていませんでした。~~今は外すので、戦いが終われば手を止めます~~",
+          "ログに毎分一行、カクつきのまとめ（自由視点の毎フレーム、アシスタントのポーリング、バックグラウンド処理の所要時間と間隔）を記録します。カクつきの報告にログを添えてもらえば原因を調べられます"
+        ],
+        "fr": [
+          "Correction de Mo Yuan, Xiaoxue et d'autres qui n'arrivaient pas à saisir Huang Xingzi, Silie Julun, Yumian Langjun, Lizhe (ses deux formes), Tiesha et Cangang : ces unités sont dans un autre dossier du jeu, le mod ne les comptait pas comme présentes, donc les saisies entre monstres restaient désactivées pendant tout le combat et un coup à lumière rouge ne faisait que repousser. Elles sont maintenant saisies normalement, et leurs propres saisies fonctionnent aussi",
+          "Correction du nettoyage qui affichait « Encore un nettoyage » en boucle, sans effet malgré les clics, et qui bloquait l'invocation : un enregistrement de restauration désignait une unité déjà disparue, échouait et restait en attente d'un nouvel essai. Ces enregistrements sont maintenant abandonnés",
+          "Correction du Suivi de caméra qui se rapprochait et s'éloignait sans cesse : dès qu'un arbre ou un rocher cachait la vue, la caméra se collait d'un coup puis repartait aussitôt. Elle utilise maintenant le test d'obstruction propre à la caméra, ne se rapproche que si la vue reste cachée, et ne recule doucement qu'un moment après le départ de l'obstacle",
+          "Correction du camp gagnant qui ne quittait jamais le combat une fois l'autre camp entièrement à terre, et qui attaquait le joueur spectateur (sans perte de vie, mais avec perte de Sha-Chi) : la dernière unité tombée n'était pas retirée des listes de haine des gagnants. ~~Elle l'est maintenant, donc ils s'arrêtent à la fin du combat~~",
+          "Le journal contient désormais un résumé des saccades chaque minute (le coût de chaque image de la caméra libre, des interrogations de l'application et de la boucle de fond, et les écarts entre elles) : un signalement de saccades accompagné du journal peut être analysé"
+        ],
+        "de": [
+          "Behoben: Mo Yuan, Xiaoxue und andere konnten Huang Xingzi, Silie Julun, Yumian Langjun, Lizhe (beide Formen), Tiesha und Cangang nicht greifen. Diese Einheiten liegen in einem anderen Ordner des Spiels, die Mod zählte sie nicht als anwesend, daher blieben Griffe zwischen Monstern den ganzen Kampf aus und ein Rotlicht-Treffer stieß nur zurück. Jetzt werden sie richtig gegriffen, und ihre eigenen Griffe funktionieren auch",
+          "Behoben: Nach dem Aufräumen erschien immer wieder „Noch einmal aufräumen“, egal wie oft man klickte, und Beschwören blieb gesperrt. Ein Wiederherstellungseintrag zeigte auf eine Einheit, die schon weg war, schlug fehl und blieb für einen neuen Versuch stehen. Solche Einträge werden jetzt verworfen",
+          "Behoben: Die Kameraverfolgung sprang nah und fern. Sobald ein Baum oder Felsen die Sicht verdeckte, zog die Kamera schlagartig heran und gleich wieder zurück. Jetzt nutzt sie die eigene Verdeckungsprüfung der Kamera, zieht nur heran, wenn die Sicht verdeckt bleibt, und fährt erst eine Weile nach dem Verschwinden des Hindernisses langsam zurück",
+          "Behoben: Die siegreiche Seite verließ nie den Kampf, nachdem die andere Seite ganz am Boden war, und griff den zuschauenden Spieler an (kein Lebensverlust, aber Sha-Chi sank). Die zuletzt gefallene Einheit wurde nicht von den Hasslisten der Sieger genommen. ~~Jetzt schon, also hören sie nach dem Kampf auf~~",
+          "Das Protokoll enthält jetzt jede Minute eine Ruckel-Zusammenfassung (die Dauer jedes Frames der freien Kamera, der Abfragen der App und der Hintergrundschleife sowie die Abstände dazwischen), damit eine Ruckel-Meldung mit Protokoll nachverfolgt werden kann"
+        ],
+        "es": [
+          "Corregido: Mo Yuan, Xiaoxue y otros no podían agarrar a Huang Xingzi, Silie Julun, Yumian Langjun, Lizhe (sus dos formas), Tiesha y Cangang. Estas unidades están en otra carpeta del juego, el mod no las contaba como presentes, así que los agarres entre monstruos quedaban desactivados todo el combate y un golpe de luz roja solo empujaba. Ahora se agarran bien, y sus propios agarres también funcionan",
+          "Corregido: tras limpiar aparecía una y otra vez «Falta una limpieza más», sin efecto por mucho que se pulsara, y la invocación quedaba bloqueada. Un registro de restauración apuntaba a una unidad que ya no estaba, fallaba y se guardaba para reintentar. Ahora esos registros se descartan",
+          "Corregido: el Seguimiento de cámara se acercaba y alejaba sin parar. En cuanto un árbol o una roca tapaba la vista, la cámara se pegaba de golpe y volvía a alejarse enseguida. Ahora usa la comprobación de obstrucción propia de la cámara, solo se acerca si la vista sigue tapada y se aleja despacio un rato después de que el obstáculo desaparezca",
+          "Corregido: el bando ganador nunca salía del combate tras caer todo el otro bando, y atacaba al jugador que observaba (sin perder vida, pero gastando Sha-Chi). La última unidad en caer no se quitaba de las listas de odio de los ganadores. ~~Ahora sí, así que paran al terminar el combate~~",
+          "El registro incluye ahora cada minuto un resumen de tirones (lo que tarda cada fotograma de la cámara libre, los sondeos de la aplicación y el bucle de fondo, y los intervalos entre ellos), para poder rastrear un aviso de tirones que llegue con el registro"
         ]
       }
     },
@@ -1465,6 +1803,62 @@
             "id": "github",
             "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.1/"
           }
+        ]
+      },
+      "notes": {
+        "zh": [
+          "修复战斗中每隔几秒卡一下：模组在反复查找没加载的飞行武器，每次卡 100~200 毫秒。现在只有左殇一族在场才查，查不到时间隔会越拉越长",
+          "龙体左殇的剑雨，以及救苦救难梦华圣母娘娘、梦差：冷荼、大师兄的绝望剑意、赤影骨刃：囚锋、影魅杀手的同类招式，这次才真正改打对手：上一版的写入其实没生效，那条说明已划掉。两招同时放时，只有后放的打得准",
+          "剑雨的目标在 7 米内时会原地落下，这是招式本身的设计；目标跑出 7 米才会追过去",
+          "沐小葵：铁玉女王和龙体左殇的替身不再算参战单位：不计入存活人数和胜负，敌人也不会再去打这些无敌的替身",
+          "修复新单位可能沿用已离场单位的状态：游戏会重复使用内存地址，防坠落保护、处决判断、~~不倒下的重试次数~~之前可能串到新单位上",
+          "设置或恢复记录里有未知、损坏的内容时，模组不会再因此起不来或读错：未知内容会忽略，错误的值改用默认值",
+          "这一版需要更新游戏内模组，请按助手提示操作"
+        ],
+        "en": [
+          "Fixed a hitch every few seconds in fights: the mod kept looking up flying weapons that were not loaded, costing 100-200 ms each time. It now looks only while Zuo Shang's family is on the field, and waits longer after each failed lookup",
+          "The sword rain of dragon-form Zuo Shang and similar moves of Meng Hua, Lengtu, the Eldest Brother's Sword of Despair, Qiu Feng and the Ying Mei assassin now really go for the opponent: the last version's write never took effect, and that note is struck through. When two run at once, only the later one aims true",
+          "The sword rain falls where it is when the target is within 7 m; that is how the move is built. It chases only a target beyond 7 m",
+          "The stands of Mu Xiaokui's second phase and dragon-form Zuo Shang no longer count as fighters: they don't count as alive or decide the result, and enemies no longer attack these invulnerable stands",
+          "Fixed new units possibly keeping the state of a unit that left: the game reuses memory addresses, so fall protection, execution checks and ~~Undying retry counts~~ could carry over",
+          "Unknown or damaged entries in settings or restore records no longer stop the mod from starting or get misread: unknown entries are ignored and bad values fall back to defaults",
+          "This version needs the in-game mod updated; follow the prompt in the app"
+        ],
+        "ja": [
+          "戦闘中に数秒おきに引っかかる問題を修正：読み込まれていない飛ぶ武器をモッドが探し続け、そのたびに 100〜200 ミリ秒止まっていました。今は左殇の一族がいるときだけ探し、見つからないと間隔を延ばします",
+          "龍体左殇の剣雨と、夢華、冷荼、大師兄の絶望剣意、囚鋒、影魅の同種の技が、今度こそ相手を狙います。前のバージョンの書き込みは実は効いておらず、その記載には取り消し線を引きました。2 つの技が同時に出ると、後に出した技だけが正しく狙えます",
+          "剣雨は対象が 7 m 以内だとその場に落ちます。これは技本来の仕様で、7 m より離れると追いかけます",
+          "沐小葵の第二段階と龍体左殇の替身を参戦ユニットとして扱わないようにしました。生存数や勝敗に数えず、敵も無敵の替身を攻撃しなくなります",
+          "新しいユニットが退場したユニットの状態を引き継ぐことがある問題を修正：ゲームはメモリアドレスを再利用するため、落下保護、処刑の判定、~~「倒れない」の再試行回数~~が引き継がれることがありました",
+          "設定や復元記録に未知の内容や壊れた内容があっても、モッドが起動できなくなったり誤って読んだりしません。未知の内容は無視し、不正な値は既定値を使います",
+          "このバージョンではゲーム内モッドの更新が必要です。アプリの案内に従ってください"
+        ],
+        "fr": [
+          "Correction d'un à-coup toutes les quelques secondes en combat : le mod cherchait sans cesse des armes volantes non chargées, ce qui coûtait 100 à 200 ms à chaque fois. Il ne cherche plus que si la famille de Zuo Shang est sur le terrain, et attend plus longtemps après chaque échec",
+          "La pluie d'épées de Zuo Shang en forme de dragon et les attaques semblables de Meng Hua, Lengtu, l'Épée du désespoir du Frère aîné, Qiu Feng et l'assassin Ying Mei visent enfin vraiment l'adversaire : l'écriture de la version précédente n'avait aucun effet, et cette note est barrée. Quand deux se déclenchent ensemble, seule la dernière vise juste",
+          "La pluie d'épées tombe sur place quand la cible est à moins de 7 m : l'attaque est conçue ainsi. Elle ne poursuit qu'une cible à plus de 7 m",
+          "Les doublures de Mu Xiaokui en deuxième phase et de Zuo Shang en forme de dragon ne comptent plus comme combattants : elles n'entrent plus dans le nombre de survivants ni dans le résultat, et les ennemis n'attaquent plus ces doublures invincibles",
+          "Correction des nouvelles unités qui pouvaient garder l'état d'une unité partie : le jeu réutilise les adresses mémoire, donc la protection contre les chutes, les vérifications d'exécution et ~~les essais d'« Immortel »~~ pouvaient se transmettre",
+          "Des contenus inconnus ou abîmés dans les réglages ou les données de restauration n'empêchent plus le mod de démarrer et ne sont plus mal lus : l'inconnu est ignoré et les valeurs incorrectes reprennent leur valeur par défaut",
+          "Cette version nécessite de mettre à jour le mod en jeu ; suivez les indications de l'application"
+        ],
+        "de": [
+          "Behoben: Im Kampf ruckelte es alle paar Sekunden. Der Mod suchte immer wieder nach nicht geladenen fliegenden Waffen, was jedes Mal 100 bis 200 ms kostete. Jetzt sucht er nur, solange Zuo Shangs Familie im Feld ist, und wartet nach jedem Fehlschlag länger",
+          "Der Schwertregen von Zuo Shang in Drachenform und ähnliche Angriffe von Meng Hua, Lengtu, dem Schwert der Verzweiflung des Ältesten Bruders, Qiu Feng und dem Ying-Mei-Assassinen zielen jetzt wirklich auf den Gegner: Der Schreibvorgang der letzten Version hatte keine Wirkung, der Eintrag ist durchgestrichen. Laufen zwei gleichzeitig, zielt nur der spätere richtig",
+          "Der Schwertregen fällt an Ort und Stelle, wenn das Ziel weniger als 7 m entfernt ist; so ist der Angriff gebaut. Nur ein Ziel jenseits von 7 m wird verfolgt",
+          "Die Doppelgänger von Mu Xiaokui in der zweiten Phase und von Zuo Shang in Drachenform zählen nicht mehr als Kämpfer: Sie zählen nicht als lebend, entscheiden nicht über das Ergebnis, und Gegner greifen diese unverwundbaren Doppelgänger nicht mehr an",
+          "Behoben: Neue Einheiten konnten den Zustand einer gegangenen Einheit behalten. Das Spiel verwendet Speicheradressen wieder, dadurch konnten Sturzschutz, Hinrichtungsprüfung und ~~die Versuche von „Unsterblich“~~ übernommen werden",
+          "Unbekannte oder beschädigte Inhalte in Einstellungen oder Wiederherstellungsdaten verhindern den Start des Mods nicht mehr und werden nicht mehr falsch gelesen: Unbekanntes wird ignoriert, falsche Werte fallen auf den Standard zurück",
+          "Diese Version erfordert ein Update des Mods im Spiel; folge dem Hinweis in der App"
+        ],
+        "es": [
+          "Corregido un tirón cada pocos segundos en combate: el mod buscaba una y otra vez armas voladoras sin cargar, lo que costaba de 100 a 200 ms cada vez. Ahora solo busca mientras la familia de Zuo Shang está en el campo, y espera más tras cada fallo",
+          "La lluvia de espadas de Zuo Shang en forma de dragón y ataques parecidos de Meng Hua, Lengtu, la Espada de la desesperación del Hermano mayor, Qiu Feng y el asesino Ying Mei ahora sí van al rival: la escritura de la versión anterior no tenía efecto, y esa nota está tachada. Si dos coinciden, solo la última apunta bien",
+          "La lluvia de espadas cae donde está si el objetivo está a menos de 7 m: el ataque está hecho así. Solo persigue a un objetivo a más de 7 m",
+          "Los dobles de Mu Xiaokui en su segunda fase y de Zuo Shang en forma de dragón ya no cuentan como combatientes: no cuentan como vivos ni deciden el resultado, y los enemigos ya no atacan a estos dobles invulnerables",
+          "Corregido: las unidades nuevas podían conservar el estado de una que se había ido. El juego reutiliza direcciones de memoria, así que la protección contra caídas, la comprobación de ejecución y ~~los intentos de «Inmortal»~~ podían pasar a la nueva",
+          "Los contenidos desconocidos o dañados en los ajustes o en los datos de restauración ya no impiden que el mod arranque ni se leen mal: lo desconocido se ignora y los valores incorrectos vuelven al valor por defecto",
+          "Esta versión necesita actualizar el mod del juego; sigue el aviso de la aplicación"
         ]
       }
     },
