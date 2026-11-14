@@ -400,6 +400,37 @@ test('invalid borrowed marker roots are never called during cleanup',function()
     assert(calls==0,'cleanup invoked a native method on an invalid root')
 end)
 
+test('cleanup only releases props actually acquired by this boss',function()
+    local begin=statics.BeginDeferredActorSpawnFromClass
+    local refuse=true
+    statics.BeginDeferredActorSpawnFromClass=function(lib,w,cls,...)
+        if refuse and cls==classFor('BP_LengTu_SummonSlot_01') then return nil end
+        return begin(lib,w,cls,...)
+    end
+    local s=borrowingStages({})
+    local a,b=boss('BP_Monster_LengTu_C'),boss('BP_Monster_LengTu_C')
+    s:prepare(a,transform,world)
+    refuse=false
+    local offset=#spawned
+    s:prepare(b,transform,world)
+    local prop
+    for i=offset+1,#spawned do if spawned[i].name=='BP_LengTu_SummonSlot_01' then prop=spawned[i].actor end end
+    assert(prop,'second boss acquired its missing prop')
+    s:releaseActor(a)
+    assert(not prop.destroying,'first boss must not destroy a prop it never acquired')
+    s:releaseActor(b)
+    assert(prop.destroying,'actual owner releases its prop')
+    statics.BeginDeferredActorSpawnFromClass=begin
+end)
+
+test('repeated prepare does not leak prop leases for one actor',function()
+    local s=borrowingStages({})
+    local a=boss('BP_Monster_LengTu_C')
+    s:prepare(a,transform,world);s:prepare(a,transform,world)
+    s:releaseActor(a)
+    assert(s:status().stage_props==0,'one actor cannot leave a duplicate lease after cleanup')
+end)
+
 test('a marker of her own map near where hers would stand is used where it is',function()
     local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=837,Y=-252,Z=0},33)
     local s=borrowingStages({BP_LengTu_SummonSlot_01=slot})

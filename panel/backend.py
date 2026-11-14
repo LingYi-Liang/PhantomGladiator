@@ -33,6 +33,9 @@ DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platf
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
+MAX_WATCH_COMMANDS = 100
+MAX_COMMAND_ID = 9223372036854775807
+MAX_JSON_INTEGER = 9007199254740991
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
 SPAWN_DIFFICULTIES = ("FOLLOW", "EASY", "NORMAL", "HARD", "NIGHTMARE")
 # Where a summon's level comes from (home_levels.lua): its home (default), the map enemies near the player, or one
@@ -1090,6 +1093,8 @@ class Bridge:
         if row is None:
             return None
         result = dict(row)
+        if result['id'] > MAX_JSON_INTEGER:
+            result['id'] = str(result['id'])
         result["payload"] = json.loads(result["payload"])
         result["status"] = {"pending": "queued", "inflight": "pending"}.get(result["state"], result["state"])
         return result
@@ -1646,9 +1651,28 @@ class Bridge:
                     "active": {name: values.get("key_" + name) for name in BINDING_NAMES},
                     "message": "提交仅请求保存；实际生效键以游戏状态为准，可能需要 Restart All Mods。"}
 
-    def status(self):
+    @staticmethod
+    def watch_ids(query):
+        if not isinstance(query, str) or len(query) > 2000:
+            raise ValidationError('watch must contain at most 100 command ids')
+        if not query:
+            return []
+        values = query.split(',')
+        if len(values) > MAX_WATCH_COMMANDS or any(not re.fullmatch(r'[1-9][0-9]{0,18}', value) for value in values):
+            raise ValidationError('watch must contain at most 100 positive command ids')
+        ids = list(dict.fromkeys(int(value) for value in values))
+        if any(value > MAX_COMMAND_ID for value in ids):
+            raise ValidationError('watch command id exceeds the database range')
+        return ids
+
+    def status(self, watch_ids=()):
+        if not isinstance(watch_ids, (list, tuple)) or len(watch_ids) > MAX_WATCH_COMMANDS or any(
+                type(value) is not int or not 1 <= value <= MAX_COMMAND_ID for value in watch_ids):
+            raise ValidationError('invalid watched command ids')
+        watch_ids = list(dict.fromkeys(watch_ids))
         with self.lock:
             rows = self.db.execute("SELECT id FROM commands ORDER BY id DESC LIMIT 100").fetchall()
+            watched = self.db.execute('SELECT id FROM commands WHERE id IN (' + ','.join('?' for _ in watch_ids) + ') ORDER BY id', watch_ids).fetchall() if watch_ids else []
             try:
                 catalog = self.catalog()
                 catalog_summary = {key: catalog.get(key, []) if key == "codex_errors" else catalog[key]
@@ -1664,6 +1688,7 @@ class Bridge:
             return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": game,
                     "summon_queue_transit": summon_transit, "monster_pools": self._pool_status(game),
                     "catalog": catalog_summary, "queue": [self._command(row[0]) for row in reversed(rows)],
+                    "watched_commands": [self._command(row[0]) for row in watched],
                     "keybinds": keys["active"], "requested_keybinds": keys["requested"],
                     "function_keys": self.function_keybinds(),"function_keys_supported": True,
                     "allowed_keys": sorted(ALLOWED_KEYS), "transport_error": self.transport_error,
@@ -1721,7 +1746,11 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(urlsplit(self.path).path)
         try:
             if path == "/api/status":
-                result = self.server.bridge.status()
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                values = query.get('watch', [''])
+                if len(values) != 1:
+                    raise ValidationError('watch must be specified once')
+                result = self.server.bridge.status(self.server.bridge.watch_ids(values[0]))
                 result.update(csrf_token=self.server.csrf_token, origin=self.server.origin)
             elif path == "/api/catalog":
                 result = self.server.bridge.catalog()
@@ -1765,6 +1794,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(200, target.read_bytes(), STATIC_TYPES[target.suffix.lower()])
                 return
             self._reply(200, result)
+        except ValidationError as error:
+            self._reply(400, {"error": str(error)})
         except (OSError, UnicodeError, ValueError, sqlite3.Error) as error:
             self._reply(503, {"error": str(error)})
 

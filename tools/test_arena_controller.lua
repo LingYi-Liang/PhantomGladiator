@@ -167,6 +167,15 @@ do
     assert(tagged.arena:status().summon_count==2)
 end
 local attacks=stageCount(summons,'attack')
+do -- a reported unsafe rollback must not be accepted merely because the callback did not throw
+    local unsafe=fixture({summonAdopted=function()return {ok=false,rollback_verified=false,message='unverified custom values'}end})
+    assert(unsafe.arena:spawn('/Catalog/BP_Owner.BP_Owner_C','blue',1).ok)
+    local child={alive=true,name='unsafe-pet',hp=100}
+    local result=unsafe.arena:adoptSummon(child,unsafe.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture')
+    assert(not result.ok and result.adopted and result.cleanup_required,'unsafe summon stats must require cleanup without losing ownership')
+    assert(unsafe.arena:status().state=='cleanup_pending')
+    assert(unsafe.arena:stop().ok and not child.alive)
+end
 summons.arena:tickReinforcements()
 assert(stageCount(summons,'attack')==attacks+1,'new summon should be directed at the opposing team')
 summons.arena:tickReinforcements()

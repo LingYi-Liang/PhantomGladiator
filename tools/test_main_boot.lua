@@ -187,7 +187,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.14-beta-4',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.14-beta-5',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -276,6 +276,18 @@ arenaOptions.activate(npc,known,'companion')
 arenaOptions.activate(npc,known,'companion',true)
 arenaOptions.activate(npc,known,'red',true)
 assert(table.concat(whose,',')=='arena,companion,companion-brought,arena-brought',table.concat(whose,','))
+local broughtArena,broughtCompanion=statMatchInstance.onSummon,companionStatsInstance.onSummon
+for _,side in ipairs({'blue','companion'})do
+    local stats=side=='blue' and statMatchInstance or companionStatsInstance
+    stats.onSummon=function()return {ok=false,rollback_verified=false,message='escort rollback failed'}end
+    assert(arenaOptions.activate(npc,known,side,true)==false,'escort stat rollback failure must require cleanup')
+    stats.onSummon=function()return {ok=false,rollback_verified=true,message='escort restored'}end
+    local ready,_,detail=arenaOptions.activate(npc,known,side,true)
+    assert(ready==true and detail and detail:find('保留原生数值',1,true),'verified escort rollback retains original stats')
+    stats.onSummon=function()error('escort stat write error')end
+    assert(arenaOptions.activate(npc,known,side,true)==false,'escort stat exceptions cannot be silently accepted')
+end
+statMatchInstance.onSummon,companionStatsInstance.onSummon=broughtArena,broughtCompanion
 -- What a unit summons in a fight takes the set of its side.
 whose={}
 arenaOptions.summonAdopted(npc,known,'companion')

@@ -87,4 +87,15 @@ assert(native.visibility==1 and foreign.visibility==0 and widget.visibility==3,'
 renderer:syncNative({},{},false);assert(native.visibility==0 and foreign.visibility==0)
 widget.Character=other;assert(renderer:update(record,unit,72.5,100,'蓝队 · 测试',1)==false)
 assert(widget.Character==other and renderer:remove(record) and not widget.inViewport)
+-- Empty arenas must not search the global widget registry merely to discover no boss HUD yet exists.
+do
+    local scans=0;local previous=FindAllOf
+    FindAllOf=function(class)assert(class=='PBZHUDLayout');scans=scans+1;return {}end
+    local idle=Renderer.new({getController=function()return pc end,getWorld=function()return world end})
+    for _=1,10 do idle:syncNative({},{},false) end
+    assert(scans==0,'idle native HUD scanned the object registry '..scans..' times')
+    idle:syncNative({},{},true)
+    assert(scans==1,'explicit unbound cleanup still searches the HUD')
+    FindAllOf=previous
+end
 print('arena_hud_widget: PASS (private tree, numeric placement/text readback, persistent visibility, duplicate isolation, foreign binding gate, cleanup)')

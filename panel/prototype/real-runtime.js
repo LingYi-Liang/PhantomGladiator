@@ -31,6 +31,30 @@ const RealRuntime = (() => {
       })(), timeout]);
     } finally { clearTimeout(timer); }
   }
+  const SUBMIT_TIMEOUT_MS = 15000;
+  const submissionMessage = "指令是否已被接收尚未确认。请查看操作记录和游戏画面，避免重复提交；助手不会自动重发。";
+  async function submitCommand(path, body) {
+    const controller = new AbortController();
+    let timer, response;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(response && !response.ok ? fail("rejected", "助手拒绝了此指令（HTTP " + response.status + "）。")
+          : fail("submissionUnknown", submissionMessage));
+        controller.abort();
+      }, SUBMIT_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([(async () => {
+        response = await fetch(path, { method: "POST", signal: controller.signal,
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          throw fail("rejected", detail?.error || "助手拒绝了此指令（HTTP " + response.status + "）。");
+        }
+        return response.json();
+      })(), timeout]);
+    } finally { clearTimeout(timer); }
+  }
 
   const s = {
     icons: {},                  // unit id -> codex bust URL (codex_icons.lua, backend.py /api/codex-icons)
@@ -103,6 +127,20 @@ const RealRuntime = (() => {
     components: null,
   };
   const jobs = [], jobById = new Map(), waiters = new Map();
+  const MAX_COMMANDS = 100;
+  let activeCommands = 0;
+  function jobId(value) {
+    if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+    return typeof value === "string" && /^[1-9][0-9]{0,18}$/.test(value) &&
+      (value.length < 19 || value <= "9223372036854775807") ? value : null;
+  }
+  function newestJob(a, b) { return b.id.length - a.id.length || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0); }
+  function pruneJobs() {
+    jobs.sort(newestJob);
+    for (const j of jobs.splice(MAX_COMMANDS)) if (!waiters.has(j.id)) jobById.delete(j.id);
+    const visible = new Set(jobs.map(j => j.id));
+    for (const id of jobById.keys()) if (!visible.has(id) && !waiters.has(id)) jobById.delete(id);
+  }
   let csrf = "", owned = 0, launching = 0, failedPolls = 0;
   let teamRev = null, session = "", catalogKey = "", lastSig = {}, iconsAt = 0, homesAt = 0;
   let toGame = new Map(), toShort = new Map(), poolRead = null;
@@ -262,11 +300,13 @@ const RealRuntime = (() => {
 
   // ---------- Status ----------
   function mapJob(q) {
-    let j = jobById.get(q.id);
+    const id = jobId(q.id);
+    if (!id) return null;
+    let j = jobById.get(id);
     const p = q.payload || {};
     if (!j) {
-      j = { id: q.id, action: q.action, created: (q.created || Date.now() / 1000) * 1000 };
-      jobById.set(q.id, j);
+      j = { id, action: q.action, created: (q.created || Date.now() / 1000) * 1000 };
+      jobById.set(id, j);
       jobs.push(j);
     }
     j.payload = { ...p, unit_id: p.unit_id ? shortOf(p.unit_id) : undefined };
@@ -431,12 +471,15 @@ const RealRuntime = (() => {
     const bindings = data.function_keys?.bindings || {};
     for (const k of KEY_NAMES) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
 
-    const changedJobs = (data.queue || []).map(mapJob).filter(Boolean);
-    jobs.sort((a, b) => b.id - a.id);
-    if (jobs.length > 100) for (const j of jobs.splice(100)) jobById.delete(j.id);
+    const updates = new Map();
+    for (const q of [...(data.watched_commands || []), ...(data.queue || [])]) {
+      const id = jobId(q.id); if (id) updates.set(id, q);
+    }
+    const changedJobs = [...updates.values()].map(mapJob).filter(Boolean);
+    pruneJobs();
     // Waiting commands (queued, or handed over and not answered): a banner after QUEUE_STUCK_MS, at once for a leftover
     // command file, which holds them until it is cleared.
-    const waiting = (data.queue || []).filter(q => q.status === "queued" || q.status === "pending");
+    const waiting = [...updates.values()].filter(q => q.status === "queued" || q.status === "pending");
     const code = data.transport_code || "";
     if (online && waiting.length) {
       const since = Math.min(...waiting.map(q => (q.created || Date.now() / 1000) * 1000));
@@ -456,6 +499,7 @@ const RealRuntime = (() => {
     if (s.game !== was.game) emit({ type: "game" });
     for (const j of changedJobs) emit({ type: "job", job: j });
     for (const j of changedJobs) if (j.status !== "pending") waiters.get(j.id)?.(j);
+    pruneJobs();
     if (online && (g.game_session !== session)) { session = g.game_session; teamRev = null; }
     const rev = num("arena_team_revision");
     if (online && teamRev !== null && rev > teamRev) emit({ type: "teamKey", team: s.team });
@@ -496,7 +540,8 @@ const RealRuntime = (() => {
 
   async function poll() {
     try {
-      const { response: r, data } = await readJSON("/api/status");
+      const watched = [...waiters.keys()].slice(0, MAX_COMMANDS);
+      const { response: r, data } = await readJSON("/api/status" + (watched.length ? "?watch=" + watched.join(",") : ""));
       if (!r.ok) throw new Error(String(r.status));
       apply(data);
       failedPolls = 0;
@@ -514,6 +559,11 @@ const RealRuntime = (() => {
   const wireKey = b => (b ? { key_code: b.code, modifiers: b.mods || 0 } : { key_code: 0, modifiers: 0 });
 
   async function command(action, payload = {}) {
+    if (activeCommands >= MAX_COMMANDS) throw fail("rejected", "已有100条指令等待确认，请先等待结果。");
+    activeCommands++;
+    try { return await executeCommand(action, payload); } finally { activeCommands--; }
+  }
+  async function executeCommand(action, payload) {
     if (!online()) throw fail("offline");
     if (["spawn", "queue_spawn", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
     if ((action === "toggle_camera" || action === "toggle_time_stop") && !s.freeCam && !ready()) throw fail("notInMap");
@@ -545,18 +595,27 @@ const RealRuntime = (() => {
     else body = { action };
     const held = action === "stop" ? owned : action === "clear_neutral" ? s.neutral + s.down.neutral : 0;
     const companionsHeld = action === "dismiss_companions" ? s.companion + s.down.companion : 0;
-    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
-    const reply = await r.json().catch(() => ({}));
-    if (!r.ok) throw fail("rejected", reply.error || "");
+    let reply;
+    try {
+      reply = await submitCommand(path, body);
+    } catch (error) {
+      if (error?.code === "rejected") throw error;
+      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage };
+    }
+    const id = reply && jobId(reply.id);
+    if (!id) {
+      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage };
+    }
     // Show it in the history right away; the status poll fills in the game's answer.
     // A poll may already have picked the job up (and even its answer); never step it back to pending.
-    const job = jobById.get(reply.id) || mapJob({ id: reply.id, action, payload: body, status: "pending", created: Date.now() / 1000 });
-    jobs.sort((a, b) => b.id - a.id);
-    if (action === "queue_spawn") return job; // POST acknowledges transport only, not an actual summon.
+    const job = jobById.get(id) || mapJob({ id, action, payload: body, status: "pending", created: Date.now() / 1000 });
+    if (action === "queue_spawn") { pruneJobs(); return job; } // POST acknowledges transport only, not an actual summon.
     emit({ type: "job", job });
     const done = await new Promise(resolve => {
-      const timer = setTimeout(() => { waiters.delete(job.id); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);
-      waiters.set(job.id, j => { clearTimeout(timer); waiters.delete(job.id); resolve(j); });
+      const timer = setTimeout(() => { waiters.delete(id); pruneJobs(); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);
+      waiters.set(id, j => { clearTimeout(timer); waiters.delete(id); pruneJobs(); resolve(j); });
+      jobById.set(id, job);
+      pruneJobs();
       if (job.status !== "pending") waiters.get(job.id)(job);
     });
     if (!done) return { ...job, status: "uncertain", code: "noAck" };

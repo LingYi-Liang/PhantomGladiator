@@ -300,13 +300,21 @@ function Match.new(options)
             log(tag..' 自定义未生效 '..item.field..' 目标='..string.format('%.10g',targets[item.field])
                 ..' 方式='..(adapter.via and adapter:via(item.field) or '?')..' 原因='..item.reason..' unit='..tostring(unitPath))
         end
+        if not restored then
+            self.failures=self.failures+1
+            local message='自定义数值失败：部分属性回滚未确认，单位保留供清理'
+            if not summon then self.message=message end
+            log(tag..' '..message..' unit='..tostring(unitPath)..' verified='..#verified..' rejected='..#rejected..' 回滚读回=false')
+            return {ok=false,applied=#verified>0,message=message,rollback_verified=false,rejected=summon and rejected or self.rejected}
+        end
         if summon then
             if not quiet then
                 log(tag..' 召唤物或随行单位 自定义应用并读回 unit='..tostring(unitPath)..' verified='..#verified..'/'..#ordered..' rejected='..#rejected
                     ..' 回滚读回='..tostring(restored)..' '..describe(self.custom)..(#linked>0 and (' 联动1级值：'..table.concat(linked,'、')) or '')
                     ..(self.summons==SUMMON_LINES and '；这个设定下之后的不再逐条记录' or ''))
             end
-            return {ok=#verified>0,applied=#verified>0,rejected=rejected}
+            return {ok=#verified>0,applied=#verified>0,rejected=rejected,rollback_verified=restored,
+                message=#verified>0 and '自定义数值已应用并读回' or '自定义数值未生效，已恢复原值'}
         end
         if #verified==0 then
             self.failures=self.failures+1

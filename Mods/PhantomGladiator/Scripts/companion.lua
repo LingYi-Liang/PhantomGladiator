@@ -293,7 +293,7 @@ function Companion.new(options)
         if not U.valid(bb) or not U.valid(U.field(bb,'BlackboardAsset')) then return false end
         record.keysChecked=true
         local keys=blackboardKeys(bb)
-        local assigned=record.followState and pcall(function()record.followState:AssignParameters(bb)end)
+        local assigned=U.valid(record.followState) and pcall(function()record.followState:AssignParameters(bb)end)
         local names,found={},{}
         for _,key in ipairs(keys)do
             local value=key.type:find('Object',1,true) and U.unwrap(select(2,pcall(function()return bb:GetValueAsObject(FName(key.name))end))) or nil
@@ -307,6 +307,7 @@ function Companion.new(options)
     -- Points the follow keys at the player; returns how many now read back the player.
     local function pointFollowKeys(record,ai,player)
         local bb=U.field(ai,'BlackboardComponent')
+        if not U.valid(bb) or not U.valid(player) then return 0 end
         local ok=0
         for _,name in ipairs(record.followKeys or {})do
             local key=FName(name)
@@ -413,7 +414,8 @@ function Companion.new(options)
     local ANIM_WORDS={'gait','speed','walk','run','jog','sprint','attitude','locomotion','move','velocity'}
     local function describeAnimation(actor)
         local mesh=U.field(actor,'Mesh')
-        local okAnim,anim=pcall(function()return mesh:GetAnimInstance()end)
+        local okAnim,anim=false,nil
+        if U.valid(mesh) then okAnim,anim=pcall(function()return mesh:GetAnimInstance()end) end
         local parts={}
         if okAnim and U.valid(anim) then
             local okClass,class=pcall(function()return anim:GetClass()end)
@@ -431,7 +433,8 @@ function Companion.new(options)
         end
         local tags={}
         local asc=U.field(actor,'AbilitySystemComponent')
-        local okTags,owned=pcall(function()return asc:GetOwnedGameplayTags()end)
+        local okTags,owned=false,nil
+        if U.valid(asc) then okTags,owned=pcall(function()return asc:GetOwnedGameplayTags()end) end
         for _,tag in ipairs(okTags and U.array(U.struct(owned,'GameplayTags')) or {})do
             local name=tagName(tag)
             if name:find('Attitude',1,true) or name:find('Locomotion',1,true) or name:find('Movement',1,true) then tags[#tags+1]=name end
@@ -451,6 +454,7 @@ function Companion.new(options)
     local function sampleAnimation(record,actor,ai,why,now)
         if (record.samples or 0)>=SAMPLE_LIMIT or (record.sampleAt and now-record.sampleAt<1) then return end
         local mesh=U.field(actor,'Mesh')
+        if not U.valid(mesh) then return end
         local okAnim,anim=pcall(function()return mesh:GetAnimInstance()end)
         if not okAnim or not U.valid(anim) then return end
         record.samples=(record.samples or 0)+1;record.sampleAt=now
@@ -462,7 +466,8 @@ function Companion.new(options)
         end
         local tags={}
         local asc=U.field(ai,'AbilitySystemComponent')
-        local okTags,owned=pcall(function()return asc:GetOwnedGameplayTags()end)
+        local okTags,owned=false,nil
+        if U.valid(asc) then okTags,owned=pcall(function()return asc:GetOwnedGameplayTags()end) end
         for _,tag in ipairs(okTags and U.array(U.struct(owned,'GameplayTags')) or {})do
             local name=tagName(tag)
             if name:find('Attitude',1,true) or name:find('Sprint',1,true) or name:find('Move',1,true) then tags[#tags+1]=name end
@@ -491,9 +496,15 @@ function Companion.new(options)
                 if not record.animDescribed then record.animDescribed=true;describeAnimation(actor)end
             end
         elseif record.speedMode=='run' then
+            if record.speedRestoreAt and now<record.speedRestoreAt then return end
             local called=pcall(function()driver:StopUseCustomMovementParameters()end)
-            record.speedMode=nil
-            say('恢复走路速度 '..className(actor)..' 调用='..tostring(called)..' 最大速度='..tostring(speedOf(actor)))
+            if called then record.speedMode=nil;record.speedRestoreAt=nil
+            else record.speedRestoreAt=now+1 end
+            if called or not record.speedRestoreLogged then
+                say('恢复走路速度 '..className(actor)..' 调用='..tostring(called)..' 最大速度='..tostring(speedOf(actor))
+                    ..(called and '' or '；恢复账本保留，1秒后重试'))
+            end
+            record.speedRestoreLogged=not called or nil
         end
     end
 

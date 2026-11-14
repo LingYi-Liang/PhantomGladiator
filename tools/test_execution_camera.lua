@@ -259,4 +259,65 @@ do
     cam:finish('done');h.real=51.4;h.frame()
     assert(released==1 and near(own.at.X,1000),'the whole chain returns to the original observation point')
 end
+local stabilityFailures={}
+-- A failed setup still owns the deferred actor it created, even before the run becomes active.
+do
+    local h=harness({['R/execution-camera.tsv']='ExecutionCameraV1\ton=1\n'})
+    h.lib.FinishSpawningActor=function()error('injected finish-spawn failure')end
+    local cam=h.new();cam:begin(scene(1,{X=0,Y=0,Z=0}).info)
+    cam:sweep();cam:sweep();cam:sweep()
+    if not h.spawned[1] or h.spawned[1].alive~=false then stabilityFailures[#stabilityFailures+1]='partial begin leaked spawned camera' end
+end
+-- A view-target call can fail after its side effect; setup rollback must restore the previous view.
+do
+    local h=harness({['R/execution-camera.tsv']='ExecutionCameraV1\ton=1\n'})
+    local original=h.pc.SetViewTargetWithBlend
+    h.pc.SetViewTargetWithBlend=function(pc,target,blend)
+        original(pc,target,blend)
+        if target~=h.pawn then error('injected post-switch failure')end
+    end
+    local cam=h.new();cam:begin(scene(1,{X=0,Y=0,Z=0}).info)
+    if h.view~=h.pawn then stabilityFailures[#stabilityFailures+1]='partial begin did not restore previous view' end
+end
+-- Cancellation may fail or race with delivery. The old callback must never drive a later run.
+do
+    local h=harness({['R/execution-camera.tsv']='ExecutionCameraV1\ton=1\n'})
+    local cam=h.new({cancel=function()return false end})
+    cam:begin(scene(1,{X=0,Y=0,Z=0}).info)
+    local stale=h.loops[1].fn
+    cam:finish('first ended')
+    cam:begin(scene(1,{X=100,Y=0,Z=0}).info)
+    local current=h.spawned[2];local moves=0;local original=current.K2_SetActorLocationAndRotation
+    current.K2_SetActorLocationAndRotation=function(...)moves=moves+1;return original(...)end
+    stale()
+    if moves~=0 then stabilityFailures[#stabilityFailures+1]='cancelled callback drove the next execution camera' end
+    h.frame();assert(moves>=1,'current callback still updates its own camera')
+end
+-- A new non-continuing execution releases the previous borrowed camera before acquiring it again.
+do
+    local h=harness({['R/execution-camera.tsv']='ExecutionCameraV1\ton=1\n'})
+    local leased,borrowed,released=false,0,0
+    local own=object('BorrowedCamera',{K2_SetActorLocationAndRotation=function()return true end,
+        K2_GetActorLocation=function()return {X=0,Y=0,Z=0}end})
+    local free={isActive=function()return true end,
+        borrow=function()if leased then return nil end;leased=true;borrowed=borrowed+1;return own,{X=0,Y=0,Z=0},{Pitch=0,Yaw=0,Roll=0}end,
+        release=function()leased=false;released=released+1;return true end}
+    local cam=h.new({freeCamera=free});cam:begin(scene(1,{X=0,Y=0,Z=0}).info);h.frame()
+    cam:begin(scene(1,{X=100,Y=0,Z=0}).info)
+    if borrowed~=2 or released~=1 or cam:status().state~='running' then stabilityFailures[#stabilityFailures+1]='new execution could not reacquire previous borrowed camera' end
+end
+-- A transient destroy failure must keep the owned camera in the retirement ledger for retry.
+do
+    local h=harness({['R/execution-camera.tsv']='ExecutionCameraV1\ton=1\n'})
+    local cam=h.new();cam:begin(scene(1,{X=0,Y=0,Z=0}).info);cam:finish('done')
+    local camera=h.spawned[1];local destroy=camera.K2_DestroyActor;local attempts=0
+    camera.K2_DestroyActor=function(...)
+        attempts=attempts+1
+        if attempts==1 then error('injected transient destroy failure')end
+        return destroy(...)
+    end
+    cam:sweep();cam:sweep();cam:sweep();cam:sweep()
+    if attempts~=2 or camera.alive~=false then stabilityFailures[#stabilityFailures+1]='destroy failure dropped camera retirement record' end
+end
+assert(#stabilityFailures==0,table.concat(stabilityFailures,'; '))
 print('execution_camera ok')

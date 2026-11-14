@@ -394,4 +394,72 @@ test('a companion executing a boss takes no follow, teleport or recall orders me
     clockNow=clockNow+1;here:tick()
     assert(moved==1,'500 m away with the clip over: teleported as usual')
 end)
+test('a failed native speed restore remains pending and is retried in combat',function()
+    local one,ai=unit(false)
+    local speed=object({MaxWalkSpeed=100},'CharacterMovement');one.CharacterMovement=speed
+    local stops,clockNow=0,10000
+    one['Locomotion Driver']=object({UseCustomMaxSpeed=function(_,value)speed.MaxWalkSpeed=value end,
+        StopUseCustomMovementParameters=function()
+            stops=stops+1;if stops==1 then error('temporary restore failure')end
+            speed.MaxWalkSpeed=100
+        end},'LocomotionDriver')
+    locations[player]={X=0,Y=0,Z=0};locations[one]={X=2000,Y=0,Z=0}
+    local list={{actor=one,team='companion'}}
+    local here=Companion.new({log=function()end,getPlayer=function()return player end,members=function()return list end,
+        clock=function()return clockNow end,getLocation=function(a)return locations[a] or {X=0,Y=0,Z=0}end})
+    here:tick();assert(speed.MaxWalkSpeed>=500)
+    ai.CurrentStateTag=tag('AI.State.Combat');clockNow=clockNow+0.2;here:tick()
+    assert(stops==1 and speed.MaxWalkSpeed>=500)
+    clockNow=clockNow+0.2;here:tick();assert(stops==1,'failed native restores are throttled between support ticks')
+    clockNow=clockNow+2;here:tick()
+    assert(stops==2 and speed.MaxWalkSpeed==100,'failed restore must not lose the custom-speed ledger')
+end)
+test('follow setup and cached keys skip invalid state and blackboard objects',function()
+    local one,ai=unit(false)
+    local badStateCalls,badBlackboardCalls=0,0
+    local keyType=object({},'KeyType');keyType.GetClass=function()return object({},'BlackboardKeyType_Object')end
+    local bb=object({BlackboardAsset=object({Keys={{EntryName='FollowTarget',KeyType=keyType}}},'Asset')},'Blackboard')
+    local bbValid=true;bb.IsValid=function()return bbValid end
+    function bb:GetValueAsObject()
+        if not bbValid then badBlackboardCalls=badBlackboardCalls+1;error('invalid native blackboard')end
+        return player
+    end
+    function bb:SetValueAsObject()if not bbValid then badBlackboardCalls=badBlackboardCalls+1;error('invalid native blackboard')end end
+    ai.BlackboardComponent=bb
+    local originalConstruct,followState=StaticConstructObject
+    StaticConstructObject=function(...)
+        local state=originalConstruct(...);followState=state
+        rawset(state,'AssignParameters',function()badStateCalls=badStateCalls+1;error('invalid native follow state')end)
+        return state
+    end
+    local clockNow=10500
+    local here=Companion.new({log=function()end,getPlayer=function()return player end,
+        members=function()return {{actor=one,team='companion'}}end,clock=function()return clockNow end,
+        getLocation=function()return {X=0,Y=0,Z=0}end})
+    assert(here:prepare(one,'/Test/One.One_C').ok)
+    StaticConstructObject=originalConstruct;followState.IsValid=function()return false end
+    here:tick();bbValid=false;clockNow=clockNow+3;here:tick()
+    assert(badStateCalls==0 and badBlackboardCalls==0,'invalid cached UObject methods must not be entered')
+end)
+test('running diagnostics never call native methods on invalid mesh or ASC components',function()
+    local one,ai=unit(false)
+    one.CharacterMovement=object({MaxWalkSpeed=100},'CharacterMovement')
+    one['Locomotion Driver']=object({UseCustomMaxSpeed=function()end},'Driver')
+    local invalidCalls=0
+    local function invalidComponent(method)
+        local component=object({[method]=function()invalidCalls=invalidCalls+1;error('invalid native component')end},'InvalidComponent')
+        component.IsValid=function()return false end
+        return component
+    end
+    one.Mesh=invalidComponent('GetAnimInstance')
+    one.AbilitySystemComponent=invalidComponent('GetOwnedGameplayTags')
+    ai.AbilitySystemComponent=invalidComponent('GetOwnedGameplayTags')
+    locations[player]={X=0,Y=0,Z=0};locations[one]={X=2000,Y=0,Z=0}
+    local clockNow=11000
+    local here=Companion.new({log=function()end,getPlayer=function()return player end,
+        members=function()return {{actor=one,team='companion'}}end,clock=function()return clockNow end,
+        getLocation=function(a)return locations[a] or {X=0,Y=0,Z=0}end})
+    here:tick();clockNow=clockNow+1;here:tick()
+    assert(invalidCalls==0,'pcall cannot replace IsValid before native component methods')
+end)
 print('companion: PASS (official follow state, player faction, friendly relation, AI restart, gated assist, follow watch, roster, missing class, follow keys, walk/run, stuck fallback, teleport and boss fights, always friendly, mounts, stuck teleport, recall)')

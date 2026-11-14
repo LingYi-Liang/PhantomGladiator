@@ -512,9 +512,27 @@ function Stages.new(options)
             return {ok=false}
         end
         local yaw=facing(origin)
+        local named,identity=pcall(function()return actor:GetFullName()end)
+        if not named or type(identity)~='string' then named,identity=pcall(function()return actor:GetFName():ToString()end) end
+        identity=named and type(identity)=='string' and identity or nil
+        local previous=self.records[key]
+        if previous and (previous.stage~=stage or not identity or previous.identity~=identity) then
+            self:release(previous,'演员身份已改变');previous=nil
+        end
+        local leases=previous and previous.leases or {}
         local parts,groups={},{}
         for _,prop in ipairs(stage.props)do
-            local text,result=place(stage,prop,origin,yaw,world,actor)
+            local id=prop.key or prop.name
+            local mine=leases[id]
+            local text,result
+            if mine and shared[id]==mine and not gone(mine.actor) then
+                text,result=prop.name..'=沿用本角色已登记的物件','shared'
+            else
+                local before=shared[id];local users=before and before.users or 0
+                text,result=place(stage,prop,origin,yaw,world,actor)
+                local acquired=shared[id]
+                if acquired and (acquired~=before or acquired.users>users) then leases[id]=acquired end
+            end
             if prop.group then
                 local g=groups[prop.group] or {total=0,placed=0,shared=0,map=0,failed=0,first={}}
                 groups[prop.group]=g
@@ -531,25 +549,29 @@ function Stages.new(options)
                 def.revealOn and string.format('；先隐藏，用时显现，挂钩=%s',tostring(hooked)) or '',
                 #g.first>0 and '（'..table.concat(g.first,'；')..'）' or '')
         end
-        self.records[key]={actor=actor,key=key,name=name,stage=stage,at=now(),tags=nil}
+        local record=previous or {at=now()}
+        record.actor,record.key,record.name,record.stage=actor,key,name,stage
+        record.identity,record.leases=identity,leases
+        self.records[key]=record
         say(string.format('%s：按原场地放场地物件，整体朝向玩家 %.0f°：%s',stage.label,yaw,table.concat(parts,'；')))
         if stage.saveId then saveId(actor,stage) end
         return {ok=true}
     end
 
     function self:release(record,why)
-        if not record then return end
-        self.records[record.key]=nil
+        if not record or record.released then return end
+        record.released=true
+        if self.records[record.key]==record then self.records[record.key]=nil end
         if #record.stage.props==0 then return end
         local parts={}
         local removedGroup={}
         for _,prop in ipairs(record.stage.props)do
             local id=prop.key or prop.name
-            local mine=shared[id]
+            local mine=record.leases and record.leases[id]
             if mine then
                 mine.users=mine.users-1
                 if mine.users<=0 then
-                    shared[id]=nil
+                    if shared[id]==mine then shared[id]=nil end
                     local result
                     if gone(mine.actor) then result='已不在'
                     elseif mine.borrowed then

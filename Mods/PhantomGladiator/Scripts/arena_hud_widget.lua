@@ -134,6 +134,7 @@ function Renderer.new(options)
         end end
     end
     function self:syncNative(desired,privateKeys,removeUnbound)
+        if not next(desired) and not next(self.hidden) and not removeUnbound then return end
         local wanted={};local hud=findHUD();local entries={};local point=U.field(hud,'BossPoint')
         if U.valid(hud) then
             local ok,list=pcall(function()return hud:GetBossHPBarInstances()end)

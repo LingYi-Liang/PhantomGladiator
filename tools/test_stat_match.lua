@@ -246,4 +246,34 @@ test('the v1 switch file still reads as matching',function()
     local h=harness();h.files['memory/stat-match-settings.tsv']='StatMatchV1\t1\n'
     assert(Match.new(h.options):status().mode=='match')
 end)
+test('partial custom success never hides an unverified field rollback',function()
+    for _,summon in ipairs({false,true})do
+        local h=harness();local actor=h:actor(100,80,20)
+        h.files['memory/stat-custom-request.tsv']='StatCustomV1\tR1\nAttack\t33\nShachiAttack\t40\n'
+        assert(h.match:setMode('CUSTOM','R1').ok)
+        local adapter=h.options.adapter
+        local write,native=adapter.writeBase,adapter.nativeValue
+        function adapter:writeBase(unit,field,value)
+            if field=='Attack' and value==20 then return false,'restore refused' end
+            return write(self,unit,field,value)
+        end
+        function adapter:nativeValue(unit,field)
+            if field=='Attack' then return nil end
+            return native(self,unit,field)
+        end
+        local result=summon and h.match:onSummon(actor,'Pet') or h.match:onSpawn(actor,'Direct')
+        assert(actor.values.ShachiAttack.current==40 and actor.values.Attack.base==33,'fixture must keep one verified field and one failed restore')
+        assert(not result.ok and result.rollback_verified==false,'a failed custom rollback must not report successful activation')
+        assert(h.match:status().customized==0,'an unsafe partial customization is not a completed unit')
+    end
+end)
+test('all refused summon values report a verified rollback to activation callers',function()
+    local h=harness();local actor=h:actor(100,80,20)
+    h.files['memory/stat-custom-request.tsv']='StatCustomV1\tR1\nAttack\t33\n'
+    assert(h.match:setMode('CUSTOM','R1').ok)
+    h.failNative=true
+    local result=h.match:onSummon(actor,'Pet')
+    assert(not result.ok and result.rollback_verified==true,'safe all-refused summons must distinguish restored values from an unsafe rollback')
+    assert(actor.values.Attack.base==20 and result.message)
+end)
 print('stat_match: PASS ('..count..' lifecycle, calibration and rollback regressions)')

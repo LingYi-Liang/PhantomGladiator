@@ -128,7 +128,10 @@ function Cam.new(options)
         assert(call(r.camera,'K2_SetActorLocationAndRotation',location,rotation,false,{},true),'移动镜头失败')
         r.last={location=location,rotation=rotation}
     end
-    local function stopLoop(r)if r.handle then pcall(cancel,r.handle);r.handle=nil end end
+    local function stopLoop(r)
+        r.stopped=true
+        if r.handle then pcall(cancel,r.handle);r.handle=nil end
+    end
 
     function self:set(value)
         if value~='ON' and value~='OFF' then return {ok=false,message='处决镜头开关只接受 ON 或 OFF',spawned_count=0} end
@@ -229,11 +232,13 @@ function Cam.new(options)
             say('衔接原生处决，保留相机及最初返回位置：'..tostring(info.ability))
             return
         end
+        if run and run.phase~='out' then self:finish('下一次处决开始') end
         if run and run.phase=='out' then
             stopLoop(run);run=nil
             say('上一段还在过渡回去，直接还给自由观战 位置读回='..tostring(options.freeCamera:release()))
-        elseif run then self:finish('下一次处决开始') end
+        end
         if not anim then say('这对处决没有镜头数据，保持原视角：'..tostring(info.ability));return end
+        local preparing
         local ok,err=pcall(function()
             local pc=options.getController();assert(U.valid(pc),'读不到玩家控制器')
             local world=options.getWorld();assert(U.valid(world),'读不到 World')
@@ -246,6 +251,7 @@ function Cam.new(options)
             half=okHalf and U.unwrap(half)
             if number(half) and half>20 and half<300 then halfHeight=half end
             local r={info=info,anim=anim,pc=pc,world=world,lib=lib,previous=previous,halfHeight=halfHeight,frames=0,phase='play'}
+            preparing=r
             r.started=gameTime(r);assert(r.started,'读不到游戏时间')
             if options.freeCamera and options.freeCamera:isActive() then
                 local camera,position,rotation=options.freeCamera:borrow()
@@ -273,7 +279,12 @@ function Cam.new(options)
                 assert(call(pc,'SetViewTargetWithBlend',camera,BLEND_IN,0,0,false),'切换视角失败')
             end
             run=r
-            r.handle=loop(FRAME_MS,function()update()end)
+            r.handle=loop(FRAME_MS,function()
+                -- Cancellation can race with delivery; a retired callback cannot drive a later execution.
+                if run~=r or r.stopped then return true end
+                update()
+                return run~=r or r.stopped==true
+            end)
             assert(r.handle~=nil and r.handle~=false,'逐帧更新没登记上')
             self.state='running';self.shots=self.shots+1
             self.message='处决镜头：'..tostring(info.ability)
@@ -284,7 +295,24 @@ function Cam.new(options)
         if not ok then
             self.failures=self.failures+1
             say('没能开始，保持原视角：'..tostring(err))
-            if run then self:finish('开始失败') end
+            if run and run==preparing then self:finish('开始失败')
+            elseif preparing then
+                stopLoop(preparing)
+                if preparing.borrowed then
+                    local released,value=pcall(function()return options.freeCamera:release()end)
+                    say('开始失败归还借用镜头 读回='..tostring(released and value==true))
+                elseif U.valid(preparing.camera) then
+                    local got,current=call(preparing.pc,'GetViewTarget')
+                    current=got and U.unwrap(current) or nil
+                    if same(current,preparing.camera) and U.valid(preparing.previous) then
+                        call(preparing.pc,'SetViewTargetWithBlend',preparing.previous,BLEND_OUT,0,0,false)
+                    end
+                    local read,actual=call(preparing.pc,'GetViewTarget')
+                    say('开始失败回收相机 原视角读回='..tostring(read and same(U.unwrap(actual),preparing.previous)))
+                    spent[#spent+1]={camera=preparing.camera,frames=0}
+                end
+                self.state=self.on and 'waiting' or 'off'
+            end
         end
     end
 
@@ -338,7 +366,16 @@ function Cam.new(options)
         for _,item in ipairs(spent) do
             item.frames=item.frames+1
             if item.frames>=3 then
-                if U.valid(item.camera) then call(item.camera,'K2_DestroyActor') end
+                if U.valid(item.camera) then
+                    local called,value=call(item.camera,'K2_DestroyActor')
+                    if not called or value==false then
+                        kept[#kept+1]=item
+                        if not item.failed then
+                            item.failed=true;self.failures=self.failures+1
+                            say('相机回收调用未确认，保留重试 镜头仍有效='..tostring(U.valid(item.camera)))
+                        end
+                    end
+                end
             else kept[#kept+1]=item end
         end
         spent=kept

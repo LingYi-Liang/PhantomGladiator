@@ -33,7 +33,7 @@ function Immortal.new(options)
     local journal=options.path..'/immortal-floors.tsv'
     local self={alive=true,on={blue=false,red=false,companion=false},failures=0,relocks=0,breaches=0,message=''}
     local locked={}     -- actor key -> {team, original floor base, target HP, unit name}
-    local tries={}      -- actor key -> lock attempts that did not read back
+    local tries={}      -- actor key -> {identity, count} for lock attempts that did not read back
     local recovering={} -- matched reload records whose original floor is not restored yet
     local release
     local lines=0
@@ -120,9 +120,11 @@ function Immortal.new(options)
         if next(recovering) then saveJournal() else writeFile(journal,'') end
     end
 
-    local function failedLock(actor,key)
-        tries[key]=(tries[key] or 0)+1
-        if tries[key]>=RETRIES then
+    local function failedLock(actor,key,owner)
+        local attempt=tries[key]
+        if not attempt or attempt.identity~=owner then attempt={identity=owner,count=0};tries[key]=attempt end
+        attempt.count=attempt.count+1
+        if attempt.count>=RETRIES then
             self.failures=self.failures+1;self.message=short(actor)..' 没能锁住血量'
             say('放弃锁定 unit='..short(actor)..'：'..RETRIES..' 次写入都没有读回')
         end
@@ -146,7 +148,7 @@ function Immortal.new(options)
         end
         -- Not held: put the original floor back and try again on a later tick, a few times at most.
         if release(record,actor,'锁定未确认') then locked[key]=nil end
-        failedLock(actor,key)
+        failedLock(actor,key,owner)
         return true
     end
     local function hold(record,actor)
@@ -227,12 +229,13 @@ function Immortal.new(options)
             if key and not gone(actor) then
                 seen[key]=true
                 local record=locked[key]
-                local owner=record and identity(actor)
+                local owner=(record or tries[key]) and identity(actor)
+                if tries[key] and owner and tries[key].identity~=owner then tries[key]=nil end
                 if record and owner and record.identity~=owner then locked[key]=nil;record=nil;tries[key]=nil;changed=true end
                 if record and (record.pendingRestore or not self.on[member.team]) then
                     if release(record,actor,'已关闭不倒下') then locked[key]=nil;record=nil;changed=true end
                 elseif record and owner then hold(record,actor) end
-                if not record and not recovering[key] and self.on[member.team] and (tries[key] or 0)<RETRIES then
+                if not record and not recovering[key] and self.on[member.team] and (not tries[key] or tries[key].count<RETRIES) then
                     local touched,held=lock(actor,member.team,key)
                     changed=touched or changed
                     if held then newLocks[key]=locked[key] end
@@ -254,7 +257,7 @@ function Immortal.new(options)
                 -- must release its new locks; failed releases stay in the ledger for later retries.
                 for key,record in pairs(newLocks)do
                     if release(record,record.actor,'原值记录保存未确认') then locked[key]=nil end
-                    failedLock(record.actor,key)
+                    failedLock(record.actor,key,record.identity)
                 end
                 again('生命下限记录保存未读回，本次新加锁已请求恢复')
             end

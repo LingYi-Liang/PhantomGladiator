@@ -321,8 +321,15 @@ function Arena.new(options)
         local synced=notify_units()
         -- The numbers the player set for this side go on what its units summon too.
         if options.summonAdopted then
-            local wrote,why=invoke('summonAdopted',actor,classPath,team)
-            if not wrote then log('召唤物数值未写入：'..tostring(why)) end
+            local wrote,result=invoke('summonAdopted',actor,classPath,team)
+            if not wrote then log('召唤物数值未写入：'..tostring(result))
+            elseif type(result)=='table' and result.ok==false then
+                log('召唤物数值未确认：'..tostring(result.message)..'；回滚读回='..tostring(result.rollback_verified))
+                if result.rollback_verified~=true then
+                    state='cleanup_pending'
+                    return response(false,'原生召唤物数值未确认，保留登记供清理',{adopted=true,cleanup_required=true,team=team,aid=aid==true})
+                end
+            end
         end
         log('接管原生召唤物：team='..team..(aid and ('（召唤者在 '..owner.team..' 队；按原版它打召唤者这边，所以站对面，不计存活，目标由游戏自己选）') or '')
             ..' parent='..actor_name(owner.actor)..' child='..actor_name(actor)..'；归属证据='..tostring(evidence)..'；登记读回='..tostring(synced))

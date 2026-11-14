@@ -54,6 +54,15 @@ do
     assert(h.attrs[fresh].Health_Min.current==200,'new unit inherited exhausted lock attempts')
     print('ok - failed immortal attempts are pruned before an address is reused')
 end
+do
+    local h=harness();local im=h.new();im:set('blue','ON')
+    local old=h.unit('ExhaustedOwner',100);h.members={{actor=old,team='blue'}};h.stuck='Health_Min'
+    for _=1,4 do im:tick()end
+    local fresh=h.unit('ReplacementOwner',300);fresh.GetAddress=old.GetAddress
+    h.stuck=nil;h.members={{actor=fresh,team='blue'}};im:tick()
+    assert(h.attrs[fresh].Health_Min.current==300,'a replacement observed without an empty roster tick must not inherit exhausted attempts')
+    print('ok - failed immortal attempt budgets follow identity even without an empty roster tick')
+end
 
 do
     local h=harness()

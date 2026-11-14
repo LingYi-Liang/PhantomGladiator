@@ -1496,7 +1496,7 @@
   }
   // Translated text for known codes; otherwise the game's or backend's own answer, which is Chinese.
   function reasonText(code, detail = "") {
-    if (detail && (!code || code === "rejected" || code === "host")) return detail;
+    if (detail && (!code || code === "rejected" || code === "host" || code === "submissionUnknown")) return detail;
     return t("reason." + (code || "unknown"));
   }
   async function summon(id = ui.selectedId, team = ui.team, count = ui.count) {
@@ -1556,7 +1556,7 @@
         if (done) toast({ id: tid, kind: "success", ...(typeof done === "string" ? { title: done } : done) });
         else if (tid) dismissToast(tid);
       }
-      else toast({ id: tid, kind: job.status === "uncertain" ? "warning" : "error", title: t("toast.failed"), body: reasonText(job.code, job.message), ...failed?.(job) });
+      else toast({ id: tid, kind: job.status === "uncertain" ? "warning" : "error", title: t(job.status === "uncertain" ? "history.state.uncertain" : "toast.failed"), body: reasonText(job.code, job.message), ...failed?.(job) });
       return job;
     } catch (error) {
       toast({ id: tid, kind: "error", title: t("toast.notSent"), body: reasonText(error.code, error.detail) });

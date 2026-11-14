@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.14-beta-4"
+local BUILD = "v0.40.14-beta-5"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1477,8 +1477,15 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         local stats=team=='companion' and arenaSupport.companionStats or statMatch
         local combatReady=activationRequested==true and ai~=nil and type(hp)=='number' and hp>0
         if combatReady and escort then
-            local wrote,why=pcall(function()stats:onSummon(actor,unitPath)end)
-            if not wrote then log('[Escort] 数值未写入: '..tostring(why)) end
+            local wrote,result=pcall(function()return stats:onSummon(actor,unitPath)end)
+            if not wrote or type(result)~='table' or result.ok~=true then
+                local detail=wrote and type(result)=='table' and tostring(result.message) or tostring(result)
+                log('[Escort] 数值未确认: '..detail)
+                if wrote and type(result)=='table' and result.rollback_verified==true then
+                    return true,'初始化通过；数值统一失败已回滚',detail..'；单位保留原生数值，可正常交战'
+                end
+                return false,'单位已生成；随行数值未确认：'..detail..'；保留对象供清理'
+            end
         end
         if combatReady and not escort then
             local result=stats:onSpawn(actor,unitPath)
