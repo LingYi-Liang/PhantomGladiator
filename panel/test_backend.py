@@ -567,6 +567,9 @@ class BridgeTests(unittest.TestCase):
         command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_YanQianSui", "rule": "phantom", "value": "keep"})
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
         self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_YanQianSui", "blue", "1", "PHANTOM", "KEEP", ""])
+        command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_JingYe", "rule": "remote_reflect", "value": "off"})
+        columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+        self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_JingYe", "blue", "1", "REMOTE_REFLECT", "OFF", ""])
         for bad in ({"action": "set_unit_rule"}, {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock"},
                     {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "keep"},
                     {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "size", "value": "kill"},

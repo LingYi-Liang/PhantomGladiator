@@ -4,12 +4,14 @@
 --            kill: it dies on the lock (arena_executions.lua).
 --   phantom: 琴女's 虚化 in fights of blue, red and companions. off (default): taken away when summoned, since nothing an NPC
 --            does can break it (phantom_break.lua). keep: as in the game. XuKong keeps his passive by default.
+--   remote_reflect: keep (default): original retaliation; off: suppress ranged retaliation for the next spawn.
 local U=require("ue_observe")
 local Rules={}
 local HEADER='UnitRulesV1'
-Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true}}
-Rules.DEFAULTS={lock='execute',phantom='off'}
-local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'}}
+Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true}}
+Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep'}
+local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
+    remote_reflect={keep='保留原版远程反伤（下次召唤生效）',off='关闭远程反伤（下次召唤生效）'}}
 
 local XUKONG='BP_Monster_XuKong'
 

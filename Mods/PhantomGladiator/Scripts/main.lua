@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.14-beta-1"
+local BUILD = "v0.40.14-beta-2"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1429,6 +1429,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             end
         end
         local spawnWarning
+        if arenaSupport.remoteReflect then arenaSupport.remoteReflect:capture(actor,unitPath,escort) end
         if arenaSupport.phantom then
             local called,ok,reason=pcall(function()return arenaSupport.phantom:beforeActivate(actor,unitPath,escort)end)
             if not called or not ok then
@@ -2004,6 +2005,9 @@ executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getControll
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
 arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
+arenaSupport.remoteReflect=require('remote_reflect').new({log=log,members=ArenaMembers,
+    ready=function()return runtimeSession:status().game_ready==true end,
+    rule=function(id)return arenaSupport.unitRules:get(id,'remote_reflect')end})
 arenaSupport.phantom=require('phantom_break').new({log=log,members=ArenaMembers,rule=function(actor)return arenaSupport.unitRules:get(actor,'phantom') end})
 -- Read only: what a monster's grab did to the unit it hit (grab_probe.lua).
 arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log=log,members=ArenaMembers,location=GetLocation,
@@ -2074,6 +2078,7 @@ local function supportSteps(self)
     if codexIcons then step('codexIcons',function()codexIcons:tick()end) end
     step('summonKeep',function()self.summonKeep:tick()end)
     step('phantom',function()self.phantom:tick()end)
+    step('remoteReflect',function()self.remoteReflect:tick()end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
@@ -2195,6 +2200,7 @@ if ModRef then
         combatLock:silence('Mod卸载')
         arenaSupport.stands:silence()
         arenaSupport.summonKeep:silence()
+        arenaSupport.remoteReflect:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
         aiParams:silence()

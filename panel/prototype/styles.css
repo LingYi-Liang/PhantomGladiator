@@ -572,6 +572,11 @@ a.btn, a.menu-item { text-decoration: none; }
 }
 .card-rule:hover { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .card-rule.is-changed { color: var(--amber); background: var(--amber-soft); box-shadow: none; }
+.card-reflect { display: flex; align-items: center; justify-content: space-between; gap: 4px; text-align: left; }
+.card-reflect-knob { flex: 0 0 21px; width: 21px; height: 12px; border-radius: 8px; background: var(--text-3); opacity: .7; position: relative; }
+.card-reflect-knob::after { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); transition: transform var(--t-fast); }
+.card-reflect[aria-checked="true"] .card-reflect-knob { background: var(--amber); opacity: 1; }
+.card-reflect[aria-checked="true"] .card-reflect-knob::after { transform: translateX(9px); }
 .card-quick {
   position: absolute;
   left: 13px;

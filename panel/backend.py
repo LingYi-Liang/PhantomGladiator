@@ -47,7 +47,7 @@ HOME_LEVEL_SOURCES = {"native", "area", "extra", "prologue", "picked"}
 HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
 # Rules set on a unit's card (unit_rules.lua).
-UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep")}
+UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off")}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
 FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
 # Teams whose units can be kept from going down (immortal_teams.lua); no-team units are the player's to beat.

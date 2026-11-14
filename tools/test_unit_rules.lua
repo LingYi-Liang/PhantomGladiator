@@ -84,3 +84,10 @@ do
     assert(rules:status().text=='' and new(fs):get(id,'phantom')=='keep')
 end
 print('unit_rules: PASS')
+do
+    local fs=filesystem();local rules=new(fs)
+    assert(rules:get('BP_Monster_JingYe','remote_reflect')=='keep')
+    assert(rules:set('BP_Monster_JingYe','remote_reflect','off').ok)
+    assert(new(fs):get('BP_Monster_JingYe','remote_reflect')=='off')
+    assert(rules:set('BP_Monster_JingYe','remote_reflect','keep').ok and rules:status().text=='')
+end

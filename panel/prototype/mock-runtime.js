@@ -102,6 +102,7 @@ const MockRuntime = (() => {
     track: { supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
     unitRulesSupported: true,
+    remoteReflectSupported: true,
     fight: "idle",              // idle | fighting | ended
     winner: "",                 // blue | red | draw
     cleanup: "",                // "" | restore_pending (one more cleanup) | spawn_uncertain (restart the game)

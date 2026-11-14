@@ -464,6 +464,11 @@ function Runtime.new(options)
         out.fun_perfect_dodges=fun.perfect_dodges or 0
         local unitKeys=options.unitKeys and options.unitKeys:status() or {}
         out.unit_keys_epoch=unitKeys.epoch or ''
+        local remoteReflect=options.support and options.support.remoteReflect and options.support.remoteReflect:status() or {}
+        out.remote_reflect_supported=remoteReflect.supported==true
+        out.remote_reflect_hooks=remoteReflect.hooks or 0
+        out.remote_reflect_blocked=remoteReflect.blocked or 0
+        out.remote_reflect_unknown=remoteReflect.unknown or 0
         out.unit_keys_revision=unitKeys.revision or 0
         out.unit_keys_event=unitKeys.event or 0
         out.unit_keys_last_unit=unitKeys.unit or ''

@@ -459,26 +459,55 @@
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
     BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom",
   };
-  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"] };
+  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"] };
+  const REMOTE_REFLECT_NATIVE = {
+    BP_Monster_JingYe: "原版刺盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。原版已排除飞行弹丸、受控子弹和投技，但其他远距离命中仍可能触发。",
+    BP_Monster_MaleThug_Club_Yellow_Shield: "原版荆棘盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。与荆野使用同一套触发判断，伤害参数不同。",
+    BP_Monster_MBoss: "原版部分旋转攻击、链刃和投技准备动作会建立反弹区，将接触的敌方飞行物弹开；它与刺盾直接结算反伤是两套机制。",
+    BP_Monster_MBossVariants: "原版部分旋转攻击与链刃动作可弹开接触的敌方飞行物；只有原招式启用反弹区的时段生效。",
+    BP_Monster_WuLengShuang: "原版防远程招式会建立反弹区，将接触的敌方飞行物弹开。正常攻击和其他防御行为仍由原版 AI 决定。",
+    BP_Monster_HookMan_P2: "原版部分招式会建立飞行物反弹区，只在该招式对应的时段生效。",
+    BP_Monster_LionDancer_P2: "原版部分招式会建立飞行物反弹区，只在该招式对应的时段生效。",
+    BP_Monster_FemaleDoll_QinNv: "原版由主角弹回法球来破除虚化，那是主角的反击，不是琴女人偶将来伤返还。本开关控制该单位自己发动的远程反伤。",
+    BP_Monster_FemaleDoll_QinNv_Ice: "原版由主角弹回法球来破除虚化，那是主角的反击，不是冰雪琴女将来伤返还。本开关控制该单位自己发动的远程反伤。",
+    BP_Monster_YanQianSui: "原版由主角弹回法球来破除虚化，那是主角的反击，不是烟千岁将来伤返还。本开关控制该单位自己发动的远程反伤。",
+    BP_Monster_FemaleVessel_YuZan: "原版由主角弹回法球来破除虚化，那是主角的反击，不是玉簪将来伤返还。本开关控制该单位自己发动的远程反伤。",
+  };
+  function remoteReflectTip(id) {
+    const native = REMOTE_REFLECT_NATIVE[id] || "当前原版资源未发现该单位专属的生命反伤被动。";
+    return native + "\n通用机制：具备格挡／弹反招式时可能反扣攻击方杀气，是否触发取决于原招式。\n开启“关闭远程反伤”后，阻止此单位对远程命中的物理／出血反伤、弹反回杀气及招式飞行物反弹，保留近战反伤、格挡和减伤。按弹体与攻击类型识别，不按双方距离。仅影响本模组单位，下次召唤生效。";
+  }
   const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => xukongDodgeRule(id, rule)
+  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? (value === "off" ? "远程反伤：已关闭" : "远程反伤：原版") : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
     const rule = UNIT_RULE_OF[u.id];
-    if (!rule || (RT.online() && !S.unitRulesSupported)) return "";
-    const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
-    const tip = xukongDodgeRule(u.id, rule)
-      ? t("unit.permanent.help")
-      : t(`unitRule.${rule}.tip`);
-    return `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
+    if (RT.online() && !S.unitRulesSupported) return "";
+    let html = "";
+    if (rule) {
+      const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
+      const tip = xukongDodgeRule(u.id, rule)
+        ? t("unit.permanent.help")
+        : t(`unitRule.${rule}.tip`);
+      html = `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
+    }
+    if (!RT.online() || S.remoteReflectSupported) {
+      const off = unitRuleValue(u.id, "remote_reflect") === "off";
+      const busy = ui.busy.has("set_unit_rule");
+      html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(u.name)}：关闭远程反伤" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
+    }
+    return html;
   }
-  function toggleUnitRule(id, rule) {
+  async function toggleUnitRule(id, rule) {
+    if (ui.busy.has("set_unit_rule")) return;
     const [first, second] = UNIT_RULE_VALUES[rule];
     const value = unitRuleValue(id, rule) === first ? second : first;
-    run("set_unit_rule", { payload: { unit: id, rule, value }, ok: () => { renderGrid(); return unitRuleLabel(id, rule, value); } });
+    const request = run("set_unit_rule", { payload: { unit: id, rule, value }, ok: () => unitRuleLabel(id, rule, value) });
+    renderGrid();
+    try { await request; } finally { renderGrid(); }
   }
   function cardHTML(u, q, focusable) {
     const sel = u.id === ui.selectedId, key = S.unitKeys[u.id];
