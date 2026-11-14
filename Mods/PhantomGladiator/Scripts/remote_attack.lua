@@ -2,7 +2,8 @@
 local U=require('ue_observe')
 local Remote={}
 local DATA={PBZ_ProjectileBulletData=true,PBZ_ProjectileEmitterData=true,PBZ_ParticleBulletData=true,PBZ_OverlapBulletData=true}
-local BULLETS={PBZ_ProjectileBullet=true,PBZ_ProjectileEmitter=true,PBZ_ParticleBullet=true,PBZ_OverlapBullet=true}
+local BULLETS={PBZ_ProjectileBullet=true,PBZ_ProjectileEmitter=true,PBZ_ParticleBullet=true,PBZ_OverlapBullet=true,
+    BP_Bullet_Laser_Base_C=true}
 local EXECUTION={PBZ_ExecutionBullet=true,PBZ_ExecutionBulletData=true,BP_PBZ_ExecutionBullet_C=true,BP_PBZ_ExecutionBulletData_C=true}
 local function call(object,method,...)
     if not U.valid(object) then return nil end

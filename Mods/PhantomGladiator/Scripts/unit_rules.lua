@@ -4,14 +4,19 @@
 --            kill: it dies on the lock (arena_executions.lua).
 --   phantom: 琴女's 虚化 in fights of blue, red and companions. off (default): taken away when summoned, since nothing an NPC
 --            does can break it (phantom_break.lua). keep: as in the game. XuKong keeps his passive by default.
---   remote_reflect: keep (default): original retaliation; off: suppress ranged retaliation for the next spawn.
+--   remote_reflect: thorns shields only. keep (default): original retaliation; off: no ranged shield retaliation.
 local U=require("ue_observe")
 local Rules={}
+Rules.THORN_COUNTERS={
+    BP_Monster_JingYe='GE_JingYe_Shield_Counter_C',
+    BP_Monster_MaleThug_Club_Yellow_Shield='GE_MaleThug_ClubShield_Counter_C',
+    BP_Monster_MaleThug_Club_Yellow_Shield_Teaching='GE_MaleThug_ClubShield_Counter_C',
+}
 local HEADER='UnitRulesV1'
 Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true}}
 Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep'}
 local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
-    remote_reflect={keep='保留原版远程反伤（下次召唤生效）',off='关闭远程反伤（下次召唤生效）'}}
+    remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'}}
 
 local XUKONG='BP_Monster_XuKong'
 
@@ -56,7 +61,8 @@ function Rules.new(options)
         local saved=readFile()
         if type(saved)=='string' and saved:sub(1,#HEADER+1)==HEADER..'\n' then
             for id,rule,value in saved:gmatch('\n([^\t\r\n]+)\t([^\t\r\n]+)\t([^\t\r\n]+)')do
-                if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=defaultValue(id,rule) then
+                if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=defaultValue(id,rule)
+                    and (rule~='remote_reflect' or Rules.THORN_COUNTERS[id]) then
                     rules[id]=rules[id] or {};rules[id][rule]=value
                 end
             end
@@ -65,6 +71,7 @@ function Rules.new(options)
     function self:set(id,rule,value)
         if not validId(id) then return {ok=false,message='单位规则：单位编号不对',spawned_count=0} end
         if not Rules.VALUES[rule] or not Rules.VALUES[rule][value] then return {ok=false,message='单位规则：规则或取值不对',spawned_count=0} end
+        if rule=='remote_reflect' and not Rules.THORN_COUNTERS[id] then return {ok=false,message='该单位没有刺盾反伤开关',spawned_count=0} end
         local copy={}
         for unit,row in pairs(rules)do
             copy[unit]={}

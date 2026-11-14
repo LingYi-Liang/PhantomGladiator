@@ -48,6 +48,7 @@ HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
 # Rules set on a unit's card (unit_rules.lua).
 UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off")}
+THORN_SHIELD_UNITS = {"BP_Monster_JingYe", "BP_Monster_MaleThug_Club_Yellow_Shield", "BP_Monster_MaleThug_Club_Yellow_Shield_Teaching"}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
 FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
 # Teams whose units can be kept from going down (immortal_teams.lua); no-team units are the player's to beat.
@@ -977,6 +978,8 @@ class Bridge:
                 raise ValidationError('unit_id must be a unit id such as BP_Monster_Name')
             if rule not in UNIT_RULES or value not in UNIT_RULES[rule]:
                 raise ValidationError('rule and value must be one of the unit rules')
+            if rule == 'remote_reflect' and unit not in THORN_SHIELD_UNITS:
+                raise ValidationError('该单位没有刺盾反伤开关')
             payload.update(unit_id=unit, rule=rule, value=value)
         elif action == 'configure_summon_queue':
             allowed |= {'mode', 'interval_ms', 'blue_slots', 'red_slots'}

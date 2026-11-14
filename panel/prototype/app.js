@@ -461,26 +461,19 @@
   };
   const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"] };
   const REMOTE_REFLECT_NATIVE = {
-    BP_Monster_JingYe: "原版刺盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。原版已排除飞行弹丸、受控子弹和投技，但其他远距离命中仍可能触发。",
+    BP_Monster_JingYe: "原版：下马后的刺盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。",
     BP_Monster_MaleThug_Club_Yellow_Shield: "原版荆棘盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。与荆野使用同一套触发判断，伤害参数不同。",
-    BP_Monster_MBoss: "原版部分旋转攻击、链刃和投技准备动作会建立反弹区，将接触的敌方飞行物弹开；它与刺盾直接结算反伤是两套机制。",
-    BP_Monster_MBossVariants: "原版部分旋转攻击与链刃动作可弹开接触的敌方飞行物；只有原招式启用反弹区的时段生效。",
-    BP_Monster_WuLengShuang: "原版防远程招式会建立反弹区，将接触的敌方飞行物弹开。正常攻击和其他防御行为仍由原版 AI 决定。",
-    BP_Monster_HookMan_P2: "原版部分招式会建立飞行物反弹区，只在该招式对应的时段生效。",
-    BP_Monster_LionDancer_P2: "原版部分招式会建立飞行物反弹区，只在该招式对应的时段生效。",
-    BP_Monster_FemaleDoll_QinNv: "原版由主角弹回法球来破除虚化，那是主角的反击，不是琴女人偶将来伤返还。本开关控制该单位自己发动的远程反伤。",
-    BP_Monster_FemaleDoll_QinNv_Ice: "原版由主角弹回法球来破除虚化，那是主角的反击，不是冰雪琴女将来伤返还。本开关控制该单位自己发动的远程反伤。",
-    BP_Monster_YanQianSui: "原版由主角弹回法球来破除虚化，那是主角的反击，不是烟千岁将来伤返还。本开关控制该单位自己发动的远程反伤。",
-    BP_Monster_FemaleVessel_YuZan: "原版由主角弹回法球来破除虚化，那是主角的反击，不是玉簪将来伤返还。本开关控制该单位自己发动的远程反伤。",
+    BP_Monster_MaleThug_Club_Yellow_Shield_Teaching: "原版荆棘暴徒教学变体，沿用荆棘盾的物理与出血反伤。",
   };
   function remoteReflectTip(id) {
-    const native = REMOTE_REFLECT_NATIVE[id] || "当前原版资源未发现该单位专属的生命反伤被动。";
-    return native + "\n通用机制：具备格挡／弹反招式时可能反扣攻击方杀气，是否触发取决于原招式。\n开启“关闭远程反伤”后，阻止此单位对远程命中的物理／出血反伤、弹反回杀气及招式飞行物反弹，保留近战反伤、格挡和减伤。按弹体与攻击类型识别，不按双方距离。仅影响本模组单位，下次召唤生效。";
+    const native = REMOTE_REFLECT_NATIVE[id];
+    if (!native) return "";
+    return native + "\n原版按实际伤害载体分类，不按攻击距离判断：飞行弹丸、发射器、粒子弹，以及保留远程父弹关系的子攻击，本来就被排除；受控子弹和投技也不触发。\n部分按扫掠结算的激光、独立范围或爆炸命中，如果未被归入上述类型且被盾处理，仍可能反伤，这是原版规则，并非所有激光或爆炸都会触发。\n开启后仅禁止远程命中触发的刺盾物理反伤与出血反附加。正常攻击、近战刺盾反伤、格挡及其他反弹机制保持原样。默认原版，下次召唤生效。";
   }
   const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? (value === "off" ? "远程反伤：已关闭" : "远程反伤：原版") : xukongDodgeRule(id, rule)
+  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? (value === "off" ? "刺盾不反远程" : "刺盾反伤：原版") : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
@@ -494,10 +487,10 @@
         : t(`unitRule.${rule}.tip`);
       html = `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
     }
-    if (!RT.online() || S.remoteReflectSupported) {
+    if (REMOTE_REFLECT_NATIVE[u.id] && (!RT.online() || S.remoteReflectSupported)) {
       const off = unitRuleValue(u.id, "remote_reflect") === "off";
       const busy = ui.busy.has("set_unit_rule");
-      html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(u.name)}：关闭远程反伤" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
+      html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(u.name)}：关闭刺盾远程反伤" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
     }
     return html;
   }

@@ -571,6 +571,7 @@ class BridgeTests(unittest.TestCase):
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
         self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_JingYe", "blue", "1", "REMOTE_REFLECT", "OFF", ""])
         for bad in ({"action": "set_unit_rule"}, {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock"},
+                    {"action": "set_unit_rule", "unit_id": "BP_Monster_MBoss", "rule": "remote_reflect", "value": "off"},
                     {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "keep"},
                     {"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "size", "value": "kill"},
                     {"action": "set_unit_rule", "unit_id": "../x", "rule": "lock", "value": "kill"},

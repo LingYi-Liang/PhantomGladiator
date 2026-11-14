@@ -90,4 +90,7 @@ do
     assert(rules:set('BP_Monster_JingYe','remote_reflect','off').ok)
     assert(new(fs):get('BP_Monster_JingYe','remote_reflect')=='off')
     assert(rules:set('BP_Monster_JingYe','remote_reflect','keep').ok and rules:status().text=='')
+    assert(not rules:set('BP_Monster_MBoss','remote_reflect','off').ok,'only thorns shields support this rule')
+    local loaded=new(filesystem({[FILE]='UnitRulesV1\nBP_Monster_MBoss\tremote_reflect\toff\nBP_Monster_JingYe\tremote_reflect\toff\n'}))
+    assert(loaded:get('BP_Monster_MBoss','remote_reflect')=='keep' and loaded:get('BP_Monster_JingYe','remote_reflect')=='off')
 end
