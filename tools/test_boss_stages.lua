@@ -387,6 +387,19 @@ test('a marker of her own map far off is borrowed: moved beside her, found by cl
     assert(at.X==40000 and at.Y==0 and at.Z==500 and slot.rot.Yaw==33 and slot.RootComponent.Mobility==0,'back as it was')
     assert(all():find('BP_LengTu_SummonSlot_01 放回地图原处 调用=true 位置读回差=0cm',1,true),all())
 end)
+test('invalid borrowed marker roots are never called during cleanup',function()
+    local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=40000,Y=0,Z=500},33)
+    local s=borrowingStages({BP_LengTu_SummonSlot_01=slot})
+    local b=boss('BP_Monster_LengTu_C')
+    assert(s:prepare(b,transform,world).ok)
+    local calls=0
+    slot.RootComponent.alive=false
+    slot.RootComponent.SetMobility=function()calls=calls+1 end
+    b.alive=false;s:tick()
+    print('invalid borrowed-root native calls='..calls)
+    assert(calls==0,'cleanup invoked a native method on an invalid root')
+end)
+
 test('a marker of her own map near where hers would stand is used where it is',function()
     local slot=mapMarker('BP_LengTu_SummonSlot_01',{X=837,Y=-252,Z=0},33)
     local s=borrowingStages({BP_LengTu_SummonSlot_01=slot})

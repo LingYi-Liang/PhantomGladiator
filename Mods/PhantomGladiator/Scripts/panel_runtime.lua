@@ -623,7 +623,7 @@ function Runtime:queueSummon(callback,path,team,count)
         local skipped=self.summonSkipped or 0
         self.summonSkipped=0
         local ok,err=xpcall(callback,debug.traceback)
-        self.summonPending=nil
+        if self.summonPending==request then self.summonPending=nil end
         if skipped>0 then self.log('[SummonKey] 跳过密集的召唤按键='..skipped..'；已处理一次召唤请求') end
         if not ok then self.log('[SummonKey] 回调失败: '..tostring(err)) end
     end)

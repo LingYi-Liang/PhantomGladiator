@@ -4,6 +4,7 @@ local address=0
 local function object(name)
     address=address+1;local a=address
     return {IsValid=function()return true end,GetAddress=function()return a end,
+        GetFullName=function()return name..'_'..a end,
         GetFName=function()return {ToString=function()return name end}end}
 end
 local function harness()
@@ -222,6 +223,72 @@ do
     fighterHatred.RemoveActorFromHatredList=function()end
     h.fighting=true;lock:tick()
     assert(h.all():find('移出=0 读回仍在=1',1,true),h.all())
+end
+-- Address replacement can happen between two support ticks, without an empty roster in between.
+do
+    local h=harness();local health,lists={},{}
+    local lock=h.new({hp=function(actor)return health[actor]end,
+        hates=function(manager,actor)return lists[manager] and lists[manager][actor]==true end})
+    local old=h.unit('red');local winner,_,manager=h.unit('blue')
+    health[old],health[winner]=0,100;lists[manager]={[old]=true}
+    manager.RemoveActorFromHatredList=function(_,actor)lists[manager][actor]=nil end
+    h.fighting=true;lock:tick();assert(lists[manager][old]==nil)
+    local winnerRecord=h.members[2];h.members={winnerRecord}
+    local fresh=h.unit('red');fresh.GetAddress=old.GetAddress;health[fresh]=0;lists[manager][fresh]=true
+    lock:tick()
+    assert(lists[manager][fresh]==nil,'same-address replacement without an empty tick must forget the new corpse')
+end
+do
+    local h=harness();local lock=h.new()
+    local old,component=h.unit('red');h.unit('blue');h.fighting=true;lock:tick()
+    h.call('transition',component,tag('AI.Transition.CombatToIdle'));assert(#h.dropped==1)
+    local blue=h.members[2];h.members={blue}
+    local fresh,newComponent=h.unit('red');fresh.GetAddress=old.GetAddress
+    h.now=0.1;lock:tick();h.call('transition',newComponent,tag('AI.Transition.CombatToIdle'))
+    assert(#h.dropped==2,'same-address replacement must refresh both component cache and send-back throttle')
+end
+-- A failed corpse removal is retried after a short delay rather than being marked permanently complete.
+do
+    local h=harness()
+    local health,held={},true
+    local attempts=0
+    local lock=h.new({hp=function(actor)return health[actor]end,hates=function()return held end})
+    local corpse=h.unit('red');local winner,_,manager=h.unit('blue')
+    health[corpse],health[winner]=0,100
+    manager.RemoveActorFromHatredList=function()
+        attempts=attempts+1
+        if attempts>=2 then held=false end
+    end
+    h.fighting=true;lock:tick()
+    assert(attempts==1 and held)
+    h.now=0.1;lock:tick();assert(attempts==1,'retry is paced, not repeated every support tick')
+    h.now=0.5;lock:tick()
+    assert(attempts==2 and not held,'failed corpse removal must be retried')
+end
+-- Leaving the roster releases the corpse ledger, so an actor at a reused address is cleaned normally.
+do
+    local h=harness();local health,lists={},{}
+    local lock=h.new({hp=function(actor)return health[actor]end,
+        hates=function(manager,actor)return lists[manager] and lists[manager][actor]==true end})
+    local old=h.unit('red');local winner,_,manager=h.unit('blue')
+    health[old],health[winner]=0,100
+    lists[manager]={[old]=true}
+    manager.RemoveActorFromHatredList=function(_,actor)lists[manager][actor]=nil end
+    h.fighting=true;lock:tick();assert(lists[manager][old]==nil)
+    local winnerRecord=h.members[2];h.members={winnerRecord};lock:tick()
+    local fresh=h.unit('red');fresh.GetAddress=old.GetAddress;health[fresh]=0;lists[manager][fresh]=true
+    lock:tick()
+    assert(lists[manager][fresh]==nil,'an address reused after departure must not inherit corpse completion')
+end
+-- Send-back throttles belong to active units, not to an address after the unit has left.
+do
+    local h=harness();local lock=h.new()
+    local old,component=h.unit('red');h.unit('blue');h.fighting=true;lock:tick()
+    h.call('transition',component,tag('AI.Transition.CombatToIdle'));assert(#h.dropped==1)
+    h.members={};lock:tick()
+    local fresh,newComponent=h.unit('red');fresh.GetAddress=old.GetAddress;h.unit('blue')
+    h.now=0.1;lock:tick();h.call('transition',newComponent,tag('AI.Transition.CombatToIdle'))
+    assert(#h.dropped==2,'new unit must not inherit the previous unit send-back throttle')
 end
 -- A mount hates the way its rider does, stays in combat and is sent back, and is never hated itself.
 do

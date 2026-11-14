@@ -230,4 +230,25 @@ do -- nothing to work with: says why, moves nothing; a dead object is not asked 
     assert(done.why=='对象失效' and not h.teleports)
 end
 
+do -- an invalid capsule must never be sent to its native getter
+    local h=harness();h.floor=0
+    local u=h.unit(96)
+    local calls=0
+    u.CapsuleComponent.alive=false
+    u.CapsuleComponent.GetScaledCapsuleHalfHeight=function()calls=calls+1;return 96 end
+    local placed=h.g:place(u,{Translation={X=0,Y=0,Z=50}},h.world)
+    print('invalid capsule native calls='..calls..' placed='..tostring(placed~=nil))
+    assert(calls==0,'invalid capsule native getter was invoked')
+    assert(placed==nil)
+end
+do -- teleport can invalidate the movement component before walking mode is restored
+    local h=harness();h.floor=0
+    local u=h.unit(96,{X=0,Y=0,Z=200},5,1)
+    local old=u.K2_TeleportTo;local calls=0
+    u.K2_TeleportTo=function(...)local result=old(...);u.CharacterMovement.alive=false;return result end
+    u.CharacterMovement.SetMovementMode=function()calls=calls+1 end
+    h.g:free(u)
+    print('invalid movement native calls after teleport='..calls)
+    assert(calls==0,'invalid movement component was invoked after teleport')
+end
 print('on_ground: PASS')

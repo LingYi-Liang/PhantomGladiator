@@ -56,17 +56,18 @@ local THUG='BP_Monster_MaleThug_Club_Yellow_Shield'
 assert(Reflect.paths.damage==nil and Reflect.paths.modify==nil and Reflect.paths.collision==nil,
     'shield controls never hook normal parry damage or projectile rebound')
 local function harness()
-    local h={hooks={},logs={},rules={},members={},now=1,ready=true,thread=true,unhooked=0}
+    local h={hooks={},logs={},rules={},members={},now=1,ready=true,thread=true,unhooked=0,registered=0,readyReads=0}
     local lib=object('AbilitySystemBlueprintLibrary')
     function lib:GetGameplayEffectFromSpecHandle(spec)return spec.effect end
     function lib:GetEffectContext(spec)return {actor=spec.actor}end
     function lib:EffectContextGetEffectCauser(context)return context.actor end
     function lib:EffectContextGetInstigatorActor(context)return context.actor end
     h.m=Reflect.new({log=function(s)h.logs[#h.logs+1]=s end,clock=function()return h.now end,fname=function(s)return s end,
-        rule=function(id)return h.rules[id] or 'keep' end,members=function()return h.members end,ready=function()return h.ready end,
+        rule=function(id)return h.rules[id] or 'keep' end,members=function()return h.members end,
+        ready=function()h.readyReads=h.readyReads+1;return h.ready end,
         inGameThread=function()return h.thread end,
         find=function(path)if path:find('Default__AbilitySystemBlueprintLibrary',1,true)then return lib end;return object('Function')end,
-        register=function(path,pre,post)h.hooks[path]={pre=pre,post=post};return 1,2 end,
+        register=function(path,pre,post)h.registered=h.registered+1;h.hooks[path]={pre=pre,post=post};return 1,2 end,
         unregister=function()h.unhooked=h.unhooked+1 end})
     function h:fire(which,...)
         local hook=assert(self.hooks[Reflect.paths[which]],which)
@@ -129,5 +130,45 @@ do
     local late=h.hooks[Reflect.paths.magnitude].pre;h.m:silence();assert(h.unhooked==2)
     local value=param(0.25);late(nil,param({effect=object('GE_JingYe_Shield_Counter_C'),actor=a}),param(tag('SetByCaller.Shield.CounterDamage.PhysicalDamage')),value)
     assert(value.value==0.25 and h.m:status().hooks==0)
+    h:actor(JINGYE,true)
+    assert(h.m:status().hooks==0,'late actor callbacks cannot reinstall hooks after unload')
+end
+-- Global native callbacks reject unrelated hits/tags before checking the expensive live session.
+do
+    local h=harness();local actor=h:actor(JINGYE,true)
+    local outside=object('BP_MapUnit_C');local otherPayload=h:payload(outside,ranged)
+    h.readyReads=0
+    for _=1,100 do
+        h:fire('owner',param(otherPayload))
+        h:fire('magnitude',nil,param({effect=object('OtherEffect_C'),actor=outside}),param(tag('SetByCaller.NormalAttack.PhysicalDamage')),param(1))
+    end
+    assert(h.readyReads==0,'unrelated native calls queried live session '..h.readyReads..' times')
+    assert(h:counter(actor,h:payload(actor,ranged))==0)
+    assert(h.readyReads<=2,'a related owner/magnitude pair needs at most two session checks')
+    h.members={};h.m:tick()
+    assert(h.m:status().hooks==0 and h.unhooked==2,'the last selected shield leaving releases global hooks')
+    h.readyReads=0;h.m:tick()
+    assert(h.readyReads==0,'idle module does not poll the live session')
+end
+-- Discovery through the member roster still works without the direct spawn callback.
+do
+    local h=harness();h.rules[JINGYE]='off'
+    h.members={{actor=object(JINGYE..'_C'),class_path='/Game/'..JINGYE..'.'..JINGYE..'_C',team='blue'}}
+    h.m:tick();assert(h.m:status().hooks==2,'newly discovered shields retain their captured rule')
+    h.ready=false;h.m:tick();assert(h.m:status().hooks==0)
+    h.ready=true;h.m:tick()
+    assert(h.m:status().hooks==2,'same-world readiness recovery rediscovers shields still in the roster')
+    assert(h:counter(h.members[1].actor,h:payload(h.members[1].actor,ranged))==0)
+end
+-- Retained roster entries while the player is not ready must not install and remove hooks every tick.
+do
+    local h=harness();h.rules[JINGYE]='off';h.ready=false
+    h.members={{actor=object(JINGYE..'_C'),class_path='/Game/'..JINGYE..'.'..JINGYE..'_C',team='blue'}}
+    for _=1,10 do h.now=h.now+0.1;h.m:tick() end
+    assert(h.registered==0 and h.unhooked==0,'not-ready discovery churned hooks: '..h.registered..' installs/'..h.unhooked..' removals')
+    h.ready=true;h.m:tick();assert(h.registered==2 and h.m:status().hooks==2)
+    h.ready=false;h.m:tick();assert(h.unhooked==2)
+    for _=1,10 do h.now=h.now+0.1;h.m:tick() end
+    assert(h.registered==2 and h.unhooked==2,'continued not-ready ticks must remain unhooked')
 end
 print('remote_reflect: PASS (thorns shields only, ranged/bleed suppression, melee/normal/parry/rebound preserved, cleanup)')

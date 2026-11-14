@@ -31,6 +31,7 @@ local LABEL={exit='留在战斗中',canHate='允许仇恨',canBeHated='允许被
 local UNHOOK_SECONDS,LINES,SUMMARY_SECONDS=10,8,10
 local DROP='AI.Transition.CombatToIdle'
 local DROP_SECONDS=0.5   -- at most one send-back per unit in this time, so a quick re-drop cannot loop
+local FORGET_SECONDS=0.5 -- failed/unreadable corpse removals retry without rescanning every support tick
 
 local function tagName(value)
     local name=U.struct(U.unwrap(value),'TagName')
@@ -45,6 +46,11 @@ local function addr(object)
     local ok,key=pcall(function()return object:GetAddress()end)
     return ok and key~=nil and tostring(key) or nil
 end
+local function identity(actor)
+    if not U.valid(actor) then return nil end
+    local ok,name=pcall(function()return actor:GetFullName()end)
+    return ok and type(name)=='string' and name or nil
+end
 
 function Lock.new(options)
     local log=options.log or function()end
@@ -57,17 +63,33 @@ function Lock.new(options)
     local managers={}     -- hatred manager address -> team
     local teams={}        -- unit address -> team
     local corpses={}      -- unit address -> team, a fighting unit with no health left
-    local forgotten={}    -- unit address -> true once it came off the others' lists
+    local forgotten={}    -- unit address -> true once confirmed, else next retry time
     local mounts={}       -- mount address -> true: hates, is not hated
     local owners={}       -- AI component address -> unit address
     local cache={}        -- unit address -> {ai=, hatred=} component addresses (a unit keeps its components)
     local dropped={}      -- unit address -> clock() of the last send-back
+    local identities={}   -- names only for addresses with corpse or send-back state
+    local actorObjects={}
+    local identityLines=0
     local lines,quietSince,summaryAt={},nil,nil
     for _,name in ipairs(ORDER)do lines[name]=0 end
     local function say(m)log('[CombatLock] '..m)end
     local function count(name,text)
         self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
         if lines[name]<LINES then lines[name]=lines[name]+1;say(LABEL[name]..' '..text()..' 累计='..self.counts[name])end
+    end
+    local function refreshIdentity(key,actor)
+        local old=identities[key]
+        if old and (forgotten[key] or dropped[key]) then
+            local current=identity(actor)
+            if current and current~=old then
+                forgotten[key],dropped[key],cache[key],identities[key]=nil,nil,nil,nil
+                if identityLines<LINES then
+                    identityLines=identityLines+1
+                    say('演员地址复用 已更新缓存 旧身份='..old..' 新身份读回='..current)
+                end
+            end
+        end
     end
 
     local callbacks={}
@@ -111,6 +133,7 @@ function Lock.new(options)
         local now=clock()
         if dropped[unit] and now-dropped[unit]<DROP_SECONDS then return nil end
         dropped[unit]=now
+        identities[unit]=identity(actorObjects[unit])
         count('transition',function()return team end)
         pcall(options.onDropped,unit)
         return nil
@@ -170,14 +193,21 @@ function Lock.new(options)
     -- Takes a fresh corpse off the list of every living blue or red unit, through the game's own remove, and reads it
     -- back. Logged only when some list held it, with whether the fight had ended on that tick.
     local function forget(corpse,living,over)
-        if not options.hatredOf or not options.hates then return end
-        local held,removed,left=0,0,0
+        if not options.hatredOf or not options.hates then return true end
+        local held,removed,left,unknown=0,0,0,0
         for _,member in ipairs(living)do
             local manager=options.hatredOf(member.actor)
-            if U.valid(manager) and U.valid(corpse) and options.hates(manager,corpse)==true then
-                held=held+1
-                pcall(function()manager:RemoveActorFromHatredList(corpse)end)
-                if options.hates(manager,corpse)==false then removed=removed+1 else left=left+1 end
+            if U.valid(manager) and U.valid(corpse) then
+                local ok,has=pcall(options.hates,manager,corpse)
+                if ok and has==true then
+                    held=held+1
+                    pcall(function()manager:RemoveActorFromHatredList(corpse)end)
+                    local checked,still=false,nil
+                    if U.valid(manager) and U.valid(corpse) then checked,still=pcall(options.hates,manager,corpse) end
+                    if checked and still==false then removed=removed+1 else left=left+1 end
+                elseif not ok or has~=false then unknown=unknown+1 end
+            else
+                unknown=unknown+1
             end
         end
         if held>0 and corpseLines<LINES then
@@ -185,6 +215,7 @@ function Lock.new(options)
             say(string.format('尸体移出仇恨表 尸体=%s 表里有它的单位=%d 移出=%d 读回仍在=%d 累计拒绝=%d%s',
                 options.label and options.label(corpse) or tostring(U.key(corpse)),held,removed,left,self.refused,over and ' 交战已结束' or ''))
         end
+        return left==0 and unknown==0
     end
     -- Support tick: index the fighting units and their components; install while a fight runs.
     -- Corpses come off the lists with or without a fight running: the death of a side's last unit ends the fight on
@@ -195,7 +226,7 @@ function Lock.new(options)
         if not self.alive then return end
         local now=clock()
         local ai,hatred,units,known,own,bodies,horses={},{},{},{},{},{},{}
-        local fresh,living={},{}
+        local fresh,living,present,objects={},{},{},{}
         local fighting=options.fighting()
         local members=options.members() or {}
         for _,member in ipairs(members)do
@@ -204,9 +235,13 @@ function Lock.new(options)
             -- (member.untargetable, boss_stages.lua) still hates but keeps the game's answer as a target.
             if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
                 local key=U.key(member.actor)
+                if key then
+                    present[key]=true;objects[key]=member.actor
+                    refreshIdentity(key,member.actor)
+                end
                 if key and dead(member.actor) then
                     if fighting then bodies[key]=member.team end
-                    if not forgotten[key] then fresh[#fresh+1]=member end
+                    if forgotten[key]~=true and (not forgotten[key] or now>=forgotten[key]) then fresh[#fresh+1]=member end
                 elseif key then
                     forgotten[key]=nil
                     living[#living+1]=member
@@ -224,6 +259,7 @@ function Lock.new(options)
             for _,vehicle in ipairs(options.vehicles and options.vehicles(members) or {})do
                 local key=U.key(vehicle.actor)
                 if key then
+                    objects[key]=vehicle.actor;refreshIdentity(key,vehicle.actor)
                     local c=cache[key] or {ai=addr(options.aiOf(vehicle.actor)),hatred=options.hatredOf and addr(options.hatredOf(vehicle.actor))}
                     known[key]=c
                     horses[key]=true
@@ -232,12 +268,19 @@ function Lock.new(options)
                 end
             end
         end
-        components,managers,teams,cache,owners,corpses,mounts=ai,hatred,units,known,own,bodies,horses
+        components,managers,teams,cache,owners,corpses,mounts,actorObjects=ai,hatred,units,known,own,bodies,horses,objects
+        -- Departed actors must not retain corpse completion or send-back throttles at a reused address.
+        for key in pairs(forgotten)do if not present[key] then forgotten[key]=nil end end
+        for key in pairs(dropped)do if not known[key] then dropped[key]=nil end end
         for _,member in ipairs(fresh)do
-            forget(member.actor,living,not fighting)
+            local confirmed=forget(member.actor,living,not fighting)
             local key=U.key(member.actor)
-            if key then forgotten[key]=true end
+            if key then
+                forgotten[key]=confirmed and true or now+FORGET_SECONDS
+                identities[key]=identity(member.actor)
+            end
         end
+        for key in pairs(identities)do if not forgotten[key] and not dropped[key] then identities[key]=nil end end
         if next(teams) then
             quietSince=nil
             if not next(hooks) and self.state~='failed' then install() end

@@ -555,17 +555,21 @@ function Stages.new(options)
                     elseif mine.borrowed then
                         -- Her own map's marker goes back where it stood, as it was.
                         local b=mine.borrowed
-                        local okBack=pcall(function()
+                        local root=U.field(mine.actor,'RootComponent')
+                        local rootReady=b.mobility==nil or U.valid(root)
+                        local okBack=rootReady and pcall(function()
                             if b.rotation then mine.actor:K2_SetActorLocationAndRotation(b.location,b.rotation,false,{},true)
                             else mine.actor:K2_SetActorLocation(b.location,false,{},true) end
                         end)
+                        local mobilityBack=true
                         if b.mobility and b.mobility~=2 then
-                            pcall(function()U.field(mine.actor,'RootComponent'):SetMobility(b.mobility)end)
+                            local moved=U.valid(root) and pcall(function()root:SetMobility(b.mobility)end)
+                            mobilityBack=moved and U.field(root,'Mobility')==b.mobility or false
                         end
-                        local at=where(mine.actor)
+                        local at=rootReady and where(mine.actor) or nil
                         local off=at and math.sqrt((at.X-b.location.X)^2+(at.Y-b.location.Y)^2+(at.Z-b.location.Z)^2)
-                        if not (okBack and off and off<100) then self.failures=self.failures+1 end
-                        result=string.format('放回地图原处 调用=%s 位置读回差=%s',tostring(okBack),off and string.format('%.0fcm',off) or '?')
+                        if not (okBack and off and off<100 and mobilityBack) then self.failures=self.failures+1 end
+                        result=string.format('放回地图原处 调用=%s 位置读回差=%s 可移动性恢复读回=%s',tostring(okBack),off and string.format('%.0fcm',off) or '?',tostring(mobilityBack))
                     else
                         local ok=pcall(options.destroy,mine.actor)
                         result=gone(mine.actor) and '已移除' or '仍在'

@@ -29,7 +29,9 @@ function Ground.new(options)
         if lines[kind]<=(CAPS[kind] or 10) then log('[OnGround] '..text) end
     end
     local function halfHeight(actor)
-        local ok,half=pcall(function()return U.field(actor,'CapsuleComponent'):GetScaledCapsuleHalfHeight()end)
+        local capsule=U.field(actor,'CapsuleComponent')
+        if not U.valid(capsule) then return nil end
+        local ok,half=pcall(function()return capsule:GetScaledCapsuleHalfHeight()end)
         return ok and type(half)=='number' and half>0 and half or nil
     end
     local function teleport(actor,dest)
@@ -145,7 +147,7 @@ function Ground.new(options)
         end
         if not dest then return false end
         local moved=teleport(actor,dest)
-        local walked=pcall(function()cmc:SetMovementMode(WALKING,0)end)
+        local walked=U.valid(actor) and U.valid(cmc) and pcall(function()cmc:SetMovementMode(WALKING,0)end)
         self.freed=self.freed+1
         local at=options.location(actor)
         say('free',string.format('%s %s：放到%s 从Z=%.1f 到Z=%.1f 传送=%s 改走路=%s；读回 模式=%s 封锁标签=%s Z=%s；累计=%d',mode==FLYING and '解除空中冻结' or '坠崖拉回',options.label(actor),how,here.Z,dest.Z,

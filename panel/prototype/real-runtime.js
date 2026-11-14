@@ -11,6 +11,26 @@ const RealRuntime = (() => {
   const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
   const QUEUE_STUCK_MS = 12000;
+  const READ_TIMEOUT_MS = 5000;
+  // Reads may be retried; mutation POSTs must not be replayed after an ambiguous network failure.
+  async function readJSON(path, controller = new AbortController()) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(fail("readTimeout", "本地助手读取超时，请稍后重试。"));
+        controller.abort();
+      }, READ_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([(async () => {
+        const response = await fetch(path, { cache: "no-store", signal: controller.signal });
+        if (controller.signal.aborted) throw fail("readCancelled");
+        const data = await response.json();
+        if (controller.signal.aborted) throw fail("readCancelled");
+        return { response, data };
+      })(), timeout]);
+    } finally { clearTimeout(timer); }
+  }
 
   const s = {
     icons: {},                  // unit id -> codex bust URL (codex_icons.lua, backend.py /api/codex-icons)
@@ -86,6 +106,7 @@ const RealRuntime = (() => {
   let csrf = "", owned = 0, launching = 0, failedPolls = 0;
   let teamRev = null, session = "", catalogKey = "", lastSig = {}, iconsAt = 0, homesAt = 0;
   let toGame = new Map(), toShort = new Map(), poolRead = null;
+  let catalogRequest = 0, catalogController = null;
 
   // ---------- Native host ----------
   let rpcSeq = 0;
@@ -128,8 +149,7 @@ const RealRuntime = (() => {
     const request = { scope, revision };
     poolRead = request;
     try {
-      const r = await fetch("/api/monster-pools", { cache: "no-store" });
-      const reply = await r.json();
+      const { response: r, data: reply } = await readJSON("/api/monster-pools");
       if (s.poolStatus.scope !== scope) return;
       if (!r.ok) throw fail("rejected", reply.error || "怪物池读取失败");
       if (!s.monsterPools || reply.revision >= s.monsterPools.revision) {
@@ -169,9 +189,21 @@ const RealRuntime = (() => {
   }
 
   async function loadCatalog() {
-    const r = await fetch("/api/catalog", { cache: "no-store" });
-    if (!r.ok) return;
-    const data = await r.json();
+    const request = ++catalogRequest, key = catalogKey;
+    catalogController?.abort();
+    const controller = new AbortController();
+    catalogController = controller;
+    let r, data;
+    try {
+      ({ response: r, data } = await readJSON("/api/catalog", controller));
+      if (request !== catalogRequest || key !== catalogKey) return;
+      if (!r.ok) throw fail("rejected", "单位目录读取失败");
+    } catch (error) {
+      if (request === catalogRequest && key === catalogKey) throw error;
+      return;
+    } finally {
+      if (catalogController === controller) catalogController = null;
+    }
     const game = new Map(), short = new Map(), unitKeys = {}, summonLimits = {};
     // Primary codex rows first, so a short name always means the entry units.js shows.
     const rows = [...(data.units || [])].sort((a, b) => (b.codex_entry_kind === "primary") - (a.codex_entry_kind === "primary"));
@@ -197,9 +229,9 @@ const RealRuntime = (() => {
   // asked for again every 15 s until there are some, then every minute.
   async function loadIcons() {
     iconsAt = Date.now();
-    const r = await fetch("/api/codex-icons", { cache: "no-store" });
+    const { response: r, data } = await readJSON("/api/codex-icons");
     if (!r.ok) return;
-    const icons = (await r.json()).icons || {};
+    const icons = data.icons || {};
     if (JSON.stringify(icons) === JSON.stringify(s.icons)) return;
     s.icons = icons;
     emit({ type: "state", parts: new Set(["sel", "grid", "match", "keys"]) });
@@ -208,9 +240,8 @@ const RealRuntime = (() => {
   // Unit, chapter and map names in the player's game language, exported by the mod on every load; asked for with
   // the icons. Until the game has run with v0.37.5+ the list is empty and the app keeps its Chinese names.
   async function loadNames() {
-    const r = await fetch("/api/unit-names", { cache: "no-store" });
+    const { response: r, data } = await readJSON("/api/unit-names");
     if (!r.ok) return;
-    const data = await r.json();
     const names = data.count ? { lang: data.lang || "", units: data.units || {} } : null;
     if (JSON.stringify(names) === JSON.stringify(s.unitNames)) return;
     s.unitNames = names;
@@ -221,9 +252,9 @@ const RealRuntime = (() => {
   // every 30 s while the game runs and again right after the player changes a level.
   async function loadHomeLevels() {
     homesAt = Date.now();
-    const r = await fetch("/api/home-levels", { cache: "no-store" });
+    const { response: r, data } = await readJSON("/api/home-levels");
     if (!r.ok) return;
-    const homes = (await r.json()).units || {};
+    const homes = data.units || {};
     if (JSON.stringify(homes) === JSON.stringify(s.level.homes)) return;
     s.level.homes = homes;
     emit({ type: "state", parts: new Set(["sel"]) });
@@ -414,7 +445,10 @@ const RealRuntime = (() => {
 
     // Catalog: once per session, after a scan, and when unit keys change.
     const key = [g.game_session || "", data.catalog?.total || 0, v.unit_keys_revision || "", v.unit_keys_epoch || ""].join("|");
-    if (key !== catalogKey) { catalogKey = key; loadCatalog().catch(() => { catalogKey = ""; }); }
+    if (key !== catalogKey) {
+      catalogKey = key;
+      loadCatalog().catch(() => { if (catalogKey === key) catalogKey = ""; });
+    }
     if (Date.now() - iconsAt > (Object.keys(s.icons).length ? 60000 : 15000)) { loadIcons().catch(() => {}); loadNames().catch(() => {}); }
     if (online && s.level.supported && Date.now() - homesAt > 30000) loadHomeLevels().catch(() => {});
 
@@ -462,13 +496,13 @@ const RealRuntime = (() => {
 
   async function poll() {
     try {
-      const r = await fetch("/api/status", { cache: "no-store" });
+      const { response: r, data } = await readJSON("/api/status");
       if (!r.ok) throw new Error(String(r.status));
+      apply(data);
       failedPolls = 0;
-      apply(await r.json());
-    } catch {
+    } catch (error) {
       // The native window restarts the backend when the game folder changes; ride out short gaps.
-      if (++failedPolls === 4) apply({ game: {}, queue: [] });
+      if (++failedPolls === 4 || error.code === "readTimeout") apply({ game: {}, queue: [] });
     }
     setTimeout(poll, 500);
   }
@@ -641,21 +675,21 @@ const RealRuntime = (() => {
     openFolder: () => host("openFolder"),
     // The AI parameter values the mod saved (backend.py ai_params).
     async aiParams() {
-      const r = await fetch("/api/ai-params", { cache: "no-store" });
+      const { response: r, data } = await readJSON("/api/ai-params");
       if (!r.ok) throw fail("rejected");
-      return r.json();
+      return data;
     },
     // The spawn stat mode and every custom value the mod saved (backend.py stat_settings).
     async statSettings() {
-      const r = await fetch("/api/stat-settings", { cache: "no-store" });
+      const { response: r, data } = await readJSON("/api/stat-settings");
       if (!r.ok) throw fail("rejected");
-      return r.json();
+      return data;
     },
     // The companions' own set, from its own file.
     async companionStats() {
-      const r = await fetch("/api/companion-stats", { cache: "no-store" });
+      const { response: r, data } = await readJSON("/api/companion-stats");
       if (!r.ok) throw fail("rejected");
-      return r.json();
+      return data;
     },
     beta: {
       installation: () => host("betaInstallation"),

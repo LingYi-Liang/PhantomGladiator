@@ -68,3 +68,71 @@ do
     assert(#h.calls==1 and #h.q.jobs==0 and not h.q.relayStarted,'uncertain generation cancels the remainder, never retries')
 end
 print('relay_queue: PASS (saved interval, single and mixed team waves, unreadable health, survivor preservation, late reserves, scene cancellation and failure)')
+
+-- State observation and battle start do not wait for the next generation deadline.
+do
+    local h=fixture();h.mode('SINGLE');assert(h.q:configure('SINGLE',10000,1,1).ok)
+    h.q:enqueue('B','blue',1);h.q:enqueue('R','red',1)
+    assert(h.q:startRelay().ok);h.q:tick();h.now=10;h.q:tick()
+    assert(#h.calls==2 and h.began==0)
+    h.now=10.025;h.q:tick()
+    assert(h.began==1,'ready starters must not idle through another ten-second generation interval')
+end
+do
+    local h=fixture();h.mode('SINGLE');assert(h.q:configure('SINGLE',10000,1,1).ok)
+    h.state.blue_count=1;h.state.battle_active=true
+    h.q:enqueue('R1','red',1);h.q:enqueue('R2','red',1);assert(h.q:startRelay().ok)
+    h.q:tick();h.state.red_count=0;h.now=0.25;h.q:tick()
+    h.now=10.25;h.q:tick()
+    assert(#h.calls==2,'death during cooldown must not add a second full interval before replacement')
+end
+do
+    local h=fixture();h.mode('SINGLE');assert(h.q:configure('SINGLE',600000,1,1).ok)
+    local observations=0
+    h.options.state=function()observations=observations+1;return h.state end
+    h.q:enqueue('B','blue',1);h.q:enqueue('R','red',1);assert(h.q:startRelay().ok);h.q:tick()
+    observations=0
+    for i=1,1000 do h.now=i*0.025;h.q:tick()end
+    assert(#h.calls==1 and observations<=101,'cooldown observation must not become a 40-Hz native state scan')
+    print('relay cooldown fixture: ticks=1000 state_reads='..observations..' spawned='..#h.calls)
+    h.world='B';h.now=25.25;h.q:tick()
+    assert(#h.q.jobs==0 and not h.q.relayStarted,'a scene change cancels reserves even during a long cooldown')
+end
+-- A retired spawn cannot apply its old cooldown to the newly cancelled/reconfigured generation.
+do
+    local h=fixture();h.mode('WAVE',100,100);assert(h.q:configure('WAVE',50,100,100).ok)
+    local observations=0;h.options.state=function()observations=observations+1;return h.state end
+    h.q:enqueue('B','blue',100);h.q:enqueue('R','red',100);assert(h.q:startRelay().ok);h.q:tick()
+    observations=0
+    for i=1,100 do h.now=i*0.025;h.q:tick()end
+    assert(observations<=#h.calls+1,'a filling wave must not repeat the full native scan between short-interval spawns')
+    print('relay short-gap fixture: ticks=100 state_reads='..observations..' spawned='..#h.calls)
+end
+do
+    local h=fixture();h.mode('TIMED');assert(h.q:configure('TIMED',600000,1,1).ok)
+    h.q:enqueue('old','blue',1)
+    h.options.spawn=function()
+        h.q:cancel('reentrant cancellation')
+        assert(h.q:configure('TIMED',50,1,1).ok)
+        return {ok=true,spawned_count=1}
+    end
+    h.q:tick()
+    assert(h.q.nextAt==h.now and h.q.lastDone==nil,'retired generation must not rewrite the current deadline')
+end
+print('relay_queue: PASS (control polling during cooldown and retired-spawn isolation)')
+do
+    local h=fixture();h.mode('SINGLE')
+    h.q:enqueue('B','blue',1);h.q:enqueue('R','red',1)
+    h.options.begin=function()h.q:cancel('cancelled during begin');return {ok=true}end
+    assert(h.q:startRelay().ok)
+    h.tick(4)
+    assert(not h.q.relayStarted and #h.q.jobs==0 and h.q.initial==nil,
+        'cancelled battle start cannot access retired waves or restore relay state')
+end
+print('relay_queue: PASS (retired battle-start isolation)')
+do
+    local h=fixture();h.mode('SINGLE');h.q:cancel('relay enabled')
+    h.q:enqueue('neutral','neutral',1);h.q:tick()
+    assert(#h.calls==1 and not h.q.relayStarted,'unassigned jobs still run while blue/red wait for relay start')
+end
+print('relay_queue: PASS (unassigned jobs before relay start)')

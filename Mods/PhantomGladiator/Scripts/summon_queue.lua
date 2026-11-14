@@ -124,7 +124,9 @@ function Queue.new(options)
         if self.initial and self.waves.blue.budget==0 and self.waves.red.budget==0 then
             if unread(s,'blue') or unread(s,'red') then return end
             if s.blue_count==0 or s.red_count==0 then self:cancel('首批存活未确认，未自动重复生成');return end
+            local revision=self.revision
             local ok,result=pcall(options.begin or function()end)
+            if revision~=self.revision or not self.relayStarted then return end
             if not ok or type(result)~='table' or not result.ok then self:cancel('开战未确认，接力停止，已生成单位保留');return end
             self.initial=false;pending();log('[SummonQueue] 首批开战读回=true')
         end
@@ -157,23 +159,31 @@ function Queue.new(options)
     end
 
     function self:tick()
-        if not self.enabled or self.running or (#self.jobs==0 and not self.relayStarted) or (self.nextAt and now()<self.nextAt) then return end
-        if self:isRelay() and self.pollAt and now()<self.pollAt then return end
+        if not self.enabled or self.running or (#self.jobs==0 and not self.relayStarted) then return end
+        local relayMode=self:isRelay()
+        if not relayMode and self.nextAt and now()<self.nextAt then return end
+        if relayMode and self.pollAt and now()<self.pollAt then return end
         local checked,status=pcall(options.session)
         self:sync(checked and status or nil)
         if not self.session then return end
 
         local index,take=1,nil
-        if self:isRelay() then index,take=relayIndex() end
+        if relayMode then index,take=relayIndex() end
+        if self.nextAt and now()<self.nextAt then
+            -- Generation pacing must not delay battle start or death observation. Observe at most 4 Hz
+            -- while cooling down, waking sooner when the next generation is due.
+            if relayMode then self.pollAt=math.min(now()+0.25,self.nextAt) end
+            return
+        end
         if not index or not self.jobs[index] then return end
         local job=self.jobs[index];take=take or job.count
         local revision=self.revision
         self.running=true
         log('[SummonQueue] 开始一笔 unit='..job.path..' team='..job.team..' count='..take..' request_left='..job.count)
         local called,result=pcall(options.spawn,job.path,job.team,take)
-        self.lastDone=now();self.nextAt=self.lastDone+self.intervalMs/1000
         self.running=false
         if revision~=self.revision then return end
+        self.lastDone=now();self.nextAt=self.lastDone+self.intervalMs/1000
         if not called or type(result)~='table' or result.uncertain or result.ok~=true then
             local detail=called and type(result)=='table' and result.message or '生成结果未确认'
             self:cancel('召唤未完成：'..tostring(detail))
@@ -183,6 +193,9 @@ function Queue.new(options)
         if job.count==0 then table.remove(self.jobs,index);self.completed=self.completed+1 end
         self.generated=self.generated+take
         if self:isRelay() and self.waves and self.waves[job.team] then self.waves[job.team].budget=self.waves[job.team].budget-take end
+        if self.relayStarted and self.waves and self.waves.blue.budget+self.waves.red.budget>0 then
+            self.pollAt=math.min(self.nextAt,self.lastDone+0.25)
+        end
         pending()
         self.message=tostring(result.message or '召唤完成')
         log('[SummonQueue] 完成一笔；读回='..self.message..'；剩余='..#self.jobs)

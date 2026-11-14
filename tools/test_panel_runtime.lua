@@ -197,6 +197,20 @@ test("a new summon queued after stop survives the stale callback that was cancel
     assert(count(h,'spawn')==1 and not h.runtime.summonPending,'the stale callback must not run or clear the new request')
 end)
 
+test("a running callback cannot clear a replacement summon accepted after reentrant stop",function()
+    local h=harness();h.runtime:start();h:tick()
+    h.env.IsInGameThread=function()return h.inGame end
+    local replacementRuns=0
+    h.runtime:queueSummon(function()
+        h.runtime.handlers.stop()
+        h.runtime:queueSummon(function()replacementRuns=replacementRuns+1 end)
+    end)
+    h:run(table.remove(h.queue,1))
+    assert(#h.queue==1 and h.runtime.summonPending,'running retired callback must leave its replacement slot intact')
+    h:drain()
+    assert(replacementRuns==1 and h.runtime.summonPending==nil,'the replacement executes once and releases its own slot')
+end)
+
 test("game-thread input snapshots the live session without waiting for the status pump",function()
     local h=harness()
     h.env.IsInGameThread=function()return h.inGame end
