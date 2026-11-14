@@ -461,19 +461,19 @@
   };
   const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"] };
   const REMOTE_REFLECT_NATIVE = {
-    BP_Monster_JingYe: "原版：下马后的刺盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。",
-    BP_Monster_MaleThug_Club_Yellow_Shield: "原版荆棘盾防住符合条件的攻击时，会向攻击来源附加物理伤害与出血积累；盾破后停止。与荆野使用同一套触发判断，伤害参数不同。",
-    BP_Monster_MaleThug_Club_Yellow_Shield_Teaching: "原版荆棘暴徒教学变体，沿用荆棘盾的物理与出血反伤。",
+    BP_Monster_JingYe: "shieldReflect.native.jingye",
+    BP_Monster_MaleThug_Club_Yellow_Shield: "shieldReflect.native.thug",
+    BP_Monster_MaleThug_Club_Yellow_Shield_Teaching: "shieldReflect.native.teaching",
   };
   function remoteReflectTip(id) {
     const native = REMOTE_REFLECT_NATIVE[id];
     if (!native) return "";
-    return native + "\n原版按实际伤害载体分类，不按攻击距离判断：飞行弹丸、发射器、粒子弹，以及保留远程父弹关系的子攻击，本来就被排除；受控子弹和投技也不触发。\n部分按扫掠结算的激光、独立范围或爆炸命中，如果未被归入上述类型且被盾处理，仍可能反伤，这是原版规则，并非所有激光或爆炸都会触发。\n开启后仅禁止远程命中触发的刺盾物理反伤与出血反附加。正常攻击、近战刺盾反伤、格挡及其他反弹机制保持原样。默认原版，下次召唤生效。";
+    return [native, "shieldReflect.exclusions", "shieldReflect.possible", "shieldReflect.effect"].map(key => t(key)).join("\n");
   }
   const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? (value === "off" ? "刺盾不反远程" : "刺盾反伤：原版") : xukongDodgeRule(id, rule)
+  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
@@ -490,7 +490,7 @@
     if (REMOTE_REFLECT_NATIVE[u.id] && (!RT.online() || S.remoteReflectSupported)) {
       const off = unitRuleValue(u.id, "remote_reflect") === "off";
       const busy = ui.busy.has("set_unit_rule");
-      html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(u.name)}：关闭刺盾远程反伤" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
+      html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(t("shieldReflect.label", { name: u.name }))}" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
     }
     return html;
   }
@@ -1313,7 +1313,7 @@
         <div class="result-actions">${rematchable ? `<button class="btn btn-primary btn-sm" type="button" data-action="rematch" ${ui.busy.has("rematch") ? "disabled" : ""}>${icon("refresh", "icon-sm")}${esc(t("field.rematch"))}</button>` : ""}<button class="btn btn-secondary btn-sm" type="button" data-action="stop">${icon("trash", "icon-sm")}${esc(t("field.cleanup"))}</button></div>`
       : `<div class="battle-actions">
           <button class="btn btn-lg btn-block btn-primary" type="button" data-action="start" ${startBlocked || fighting || startBusy ? "disabled" : ""}>
-            ${startBusy ? '<span class="spinner"></span>' : fighting ? '<span class="dot" style="background:var(--red);animation:pulse 1s infinite"></span>' : icon("play")}<span>${esc(relay ? (fighting ? "接力进行中" : "开始接力") : fighting ? t("field.fighting") : t("field.start"))}</span>${fighting || startBusy ? "" : keyCap(S.keys.start)}
+            ${startBusy ? '<span class="spinner"></span>' : fighting ? '<span class="dot" style="background:var(--red);animation:pulse 1s infinite"></span>' : icon("play")}<span>${esc(relay ? t(fighting ? "queueSettings.running" : "queueSettings.start") : fighting ? t("field.fighting") : t("field.start"))}</span>${fighting || startBusy ? "" : keyCap(S.keys.start)}
           </button>
           ${startBlocked ? `<p class="reason">${esc(startBlocked)}</p>` : fighting ? `<p class="reason">${esc(t("field.fightingHint"))}</p>` : ""}
         </div>`;
@@ -1496,6 +1496,8 @@
   }
   // Translated text for known codes; otherwise the game's or backend's own answer, which is Chinese.
   function reasonText(code, detail = "") {
+    const queueDetail = queueSettingsMessage(detail);
+    if (queueDetail !== detail) return queueDetail;
     if (detail && (!code || code === "rejected" || code === "host" || code === "submissionUnknown")) return detail;
     return t("reason." + (code || "unknown"));
   }
@@ -1846,6 +1848,37 @@
     }
     return line;
   }
+  function queueSettingsMessage(message = "") {
+    const exact = {
+      "等待存活状态读回": "queueSettings.message.waitAlive",
+      "接力进行中，等待本方当前批次全部阵亡或退场": "queueSettings.message.waitWave",
+      "接力模式未开启": "queueSettings.error.notEnabled",
+      "接力已开始": "queueSettings.error.started",
+      "参战存活状态未读回，暂不开始接力": "queueSettings.error.unread",
+      "接力需要蓝红双方的首发或候补": "queueSettings.error.teams",
+      "请先关闭排队，再切换模式或每批人数；关闭会取消候补": "queueSettings.error.modeActive",
+      "排队设置保存未确认，旧设置继续生效": "queueSettings.error.save",
+    };
+    if (typeof exact[message] === "string") return t(exact[message]);
+    if (message === "排队召唤已开启" || message === "排队召唤已关闭") return t("spawnQueue.changed");
+    if (message === "间隔须为0.05–600秒，每批人数须为1–100") return t("queueSettings.invalid");
+    let match = /^接力结束：(蓝方|红方)已无在场单位和候补$/.exec(message);
+    if (match) return t("queueSettings.message.finished", { team: teamName(match[1] === "蓝方" ? "blue" : "red") });
+    match = /^已入队，待执行 (\d+) 条$/.exec(message);
+    if (match) return t("queueSettings.message.queued", { n: match[1] });
+    match = /^已取消 (\d+) 条游戏内待执行召唤$/.exec(message);
+    if (match) return t("queueSettings.message.cancelled", { reason: t("queueSettings.reason.cleared"), n: match[1] });
+    match = /^(.*)，已取消 (\d+) 条待执行召唤$/.exec(message);
+    if (match) {
+      const reasons = { "首批存活未确认，未自动重复生成": "initialUnknown", "开战未确认，接力停止，已生成单位保留": "startFailed",
+        "战斗已停止，取消剩余接力": "stopped", "游戏会话变化或尚未就绪": "session", "清空召唤队列": "cleared",
+        "停止并清理": "cleared", "排队召唤已关闭": "disabled", "排队召唤已开启": "enabled" };
+      let reason = typeof reasons[match[1]] === "string" ? t("queueSettings.reason." + reasons[match[1]]) : match[1];
+      if (match[1].startsWith("召唤未完成：")) reason = t("queueSettings.reason.incomplete", { detail: match[1].slice(6) });
+      return t("queueSettings.message.cancelled", { reason, n: match[2] });
+    }
+    return message;
+  }
   function summonQueueSettingsHTML() {
     const q = S.summonQueue || {};
     const busy = ui.busy.has("set_summon_queue") || ui.busy.has("cancel_summon_queue") || ui.busy.has("configure_summon_queue");
@@ -1854,11 +1887,11 @@
       : !q.on && !q.ready ? t("spawnQueue.notReady") : "";
     return `<div class="dock-title">${esc(t("spawnQueue.title"))}</div>
       <div class="control-list">
-        ${q.settingsSupported ? `<div class="control-row"><div class="control-main"><div class="control-title">${esc(({TIMED:"按时间排队",SINGLE:"一对一接力",WAVE:"整队接力"})[q.mode] || "按时间排队")}</div><div class="control-desc">执行间隔 ${esc(q.intervalMs / 1000)} 秒${q.mode === "WAVE" ? ` · 每批蓝 ${q.blueSlots} / 红 ${q.redSlots} 人` : ""}</div></div><button class="btn btn-secondary btn-sm" data-action="queue-settings" ${busy ? "disabled" : ""}>配置</button></div>` : ""}
+        ${q.settingsSupported ? `<div class="control-row"><div class="control-main"><div class="control-title">${esc(t("queueSettings.mode." + (["TIMED", "SINGLE", "WAVE"].includes(q.mode) ? q.mode : "TIMED")))}</div><div class="control-desc">${esc(t(q.mode === "WAVE" ? "queueSettings.summaryWave" : "queueSettings.summary", { seconds: q.intervalMs / 1000, blue: q.blueSlots, red: q.redSlots }))}</div></div><button class="btn btn-secondary btn-sm" data-action="queue-settings" ${busy ? "disabled" : ""}>${esc(t("queueSettings.configure"))}</button></div>` : ""}
         <div class="control-row${q.on ? " is-on" : ""}">
           <span class="control-icon">${icon("history")}</span>
           <div class="control-main"><div class="control-title">${esc(t("spawnQueue.ordered"))}<span class="chip chip-amber">${esc(t("common.experimental"))}</span></div>
-            <div class="control-desc">${esc(q.settingsSupported && q.mode !== "TIMED" ? "蓝红召唤先加入候补，点击开始接力后分批出场；本方全部退场才补下一批。随从和未配队仍按时间生成。" : t("spawnQueue.help"))}</div>
+            <div class="control-desc">${esc(t(q.settingsSupported ? (q.mode !== "TIMED" ? "queueSettings.relayHelp" : "queueSettings.timedHelp") : "spawnQueue.help"))}</div>
             ${unavailable ? `<div class="control-desc" id="summon-queue-unavailable">${esc(unavailable)}</div>` : ""}
           </div>
           <button class="switch" type="button" role="switch" aria-label="${esc(t("spawnQueue.enable"))}" aria-checked="${!!q.on}"
@@ -1867,8 +1900,8 @@
         </div>
         ${q.on ? `<div class="control-row">
           <span class="control-icon">${q.running ? '<span class="spinner" style="width:14px;height:14px"></span>' : icon("clock")}</span>
-          <div class="control-main"><div class="control-title">${esc(q.settingsSupported && q.mode !== "TIMED" ? `候补：蓝 ${q.blueReserve} / 红 ${q.redReserve} · 已生成 ${q.generated}` : t("spawnQueue.progress", { waiting: q.waiting, transit: q.transit, completed: q.completed }))}</div>
-            <div class="control-desc">${esc(q.running ? t("spawnQueue.working") : q.message)}</div></div>
+          <div class="control-main"><div class="control-title">${esc(q.settingsSupported && q.mode !== "TIMED" ? t("queueSettings.reserves", { blue: q.blueReserve, red: q.redReserve, generated: q.generated }) : t("spawnQueue.progress", { waiting: q.waiting, transit: q.transit, completed: q.completed }))}</div>
+            <div class="control-desc">${esc(q.running ? t("spawnQueue.working") : queueSettingsMessage(q.message))}</div></div>
           <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-summon-queue"
             ${busy || !RT.online() || !(q.waiting || q.transit) ? "disabled" : ""}>${esc(t("spawnQueue.cancel"))}</button></div>` : ""}
       </div>`;
@@ -1881,7 +1914,7 @@
   }
 
   async function changeSummonQueue(action, payload) {
-    const result = run(action, { payload, ok: job => job.message || t("spawnQueue.changed") });
+    const result = run(action, { payload, ok: job => queueSettingsMessage(job.message) || t("spawnQueue.changed") });
     renderSummonQueueSettings();
     await result;
     renderSummonQueueSettings();
@@ -1890,22 +1923,22 @@
   function openQueueSettings() {
     const q = S.summonQueue;
     if (!q?.settingsSupported) return;
-    openDialog("queue-settings", `<div class="dialog-head"><h2 id="dlg-title">召唤排队与接力</h2><button class="icon-btn" data-action="dialog-close">${icon("x")}</button></div>
+    openDialog("queue-settings", `<div class="dialog-head"><h2 id="dlg-title">${esc(t("queueSettings.title"))}</h2><button class="icon-btn" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
       <div class="dialog-body stack">
-        <label>出场方式 <select id="queue-mode" ${q.on ? "disabled" : ""}>${[["TIMED","按时间排队"],["SINGLE","一对一接力"],["WAVE","整队接力"]].map(([v,n]) => `<option value="${v}" ${q.mode===v?"selected":""}>${n}</option>`).join("")}</select></label>
-        <label>上一笔生成完成后的间隔（秒） <input id="queue-seconds" type="number" min="0.05" max="600" step="0.05" value="${q.intervalMs/1000}"></label>
-        <div class="callout">接力先加蓝红候补，再点“开始接力”。整队模式可混合不同单位，按每队的加入顺序分批。已在场单位作为首批；不重置胜方血量，原版回血和技能仍生效。</div>
-        <label>整队模式：蓝方每批人数 <input id="queue-blue" type="number" min="1" max="100" value="${q.blueSlots}" ${q.on ? "disabled" : ""}></label>
-        <label>整队模式：红方每批人数 <input id="queue-red" type="number" min="1" max="100" value="${q.redSlots}" ${q.on ? "disabled" : ""}></label>
-        <p class="muted">一对一每批各1名；候补不足时按实际人数。接力首笔生成后固定本场落点，补位也会等所设间隔。未知存活不当阵亡，原生召唤物沿用现有存活判定。改模式/人数前需关闭排队；关闭、停止清理或换图会取消候补。</p>
-      </div><div class="dialog-foot"><button class="btn btn-primary" data-action="queue-settings-save">保存</button></div>`);
+        <label>${esc(t("queueSettings.modeLabel"))} <select id="queue-mode" ${q.on ? "disabled" : ""}>${["TIMED", "SINGLE", "WAVE"].map(v => `<option value="${v}" ${q.mode===v?"selected":""}>${esc(t("queueSettings.mode." + v))}</option>`).join("")}</select></label>
+        <label>${esc(t("queueSettings.intervalLabel"))} <input id="queue-seconds" type="number" min="0.05" max="600" step="0.05" value="${q.intervalMs/1000}"></label>
+        <div class="callout">${esc(t("queueSettings.intro"))}</div>
+        <label>${esc(t("queueSettings.blueSlots"))} <input id="queue-blue" type="number" min="1" max="100" value="${q.blueSlots}" ${q.on ? "disabled" : ""}></label>
+        <label>${esc(t("queueSettings.redSlots"))} <input id="queue-red" type="number" min="1" max="100" value="${q.redSlots}" ${q.on ? "disabled" : ""}></label>
+        <p class="muted">${esc(t("queueSettings.details"))}</p>
+      </div><div class="dialog-foot"><button class="btn btn-primary" data-action="queue-settings-save">${esc(t("common.save"))}</button></div>`);
   }
   async function saveQueueSettings() {
     const payload = { mode: $("#queue-mode").value, interval_ms: Math.round(Number($("#queue-seconds").value)*1000), blue_slots: Number($("#queue-blue").value), red_slots: Number($("#queue-red").value) };
     if (!Number.isInteger(payload.interval_ms) || payload.interval_ms<50 || payload.interval_ms>600000 || [payload.blue_slots,payload.red_slots].some(n=>!Number.isInteger(n)||n<1||n>100)) {
-      toast({kind:"warning",title:"间隔须为0.05–600秒，每批人数须为1–100的整数"});return;
+      toast({kind:"warning",title:t("queueSettings.invalid")});return;
     }
-    const job = await run("configure_summon_queue", {payload, ok: j=>j.message});
+    const job = await run("configure_summon_queue", {payload, ok: () => t("queueSettings.saved", { seconds: payload.interval_ms / 1000 })});
     if (job?.status === "succeeded") closeDialog();
   }
 
@@ -2660,7 +2693,7 @@
     switch (job.action) {
       case "queue_spawn": return t("history.queuePrefix") + (u?.name || p.unit_id || "") + " ×" + p.count;
       case "set_summon_queue": return p.enabled ? t("history.queueEnable") : t("history.queueDisable");
-      case "configure_summon_queue": return "排队与接力设置 · " + (p.interval_ms / 1000) + " 秒";
+      case "configure_summon_queue": return t("queueSettings.history", { seconds: p.interval_ms / 1000 });
       case "cancel_summon_queue": return t("history.cancelSummon");
       case "spawn": return p.team === "neutral" ? t("action.spawnNeutral", { name: u?.name, n: p.count })
         : p.team === "companion" ? t("action.spawnCompanion", { name: u?.name, n: p.count }) : t("action.spawn", { name: u?.name, n: p.count, team: teamName(p.team) });
@@ -2680,7 +2713,7 @@
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
-      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: t(`unitRule.${p.rule}.${p.value}`) });
+      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
       case "set_companion_stats": return t("action.set_companion_stats", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
@@ -3018,7 +3051,7 @@
     "count-preset": el => setCount(Number(el.dataset.n)),
     "level-apply": () => applyCustomLevel($("#level-custom")?.value),
     summon: () => summon(),
-    start: () => run("start", { ok: job => S.summonQueue?.on && S.summonQueue?.mode !== "TIMED" ? job.message : t("toast.fight.start") }),
+    start: () => run("start", { ok: () => t(S.summonQueue?.on && S.summonQueue?.mode !== "TIMED" ? "queueSettings.started" : "toast.fight.start") }),
     stop: () => confirmStop(),
     "stop-confirm": () => stopAll(),
     "stop-again": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); stopAll(); },

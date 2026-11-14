@@ -7,6 +7,21 @@ const RealRuntime = (() => {
   const listeners = new Set();
   const emit = event => { for (const fn of listeners) fn(event || {}); };
   const fail = (code, detail = "") => Object.assign(new Error(detail || code), { code, detail });
+  const runtimeFallback = {
+    "reason.readTimeout": "Reading from the local assistant timed out. Try again shortly.",
+    "reason.submissionUnknown": "It is not yet clear whether the assistant received this command. Check the operation history and the game before submitting it again. The assistant will not resend it automatically.",
+    "runtime14.httpRejected": "The assistant rejected this command (HTTP {status}).",
+    "runtime14.commandLimit": "There are already {n} commands awaiting confirmation. Wait for their results.",
+    "runtime14.poolsReadFailed": "Could not read the monster pools.",
+    "runtime14.poolsSaveFailed": "Could not save the monster pools.",
+    "runtime14.unitMissing": "The current catalog does not contain {unit}. Check the catalog or remove this entry from the pool.",
+    "runtime14.catalogReadFailed": "Could not read the unit catalog."
+  };
+  const runtimeText = (key, params) => {
+    const translated = window.PG_I18N?.t(key, params);
+    const value = typeof translated === "string" && translated !== key ? translated : runtimeFallback[key] || key;
+    return params ? value.replace(/\{(\w+)\}/g, (slot, name) => params[name] ?? slot) : value;
+  };
   const webview = window.chrome && window.chrome.webview;
   const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
@@ -17,7 +32,7 @@ const RealRuntime = (() => {
     let timer;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        reject(fail("readTimeout", "本地助手读取超时，请稍后重试。"));
+        reject(fail("readTimeout", runtimeText("reason.readTimeout")));
         controller.abort();
       }, READ_TIMEOUT_MS);
     });
@@ -32,14 +47,14 @@ const RealRuntime = (() => {
     } finally { clearTimeout(timer); }
   }
   const SUBMIT_TIMEOUT_MS = 15000;
-  const submissionMessage = "指令是否已被接收尚未确认。请查看操作记录和游戏画面，避免重复提交；助手不会自动重发。";
+  const submissionMessage = () => runtimeText("reason.submissionUnknown");
   async function submitCommand(path, body) {
     const controller = new AbortController();
     let timer, response;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        reject(response && !response.ok ? fail("rejected", "助手拒绝了此指令（HTTP " + response.status + "）。")
-          : fail("submissionUnknown", submissionMessage));
+        reject(response && !response.ok ? fail("rejected", runtimeText("runtime14.httpRejected", { status: response.status }))
+          : fail("submissionUnknown", submissionMessage()));
         controller.abort();
       }, SUBMIT_TIMEOUT_MS);
     });
@@ -49,7 +64,7 @@ const RealRuntime = (() => {
           headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
         if (!response.ok) {
           const detail = await response.json().catch(() => ({}));
-          throw fail("rejected", detail?.error || "助手拒绝了此指令（HTTP " + response.status + "）。");
+          throw fail("rejected", detail?.error || runtimeText("runtime14.httpRejected", { status: response.status }));
         }
         return response.json();
       })(), timeout]);
@@ -189,14 +204,14 @@ const RealRuntime = (() => {
     try {
       const { response: r, data: reply } = await readJSON("/api/monster-pools");
       if (s.poolStatus.scope !== scope) return;
-      if (!r.ok) throw fail("rejected", reply.error || "怪物池读取失败");
+      if (!r.ok) throw fail("rejected", reply.error || runtimeText("runtime14.poolsReadFailed"));
       if (!s.monsterPools || reply.revision >= s.monsterPools.revision) {
         s.monsterPools = reply;
         emit({ type: "state", parts: new Set(["poolConfig"]) });
       }
     } catch (error) {
       if (s.poolStatus.scope === scope) {
-        request.error = error.detail || "怪物池读取失败";
+        request.error = error.detail || runtimeText("runtime14.poolsReadFailed");
         request.retryAt = Date.now() + 5000;
         s.poolStatus.error = request.error;
         emit({ type: "state", parts: new Set(["poolStatus"]) });
@@ -211,14 +226,14 @@ const RealRuntime = (() => {
     const body = { revision, pools: pools.map(pool => ({ ...pool,
       unit_ids: pool.unit_ids.map(member => {
         const path = member.startsWith("/") ? member : toGame.get(member);
-        if (!path) throw fail("rejected", "当前目录找不到单位 " + member + "，请检查目录或先从池里移除它。");
+        if (!path) throw fail("rejected", runtimeText("runtime14.unitMissing", { unit: member }));
         return path;
       }),
     })) };
     const r = await fetch("/api/monster-pools", { method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
     const reply = await r.json().catch(() => ({}));
-    if (!r.ok) throw fail("rejected", reply.error || "怪物池保存失败");
+    if (!r.ok) throw fail("rejected", reply.error || runtimeText("runtime14.poolsSaveFailed"));
     if (s.poolStatus.scope === scope && (!s.monsterPools || reply.revision >= s.monsterPools.revision)) {
       s.monsterPools = reply;
       emit({ type: "state", parts: new Set(["poolConfig"]) });
@@ -235,7 +250,7 @@ const RealRuntime = (() => {
     try {
       ({ response: r, data } = await readJSON("/api/catalog", controller));
       if (request !== catalogRequest || key !== catalogKey) return;
-      if (!r.ok) throw fail("rejected", "单位目录读取失败");
+      if (!r.ok) throw fail("rejected", runtimeText("runtime14.catalogReadFailed"));
     } catch (error) {
       if (request === catalogRequest && key === catalogKey) throw error;
       return;
@@ -319,7 +334,11 @@ const RealRuntime = (() => {
     // stat_match.lua reports through the ack text: a rolled-back match still spawns, an unconfirmed
     // rollback stops the batch and leaves that unit for cleanup.
     if (status === "succeeded" && /数值统一失败已回滚/.test(j.message)) j.warning = "matchFailed";
-    if (status === "failed" && j.action === "spawn" && /数值统一/.test(j.message) && /清理/.test(j.message)) j.code = "matchAbort";
+    if (status === "failed" && (j.action === "spawn" || j.action === "queue_spawn") &&
+        /保留[^；。\n]*清理/.test(j.message)) {
+      if (/数值统一/.test(j.message)) j.code = "matchAbort";
+      else if (/自定义数值失败|随行数值未确认|召唤物数值未确认/.test(j.message)) j.code = "statApplyAbort";
+    }
     // stop(): every unit removed ("待确认=0") but a restore record left for the next pass.
     if (status === "failed" && j.action === "stop" && /待确认=0/.test(j.message) && /恢复确认=false/.test(j.message) && !/生成结果未知/.test(j.message)) j.code = "restorePending";
     // backend.py's own reasons, shown in the player's language.
@@ -559,7 +578,7 @@ const RealRuntime = (() => {
   const wireKey = b => (b ? { key_code: b.code, modifiers: b.mods || 0 } : { key_code: 0, modifiers: 0 });
 
   async function command(action, payload = {}) {
-    if (activeCommands >= MAX_COMMANDS) throw fail("rejected", "已有100条指令等待确认，请先等待结果。");
+    if (activeCommands >= MAX_COMMANDS) throw fail("rejected", runtimeText("runtime14.commandLimit", { n: MAX_COMMANDS }));
     activeCommands++;
     try { return await executeCommand(action, payload); } finally { activeCommands--; }
   }
@@ -600,11 +619,11 @@ const RealRuntime = (() => {
       reply = await submitCommand(path, body);
     } catch (error) {
       if (error?.code === "rejected") throw error;
-      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage };
+      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage() };
     }
     const id = reply && jobId(reply.id);
     if (!id) {
-      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage };
+      return { action, payload: body, status: "uncertain", code: "submissionUnknown", message: submissionMessage() };
     }
     // Show it in the history right away; the status poll fills in the game's answer.
     // A poll may already have picked the job up (and even its answer); never step it back to pending.

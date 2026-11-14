@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const createI18n = require('./test_i18n_runtime');
 const sourceFile = process.argv.find(arg => arg.startsWith('--source='))?.slice('--source='.length);
 const only = process.argv.find(arg => arg.startsWith('--case='))?.slice('--case='.length);
 const source = fs.readFileSync(sourceFile || __dirname + '/prototype/real-runtime.js', 'utf8');
@@ -14,10 +15,11 @@ const status = (revision = 1, blue = 1) => ({
 });
 const catalog = code => ({ units: [{ id: '/Game/BP_Test.BP_Test_C', internal_name: 'BP_Test', spawnable: true,
   codex_entry_kind: 'primary', unit_shortcut: { key_code: code } }] });
-function harness(handler) {
+function harness(handler, lang = 'zh') {
   let now = 0, serial = 0;
+  const i18n = createI18n();i18n.set(lang);
   const timers = new Map(), requests = [];
-  const context = { window: {}, document: { documentElement: { lang: 'zh' } }, AbortController,
+  const context = { window: { PG_I18N: i18n }, document: { documentElement: { lang } }, AbortController,
     Date: { now: () => 1000000 + now },
     setTimeout(fn, ms) { const id = ++serial; timers.set(id, { fn, at: now + ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -25,7 +27,7 @@ function harness(handler) {
   };
   vm.runInNewContext(source, context);
   return {
-    rt: context.window.PGRuntime, requests,
+    rt: context.window.PGRuntime, requests, i18n,
     async advance(ms) {
       const end = now + ms;
       while (true) {
@@ -92,6 +94,22 @@ function harness(handler) {
     const invalid = harness(path => Promise.resolve(response(path === '/api/status' ? (++polls === 1 ? status() : null) : {})));
     await flush(); await invalid.advance(2000);
     assert.equal(invalid.rt.state.game, 'offline', 'successful HTTP with invalid data must not reset the failure counter');
+  }
+  if (!only || only === 'i18n') {
+    for (const lang of ['zh', 'en', 'ja', 'fr', 'de', 'es']) {
+      const pending = deferred();
+      const h = harness(path => path === '/api/ai-params' ? pending.promise : Promise.resolve(response(
+        path === '/api/status' ? status() : path === '/api/catalog' ? catalog(65) : {})), lang);
+      await flush();const failed = h.rt.aiParams().then(() => null, error => error);
+      await h.advance(5000);const error = await failed;
+      assert.equal(error.code, 'readTimeout');assert.equal(error.detail, h.i18n.t('reason.readTimeout'), lang);
+      for (const key of ['reason.readTimeout', 'reason.submissionUnknown', 'reason.statApplyAbort', 'runtime14.httpRejected', 'runtime14.commandLimit',
+        'runtime14.poolsReadFailed', 'runtime14.poolsSaveFailed', 'runtime14.unitMissing', 'runtime14.catalogReadFailed']) {
+        assert(h.i18n.keys(lang).includes(key), `${lang}: missing ${key}`);
+        const text = h.i18n.t(key, { status: 503, n: 100, unit: 'TestUnit' });
+        assert.notEqual(text, key);assert(!/\{\w+\}/.test(text), `${lang}: unfilled parameter in ${key}`);
+      }
+    }
   }
   console.log('runtime_resilience: PASS (hung reads expire and recover, late status/catalog ignored, catalog HTTP retry)');
 })().catch(error => { console.error(error); process.exitCode = 1; });

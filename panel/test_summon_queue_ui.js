@@ -29,7 +29,7 @@ const context = {
   toast: event => notices.push(event), icon: () => "", t: (key, params) => i18n.t(key, params), teamName: team => team, matchNote: () => "",
 };
 vm.createContext(context);
-vm.runInContext(section("  function summonQueueSettingsHTML()", "  function renderSummonQueueSettings()") +
+vm.runInContext(section("  function queueSettingsMessage(", "  function renderSummonQueueSettings()") +
   section("  async function summon(", "  async function run("), context);
 
 (async () => {

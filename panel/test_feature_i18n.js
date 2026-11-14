@@ -24,7 +24,7 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(section("  function poolList()", "  function settingsHTML()"), context);
-vm.runInContext(section("  function summonQueueSettingsHTML()", "  function renderSummonQueueSettings()"), context);
+vm.runInContext(section("  function queueSettingsMessage(", "  function renderSummonQueueSettings()"), context);
 vm.runInContext(section("  function supportHTML()", "  function aboutHTML()"), context);
 const featureKeys = i18n.keys("zh").filter(k => /^(pool\.|cycle\.|spawnQueue\.|beta\.|dock\.|unit\.source\.|unit\.note\.|unit\.permanent\.)/.test(k));
 for (const lang of ["zh", "en", "ja", "fr", "de", "es"]) {

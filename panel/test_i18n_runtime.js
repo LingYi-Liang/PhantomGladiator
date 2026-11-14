@@ -4,7 +4,7 @@ const vm = require("node:vm");
 
 module.exports = function createI18n() {
   const context = vm.createContext({ Intl });
-  for (const file of ["i18n.js", "i18n-more.js"]) {
+  for (const file of ["i18n.js", "i18n-more.js", "i18n-runtime14.js"]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, "prototype", file), "utf8"), context, { filename: file });
   }
   return vm.runInContext("I18N", context);

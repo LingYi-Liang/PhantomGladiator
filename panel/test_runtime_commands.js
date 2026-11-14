@@ -1,15 +1,17 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const createI18n = require('./test_i18n_runtime');
 const sourceArg = process.argv.find(arg => arg.startsWith('--source='));
 const source = fs.readFileSync(sourceArg ? sourceArg.slice(9) : __dirname + '/prototype/real-runtime.js', 'utf8');
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 const response = (data, ok = true, status = 200) => ({ ok, status, json: async () => data });
-function harness(post) {
+function harness(post, lang = 'zh') {
   let now = 0, serial = 0;
+  const i18n = createI18n();i18n.set(lang);
   const timers = new Map(), requests = [], queue = [];
-  const context = { window: {}, document: { documentElement: { lang: 'zh' } }, AbortController,
+  const context = { window: { PG_I18N: i18n }, document: { documentElement: { lang } }, AbortController,
     Date: { now: () => now + 1000000 },
     setTimeout(fn, ms) { const id = ++serial; timers.set(id, { fn, at: now + ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -27,7 +29,7 @@ function harness(post) {
     },
   };
   vm.runInNewContext(source, context);
-  return { rt: context.window.PGRuntime, requests, queue,
+  return { rt: context.window.PGRuntime, requests, queue, i18n,
     async advance(ms) {
       const end = now + ms;
       while (true) {
@@ -103,5 +105,58 @@ function harness(post) {
   await capped.advance(500); assert((await Promise.all(batch)).every(j => j.status === 'succeeded'));
   const watch = capped.requests.find(r => r.path.startsWith('/api/status?watch='));
   assert.equal(new URL(watch.path, 'http://fixture').searchParams.get('watch').split(',').length, 100);
+  for (const lang of ['zh', 'en', 'ja', 'fr', 'de', 'es']) {
+    const uncertain = harness(() => Promise.reject(new Error('connection closed')), lang);await flush();
+    const result = await uncertain.rt.command('start');
+    assert.equal(result.message, uncertain.i18n.t('reason.submissionUnknown'), lang);
+    const denied = harness(() => Promise.resolve(response({}, false, 503)), lang);await flush();
+    await assert.rejects(denied.rt.command('start'), error => error.code === 'rejected' &&
+      error.detail === denied.i18n.t('runtime14.httpRejected', { status: 503 }));
+    const body = deferred();
+    const deniedBody = harness(() => Promise.resolve({ ok: false, status: 429, json: () => body.promise }), lang);await flush();
+    const failure = deniedBody.rt.command('start').then(() => null, error => error);
+    await deniedBody.advance(15000);
+    assert.equal((await failure).detail, deniedBody.i18n.t('runtime14.httpRejected', { status: 429 }), lang);
+    let id = 0;
+    const limit = harness(() => Promise.resolve(response({ id: ++id })), lang);await flush();
+    const pending = Array.from({ length: 100 }, () => limit.rt.command('start'));await flush();
+    await assert.rejects(limit.rt.command('start'), error => error.code === 'rejected' &&
+      error.detail === limit.i18n.t('runtime14.commandLimit', { n: 100 }));
+    for (let n = 1; n <= 100; n++) limit.queue.push({ id: n, action: 'start', status: 'succeeded', payload: {} });
+    await limit.advance(500);await Promise.all(pending);
+  }
+  // Pending transport errors use the language selected when the result arrives, not at startup.
+  const delayed = deferred();const changed = harness(() => delayed.promise, 'en');await flush();
+  let changedResult;changed.rt.command('start').then(result => { changedResult = result; });
+  changed.i18n.set('de');await changed.advance(15000);
+  assert.equal(changedResult.message, changed.i18n.t('reason.submissionUnknown'));
+  // Run the actual POST -> status-poll -> receipt path for stat cleanup failures, including queue submissions.
+  for (const action of ['spawn', 'queue_spawn']) {
+    for (const message of [
+      '单位已生成；自定义数值失败：部分属性回滚未确认，单位保留供清理',
+      '单位已生成；随行数值未确认：读取失败；保留对象供清理',
+      '原生召唤物数值未确认，保留登记供清理'
+    ]) {
+      const h = harness(() => Promise.resolve(response({ id: 32 })), 'en');await flush();
+      const receipt = h.rt.command(action, { unit_id: 'BP_Test', team: 'blue', count: 1 });await flush();
+      h.queue.push({ id: 32, action, status: 'failed', message, payload: {} });await h.advance(500);
+      const result = await receipt;
+      assert.equal(result.status, 'failed');assert.equal(result.code, 'statApplyAbort');
+      assert.equal(h.i18n.t('reason.' + result.code), h.i18n.t('reason.statApplyAbort'));
+    }
+    const restored = harness(() => Promise.resolve(response({ id: 33 })));await flush();
+    const receipt = restored.rt.command(action, { unit_id: 'BP_Test', team: 'blue', count: 1 });await flush();
+    restored.queue.push({ id: 33, action, status: 'succeeded', message: '初始化通过；数值统一失败已回滚', payload: {} });
+    await restored.advance(500);const result = await receipt;
+    assert.equal(result.status, 'succeeded');assert.equal(result.warning, 'matchFailed');assert.equal(result.code, undefined);
+    const clean = harness(() => Promise.resolve(response({ id: 34 })));await flush();
+    const safe = clean.rt.command(action, { unit_id: 'BP_Test', team: 'blue', count: 1 });await flush();
+    clean.queue.push({ id: 34, action, status: 'failed', message: '自定义数值失败，已成功回滚，无需清理', payload: {} });
+    await clean.advance(500);assert.equal((await safe).code, undefined, 'a cleanup word alone is not an unsafe rollback');
+  }
+  const unrelated = harness(() => Promise.resolve(response({ id: 35 })));await flush();
+  const other = unrelated.rt.command('select_unit', { unit_id: 'BP_Test' });await flush();
+  unrelated.queue.push({ id: 35, action: 'select_unit', status: 'failed', message: '自定义数值失败，单位保留供清理', payload: {} });
+  await unrelated.advance(500);assert.equal((await other).code, undefined, 'only summon commands map stat cleanup failures');
   console.log('runtime_commands: PASS (bounded ambiguous submission, valid ids, no replay or fabricated failure, confirmed jobs preserved)');
 })().catch(error => { console.error(error); process.exitCode = 1; });
