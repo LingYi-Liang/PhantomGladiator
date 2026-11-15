@@ -36,6 +36,7 @@ end
 local function harness(team)
     local h={now=0,callbacks={},finds=0,loads=0,destroyed=0,logs={},ready=true}
     h.world=object('World /Map');h.parent=object('BP_Monster_MengHua_C /Map.Parent',P,h.world);h.parent.hp=500
+    h.parentClass=h.parent:GetClass()
     h.child=object('BP_Monster_XuKong_C /Map.Helper',C,h.world)
     h.board=object('Blackboard /Map.Parent.BB');h.parent.board=h.board
     h.asc=object('AbilitySystemComponent /Map.Parent.ASC');h.parent.AbilitySystemComponent=h.asc;h.asc.lock=1;h.asc.active=1
@@ -78,7 +79,7 @@ local function harness(team)
     h.phase=Phase.new(h.options)
     function h:sync()self.phase:syncParents(self.members);if self.callbacks[Phase.paths.passive] then self.callbacks[Phase.paths.passive](self.nativePhase)end end
     function h:spawn(summon,child)self.callbacks[Phase.paths.spawn](summon or self.summon,child or self.child,0,{SummonInfoIndex=0,InstanceIndex=0})end
-    function h:lookup(context)return self.callbacks[Phase.paths.lookup](nil,context or self.child,self.parent:GetClass())end
+    function h:lookup(context)return self.callbacks[Phase.paths.lookup](nil,context or self.child,self.parentClass)end
     function h:player(context)return self.callbacks[Phase.paths.player](nil,context or self.child,0)end
     function h:pair(role,helper,parent)
         helper,parent=helper or self.child,parent or self.parent
@@ -119,6 +120,18 @@ local function harness(team)
     end
     function h:warp(name,component)
         self.callbacks[Phase.paths.warp](component or self.motion,name or 'SnapPoint',self.warpLocation,self.warpRotation)
+    end
+    function h:story(index,world)
+        world=world or self.world
+        local parent=object('BP_Monster_MengHua_C /Map.StoryMother_'..index,P,world)
+        parent.hp=900;parent.lock=1;parent.active=1
+        local child=object('BP_Monster_XuKong_C /Map.StoryHelper_'..index,C,world)
+        local passive=object('GA_MengHua_SummonPassive_C /Map.StoryPassive_'..index,S,parent)
+        function passive:GetAvatarActorFromActorInfo()return parent end
+        function passive:K2_CancelAbility()error('story passive must not be cancelled')end
+        function child:K2_DestroyActor()error('story actor must not be destroyed')end
+        self.callbacks[Phase.paths.spawn](passive,child,0,{SummonInfoIndex=0,InstanceIndex=0})
+        return parent,child,passive
     end
     return h
 end
@@ -309,5 +322,59 @@ end)
 test('unconfirmed original passive End is never hidden by helper destruction',function()
     local h=harness('companion');h:sync();h:spawn();h.failPassiveEnd=true
     assert(not h.phase:releaseActor(h.parent));assert(h.asc.lock==1 and not h.child.going)
+end)
+test('streamed-in story mother after an owned mother keeps her actual native source',function()
+    local h=harness();h:sync();h:spawn()
+    local mapParent,mapChild=h:story(1)
+    local nativeFirstOfClass=h.parent -- the earlier mod actor would otherwise win the vanilla class query
+    local override=h:lookup(mapChild)
+    assert((override or nativeFirstOfClass)==mapParent)
+    assert(h:player(mapChild)==nil,'story GetPlayerCharacter must still resolve the real player')
+    assert(h.phase:status().parents==1 and h.phase:status().helpers==1 and h.phase:status().storyGuards==1)
+    assert(not h.phase:busy(mapParent) and not h.phase:busy(mapChild))
+end)
+test('several story and owned groups remain isolated from manual actors',function()
+    local h=harness();h:sync();h:spawn()
+    local p1,c1=h:story(1);local p2,c2=h:story(2)
+    local manual=object('BP_Monster_XuKong_C /Map.ManualExtra',C,h.world)
+    assert(h:lookup()==h.parent and h:lookup(c1)==p1 and h:lookup(c2)==p2)
+    assert(h:lookup(manual)==nil and h:player(c1)==nil and h:player(c2)==nil)
+    local ability=object('GA_XuKong_Ability_C /Map.StoryAbility',EX,c1)
+    function ability:GetAvatarActorFromActorInfo()return c1 end
+    assert(h:lookup(ability)==p1 and h:player(ability)==nil)
+end)
+test('story binding survives loss of all owned units until the actual helper becomes invalid',function()
+    local h=harness();h:sync();local parent,child=h:story(1)
+    h.parent.valid=false;h.members={};h.phase:syncParents({});h:tick();h:tick()
+    assert(h.phase:status().parents==0 and h.phase:status().helpers==0 and h.phase:status().storyGuards==1)
+    assert(h.phase:status().hooks==1 and h:lookup(child)==parent,'only the source lookup guard remains installed')
+    child.going=true;h:tick();assert(h:lookup(child)==parent,'destroying but valid story helper still needs its delayed OnDead source')
+    child.valid=false;h:tick();h:tick();assert(h.phase:status().storyGuards==0 and h.phase:status().hooks==0)
+end)
+test('invalid or changed story source returns safe null without selecting another mother',function()
+    local h=harness();h:sync();local parent,child=h:story(1)
+    parent.valid=false;assert(h:lookup(child)==h.null)
+    parent.valid=true;parent.full='BP_Monster_MengHua_C /Map.ReusedDifferent';assert(h:lookup(child)==h.null)
+end)
+test('story stages player getter anchor and cleanup are all untouched',function()
+    local h=harness();h:sync();local parent,child=h:story(1)
+    local link={parent=parent,actor=child,mode='Summoner'}
+    assert(not h.phase:handle(link) and h.phase:releaseActor(parent))
+    local ability=object('GA_XuKong_GEx_01_C /Map.StoryGEx',EX,child);ability.bIsActive=true
+    function ability:GetAvatarActorFromActorInfo()return child end
+    h.callbacks[Phase.paths.exWindow](ability)
+    local component=object('MotionWarpingComponent /Map.StoryHelperMotion');function component:GetOwner()return child end
+    local position=parameter({X=100,Y=200,Z=300});local rotation=parameter({Pitch=1,Yaw=2,Roll=3})
+    h.callbacks[Phase.paths.warp](component,'SnapPoint',position,rotation)
+    assert(position.value.X==100 and position.value.Z==300 and rotation.value.Yaw==2)
+    assert(h:player(child)==nil and not h.phase:busy(parent))
+    h.phase:stop();assert(parent.lock==1 and parent.active==1 and parent.hp==900)
+    h.phase:silence();assert(parent.valid and child.valid and parent.lock==1 and parent.active==1)
+end)
+test('story source observation rejects another world and never starts hooks without owned actors',function()
+    local h=harness();h.members={};h.phase:syncParents({});h:tick()
+    assert(h.phase:status().hooks==0 and h.finds==0 and h.callbacks[Phase.paths.spawn]==nil)
+    h=harness();h:sync();local parent,child=h:story(1,object('World /OtherMap'))
+    assert(h.phase:status().storyGuards==0 and h:lookup(child)==nil)
 end)
 print('menghua_phase: '..tests..' checks passed')

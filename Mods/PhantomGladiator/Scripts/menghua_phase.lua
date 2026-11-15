@@ -59,6 +59,7 @@ function Phase.new(options)
     local clock,fname=options.clock or os.clock,options.fname or FName
     local inGameThread=options.inGameThread or IsInGameThread
     local parents,children,pairRecords,hooks,loads={},{},{},{},{}
+    local storyLinks={} -- source-only bindings; never adopted, paused, cleaned up or given local anchors
     local warpWindows={}
     local internalWarp=false
     local seedAnchor
@@ -85,17 +86,21 @@ function Phase.new(options)
         local row=children[U.key(actor) or '']
         return row and row.name==full(actor) and same(row.actor,actor) and row or nil
     end
-    local function scope(context)
-        if not next(children) then return nil end
+    local function storyOf(actor)
+        local row=storyLinks[U.key(actor) or '']
+        return row and row.name==full(actor) and same(row.actor,actor) and row or nil
+    end
+    local function scope(context,includeStory)
+        if not next(children) and (not includeStory or not next(storyLinks)) then return nil end
         local object=U.unwrap(context);local visited={}
         for _=1,5 do
             local key=U.key(object);if not key or visited[key] then return nil end;visited[key]=true
-            local row=childOf(object);if row then return row end
+            local row=childOf(object) or (includeStory and storyOf(object));if row then return row end
             local path=classPath(object) or '';local name=path:match('%.([^%.]+)$') or ''
             local avatar
             if name:match('^GA_') then avatar=call(object,'GetAvatarActorFromActorInfo')
             elseif name:match('^GAA?_') or name:match('^LGAAction') then avatar=call(object,'GetAvatarActor') end
-            if U.valid(avatar) then return childOf(avatar) end
+            if U.valid(avatar) then return childOf(avatar) or (includeStory and storyOf(avatar)) end
             if name:match('^GA_') or name:match('^GAA?_') or name:match('^LGAAction') then return nil end
             -- Non-ability children may be outered to their ability or helper. World/level contexts cannot be one.
             if not path:find('/PBZCombatAsset/ActorData/Mobs/079_XuKong/',1,true) then return nil end
@@ -364,10 +369,16 @@ function Phase.new(options)
     end
     callbacks.lookup=function(_,context,cls)
         if not alive or not thread() then return end
-        local row=scope(context);if not row then return end
+        local row=scope(context,true);if not row then return end
         local name=full(U.unwrap(cls));local path=type(name)=='string' and name:match('^%S+ (/.+)$')
         if path~=PARENT then return end
         local parent=row.parent
+        if row.story then
+            local valid=not row.conflict and parent.name==full(parent.actor) and classPath(parent.actor)==PARENT
+                and U.valid(row.world) and U.inWorld(row.actor,row.world) and U.inWorld(parent.actor,row.world)
+            say('story-lookup','剧情原生来源搭档查询隔离；源父对象读回='..tostring(not not valid))
+            return valid and parent.actor or nullActor
+        end
         if not row.seeded then seedAnchor(row,'原生BeginPlay搭档绑定前') end
         local valid=not row.retired and not row.quarantine and not parent.stopping and not parent.departed and parentOf(parent.actor) and not parentDead(parent)
         say('actor-lookup','阶段搭档查找实例隔离；父对象有效读回='..tostring(not not valid))
@@ -383,8 +394,25 @@ function Phase.new(options)
         if not alive or not thread() then return end
         local ability,actor=U.unwrap(context),U.unwrap(pawn)
         if classPath(ability)~=SUMMON or classPath(actor)~=CHILD then return end
-        local parent=parentOf(call(ability,'GetAvatarActorFromActorInfo'))
-        if not parent then return end
+        local sourceParent=call(ability,'GetAvatarActorFromActorInfo')
+        local parent=parentOf(sourceParent)
+        if not parent then
+            -- An owned actor may precede a streamed-in story boss in the world's actor list.
+            -- Preserve the story helper's real native source rather than letting a first-of-class query choose ours.
+            if classPath(sourceParent)~=PARENT or childOf(actor) then return end
+            local world=options.world and options.world()
+            local key,name=U.key(actor),full(actor);local parentName=full(sourceParent)
+            if not key or type(name)~='string' or type(parentName)~='string' or not U.valid(world)
+                or not U.inWorld(actor,world) or not U.inWorld(sourceParent,world) then return end
+            local prior=storyLinks[key]
+            if prior and prior.name==name and prior.conflict then return end
+            if prior and prior.name==name and not same(prior.parent.actor,sourceParent) then
+                prior.conflict=true;self.failures=self.failures+1;say('story-conflict','剧情来源父对象冲突，未选择任一组');return
+            end
+            storyLinks[key]={story=true,actor=actor,name=name,parent={actor=sourceParent,name=parentName},world=world}
+            say('story-source','只读登记剧情原生召唤来源；辅助='..name..' 源父='..parentName..'；未接管或修改阶段')
+            return
+        end
         local world=parent.world
         if world and (not U.inWorld(actor,world) or not U.inWorld(parent.actor,world)) then return end
         local key,name=U.key(actor),full(actor);if not key or type(name)~='string' then return end
@@ -458,10 +486,12 @@ function Phase.new(options)
         for _,name in ipairs(ORDER)do if not hooks[name] then return false end end
         return true
     end
-    local function uninstall(force)
+    local function uninstall(force,keepStoryLookup)
         if not force and clock()<unhookAt then return end;unhookAt=clock()+1
         for name,ids in pairs(hooks)do
-            local ok,value=pcall(unregister,Phase.paths[name],ids[1],ids[2]);if ok and value~=false then hooks[name]=nil end
+            if not keepStoryLookup or name~='lookup' then
+                local ok,value=pcall(unregister,Phase.paths[name],ids[1],ids[2]);if ok and value~=false then hooks[name]=nil end
+            end
         end
     end
     function self:syncParents(units)
@@ -506,7 +536,12 @@ function Phase.new(options)
     end
     function self:tick()
         if not alive or not thread() or clock()<nextTick then return end;nextTick=clock()+0.5
-        if not next(parents) and not next(children) then uninstall();self.state='idle';return end
+        for key,row in pairs(storyLinks)do
+            if not U.valid(row.actor) or row.name~=full(row.actor) then storyLinks[key]=nil end
+        end
+        if not next(parents) and not next(children) then
+            uninstall(false,next(storyLinks)~=nil);self.state=next(storyLinks) and 'story_guard' or 'idle';return
+        end
         if not ready() then self.state='waiting';return end
         if ready() then install() end
         local pending=0
@@ -551,9 +586,9 @@ function Phase.new(options)
             end
             if #stack==0 then warpWindows[key]=nil end
         end
-        if not next(parents) and not next(children) then uninstall() end
+        if not next(parents) and not next(children) then uninstall(false,next(storyLinks)~=nil) end
         local retained=false;for _,row in pairs(children)do if not row.retired then retained=true;break end end
-        self.state=pending>0 and 'pending' or retained and 'stage' or next(parents) and 'ready' or 'idle'
+        self.state=pending>0 and 'pending' or retained and 'stage' or next(parents) and 'ready' or next(storyLinks) and 'story_guard' or 'idle'
     end
     function self:stop(teams)
         teams=teams or {blue=true,red=true,neutral=true}
@@ -577,11 +612,12 @@ function Phase.new(options)
         return confirmed
     end
     function self:status()
-        local p,c,h,b=0,0,0,0
+        local p,c,h,b,s=0,0,0,0,0
         for _,row in pairs(parents)do p=p+1;if row.busy then b=b+1 end end
         for _,row in pairs(children)do if not row.retired then c=c+1 end end
         for _ in pairs(hooks)do h=h+1 end
-        return {supported=supported(),state=self.state,parents=p,helpers=c,busy=b,hooks=h,failures=self.failures,completed=self.completed,anchors=self.anchors}
+        for _ in pairs(storyLinks)do s=s+1 end
+        return {supported=supported(),state=self.state,parents=p,helpers=c,busy=b,hooks=h,failures=self.failures,completed=self.completed,anchors=self.anchors,storyGuards=s}
     end
     function self:silence()
         if thread() then
