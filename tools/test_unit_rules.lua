@@ -73,6 +73,16 @@ do
 end
 -- XuKong keeps his passive by default, and an explicit 'off' survives a restart.
 do
+    local fs=filesystem();local rules=new(fs);local id='BP_Monster_MengHua'
+    assert(rules:get(id,'menghua_stage')=='keep')
+    assert(rules:set(id,'menghua_stage','skip').ok and new(fs):get(id,'menghua_stage')=='skip')
+    assert(rules:set(id,'menghua_stage','keep').ok and rules:status().text=='')
+    fs.deny=true;assert(not rules:set(id,'menghua_stage','skip').ok and rules:get(id,'menghua_stage')=='keep')
+    assert(not rules:set('BP_Monster_XuKong','menghua_stage','skip').ok)
+    local damaged=new(filesystem({[FILE]='UnitRulesV1\nBP_Monster_XuKong\tmenghua_stage\tskip\nBP_Monster_MengHua\tmenghua_stage\tskip\n'}))
+    assert(damaged:status().text==id..':menghua_stage=skip')
+end
+do
     local fs=filesystem();local rules=new(fs);local id='BP_Monster_XianZhe'
     assert(rules:get(id,'phantom')=='keep')
     assert(rules:set(id,'phantom','off').ok and new(fs):get(id,'phantom')=='off')

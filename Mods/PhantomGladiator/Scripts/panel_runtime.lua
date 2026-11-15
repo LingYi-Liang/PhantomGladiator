@@ -489,6 +489,7 @@ function Runtime.new(options)
         out.xianzhe_phantom_failures=xianzhe.failures or 0
         local phase=options.support and options.support.menghuaPhase and options.support.menghuaPhase:status() or {}
         out.menghua_phase_supported=phase.supported==true
+        out.menghua_stage_rule_supported=phase.skip_supported==true
         out.menghua_phase_state=phase.state or 'off'
         out.menghua_phase_helpers=phase.helpers or 0
         out.menghua_phase_busy=phase.busy or 0

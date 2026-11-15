@@ -17,6 +17,8 @@ local AI='/Script/SGameAI.Default__SGameAIFunctionLibrary'
 local UTILS='/Script/SGameUtils.Default__AbilityUtils'
 local ACTIVE='CharacterState.AbilityState.MengHua.XuKong.Active'
 local ASSIGN='AI.BlackboardKey.Object.AssignActor1'
+local SKIP_TAGS={'CharacterState.AbilityState.MengHua.InitCA','CharacterState.AbilityState.MengHua.CanSummonXuKong',
+    'CharacterState.AbilityState.MengHua.CanUseCA',ACTIVE}
 local TEAMS={blue=true,red=true,neutral=true,companion=true}
 local WINDOW_SECONDS=5 -- outer-post closes normally; this only retires a missing/aborted outer call
 Phase.paths={lookup='/Script/Engine.GameplayStatics:GetActorOfClass',player='/Script/Engine.GameplayStatics:GetPlayerCharacter',
@@ -27,12 +29,14 @@ Phase.paths={lookup='/Script/Engine.GameplayStatics:GetActorOfClass',player='/Sc
     exWindow='/SGameExecution/GA/GA_ExecutionAbilityBase_Grab.GA_ExecutionAbilityBase_Grab_C:K2_ActivateAbility',
     enterWindow='/MagCombatAbilities/Abilities/BP_ActionAbilityBase_Simple.BP_ActionAbilityBase_Simple_C:K2_ActivateAbility',
     enterClose=ENTER..':K2_ActivateAbility',
-    warp='/Script/MotionWarping.MotionWarpingComponent:AddOrUpdateWarpTargetFromLocationAndRotation',passive=PASSIVE..':K2_ActivateAbility',skill4Close=SKILL4..':K2_ActivateAbility'}
+    warp='/Script/MotionWarping.MotionWarpingComponent:AddOrUpdateWarpTargetFromLocationAndRotation',passive=PASSIVE..':K2_ActivateAbility',
+    summonPassive=SUMMON..':K2_ActivateAbility',skill4Close=SKILL4..':K2_ActivateAbility'}
 local PACKAGES={spawn='/SGameAI/Core/AIScript/GA_SummonPassive.GA_SummonPassive_C',exStart=EX,exEnd=EX,edStart=ED,edEnd=ED,
     exInfo='/SGameExecution/GA/GA_ExecutionAbilityBase.GA_ExecutionAbilityBase_C',edInfo='/SGameExecution/GA/GA_ExecutedAbilityBase.GA_ExecutedAbilityBase_C',
     exWindow='/SGameExecution/GA/GA_ExecutionAbilityBase_Grab.GA_ExecutionAbilityBase_Grab_C',
-    enterWindow='/MagCombatAbilities/Abilities/BP_ActionAbilityBase_Simple.BP_ActionAbilityBase_Simple_C',enterClose=ENTER,passive=PASSIVE,skill4Close=SKILL4}
-local ORDER={'lookup','player','spawn','exStart','exEnd','edStart','edEnd','exInfo','edInfo','exWindow','enterWindow','enterClose','warp','passive','skill4Close'}
+    enterWindow='/MagCombatAbilities/Abilities/BP_ActionAbilityBase_Simple.BP_ActionAbilityBase_Simple_C',enterClose=ENTER,passive=PASSIVE,
+    summonPassive=SUMMON,skill4Close=SKILL4}
+local ORDER={'lookup','player','spawn','exStart','exEnd','edStart','edEnd','exInfo','edInfo','exWindow','enterWindow','enterClose','warp','passive','summonPassive','skill4Close'}
 local function call(object,method,...)
     if not U.valid(object) then return nil end
     local args={...};local ok,value=pcall(function()return object[method](object,table.unpack(args))end)
@@ -141,7 +145,7 @@ function Phase.new(options)
         local tag={TagName=tagName}
         local read,current=pcall(function()return U.unwrap(lib:GetValueAsObjectByTag(board,tag))end)
         if not read then return false end
-        if same(current,row.actor) then
+        if same(current,row.actor) or row.parent.skip and not U.valid(current) then
             row.bindingConfirmed=true
             call(lib,'SetValueAsObjectByTag',board,tag,nullActor)
             if not U.valid(board) or not U.valid(lib) then return false end
@@ -181,7 +185,7 @@ function Phase.new(options)
             if pairAlive(row) then return false end
         end
         if not clearBinding(row) then return false end
-        if U.valid(row.ability) and same(call(row.ability,'GetAvatarActorFromActorInfo'),row.parent.actor) then call(row.ability,'DestroySummons',row.actor) end
+        if U.valid(row.actor) and U.valid(row.ability) and same(call(row.ability,'GetAvatarActorFromActorInfo'),row.parent.actor) then call(row.ability,'DestroySummons',row.actor) end
         if force and not going(row.actor) then call(row.actor,'K2_DestroyActor') end
         local gone=going(row.actor)
         say('cleanup','回收本组阶段虚空；配对完成='..tostring(row.pairEnded==true)..' 停止='..tostring(force)..' 销毁读回='..tostring(gone))
@@ -201,7 +205,7 @@ function Phase.new(options)
         end
     end
     local function endParentStage(parent)
-        -- Only explicit cleanup uses the original passive's End; running stages keep their normal finish.
+        -- Explicit cleanup or the birth-frozen skip rule uses the original passive's End.
         local phase=scopedPassive(parent,PASSIVE,'phasePassive')
         if U.valid(phase) and U.field(phase,'bIsActive')~=false then call(phase,'K2_CancelAbility') end
         local summon=scopedPassive(parent,SUMMON,'summonPassive')
@@ -224,11 +228,49 @@ function Phase.new(options)
         return parentDead(parent) or endParentStage(parent)
     end
     local callbacks={}
+    local function stageActivated(ability,parent)
+        if parent.skip then
+            parent.skipReady=false;parent.busy=true
+            call(ability,'K2_CancelAbility')
+            say('skip-activate','跳过本次直召剧情被动；原生结束读回='..tostring(U.field(ability,'bIsActive')==false))
+        elseif parent.stopping then call(ability,'K2_CancelAbility') end
+    end
     callbacks.passive=function(context)
         local ability=U.unwrap(context);if classPath(ability)~=PASSIVE then return end
         local parent=parentOf(call(ability,'GetAvatarActorFromActorInfo'));if not parent then return end
         parent.phasePassive={ability=ability,name=full(ability)}
-        if parent.stopping then call(ability,'K2_CancelAbility') end
+        stageActivated(ability,parent)
+    end
+    callbacks.summonPassive=function(context)
+        local ability=U.unwrap(context);if classPath(ability)~=SUMMON then return end
+        local parent=parentOf(call(ability,'GetAvatarActorFromActorInfo'));if not parent then return end
+        parent.summonPassive={ability=ability,name=full(ability)}
+        stageActivated(ability,parent)
+    end
+    local function skipStage(parent)
+        -- Empty/failed discovery is not proof that the actor's native stage has been disabled.
+        if not U.valid(scopedPassive(parent,PASSIVE,'phasePassive')) or not U.valid(scopedPassive(parent,SUMMON,'summonPassive')) then return false end
+        if not prepareCleanup(parent) then return false end
+        local complete=true
+        for _,row in pairs(children)do
+            if row.parent==parent and not row.retired and not cleanup(row,true) then complete=false end
+        end
+        if not complete then return false end
+        local asc=U.field(parent.actor,'AbilitySystemComponent');local utils=lookup(UTILS)
+        if not U.valid(asc) or not U.valid(utils) then return false end
+        for _,tag in ipairs(SKIP_TAGS)do
+            local made,name=pcall(fname,tag);if not made then return false end
+            local value={TagName=name};local before=call(asc,'GetGameplayTagCount',value)
+            if type(before)~='number' then return false end
+            if before>0 then
+                call(utils,'SetLooseGameplayTagCount',parent.actor,value,0)
+                local after=call(asc,'GetGameplayTagCount',value)
+                say('skip-tags','清理本次跳过联动标记 '..tag..'；数量读回='..tostring(before)..'→'..tostring(after))
+                if after~=0 then return false end
+            end
+        end
+        say('skip-ready','本次梦华跳过联动；原生被动结束、专属锁0、帮手和联动标记清理读回=true')
+        return true
     end
     local function finite(v)return type(v)=='number' and v==v and v~=math.huge and v~=-math.huge end
     local function fields(value,names)
@@ -255,7 +297,7 @@ function Phase.new(options)
         if ok then return position,rotation,pos,rot,half,scale end
     end
     seedAnchor=function(child,where)
-        if child.retired or child.quarantine or child.parent.stopping or child.parent.departed then return false end
+        if child.retired or child.quarantine or child.parent.skip or child.parent.stopping or child.parent.departed then return false end
         local cls=lookup('/Script/MotionWarping.MotionWarpingComponent')
         local className=full(cls)
         if not U.valid(cls) or type(className)~='string' or className:match('^%S+ (/.+)$')~='/Script/MotionWarping.MotionWarpingComponent' or call(cls,'IsAnyClass')~=true then return false end
@@ -293,6 +335,7 @@ function Phase.new(options)
         if classPath(ability)~=path then return end
         local child=childOf(call(ability,'GetAvatarActorFromActorInfo'))
         if not child or child.retired or child.quarantine or child.parent.departed or child.parent.stopping then return end
+        if child.parent.skip then call(ability,'K2_CancelAbility');return end
         local key=U.key(child.actor)
         local stack=warpWindows[key] or {};warpWindows[key]=stack
         if #stack>=8 then self.failures=self.failures+1;call(ability,'K2_CancelAbility');return end
@@ -379,8 +422,8 @@ function Phase.new(options)
             say('story-lookup','剧情原生来源搭档查询隔离；源父对象读回='..tostring(not not valid))
             return valid and parent.actor or nullActor
         end
-        if not row.seeded then seedAnchor(row,'原生BeginPlay搭档绑定前') end
-        local valid=not row.retired and not row.quarantine and not parent.stopping and not parent.departed and parentOf(parent.actor) and not parentDead(parent)
+        if not row.seeded and not parent.skip then seedAnchor(row,'原生BeginPlay搭档绑定前') end
+        local valid=not parent.skip and not row.retired and not row.quarantine and not parent.stopping and not parent.departed and parentOf(parent.actor) and not parentDead(parent)
         say('actor-lookup','阶段搭档查找实例隔离；父对象有效读回='..tostring(not not valid))
         return valid and parent.actor or nullActor
     end
@@ -388,7 +431,7 @@ function Phase.new(options)
         if not alive or not thread() then return end
         local row=scope(context);if not row then return end
         local parent=row.parent
-        return not row.retired and not row.quarantine and not parent.stopping and not parent.departed and parentOf(parent.actor) and not parentDead(parent) and parent.actor or nullActor
+        return not parent.skip and not row.retired and not row.quarantine and not parent.stopping and not parent.departed and parentOf(parent.actor) and not parentDead(parent) and parent.actor or nullActor
     end
     callbacks.spawn=function(context,pawn)
         if not alive or not thread() then return end
@@ -425,7 +468,7 @@ function Phase.new(options)
             self.kept=self.kept+1
         end
         parent.summonPassive={ability=ability,name=full(ability)}
-        seedAnchor(children[key],'FinishSpawn前')
+        if not parent.skip then seedAnchor(children[key],'FinishSpawn前') else parent.skipReady=false end
         parent.busy=not parent.stopping and not parent.departed
         say('spawn','FinishSpawn前登记原生阶段父子；父='..parent.name..' 子='..name..' 归属读回=true')
     end
@@ -500,7 +543,11 @@ function Phase.new(options)
             local actor=unit.actor;local key,name=U.key(actor),full(actor)
             if key and type(name)=='string' and TEAMS[unit.team] and not unit.summoner and not unit.aid and not unit.stand and classPath(actor)==PARENT then
                 seen[key]=true
-                if not parents[key] or parents[key].name~=name then parents[key]={actor=actor,name=name,team=unit.team,busy=false,world=options.world and options.world()} end
+                if not parents[key] or parents[key].name~=name then
+                    local skip=options.rule and options.rule('BP_Monster_MengHua')=='skip' or false
+                    parents[key]={actor=actor,name=name,team=unit.team,skip=skip,busy=skip,skipReady=false,world=options.world and options.world()}
+                    say('rule','登记本次梦华剧情联动='..(skip and '跳过' or '保留')..'；下次召唤选择已冻结')
+                end
                 parents[key].departed=false
             end
         end
@@ -509,7 +556,10 @@ function Phase.new(options)
     end
     function self:prepare(actor)
         if classPath(actor)~=PARENT then return true end
-        if not thread() or not ready() or not parentOf(actor) or not install() then return false,'梦华阶段实例隔离接口未就绪，不能确认原版阶段收尾' end
+        if not thread() or not ready() or not parentOf(actor) or not install() then
+            local parent=parentOf(actor)
+            return false,parent and parent.skip and '梦华跳过阶段接口未就绪，不能确认剧情联动已关闭' or '梦华阶段实例隔离接口未就绪，不能确认原版阶段收尾'
+        end
         return true
     end
     function self:handle(link)
@@ -522,6 +572,7 @@ function Phase.new(options)
             local key,name=U.key(link.actor),full(link.actor)
             if key and type(name)=='string' then
                 children[key]={actor=link.actor,name=name,parent=parent,quarantine=true};parent.busy=true
+                if parent.skip then parent.skipReady=false end
                 self.failures=self.failures+1;say('late','阶段虚空出生隔离未读回，保留原生对象并报告，不接入普通对战')
             end
         elseif row.parent~=parent then self.failures=self.failures+1;row.quarantine=true end
@@ -547,10 +598,14 @@ function Phase.new(options)
         local pending=0
         for _,parent in pairs(parents)do
             if parent.stopping then parent.cleanupReady=prepareCleanup(parent);if not parent.cleanupReady then pending=pending+1 end end
+            if parent.skip and not parent.skipReady and not parent.stopping and not parent.departed and not parentDead(parent) then
+                parent.skipReady=skipStage(parent);parent.busy=not parent.skipReady
+                if not parent.skipReady then pending=pending+1 end
+            end
         end
         for key,row in pairs(children)do
             if row.name~=full(row.actor) or not U.valid(row.actor) then children[key]=nil
-            elseif not row.retired then
+            elseif not row.retired and (not row.parent.skip or row.parent.stopping or row.parent.departed or parentDead(row.parent)) then
                 local finish=row.parent.stopping or row.parent.departed or parentDead(row.parent)
                 if not finish and row.pairEnded and not pairAlive(row) then
                     local count=lockCount(row.parent.actor)
@@ -570,7 +625,10 @@ function Phase.new(options)
         end
         for key,row in pairs(parents)do
             local retained=false;for _,child in pairs(children)do if child.parent==row and not child.retired then retained=true end end
-            if not retained then row.busy=false;if not U.valid(row.actor) or row.name~=full(row.actor) then parents[key]=nil end end
+            if not retained then
+                row.busy=row.skip and not row.skipReady and not row.stopping and not row.departed and not parentDead(row) or false
+                if not U.valid(row.actor) or row.name~=full(row.actor) then parents[key]=nil end
+            end
         end
         for key,entry in pairs(pairRecords)do if entry.ended or not U.valid(entry.ability) or entry.child.retired then pairRecords[key]=nil end end
         for key,stack in pairs(warpWindows)do
@@ -617,7 +675,7 @@ function Phase.new(options)
         for _,row in pairs(children)do if not row.retired then c=c+1 end end
         for _ in pairs(hooks)do h=h+1 end
         for _ in pairs(storyLinks)do s=s+1 end
-        return {supported=supported(),state=self.state,parents=p,helpers=c,busy=b,hooks=h,failures=self.failures,completed=self.completed,anchors=self.anchors,storyGuards=s}
+        return {supported=supported(),skip_supported=supported() and type(options.rule)=='function',state=self.state,parents=p,helpers=c,busy=b,hooks=h,failures=self.failures,completed=self.completed,anchors=self.anchors,storyGuards=s}
     end
     function self:silence()
         if thread() then

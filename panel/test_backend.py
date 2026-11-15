@@ -528,6 +528,15 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(request=request), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(request)
 
+    def test_menghua_stage_rule_is_restricted_and_roundtrips(self):
+        for value in ("keep", "skip"):
+            command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_MengHua", "rule": "menghua_stage", "value": value})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+            self.assertEqual(columns[1:8], ["set_unit_rule", "BP_Monster_MengHua", "blue", "1", "MENGHUA_STAGE", value.upper(), ""])
+        for unit, value in (("BP_Monster_XuKong", "skip"), ("BP_Monster_MengHua", "off"), ("BP_Monster_MengHua", True)):
+            with self.subTest(unit=unit, value=value), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue({"action": "set_unit_rule", "unit_id": unit, "rule": "menghua_stage", "value": value})
+
     def test_execution_camera_travels_in_the_start_key_column(self):
         for enabled, token in ((True, "ON"), (False, "OFF")):
             command = self.bridge.enqueue({"action": "set_execution_camera", "enabled": enabled})

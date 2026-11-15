@@ -50,7 +50,7 @@ HOME_LEVEL_SOURCES = {"native", "area", "extra", "prologue", "picked"}
 HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
 # Rules set on a unit's card (unit_rules.lua).
-UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off")}
+UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off"), "menghua_stage": ("keep", "skip")}
 THORN_SHIELD_UNITS = {"BP_Monster_JingYe", "BP_Monster_MaleThug_Club_Yellow_Shield", "BP_Monster_MaleThug_Club_Yellow_Shield_Teaching"}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
 FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
@@ -983,6 +983,8 @@ class Bridge:
                 raise ValidationError('rule and value must be one of the unit rules')
             if rule == 'remote_reflect' and unit not in THORN_SHIELD_UNITS:
                 raise ValidationError('该单位没有刺盾反伤开关')
+            if rule == 'menghua_stage' and unit != 'BP_Monster_MengHua':
+                raise ValidationError('只有梦华支持剧情联动设置')
             payload.update(unit_id=unit, rule=rule, value=value)
         elif action == 'configure_summon_queue':
             allowed |= {'mode', 'interval_ms', 'blue_slots', 'red_slots'}

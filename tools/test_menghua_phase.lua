@@ -9,6 +9,9 @@ local EX=M..'079_XuKong/Ability/GA_XuKong_GEx_01.GA_XuKong_GEx_01_C'
 local ED=M..'079_XuKong/Ability/GA_XuKong_GEd_01.GA_XuKong_GEd_01_C'
 local ENTER=M..'079_XuKong/Ability/GA_XuKong_EnterCombat_02.GA_XuKong_EnterCombat_02_C'
 local LOCK=M..'078_MengHua/GameplayEffects/GE_MengHua_XuKong_LockHealth.GE_MengHua_XuKong_LockHealth_C'
+local ACTIVE='CharacterState.AbilityState.MengHua.XuKong.Active'
+local INIT='CharacterState.AbilityState.MengHua.InitCA'
+local CAN_SUMMON='CharacterState.AbilityState.MengHua.CanSummonXuKong'
 local serial=0
 local function object(name,class,outer)
     serial=serial+1;local id=serial
@@ -41,7 +44,11 @@ local function harness(team)
     h.board=object('Blackboard /Map.Parent.BB');h.parent.board=h.board
     h.asc=object('AbilitySystemComponent /Map.Parent.ASC');h.parent.AbilitySystemComponent=h.asc;h.asc.lock=1;h.asc.active=1
     function h.asc:GetGameplayEffectCount(cls)assert(cls:IsValid());h.reads=(h.reads or 0)+1;if h.badLock then return nil end;return self.lock end
-    function h.asc:GetGameplayTagCount()return self.active end
+    h.asc.tags={}
+    function h.asc:GetGameplayTagCount(tag)
+        if tag.TagName==ACTIVE then return self.active end
+        return self.tags[tag.TagName] or 0
+    end
     h.summon=object('GA_MengHua_SummonPassive_C /Map.Parent.Passive',S,h.parent)
     function h.summon:GetAvatarActorFromActorInfo()return self.parent end;h.summon.parent=h.parent
     function h.summon:DestroySummons(child)h.destroyed=h.destroyed+1;if not h.failDestroy then child.going=true end end
@@ -55,7 +62,12 @@ local function harness(team)
     function h.ai:GetValueAsObjectByTag(board)if h.badBindingRead then error('unknown board')end;return board.assign end
     function h.ai:SetValueAsObjectByTag(board,tag,value)if not h.failBinding then board.assign=value end end
     h.utils=object('FunctionLibrary /Script/SGameUtils.Default__AbilityUtils')
-    function h.utils:SetLooseGameplayTagCount(parent,tag,count)if not h.failTag then parent.AbilitySystemComponent.active=count end end
+    function h.utils:SetLooseGameplayTagCount(parent,tag,count)
+        if not h.failTag then
+            if tag.TagName==ACTIVE then parent.AbilitySystemComponent.active=count
+            else parent.AbilitySystemComponent.tags[tag.TagName]=count end
+        end
+    end
     h.ge=object('BlueprintGeneratedClass '..LOCK);function h.ge:IsAnyClass()return true end
     h.motionClass=object('Class /Script/MotionWarping.MotionWarpingComponent');function h.motionClass:IsAnyClass()return true end
     function h.child:GetComponentByClass(cls)assert(cls==h.motionClass);return h.motion end
@@ -75,7 +87,8 @@ local function harness(team)
         unregister=function(path)if h.denyUnregister then return false end;h.callbacks[path]=nil;return true end,
         inGameThread=function()return h.gameThread~=false end,ready=function()return h.ready end,
         world=function()return h.world end,boardOf=function(parent)return parent.board end,hp=function(parent)return parent.hp end,
-        isDestroying=function(actor)return actor.going==true end,log=function(line)h.logs[#h.logs+1]=line end}
+        isDestroying=function(actor)return actor.going==true end,log=function(line)h.logs[#h.logs+1]=line end,
+        rule=function()return h.rule or 'keep'end}
     h.phase=Phase.new(h.options)
     function h:sync()self.phase:syncParents(self.members);if self.callbacks[Phase.paths.passive] then self.callbacks[Phase.paths.passive](self.nativePhase)end end
     function h:spawn(summon,child)self.callbacks[Phase.paths.spawn](summon or self.summon,child or self.child,0,{SummonInfoIndex=0,InstanceIndex=0})end
@@ -376,5 +389,77 @@ test('story source observation rejects another world and never starts hooks with
     assert(h.phase:status().hooks==0 and h.finds==0 and h.callbacks[Phase.paths.spawn]==nil)
     h=harness();h:sync();local parent,child=h:story(1,object('World /OtherMap'))
     assert(h.phase:status().storyGuards==0 and h:lookup(child)==nil)
+end)
+test('skip is opt in and birth frozen, keeping the original choice leaves the stage intact',function()
+    local h=harness();h:sync();h.rule='skip';h.phase:syncParents(h.members);h:tick()
+    assert(h.nativePhase.bIsActive and h.summon.bIsActive and h.asc.lock==1,'a later click does not alter a living native-stage actor')
+    assert(h.phase:status().skip_supported==true)
+end)
+test('skip ends only native linked passives, verifies zero lock and clears linked tags without changing HP',function()
+    for _,team in ipairs({'blue','red','neutral','companion'})do
+        local h=harness(team);h.rule='skip';h.asc.tags[INIT]=1;h.asc.tags[CAN_SUMMON]=1
+        h.asc.tags['CharacterState.AbilityState.MengHua.P2']=1
+        h:sync();assert(not h.nativePhase.bIsActive and h.asc.lock==0)
+        h:tick();assert(not h.summon.bIsActive and h.asc.lock==0 and h.asc.active==0)
+        assert(h.asc.tags[INIT]==0 and h.asc.tags[CAN_SUMMON]==0 and h.parent.hp==500)
+        assert(h.asc.tags['CharacterState.AbilityState.MengHua.P2']==1,'do not invent or erase an unrelated phase flag')
+        assert(not h.phase:busy(h.parent),'normal battle may proceed only after the bypass is verified')
+        local reads=h.reads;h:tick();assert(h.reads==reads,'a completed bypass must not poll native stats every tick')
+    end
+end)
+test('skip retires a late native helper and does not seed or bind it to the mother',function()
+    local h=harness();h.rule='skip';h:sync();h:tick();assert(not h.phase:busy(h.parent))
+    h:spawn();assert(h.phase:busy(h.parent) and h:lookup()==h.null and h:player()==h.null)
+    assert(h.phase:status().anchors==0 and not h.motion,'do not run the skipped phase movement')
+    h:tick();assert(h.child.going and h.phase:status().helpers==0 and not h.phase:busy(h.parent))
+end)
+test('skip clears only a helper counterpart and preserves another chosen target',function()
+    local h=harness();h.rule='skip';h:sync();h:spawn();h.board.assign=h.child;h:tick();assert(h.board.assign==h.null)
+    h=harness();h.rule='skip';h:sync();h:spawn();local enemy=object('Pawn /Map.OtherTarget',P,h.world);h.board.assign=enemy
+    h:tick();assert(h.board.assign==enemy and h.child.going)
+end)
+test('skip retries rejected passive End and does not claim the actor is ready',function()
+    local h=harness();h.rule='skip';h.failPassiveEnd=true;h:sync();h:spawn();h:tick()
+    assert(h.asc.lock==1 and h.phase:busy(h.parent) and h.phase:status().state=='pending' and not h.child.going)
+    h.failPassiveEnd=false;h:tick();assert(h.asc.lock==0 and h.child.going and not h.phase:busy(h.parent))
+end)
+test('skip does not hide tag write failure after the original passive has ended',function()
+    local h=harness();h.rule='skip';h.asc.tags[INIT]=1;h.failTag=true;h:sync();h:tick()
+    assert(h.asc.lock==0 and h.asc.tags[INIT]==1 and h.phase:busy(h.parent) and h.phase:status().state=='pending')
+    h.failTag=false;h:tick();assert(h.asc.tags[INIT]==0 and not h.phase:busy(h.parent))
+end)
+test('skip prevents later reactivation of the exact linked native passives',function()
+    local h=harness();h.rule='skip';h:sync();h:tick()
+    h.nativePhase.bIsActive=true;h.asc.lock=1;h.callbacks[Phase.paths.passive](h.nativePhase)
+    h.summon.bIsActive=true;h.callbacks[Phase.paths.summonPassive](h.summon)
+    assert(not h.nativePhase.bIsActive and not h.summon.bIsActive and h.phase:busy(h.parent))
+    h:tick();assert(h.asc.lock==0 and not h.phase:busy(h.parent))
+end)
+test('skip unknown lock or absent passive evidence remains pending instead of claiming ready',function()
+    local h=harness();h.rule='skip';h.badLock=true;h:sync();h:tick()
+    assert(h.phase:busy(h.parent) and h.phase:status().state=='pending')
+    h.badLock=false;h:tick();assert(not h.phase:busy(h.parent))
+    h=harness();h.rule='skip';h.nativePhase.valid=false;h.summon.valid=false;h.asc.lock=0
+    h.options.findAll=function()error('unconfirmed native ability read')end
+    h:sync();h:tick();assert(h.phase:busy(h.parent) and h.phase:status().state=='pending')
+end)
+test('skip cannot hide a helper destruction failure or change another health floor',function()
+    local h=harness();h.rule='skip';h.asc.otherFloor=123;h:sync();h:spawn();h.failDestroy=true;h:tick()
+    assert(h.phase:busy(h.parent) and not h.child.going and h.asc.otherFloor==123)
+    h.failDestroy=false;h:tick();assert(h.child.going and not h.phase:busy(h.parent) and h.asc.otherFloor==123)
+end)
+test('native summon End may already invalidate the helper before bypass cleanup',function()
+    local h=harness();h.rule='skip';h:sync();h:spawn();h.board.assign=h.child
+    local invalidCalls=0
+    function h.summon:K2_CancelAbility()self.bIsActive=false;h.child.valid=false end
+    function h.summon:DestroySummons(child)if not child:IsValid()then invalidCalls=invalidCalls+1;error('invalid native argument')end end
+    h:tick();assert(invalidCalls==0 and h.board.assign==h.null and h.phase:status().helpers==0 and not h.phase:busy(h.parent))
+end)
+test('skip rule never pauses or cancels story source actors',function()
+    local h=harness();h.rule='skip';h:sync();local parent,child,summon=h:story(9)
+    summon.bIsActive=true;local cancelled=false;summon.K2_CancelAbility=function()cancelled=true end
+    h.callbacks[Phase.paths.summonPassive](summon);h:tick()
+    assert(not cancelled and not child.going and not h.phase:busy(parent) and h:lookup(child)==parent)
+    assert(h:player(child)==nil,'a real story helper continues to query the real player')
 end)
 print('menghua_phase: '..tests..' checks passed')

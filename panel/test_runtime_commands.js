@@ -43,6 +43,16 @@ function harness(post, lang = 'zh', values = {}) {
 }
 (async () => {
   for (const succeeded of [true, false]) {
+    const h = harness(() => Promise.resolve(response({ id: 61 })), 'zh', { menghua_stage_rule_supported: 'true' });
+    await flush();assert.equal(h.rt.state.menghuaStageSupported, true);
+    const pending = h.rt.command('set_unit_rule', { unit: 'BP_Monster_MengHua', rule: 'menghua_stage', value: 'skip' });await flush();
+    assert.deepEqual(JSON.parse(h.requests.find(r => r.options?.method === 'POST').options.body), { action: 'set_unit_rule', unit_id: 'BP_Monster_MengHua', rule: 'menghua_stage', value: 'skip' });
+    assert.equal(h.rt.state.unitRules.BP_Monster_MengHua, undefined);
+    h.queue.push({ id: 61, action: 'set_unit_rule', status: succeeded ? 'succeeded' : 'failed', payload: { unit_id: 'BP_Monster_MengHua', rule: 'menghua_stage', value: 'skip' } });
+    await h.advance(500);await pending;
+    assert.equal(h.rt.state.unitRules.BP_Monster_MengHua?.menghua_stage, succeeded ? 'skip' : undefined);
+  }
+  for (const succeeded of [true, false]) {
     const h = harness(() => Promise.resolve(response({ id: 60 })), 'zh', { offcombat_regen_supported: 'true', offcombat_regen_disabled: 'false', offcombat_regen_state: 'off' });
     await flush();assert.equal(h.rt.state.offCombatRegen.supported, true);
     const pending = h.rt.command('set_offcombat_regen', { enabled: true });await flush();

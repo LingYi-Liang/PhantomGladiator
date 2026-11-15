@@ -13,10 +13,11 @@ Rules.THORN_COUNTERS={
     BP_Monster_MaleThug_Club_Yellow_Shield_Teaching='GE_MaleThug_ClubShield_Counter_C',
 }
 local HEADER='UnitRulesV1'
-Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true}}
-Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep'}
+Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true},menghua_stage={keep=true,skip=true}}
+Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep',menghua_stage='keep'}
 local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
-    remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'}}
+    remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'},
+    menghua_stage={keep='保留梦华剧情联动（下次召唤生效）',skip='跳过梦华剧情联动（下次召唤生效）'}}
 
 local XUKONG='BP_Monster_XuKong'
 local XIANZHE='BP_Monster_XianZhe'
@@ -66,7 +67,8 @@ function Rules.new(options)
         if type(saved)=='string' and saved:sub(1,#HEADER+1)==HEADER..'\n' then
             for id,rule,value in saved:gmatch('\n([^\t\r\n]+)\t([^\t\r\n]+)\t([^\t\r\n]+)')do
                 if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=defaultValue(id,rule)
-                    and (rule~='remote_reflect' or Rules.THORN_COUNTERS[id]) then
+                    and (rule~='remote_reflect' or Rules.THORN_COUNTERS[id])
+                    and (rule~='menghua_stage' or id=='BP_Monster_MengHua') then
                     rules[id]=rules[id] or {};rules[id][rule]=value
                 end
             end
@@ -76,6 +78,7 @@ function Rules.new(options)
         if not validId(id) then return {ok=false,message='单位规则：单位编号不对',spawned_count=0} end
         if not Rules.VALUES[rule] or not Rules.VALUES[rule][value] then return {ok=false,message='单位规则：规则或取值不对',spawned_count=0} end
         if rule=='remote_reflect' and not Rules.THORN_COUNTERS[id] then return {ok=false,message='该单位没有刺盾反伤开关',spawned_count=0} end
+        if rule=='menghua_stage' and id~='BP_Monster_MengHua' then return {ok=false,message='只有梦华支持剧情联动设置',spawned_count=0} end
         local copy={}
         for unit,row in pairs(rules)do
             copy[unit]={}

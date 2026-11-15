@@ -457,9 +457,9 @@
     BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
     BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
-    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom",
+    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom", BP_Monster_MengHua: "menghua_stage",
   };
-  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"] };
+  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"], menghua_stage: ["keep", "skip"] };
   const REMOTE_REFLECT_NATIVE = {
     BP_Monster_JingYe: "shieldReflect.native.jingye",
     BP_Monster_MaleThug_Club_Yellow_Shield: "shieldReflect.native.thug",
@@ -475,6 +475,7 @@
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
   const unitRuleLabel = (id, rule, value) => xianzhePhantomRule(id, rule) ? (value === "off" ? "技能虚化无敌：关闭" : "技能虚化无敌：原版")
+    : rule === "menghua_stage" ? (value === "skip" ? "剧情联动：跳过" : "剧情联动：保留")
     : rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
@@ -482,15 +483,22 @@
     const rule = UNIT_RULE_OF[u.id];
     if (RT.online() && !S.unitRulesSupported) return "";
     if (xianzhePhantomRule(u.id, rule) && RT.online() && !S.xianzhePhantomSupported) return "";
+    if (rule === "menghua_stage" && RT.online() && !S.menghuaStageSupported) return "";
     let html = "";
     if (rule) {
       const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
-      const tip = xianzhePhantomRule(u.id, rule)
+      const tip = rule === "menghua_stage"
+        ? "跳过梦华剧情联动阶段：默认关闭，保留原版。选择跳过后，该次召唤不会进入剧情虚空联动及其41%阶段保护，联动专用招式也会跳过；其他血量下限和不倒下仍生效。只影响模组直召的梦华，地图剧情不改。清理后重新召唤生效。"
+        : xianzhePhantomRule(u.id, rule)
         ? "弦者的闪避、进退场和部分技能带短时虚化无敌。默认保留原版；关闭后保留动作、位移与视觉特效，移除这些动作的无敌保护。只影响本次之后直召的弦者，蓝红、随从和未配队均适用。下次召唤生效。"
         : xukongDodgeRule(u.id, rule)
         ? t("unit.permanent.help")
         : t(`unitRule.${rule}.tip`);
       html = `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
+      if (rule === "menghua_stage") {
+        const skip = value === "skip", busy = ui.busy.has("set_unit_rule");
+        html = `<button class="card-rule card-reflect${changed ? " is-changed" : ""}" type="button" role="switch" aria-checked="${skip}" aria-busy="${busy}" tabindex="${u.id === ui.selectedId ? 0 : -1}" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" title="${esc(tip)}" aria-label="跳过梦华剧情联动阶段" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, rule, value))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
+      }
     }
     if (REMOTE_REFLECT_NATIVE[u.id] && (!RT.online() || S.remoteReflectSupported)) {
       const off = unitRuleValue(u.id, "remote_reflect") === "off";
@@ -2729,7 +2737,7 @@
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
-      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : t(`unitRule.${p.rule}.${p.value}`) });
+      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : p.rule === "menghua_stage" ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
       case "set_companion_stats": return t("action.set_companion_stats", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
