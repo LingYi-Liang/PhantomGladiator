@@ -22,9 +22,9 @@
   // The Nexus Mods build (S.channel "nexus") checks and downloads no updates: new versions come from this page.
   const NEXUS = "https://www.nexusmods.com/phantombladezero/mods/363";
   const fromNexus = () => S.channel === "nexus";
-  // The eight function keys backend.py accepts (BINDING_NAMES); all of them start unbound.
-  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
-  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions"]]];
+  // Function keys accepted by backend.py (BINDING_NAMES); all of them start unbound.
+  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
+  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]]];
   const NO_KEYS = Object.fromEntries(Object.keys(KEY_ICONS).map(action => [action, null]));
   const VK_CODES = { Space: 32, Pause: 19, CapsLock: 20, NumLock: 144, ScrollLock: 145, Backquote: 192, NumpadEnter: 13, Tab: 9, Enter: 13, Backspace: 8, Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Minus: 189, Equal: 187, BracketLeft: 219, BracketRight: 221, Backslash: 220, Semicolon: 186, Quote: 222, Comma: 188, Period: 190, Slash: 191, NumpadAdd: 107, NumpadSubtract: 109, NumpadMultiply: 106, NumpadDivide: 111, NumpadDecimal: 110 };
   const VK_NAMES = { 8: "Backspace", 9: "Tab", 13: "Enter", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "←", 38: "↑", 39: "→", 40: "↓", 45: "Insert", 46: "Delete", 106: "Num*", 107: "Num+", 109: "Num-", 110: "Num.", 111: "Num/", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 219: "[", 220: "\\", 221: "]", 222: "'" };
@@ -69,7 +69,8 @@
   }
 
   // ---------- State ----------
-  const detected = I18N.detect();
+  const detectedOriginal = I18N.detect();
+  const detected = { ...detectedOriginal, lang: PGLanguageSupport.resolve(detectedOriginal.lang) };
   const savedPool = store.get("monsterPool", []);
   const ui = {
     page: "arena",
@@ -113,7 +114,9 @@
     historyOpen: false,
     syncTimer: null,
   };
-  ui.lang = ui.langMode === "auto" ? detected.lang : store.get("lang", detected.lang);
+  const requestedLanguage = ui.langMode === "auto" ? detectedOriginal.lang : store.get("lang", detectedOriginal.lang);
+  ui.lang = PGLanguageSupport.resolve(requestedLanguage);
+  ui.languageNotice = PGLanguageSupport.notices[requestedLanguage] && store.get("languageSupportNotice", "") !== PGLanguageSupport.version ? requestedLanguage : null;
   I18N.set(ui.lang);
   if (!byId.has(ui.selectedId)) ui.selectedId = null;
   if (RT.demo) {
@@ -294,7 +297,14 @@
     wrap.remove();
     document.body.classList.remove("has-dialog");
     if (kind === "update" && ui.update.dl) { ui.update.dl.cancel(); ui.update.dl = null; ui.update.phase = "available"; }
+    if (kind === "language-support" && restore && ui.languageNotice) {
+      ui.languageNotice = null;
+      store.set("languageSupportNotice", PGLanguageSupport.version);
+      store.set("lang", ui.lang);
+      scheduleAutoUpdate();
+    }
     if (restore && prev && document.contains(prev)) prev.focus();
+    if (restore && kind !== "language-support") showLanguageNotice();
   }
 
   // ---------- Toasts ----------
@@ -474,8 +484,8 @@
   const xianzhePhantomRule = (id, rule) => id === "BP_Monster_XianZhe" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => xianzhePhantomRule(id, rule) ? (value === "off" ? "技能虚化无敌：关闭" : "技能虚化无敌：原版")
-    : rule === "menghua_stage" ? (value === "skip" ? "剧情联动：跳过" : "剧情联动：保留")
+  const unitRuleLabel = (id, rule, value) => xianzhePhantomRule(id, rule) ? t("xianzhePhantom." + (value === "off" ? "off" : "keep"))
+    : rule === "menghua_stage" ? t("menghuaStage." + (value === "skip" ? "skip" : "keep"))
     : rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
@@ -488,16 +498,16 @@
     if (rule) {
       const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
       const tip = rule === "menghua_stage"
-        ? "跳过梦华剧情联动阶段：默认关闭，保留原版。选择跳过后，该次召唤不会进入剧情虚空联动及其41%阶段保护，联动专用招式也会跳过；其他血量下限和不倒下仍生效。只影响模组直召的梦华，地图剧情不改。清理后重新召唤生效。"
+        ? t("menghuaStage.tip")
         : xianzhePhantomRule(u.id, rule)
-        ? "弦者的闪避、进退场和部分技能带短时虚化无敌。默认保留原版；关闭后保留动作、位移与视觉特效，移除这些动作的无敌保护。只影响本次之后直召的弦者，蓝红、随从和未配队均适用。下次召唤生效。"
+        ? t("xianzhePhantom.tip")
         : xukongDodgeRule(u.id, rule)
         ? t("unit.permanent.help")
         : t(`unitRule.${rule}.tip`);
       html = `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;
       if (rule === "menghua_stage") {
         const skip = value === "skip", busy = ui.busy.has("set_unit_rule");
-        html = `<button class="card-rule card-reflect${changed ? " is-changed" : ""}" type="button" role="switch" aria-checked="${skip}" aria-busy="${busy}" tabindex="${u.id === ui.selectedId ? 0 : -1}" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" title="${esc(tip)}" aria-label="跳过梦华剧情联动阶段" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, rule, value))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
+        html = `<button class="card-rule card-reflect${changed ? " is-changed" : ""}" type="button" role="switch" aria-checked="${skip}" aria-busy="${busy}" tabindex="${u.id === ui.selectedId ? 0 : -1}" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" title="${esc(tip)}" aria-label="${esc(t("menghuaStage.label"))}" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, rule, value))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
       }
     }
     if (REMOTE_REFLECT_NATIVE[u.id] && (!RT.online() || S.remoteReflectSupported)) {
@@ -1173,13 +1183,13 @@
   }
   function offCombatRegenRow() {
     const h = S.offCombatRegen || {}, busy = ui.busy.has("set_offcombat_regen");
-    const description = !RT.online() ? "连接游戏后可设置。默认保留原版脱战回血。" : !h.supported ? "请更新并重载支持此功能的游戏内模组。"
-      : h.on && h.state === "failed" ? "拦截或已有回血清除未确认，请查看操作记录并导出诊断。"
-      : h.on && h.state === "waiting" ? "设置已保存，等待游戏就绪或召唤单位后生效。"
-      : h.on ? "已禁止模组管理单位的脱战回血；角色技能回血、吸血仍保留。" : "默认原版。开启后保留战后残血，已有和新召唤单位均生效。";
+    const description = t(!RT.online() ? "offcombatRegen.offline" : !h.supported ? "offcombatRegen.unsupported"
+      : h.on && h.state === "failed" ? "offcombatRegen.failed"
+      : h.on && h.state === "waiting" ? "offcombatRegen.waiting"
+      : h.on ? "offcombatRegen.on" : "offcombatRegen.off");
     return `<div class="control-row${h.on ? " is-on" : ""}" style="margin-top:10px">
-      <span class="control-icon">${icon("shield")}</span><div class="control-main"><div class="control-title">禁止脱战回血</div><div class="control-desc">${esc(description)}</div></div>
-      <button class="switch" type="button" role="switch" aria-checked="${!!h.on}" aria-busy="${busy}" data-action="offcombat-regen" aria-label="禁止脱战回血" title="只拦截原版脱战逐步回血和立即回满，不锁血、不取消正常脱战，也不改变地图原生单位。已回的血不会扣回；关闭后不补回被拦截的血量。" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button></div>`;
+      <span class="control-icon">${icon("shield")}</span><div class="control-main"><div class="control-title">${esc(t("offcombatRegen.title"))}</div><div class="control-desc">${esc(description)}</div></div>
+      <button class="switch" type="button" role="switch" aria-checked="${!!h.on}" aria-busy="${busy}" data-action="offcombat-regen" aria-label="${esc(t("offcombatRegen.title"))}" title="${esc(t("offcombatRegen.tip"))}" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button></div>`;
   }
   // Status updates re-render a card; this keeps the field being typed in.
   function keepTyping(el) {
@@ -1519,6 +1529,8 @@
   }
   // Translated text for known codes; otherwise the game's or backend's own answer, which is Chinese.
   function reasonText(code, detail = "") {
+    const translatedDetail = PGLanguageSupport.message(detail);
+    if (translatedDetail !== detail) return translatedDetail;
     const queueDetail = queueSettingsMessage(detail);
     if (queueDetail !== detail) return queueDetail;
     if (detail && (!code || code === "rejected" || code === "host" || code === "submissionUnknown")) return detail;
@@ -1663,6 +1675,7 @@
 
   // ---------- Hotkey capture ----------
   function startCapture(target) {
+    if (target.kind === "global" && target.action === "dismiss_companions" && !S.dismissKeySupported) return;
     ui.capture = target;
     ui.keyNote = null;
     ui.unitKeyError = "";
@@ -1750,6 +1763,7 @@
 
   // ---------- Hotkeys page ----------
   function keyRowHTML(action) {
+    const usable = RT.online() && (action !== "dismiss_companions" || S.dismissKeySupported);
     const capturing = ui.capture?.kind === "global" && ui.capture.action === action;
     const note = ui.keyNote?.action === action ? ui.keyNote : null;
     let noteHTML = "";
@@ -1762,11 +1776,11 @@
       : note?.type === "saving"
         ? `<span class="spinner"></span><span class="muted">${esc(t("keys.saving"))}</span>`
         : `${S.keys[action] ? keyCap(S.keys[action], "kbd-lg") : `<span class="key-unbound">${esc(t("keys.unbound"))}</span>`}
-          <button class="btn btn-secondary btn-sm" type="button" data-action="key-capture" data-key-action="${action}" ${RT.online() && !ui.keysSaving ? "" : "disabled"}>${esc(t(S.keys[action] ? "keys.change" : "keys.set"))}</button>
-          ${S.keys[action] ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" ${RT.online() && !ui.keysSaving ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
+          <button class="btn btn-secondary btn-sm" type="button" data-action="key-capture" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"}>${esc(t(S.keys[action] ? "keys.change" : "keys.set"))}</button>
+          ${S.keys[action] ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
     return `<div class="row key-row${capturing ? " is-capturing" : ""}${note?.type === "conflict" || (capturing && note?.type === "err") ? " has-error" : ""}">
       <span class="row-icon">${icon(KEY_ICONS[action])}</span>
-      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${noteHTML}</div>
+      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${action === "dismiss_companions" && RT.online() && !S.dismissKeySupported ? `<div class="key-note err">${esc(t("keys.dismiss.update"))}</div>` : ""}${noteHTML}</div>
       <div class="row-side">${side}</div>
     </div>`;
   }
@@ -2408,6 +2422,22 @@
     }
   }
 
+  function languageNoticeBody(notice) {
+    return `<div class="language-support-copy" lang="${notice.html}"><p>${esc(notice.body)}</p><p>${esc(notice.fallback)}</p>
+      <p><a href="${REPO}/issues/new" target="_blank" rel="noopener noreferrer">${esc(notice.issue)}</a><br>
+      <a href="mailto:${esc(PGLanguageSupport.email)}">${esc(notice.email)}: ${esc(PGLanguageSupport.email)}</a></p></div>`;
+  }
+  function languageSupportHTML() {
+    return `<div class="language-support" id="language-support"><h3>${esc(t("languageSupport.heading"))}</h3><p class="muted">${esc(t("languageSupport.intro"))}</p>
+      ${Object.values(PGLanguageSupport.notices).map(n => `<details lang="${n.html}"><summary>${esc(n.name)} — ${esc(n.title)}</summary>${languageNoticeBody(n)}</details>`).join("")}</div>`;
+  }
+  function showLanguageNotice() {
+    if (!ui.languageNotice || ui.onboarding || dlg) return;
+    const notice = PGLanguageSupport.notices[ui.languageNotice];
+    openDialog("language-support", `<div class="dialog-head" lang="${notice.html}"><h2 id="dlg-title">${esc(notice.title)}</h2></div>
+      <div class="dialog-body">${languageNoticeBody(notice)}</div><div class="dialog-foot" lang="${notice.html}"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(notice.close)}</button></div>`);
+    $("#dialog").lang = notice.html;
+  }
   function settingsHTML() {
     const opt = (action, value, checked, main, sub = "", extra = "") => `<button class="option ${extra}" type="button" role="radio" aria-checked="${checked}" data-action="${action}" data-value="${value}"><span class="radio"></span><span class="option-main"><span>${main}</span>${sub ? `<small>${sub}</small>` : ""}</span></button>`;
     const sw = (key, title, desc) => `<div class="row"><div class="row-main"><div class="row-title">${esc(title)}</div><div class="row-desc">${esc(desc)}</div></div><button class="switch" type="button" role="switch" aria-checked="${ui.settings[key]}" data-action="toggle-setting" data-setting="${key}" aria-label="${esc(title)}"></button></div>`;
@@ -2420,8 +2450,8 @@
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.language"))}</h2></div>
         <div class="card-body"><div class="option-list" role="radiogroup" aria-label="${esc(t("settings.language"))}">
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
-          ${I18N.LANGS.map(l => opt("set-lang", l.id, ui.langMode === "manual" && ui.lang === l.id, `<span lang="${l.html}">${esc(l.name)}</span>`)).join("")}
-        </div><p class="muted" style="font-size:12.5px;margin-top:10px">${esc(t("settings.language.unitNote"))}</p></div></section>
+          ${I18N.ACTIVE_LANGS.map(l => opt("set-lang", l.id, ui.langMode === "manual" && ui.lang === l.id, `<span lang="${l.html}">${esc(l.name)}</span>`)).join("")}
+        </div><p class="muted" style="font-size:12.5px;margin-top:10px">${esc(t("settings.language.unitNote"))}</p>${languageSupportHTML()}</div></section>
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.appearance"))}</h2></div>
         <div class="card-body"><div class="theme-tiles" role="radiogroup" aria-label="${esc(t("settings.appearance"))}">
           ${["light", "dark"].map(th => `<button class="theme-tile" type="button" role="radio" aria-checked="${ui.theme === th}" data-action="set-theme" data-value="${th}"><span class="theme-preview ${th}"><i></i><i></i></span><span class="theme-label"><span class="radio"></span>${esc(t("settings.theme." + th))}</span></button>`).join("")}
@@ -2733,7 +2763,7 @@
       case "set_fun_feature": return t("action.set_fun_feature", { name: t("fun." + p.feature + ".name"), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
-      case "set_offcombat_regen": return `${p.enabled ? "开启" : "关闭"}禁止脱战回血`;
+      case "set_offcombat_regen": return t(p.enabled ? "offcombatRegen.history.on" : "offcombatRegen.history.off");
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
@@ -2812,7 +2842,8 @@
     return `<div class="menu-label">${esc(t("settings.language"))}</div>
       <button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "auto"}" data-action="set-lang" data-value="auto">${icon("globe")}<span>${esc(t("settings.language.auto"))}</span><small>${esc(langName(detected.lang))}</small>${check(ui.langMode === "auto")}</button>
       <div class="menu-sep"></div>
-      ${I18N.LANGS.map(l => `<button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "manual" && ui.lang === l.id}" data-action="set-lang" data-value="${l.id}" lang="${l.html}"><span style="width:18px"></span><span>${esc(l.name)}</span>${check(ui.langMode === "manual" && ui.lang === l.id)}</button>`).join("")}`;
+      ${I18N.ACTIVE_LANGS.map(l => `<button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "manual" && ui.lang === l.id}" data-action="set-lang" data-value="${l.id}" lang="${l.html}"><span style="width:18px"></span><span>${esc(l.name)}</span>${check(ui.langMode === "manual" && ui.lang === l.id)}</button>`).join("")}
+      <div class="menu-sep"></div><button class="menu-item" type="button" role="menuitem" data-action="language-support-settings">${esc(t("languageSupport.menu"))}</button>`;
   }
   function helpMenuHTML() {
     return `<button class="menu-item" type="button" role="menuitem" data-action="onboarding">${icon("book")}<span>${esc(t("help.guide"))}</span></button>
@@ -2865,7 +2896,7 @@
     const steps = labels.map((k, i) => `${i ? '<span class="onb-step-line"></span>' : ""}<span class="onb-step${i === step ? " is-current" : i < step ? " is-done" : ""}"><i>${i < step ? icon("check", "icon-sm") : i + 1}</i>${esc(t(k))}</span>`).join("");
     let body = "", foot = "";
     if (step === 0) {
-      const options = [`<option value="auto" ${ui.langMode === "auto" ? "selected" : ""}>${esc(t("settings.language.auto"))} · ${esc(langName(detected.lang))}</option>`, ...I18N.LANGS.map(l => `<option value="${l.id}" ${ui.langMode === "manual" && ui.lang === l.id ? "selected" : ""}>${esc(l.name)}</option>`)].join("");
+      const options = [`<option value="auto" ${ui.langMode === "auto" ? "selected" : ""}>${esc(t("settings.language.auto"))} · ${esc(langName(detected.lang))}</option>`, ...I18N.ACTIVE_LANGS.map(l => `<option value="${l.id}" ${ui.langMode === "manual" && ui.lang === l.id ? "selected" : ""}>${esc(l.name)}</option>`)].join("");
       body = `<div class="onb-hero"><span class="seal seal-xl" aria-hidden="true">斗</span><h1 id="onb-title">${esc(t("onb.welcome.title"))}</h1><p>${esc(t("onb.welcome.body"))}</p></div>
         <div class="onb-features">${[["grid", 1], ["user-plus", 2], ["swords", 3]].map(([ic, n]) => `<div class="feature"><span class="feature-icon">${icon(ic)}</span><div class="feature-num">${esc(t("onb.stepN", { n }))}</div><h3>${esc(t("onb.f" + n))}</h3><p>${esc(t("onb.f" + n + ".desc"))}</p></div>`).join("")}</div>
         <div class="onb-lang">${icon("globe", "icon-sm")}<span>${esc(t("onb.language"))}</span><select class="select" id="onb-lang" style="height:32px" aria-label="${esc(t("settings.language"))}">${options}</select></div>`;
@@ -2959,11 +2990,12 @@
     store.set("onboarded", true);
     renderOnboarding();
     go("arena");
+    showLanguageNotice();
     scheduleAutoUpdate();
   }
   // A background check never interrupts the first-run guide; it runs once the guide is closed.
   function scheduleAutoUpdate() {
-    if (fromNexus() || !ui.settings.autoUpdate || ui.onboarding || ui.autoChecked) return;
+    if (fromNexus() || !ui.settings.autoUpdate || ui.onboarding || ui.languageNotice || ui.autoChecked) return;
     ui.autoChecked = true;
     setTimeout(() => checkUpdate({ silent: true }), 2600);
   }
@@ -2996,7 +3028,7 @@
   // ---------- Language & theme ----------
   function setLanguage(value) {
     if (value === "auto") { ui.langMode = "auto"; ui.lang = detected.lang; }
-    else { ui.langMode = "manual"; ui.lang = value; }
+    else { ui.langMode = "manual"; ui.lang = PGLanguageSupport.resolve(value); }
     store.set("langMode", ui.langMode);
     store.set("lang", ui.lang);
     I18N.set(ui.lang);
@@ -3051,6 +3083,7 @@
     "toggle-theme": () => setTheme(ui.theme === "dark" ? "light" : "dark"),
     "set-theme": el => setTheme(el.dataset.value),
     "set-lang": el => setLanguage(el.dataset.value),
+    "language-support-settings": () => { closePopover(); go("settings"); $("#language-support")?.scrollIntoView({ block: "center" }); },
     "open-update": () => { closePopover(); openUpdate(); },
     "open-history": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); openHistory(); },
     "clear-queue": () => clearQueue(),
@@ -3514,5 +3547,6 @@
   if (!RT.demo) $("#demo-fab")?.remove();
   ui.prevGame = S.game;
   renderAll();
+  showLanguageNotice();
   scheduleAutoUpdate();
 })();

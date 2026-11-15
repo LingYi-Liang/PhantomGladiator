@@ -32,7 +32,7 @@ def main():
     history = json.loads(re.search(r"window\.PG_CHANGELOG = (\[.*\]);", js, re.S).group(1))
     entry = history[0]
     assert entry["version"] == version, f"changelog.js starts with {entry['version']}, not {version}"
-    assert set(entry["notes"]) == set(old["notes"]), (set(entry["notes"]), set(old["notes"]))
+    assert {"zh", "en"} <= set(entry["notes"]) <= {"zh", "en", "ja", "fr", "de", "es"}, set(entry["notes"])
     assert [d["id"] for d in old["downloads"]] == list(MIRRORS), [d["id"] for d in old["downloads"]]
     asset = f"https://github.com/{REPO}/releases/download/v{version}/PhantomGladiator-{version}-win64.zip"
     new = {"version": version, "modBuild": "v" + version, "date": entry["date"], "size": size, "sha256": sha, "notes": entry["notes"],

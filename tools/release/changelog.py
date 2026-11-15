@@ -1,8 +1,8 @@
-"""Writes panel/prototype/changelog.js: every released version's notes (six languages, newest first): what the file
+"""Writes panel/prototype/changelog.js: every released version's notes (newest first): what the file
 already lists, plus the version being released now.
 
 usage: python -I tools/release/changelog.py <repo> <new version> <new date, ISO 8601 with offset> <notes.json>
-notes.json: {"zh": [...], "en": [...], "ja": [...], "fr": [...], "de": [...], "es": [...]}
+notes.json: {"zh": [...], "en": [...]}; historical language notices may also be included.
 """
 import json
 import pathlib
@@ -10,6 +10,12 @@ import re
 import sys
 
 LANGS = ["zh", "en", "ja", "fr", "de", "es"]
+REQUIRED_LANGS = {"zh", "en"}
+
+
+def validate_notes(notes):
+    assert REQUIRED_LANGS <= set(notes) <= set(LANGS), sorted(notes)
+    assert all(isinstance(lines, list) and lines and all(isinstance(line, str) and line.strip() for line in lines) for lines in notes.values())
 
 
 def main():
@@ -20,18 +26,18 @@ def main():
     entries = {e["version"]: e for e in listed}
     assert len(entries) == len(listed), "a version is listed twice"
     for e in listed:
-        assert sorted(e["notes"]) == sorted(LANGS), (e["version"], sorted(e["notes"]))
+        validate_notes(e["notes"])
 
     new = json.loads(pathlib.Path(notes_path).read_text(encoding="utf-8"))
-    assert sorted(new) == sorted(LANGS), sorted(new)
-    entries[version] = {"version": version, "date": date, "notes": {k: new[k] for k in LANGS}}
+    validate_notes(new)
+    entries[version] = {"version": version, "date": date, "notes": {k: new[k] for k in LANGS if k in new}}
 
     def key(v):
         return tuple(int(p) for p in v.split("."))
 
     ordered = sorted(entries.values(), key=lambda e: key(e["version"]), reverse=True)
     body = ",\n".join("  " + json.dumps(e, ensure_ascii=False) for e in ordered)
-    text = ("// Release history for the update dialog: what each released version changed, in the app's six languages,\n"
+    text = ("// Release history for the update dialog: maintained in Chinese and English; historical translations are retained,\n"
             "// newest first. Each entry is the notes release/latest.json published for that version; a release adds its own.\n"
             "window.PG_CHANGELOG = [\n" + body + "\n];\n")
     path.write_text(text, encoding="utf-8", newline="\n")

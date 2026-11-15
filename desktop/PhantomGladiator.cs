@@ -1583,7 +1583,8 @@ namespace PhantomGladiator
         static void OpenExternal(string uri)
         {
             if (uri == null) return;
-            if (!(uri.StartsWith("https://") || uri.StartsWith("http://") || uri.StartsWith("steam://"))) return;
+            if (!(uri.StartsWith("https://") || uri.StartsWith("http://") || uri.StartsWith("steam://") ||
+                uri.Equals("mailto:lingyi01525@gmail.com", StringComparison.OrdinalIgnoreCase))) return;
             try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); } catch (Exception) { }
         }
 

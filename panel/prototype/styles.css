@@ -1394,3 +1394,11 @@ body.has-dock.has-dialog .toasts { right: 20px; }
   .about-hero-side { margin-left: 0; align-items: flex-start; }
   .theme-tiles { grid-template-columns: 1fr 1fr; }
 }
+/* Language notices stay next to the language selector after the one-time dialog. */
+.language-support { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.language-support h3 { margin: 0 0 6px; font-size: 14px; }
+.language-support > p { font-size: 12.5px; line-height: 1.65; }
+.language-support details { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.language-support summary { padding: 10px 12px; cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.language-support-copy { line-height: 1.7; overflow-wrap: anywhere; }
+.language-support details .language-support-copy { padding: 0 12px 4px; font-size: 13px; }

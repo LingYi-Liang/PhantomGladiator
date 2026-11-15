@@ -1,9 +1,10 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/prototype/app.js','utf8');
+const i18n=require('./test_i18n_runtime')();
 const first=source.indexOf('  const UNIT_RULE_OF ='),last=source.indexOf('  function cardHTML(',first);
 const sent=[];let online=true;
 const c={S:{unitRulesSupported:true,xianzhePhantomSupported:true,unitRules:{}},ui:{busy:new Set()},RT:{online:()=>online},
-  t:k=>k,esc:String,renderGrid(){},run:(action,options)=>sent.push({action,...options})};
+  t:(key,p)=>i18n.t(key,p),esc:String,renderGrid(){},run:(action,options)=>sent.push({action,...options})};
 vm.createContext(c);vm.runInContext(source.slice(first,last),c);
 const unit={id:'BP_Monster_XianZhe',name:'弦者'};
 assert(c.unitRuleHTML(unit).includes('技能虚化无敌：原版'));

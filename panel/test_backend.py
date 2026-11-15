@@ -745,7 +745,7 @@ class BridgeTests(unittest.TestCase):
         command = self.bridge.enqueue({"action": "configure_keys", "bindings": requested})
         self.bridge.tick()
         columns = (self.bridge.runtime / "inbox.tsv").read_text().rstrip("\n").split("\t")
-        self.assertEqual(columns[5:18], [backend.binding_token(requested[name]) for name in backend.BINDING_NAMES])
+        self.assertEqual(columns[5:18], [backend.binding_token(requested[name]) for name in backend.V4_BINDING_NAMES])
         self.assertEqual(columns[-1],'4')
         self.assertEqual(self.bridge.keybinds()["requested"], {name:backend.parse_binding(value) for name,value in requested.items()})
         self.assertEqual(self.bridge.keybinds()["active"]["spawn"], None)
@@ -877,6 +877,26 @@ class BridgeTests(unittest.TestCase):
         recall=self.bridge.enqueue({'action':'recall_companions'})
         wire=self.bridge._wire({'id':recall['id'],'payload':json.dumps(recall['payload'])}).strip().split('\t')
         self.assertEqual(wire[1:5],['recall_companions','','blue','1'])
+
+    def test_dismiss_key_is_additive_capability_gated_and_serialized_at_the_end(self):
+        all_keys = {**BINDINGS, 'dismiss_companions': 'VK_119_MOD_1'}
+        self.assertFalse(self.bridge.function_keybinds()['dismiss_supported'])
+        with self.assertRaisesRegex(backend.ValidationError, '解散随从快捷键'):
+            self.bridge.enqueue({'action': 'configure_keys', 'bindings': all_keys})
+        legacy = self.bridge.enqueue({'action': 'configure_keys', 'bindings': {**BINDINGS, 'dismiss_companions': 'UNBOUND'}})
+        old_wire = self.bridge._wire({'id': legacy['id'], 'payload': json.dumps(legacy['payload'])}).strip().split('\t')
+        self.assertEqual((len(old_wire), old_wire[-1]), (19, '4'))
+        status = self.bridge.runtime / 'status.tsv'
+        status.write_text(status.read_text(encoding='utf-8').replace('function_keys_schema\t4', 'function_keys_schema\t5'), encoding='utf-8')
+        self.assertTrue(self.bridge.function_keybinds()['dismiss_supported'])
+        job = self.bridge.enqueue({'action': 'configure_keys', 'bindings': all_keys})
+        columns = self.bridge._wire({'id': job['id'], 'payload': json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual((len(columns), columns[18], columns[-1]), (20, 'VK_119_MOD_1', '5'))
+        self.write('function-keybinds.tsv', 'FunctionKeysV2\t1\n' + ''.join(f"{name}\t{119 if name=='dismiss_companions' else 0}\t{1 if name=='dismiss_companions' else 0}\n" for name in backend.BINDING_NAMES))
+        with self.assertRaisesRegex(backend.ValidationError, '解散全部随从'):
+            self.bridge.enqueue({'action': 'configure_unit_key', 'unit_id': UNIT, 'key_code': 119, 'modifiers': 1})
+        with self.assertRaisesRegex(backend.ValidationError, '解散全部随从'):
+            self.bridge.save_monster_pools({'revision': 0, 'pools': [dict(id='pool-dismiss', name='Conflict', team='companion', count=1, key_code=119, modifiers=1, unit_ids=[UNIT])]})
 
     def test_time_stop_key_and_free_camera_settings_travel_in_the_key_columns(self):
         job=self.bridge.enqueue({'action':'configure_keys','bindings':{**BINDINGS,'toggle_time_stop':'P'}})

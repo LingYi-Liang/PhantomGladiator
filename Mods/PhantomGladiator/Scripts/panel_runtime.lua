@@ -510,8 +510,8 @@ function Runtime.new(options)
         out.spectator_message=spectator.message
         out.spectator_read_failures=spectator.readFailures
         local functions=self.functionKeys:status()
-        -- 4: thirteen function keys, the last three toggle_track, track_pick and track_next; configure_keys comes in 19 columns.
-        out.function_keys_schema=4;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
+        -- 5: fourteen function keys; dismiss_companions is appended after the original thirteen.
+        out.function_keys_schema=5;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
         return out
     end})

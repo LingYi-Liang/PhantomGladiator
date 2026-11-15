@@ -664,7 +664,7 @@ test("recall goes to the companions from the app and from its function key; keys
     h.runtime:start()
     h.inbox={action='recall_companions'};h:tick()
     assert(recalls==1 and h.result.ok and h.result.message=='已召回 2/2 个随从到身边')
-    assert(h.reported.function_keys_schema==4 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
+    assert(h.reported.function_keys_schema==5 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
     h.inbox={action='configure_keys',key_spawn='UNBOUND',key_start='UNBOUND',key_stop='UNBOUND',key_refresh_catalog='UNBOUND',
         key_toggle_camera='UNBOUND',key_exit_camera='UNBOUND',key_cycle_team='UNBOUND',key_toggle_spectator='UNBOUND',key_recall_companions='F5'}
     h:tick();assert(h.result.ok,h.result.message)
@@ -844,5 +844,16 @@ test('relay settings, intake and start use the same panel and key dispatcher',fu
     for _=1,3 do time=time+1.5;h:run(loop.fn)end
     assert(#calls==3 and begins==1 and calls[3][2]=='red')
     h.inbox={action='stop'};h:tick();assert(not h.runtime.summonQueue.relayStarted and #h.runtime.summonQueue.jobs==0)
+end)
+test('dismiss shortcut uses the game-thread companion-only handler and rejects stale sessions',function()
+    local h=harness();h.runtime:start();h:tick()
+    local proposal={};for name,value in pairs(h.runtime.functionKeys.entries)do proposal[name]=value end
+    proposal.dismiss_companions='VK_119_MOD_1'
+    h:run(function()assert(h.runtime:configure(proposal).ok)end)
+    h.keys['F8:1']();assert(count(h,'dismiss_companions')==0)
+    h:drain();assert(count(h,'dismiss_companions')==1 and count(h,'stop')==0)
+    h.keys['F8:1']();h.sessionState.game_session='new-session';h:tick();h:drain()
+    assert(count(h,'dismiss_companions')==1,'an old-map press must not dismiss the new roster')
+    h.keys['F8:1']();h:drain();assert(count(h,'dismiss_companions')==2)
 end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

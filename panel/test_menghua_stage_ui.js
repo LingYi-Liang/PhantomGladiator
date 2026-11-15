@@ -1,9 +1,10 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(__dirname+'/prototype/app.js','utf8');
+const i18n=require('./test_i18n_runtime')();
 const first=source.indexOf('  const UNIT_RULE_OF ='),last=source.indexOf('  function cardHTML(',first);
 const sent=[];let online=true;
 const c={S:{unitRulesSupported:true,menghuaStageSupported:true,unitRules:{}},ui:{busy:new Set(),selectedId:'BP_Monster_MengHua'},
-  RT:{online:()=>online},t:k=>k,esc:String,renderGrid(){},run:(action,options)=>sent.push({action,...options})};
+  RT:{online:()=>online},t:(key,p)=>i18n.t(key,p),esc:String,renderGrid(){},run:(action,options)=>sent.push({action,...options})};
 vm.createContext(c);vm.runInContext(source.slice(first,last),c);
 const unit={id:'BP_Monster_MengHua',name:'梦华'};
 let html=c.unitRuleHTML(unit);assert(html.includes('剧情联动：保留')&&html.includes('role="switch"')&&html.includes('aria-checked="false"'));

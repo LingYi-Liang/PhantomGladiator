@@ -111,7 +111,8 @@ const MockRuntime = (() => {
     cleanup: "",                // "" | restore_pending (one more cleanup) | spawn_uncertain (restart the game)
     stopOutcome: "ok",          // ok | partial (next cleanup leaves one restore record) | stuck (every cleanup does)
     // The eight function keys (BINDING_NAMES in backend.py) start unbound; each is null or { code, mods }.
-    keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
+    dismissKeySupported: true,
+    keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, dismiss_companions: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
     unitKeys: {},               // unitId -> { code, mods }
     nextOutcome: "ok",          // ok | error | uncertain | matchWarn | matchAbort (next spawn only)
     updateScenario: "available",// available | latest | offline

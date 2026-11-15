@@ -403,6 +403,10 @@ test('v3 key configuration adds recall and time stop as keys nine and ten; both 
     deliver(fs,'keys4\tconfigure_keys\t\tblue\t1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_117_MOD_1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_84_MOD_0\tVK_89_MOD_0\tVK_85_MOD_0\t4\n');bridge:tick()
     assert(#got==2 and got[2].schema_version==4 and got[2].key_toggle_track=='VK_84_MOD_0' and got[2].key_track_pick=='VK_89_MOD_0' and got[2].key_track_next=='VK_85_MOD_0')
     assert(got[2].key_recall_companions=='UNBOUND' and got[2].key_toggle_camera=='VK_117_MOD_1')
+    local keys5='keys5\tconfigure_keys\t\tblue\t1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_117_MOD_1\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tUNBOUND\tVK_84_MOD_0\tVK_89_MOD_0\tVK_85_MOD_0\tVK_119_MOD_1\t5\n'
+    deliver(fs,keys5);bridge:tick()
+    assert(#got==3 and got[3].schema_version==5 and got[3].key_dismiss_companions=='VK_119_MOD_1' and got[3].key_track_next=='VK_85_MOD_0')
+    deliver(fs,keys5:gsub('keys5','bad5'):gsub('\t5\n','\t4\n'));bridge:tick();assert(#got==3)
     deliver(fs,command('c0','set_unit_rule','BP_Monster_MoTian','blue',1,{'LOCK','KILL','',''}));bridge:tick()
     assert(unitRule and unitRule.unit_id=='BP_Monster_MoTian' and unitRule.key_spawn=='LOCK' and unitRule.key_start=='KILL')
     deliver(fs,command('c1','set_free_camera','','blue',1,{'1500','150','25',''}));bridge:tick()

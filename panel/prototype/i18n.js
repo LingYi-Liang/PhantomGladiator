@@ -53,6 +53,7 @@ const I18N = (() => {
   }
   return {
     LANGS,
+    ACTIVE_LANGS: LANGS.filter(l => l.id === "zh" || l.id === "en"),
     detect,
     langForZone,
     t,

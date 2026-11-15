@@ -23,7 +23,7 @@ const RealRuntime = (() => {
     return params ? value.replace(/\{(\w+)\}/g, (slot, name) => params[name] ?? slot) : value;
   };
   const webview = window.chrome && window.chrome.webview;
-  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next"];
+  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next", "dismiss_companions"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
   const QUEUE_STUCK_MS = 12000;
   const READ_TIMEOUT_MS = 5000;
@@ -495,6 +495,7 @@ const RealRuntime = (() => {
     s.spectatorPhase = restoring ? "restoring" : toggling ? (s.spectator ? "restoring" : "switching") : "";
 
     const bindings = data.function_keys?.bindings || {};
+    s.dismissKeySupported = online && data.function_keys?.dismiss_supported === true;
     for (const k of KEY_NAMES) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
 
     const updates = new Map();
@@ -552,7 +553,7 @@ const RealRuntime = (() => {
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next]), JSON.stringify(s.track), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
-      keys: [s.game, JSON.stringify(s.keys)],
+      keys: [s.game, JSON.stringify(s.keys), s.dismissKeySupported],
       grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
       summonQueue: [s.game, JSON.stringify(s.summonQueue)],
