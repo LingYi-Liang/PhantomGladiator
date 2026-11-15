@@ -457,7 +457,7 @@
     BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
     BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
-    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom",
+    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom",
   };
   const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"] };
   const REMOTE_REFLECT_NATIVE = {
@@ -471,18 +471,23 @@
     return [native, "shieldReflect.exclusions", "shieldReflect.possible", "shieldReflect.effect"].map(key => t(key)).join("\n");
   }
   const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
-  const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
+  const xianzhePhantomRule = (id, rule) => id === "BP_Monster_XianZhe" && rule === "phantom";
+  const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
+  const unitRuleLabel = (id, rule, value) => xianzhePhantomRule(id, rule) ? (value === "off" ? "技能虚化无敌：关闭" : "技能虚化无敌：原版")
+    : rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
     : t(`unitRule.${rule}.${value}`);
   function unitRuleHTML(u) {
     const rule = UNIT_RULE_OF[u.id];
     if (RT.online() && !S.unitRulesSupported) return "";
+    if (xianzhePhantomRule(u.id, rule) && RT.online() && !S.xianzhePhantomSupported) return "";
     let html = "";
     if (rule) {
       const value = unitRuleValue(u.id, rule), changed = value !== unitRuleDefault(u.id, rule);
-      const tip = xukongDodgeRule(u.id, rule)
+      const tip = xianzhePhantomRule(u.id, rule)
+        ? "弦者的闪避、进退场和部分技能带短时虚化无敌。默认保留原版；关闭后保留动作、位移与视觉特效，移除这些动作的无敌保护。只影响本次之后直召的弦者，蓝红、随从和未配队均适用。下次召唤生效。"
+        : xukongDodgeRule(u.id, rule)
         ? t("unit.permanent.help")
         : t(`unitRule.${rule}.tip`);
       html = `<button class="card-rule${changed ? " is-changed" : ""}" type="button" tabindex="-1" data-action="unit-rule" data-id="${u.id}" data-rule="${rule}" aria-busy="${ui.busy.has("set_unit_rule")}" title="${esc(tip)}">${esc(unitRuleLabel(u.id, rule, value))}</button>`;

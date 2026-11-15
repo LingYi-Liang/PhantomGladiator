@@ -73,6 +73,12 @@ do
 end
 -- XuKong keeps his passive by default, and an explicit 'off' survives a restart.
 do
+    local fs=filesystem();local rules=new(fs);local id='BP_Monster_XianZhe'
+    assert(rules:get(id,'phantom')=='keep')
+    assert(rules:set(id,'phantom','off').ok and new(fs):get(id,'phantom')=='off')
+    assert(rules:set(id,'phantom','keep').ok and rules:status().text=='')
+end
+do
     local fs=filesystem()
     local rules=new(fs)
     local id='BP_Monster_XuKong'

@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Lock=require('combat_lock')
+local Lock=arg[1] and dofile(arg[1]) or require('combat_lock')
 local address=0
 local function object(name)
     address=address+1;local a=address
@@ -307,4 +307,15 @@ do
     h.fighting=false;lock:tick()
     assert(h.call('canHate',enemyHatred,mount)==nil,'after the fight the game answers again')
 end
-print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands, corpses, mounts)')
+do
+    local h=harness();local lock=h.new();local _,component,manager=h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+    local addressReads=0
+    local invalid={IsValid=function()return false end,GetAddress=function()addressReads=addressReads+1;error('invalid address read')end}
+    assert(h.call('exit',invalid)==nil)
+    assert(h.call('canHate',manager,invalid)==nil)
+    h.call('transition',invalid,tag('AI.Transition.CombatToIdle'))
+    h.call('sensed',invalid)
+    print('target safety action=invalid-hook-context-and-target address_reads='..addressReads..' expected=0')
+    assert(addressReads==0 and #h.dropped==0 and #h.sensed==0,'invalid hook objects are rejected before asking their address')
+end
+print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands, corpses, mounts, invalid hook objects)')

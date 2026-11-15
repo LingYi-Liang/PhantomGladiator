@@ -3,7 +3,7 @@
 --   lock:    how a unit on its death lock ends. execute (default): an opponent executes it, as far as it has an execution.
 --            kill: it dies on the lock (arena_executions.lua).
 --   phantom: 琴女's 虚化 in fights of blue, red and companions. off (default): taken away when summoned, since nothing an NPC
---            does can break it (phantom_break.lua). keep: as in the game. XuKong keeps his passive by default.
+--            does can break it (phantom_break.lua). keep: as in the game. XuKong and XianZhe keep native protection by default.
 --   remote_reflect: thorns shields only. keep (default): original retaliation; off: no ranged shield retaliation.
 local U=require("ue_observe")
 local Rules={}
@@ -19,13 +19,17 @@ local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={o
     remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'}}
 
 local XUKONG='BP_Monster_XuKong'
+local XIANZHE='BP_Monster_XianZhe'
 
 local function defaultValue(id,rule)
-    if id==XUKONG and rule=='phantom' then return 'keep' end
+    if (id==XUKONG or id==XIANZHE) and rule=='phantom' then return 'keep' end
     return Rules.DEFAULTS[rule]
 end
 
 local function labelFor(id,rule,value)
+    if id==XIANZHE and rule=='phantom' then
+        return value=='off' and '关闭技能虚化无敌（下次召唤生效）' or '保留技能虚化无敌（下次召唤生效）'
+    end
     if id==XUKONG and rule=='phantom' then
         return value=='off' and '关闭常驻无敌（下次召唤生效）' or '保留常驻无敌（下次召唤生效）'
     end

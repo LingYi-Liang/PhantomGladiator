@@ -104,6 +104,7 @@ const MockRuntime = (() => {
     unitRules: savedUnitRules,
     unitRulesSupported: true,
     remoteReflectSupported: true,
+    xianzhePhantomSupported: true,
     fight: "idle",              // idle | fighting | ended
     winner: "",                 // blue | red | draw
     cleanup: "",                // "" | restore_pending (one more cleanup) | spawn_uncertain (restart the game)

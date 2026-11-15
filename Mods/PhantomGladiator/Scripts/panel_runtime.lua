@@ -482,6 +482,11 @@ function Runtime.new(options)
         out.remote_reflect_hooks=remoteReflect.hooks or 0
         out.remote_reflect_blocked=remoteReflect.blocked or 0
         out.remote_reflect_unknown=remoteReflect.unknown or 0
+        local xianzhe=options.support and options.support.xianzhePhantom and options.support.xianzhePhantom:status() or {}
+        out.xianzhe_phantom_supported=xianzhe.supported==true
+        out.xianzhe_phantom_state=xianzhe.state or 'off'
+        out.xianzhe_phantom_blocked=xianzhe.blocked or 0
+        out.xianzhe_phantom_failures=xianzhe.failures or 0
         out.unit_keys_revision=unitKeys.revision or 0
         out.unit_keys_event=unitKeys.event or 0
         out.unit_keys_last_unit=unitKeys.unit or ''

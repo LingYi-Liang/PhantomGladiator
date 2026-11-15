@@ -124,6 +124,7 @@ const RealRuntime = (() => {
     unitRules: {},
     unitRulesSupported: false,
     remoteReflectSupported: false,
+    xianzhePhantomSupported: false,
     // free_camera_*: 时停 and the free camera's speed (cm/s), turn and smoothing (%) as free_camera.lua saved them.
     frozen: false,
     camSettings: { supported: false, speed: 900, turn: 100, smooth: 40 },
@@ -469,6 +470,7 @@ const RealRuntime = (() => {
         targets: (v.track_targets || "").split(";").filter(Boolean).map(item => { const [key, cls, team] = item.split(":"); return { key, cls, team }; }) };
       s.unitRulesSupported = yes("unit_rules_supported");
       s.remoteReflectSupported = yes("remote_reflect_supported");
+      s.xianzhePhantomSupported = yes("xianzhe_phantom_supported");
       s.unitRules = {};
       for (const item of (v.unit_rules || "").split(";")) {
         const m = item.match(/^([A-Za-z0-9_]+):(\w+)=(\w+)$/);
@@ -549,7 +551,7 @@ const RealRuntime = (() => {
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next]), JSON.stringify(s.track), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
       keys: [s.game, JSON.stringify(s.keys)],
-      grid: [s.unitRulesSupported, s.remoteReflectSupported, JSON.stringify(s.unitRules)],
+      grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
       summonQueue: [s.game, JSON.stringify(s.summonQueue)],
       poolStatus: [JSON.stringify(s.poolStatus)],

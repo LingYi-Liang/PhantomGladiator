@@ -343,11 +343,38 @@ function Arena.new(options)
     -- (forcing every tick interrupts its attacks).
     local REENGAGE_SECONDS,REENGAGE_LINES,SUMMARY_SECONDS=1,20,10
     local reengage={lines=0,total=0}
+    local failedAssignments={lines=0,total=0}
+    local function current_time()
+        local called,now=invoke('now')
+        return called and finite(now) and now or os.clock()
+    end
+    -- A call returning normally is not proof that native target assignment succeeded.
+    -- Retain only confirmed targets; retry partial failures without repeatedly interrupting active combat.
+    local function assign_target(unit,target,now)
+        local called,verified=invoke('forceAttack',unit.actor,target.actor)
+        local confirmed=called and verified==true
+        if confirmed then
+            unit.assignedTarget,unit.assignedKey=target.actor,target.key or actor_key(target.actor)
+            unit.attackPending,unit.attackRetryAt,unit.attackFailures=nil,nil,nil
+        else
+            unit.attackPending=true
+            unit.attackFailures=math.min((unit.attackFailures or 0)+1,4)
+            local delay=2^(unit.attackFailures-1)
+            unit.attackRetryAt=now+delay
+            failedAssignments.total=failedAssignments.total+1
+            if failedAssignments.lines<REENGAGE_LINES then
+                failedAssignments.lines=failedAssignments.lines+1
+                log('目标指派未确认 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)
+                    ..'；调用='..tostring(called)..' 读回='..tostring(verified)..'；'..delay..'秒后重试，累计='..failedAssignments.total)
+            end
+        end
+        return confirmed
+    end
     -- The opponent fewest units are already sent at, so a crowd spreads over several enemies.
     local function leastAttacked(unit,active)
         local load={}
         for _,other in ipairs(active) do
-            if other.assignedKey then load[other.assignedKey]=(load[other.assignedKey] or 0)+1 end
+            if other.assignedKey and not other.attackPending then load[other.assignedKey]=(load[other.assignedKey] or 0)+1 end
         end
         local best,bestLoad
         for _,other in ipairs(active) do
@@ -494,13 +521,13 @@ function Arena.new(options)
             -- Never force the same live target every tick and interrupt attacks.
             local held=unit_by_key(unit.assignedKey)
             if held and not (fighting(held) and untargetable(held)) then held=nil end
-            if not unit.assignedTarget or not targetable(unit_by_key(unit.assignedKey)) then
+            if unit.attackPending or not unit.assignedTarget or not targetable(unit_by_key(unit.assignedKey)) then
                 local target=leastAttacked(unit,active)
-                if target then
-                    local called,verified=invoke('forceAttack',unit.actor,target.actor)
-                    if called then unit.assignedTarget,unit.assignedKey=target.actor,target.key end
-                    log('增援/换敌请求 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)..'；读回='..tostring(called and verified))
-                elseif held then
+                if target and (not unit.attackRetryAt or now>=unit.attackRetryAt) then
+                    if assign_target(unit,target,now) then
+                        log('增援/换敌请求 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)..'；读回=true')
+                    end
+                elseif not target and held then
                     unit.assignedTarget,unit.assignedKey=nil,nil
                     log('暂不迎敌 '..actor_name(unit.actor)..'：对手 '..actor_name(held.actor)..' 按游戏设定暂时不能被锁定，等新的对手出现')
                 end
@@ -517,7 +544,10 @@ function Arena.new(options)
                     end
                 end
             end
-            hold_target(unit,'定时检查')
+            local heldKey=targetable(unit_by_key(unit.assignedKey)) and unit.assignedKey or false
+            if scan or unit.heldTargetKey~=heldKey then
+                hold_target(unit,'定时检查');unit.heldTargetKey=heldKey
+            end
             release_lock(unit)
         end
         if not reengage.since then reengage.since=now end
@@ -823,20 +853,24 @@ function Arena.new(options)
                     log('开战请求暂缓：这 '..#attackers..' 名参赛者的对手按游戏设定暂时都不能被锁定，等新的对手出现')
                     return
                 end
+                local now=current_time()
                 for i, attacker in ipairs(attackers) do
                     local opponent = opponents[(i - 1) % #opponents + 1]
                     if live(attacker) == true and live(opponent) == true then
-                        local ok, verified = invoke("forceAttack", attacker, opponent)
                         local attackerKey=actor_key(attacker)
+                        local verified=false
                         for _,unit in ipairs(units) do
                             if attackerKey and actor_key(unit.actor)==attackerKey then
-                                unit.assignedTarget,unit.assignedKey=opponent,actor_key(opponent);unit.needsJoin=false;break
+                                local target=unit_by_key(actor_key(opponent))
+                                if target then verified=assign_target(unit,target,now) end
+                                if verified then unit.needsJoin=false end
+                                break
                             end
                         end
                         requests = requests + 1
-                        if not ok or verified ~= true then failures = failures + 1 end
+                        if not verified then failures = failures + 1 end
                         log("开战请求 " .. actor_name(attacker) .. " -> " .. actor_name(opponent)
-                            .. "；读回=" .. tostring(ok and verified) .. "；HP=" .. health(attacker) .. "/" .. health(opponent)
+                            .. "；读回=" .. tostring(verified) .. "；HP=" .. health(attacker) .. "/" .. health(opponent)
                             .. "；朝向与对手方向夹角=" .. facing_gap(attacker, opponent))
                     else failures = failures + 1 end
                 end

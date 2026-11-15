@@ -42,9 +42,7 @@ local function tagName(value)
 end
 
 local function addr(object)
-    if object==nil then return nil end
-    local ok,key=pcall(function()return object:GetAddress()end)
-    return ok and key~=nil and tostring(key) or nil
+    return U.key(object)
 end
 local function identity(actor)
     if not U.valid(actor) then return nil end

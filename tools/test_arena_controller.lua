@@ -1,5 +1,5 @@
 -- Pure Lua controller tests; no UE4SS globals or game objects are used.
-local Arena = dofile("Mods/PhantomGladiator/Scripts/arena_controller.lua")
+local Arena = dofile(arg[1] or "Mods/PhantomGladiator/Scripts/arena_controller.lua")
 local function fixture(overrides)
     local trace, actors, transforms, synced = {}, {}, {}, {}
     local player, world, cls = { name = "player", alive = true }, { alive = true }, { alive = true }
@@ -1023,4 +1023,74 @@ do
     f.actors[3].hp=0;clock=5
     assert(f.arena:status().battle_clock=='ended' and f.arena:status().battle_seconds==5)
 end
-print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side, relay clock and slots)")
+for _,phase in ipairs({'start','reinforcement'})do
+    if not arg[2] or arg[2]==phase then
+        for _,failure in ipairs({'false','nil','throw'})do
+            local clock,attempts,reject=0,{},true
+            local f=fixture({now=function()return clock end,inCombat=function()return true,'AI.State.Combat' end})
+            assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok)
+            local watched=f.actors[1]
+            if phase=='reinforcement' then
+                assert(f.arena:start().ok and f.arena:spawn(nil,'blue',1).ok);watched=f.actors[3]
+            end
+            f.options.forceAttack=function(actor,target)
+                if actor~=watched then return true end
+                attempts[#attempts+1]={at=clock,target=target}
+                if reject then
+                    if failure=='throw' then error('fixture attack rejection')end
+                    if failure=='false' then return false end
+                    return nil
+                end
+                return true
+            end
+            if phase=='start' then assert(not f.arena:start().ok) else f.arena:tickReinforcements() end
+            assert(#attempts==1)
+            for _=1,20 do f.arena:tickReinforcements()end
+            assert(#attempts==1,'an unconfirmed assignment cannot be forced on every support tick')
+            clock=1;f.arena:tickReinforcements()
+            print('target recovery action='..phase..' native-result='..failure..' time=1 attempts='..#attempts..' expected=2 AI.State.Combat=true')
+            assert(#attempts==2,phase..': false/nil/throw must remain retryable while the AI still says Combat')
+            clock=1.5;f.arena:tickReinforcements();assert(#attempts==2)
+            clock=2;f.arena:tickReinforcements();assert(#attempts==2,'repeated failure backs off')
+            clock=3;reject=false;f.arena:tickReinforcements();assert(#attempts==3)
+            for _,time in ipairs({4,8,20})do clock=time;f.arena:tickReinforcements()end
+            assert(#attempts==3,'confirmed active assignments are never forced again')
+            assert(f.arena:stop().ok);clock=30;f.arena:tickReinforcements();assert(#attempts==3)
+            print('PASS target assignment retry '..phase..' '..failure..' (confirmed recovery without forcing stable combat)')
+        end
+    end
+end
+if not arg[2] or arg[2]=='hold-cadence' then
+    local time,holds=0,{}
+    local f=fixture({now=function()return time end,
+        holdTarget=function(actor,target,why)holds[#holds+1]={actor=actor,target=target,why=why};return true end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    f.arena:tickReinforcements();assert(#holds==2)
+    time=0.2;for _=1,20 do f.arena:tickReinforcements()end
+    print('target fallback action=20-stable-support-ticks time=0.2 callback_calls='..#holds..' expected=2')
+    assert(#holds==2,'stable target fallback is checked once per second, not every support tick')
+    time=1;f.arena:tickReinforcements();assert(#holds==4)
+    f.actors[2].hp=0;assert(f.arena:spawn(nil,'red',1).ok)
+    time=1.1;f.arena:tickReinforcements()
+    assert(#holds==6 and holds[5].actor==f.actors[1] and holds[5].target==f.actors[3],
+        'an actual opponent change updates fallback immediately without waiting for the periodic scan')
+    print('PASS target fallback cadence and immediate opponent replacement')
+end
+if not arg[2] or arg[2]=='retry-bound' then
+    local time,reject,calls=0,true,0
+    local f=fixture({now=function()return time end,inCombat=function()return true,'AI.State.Combat' end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok)
+    f.options.forceAttack=function(actor)
+        if actor==f.actors[1] then calls=calls+1;return not reject end
+        return true
+    end
+    assert(not f.arena:start().ok)
+    for frame=1,1200 do time=frame/20;f.arena:tickReinforcements()end
+    print('target recovery action=1200-failed-support-ticks time=60 attack_callback_calls='..calls..' expected=6..12')
+    assert(calls>5 and calls<=12,'persistent rejection retries at a bounded rate instead of going silent or forcing every tick')
+    local before=calls;reject=false
+    for frame=1201,1400 do time=frame/20;f.arena:tickReinforcements()end
+    assert(calls==before+1,'a recovered native assignment completes at most eight seconds later and is not restarted')
+    print('PASS bounded persistent assignment retries and recovery')
+end
+print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side, relay clock and slots, verified target assignment retries)")

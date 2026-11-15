@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.15-beta-1"
+local BUILD = "v0.40.15-beta-2"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -712,7 +712,7 @@ end
 -- A fighting unit's fallback target (arena_controller.lua hold_target): PBZ_TargetingHandler_AI, the AI's default
 -- targeting handler, reads the blackboard key "Target Key" and, when that holds nothing, "LastSensedActorKey"; the
 -- handler instance is the unit's own (Targeting Component.DefaultTargetHandler, its Blackboard set in Initialize).
--- Written only when it holds the player; never restored, perception overwrites it and the units are the mod's own.
+-- Correct the player fallback, or fill it only when both targeting keys are confirmed empty. Other native targets stay.
 local senseHold={written=0,cleared=0,failed=0,lines=0,summaryAt=nil}
 local function HoldSensedTarget(actor,target,why)
     local handler=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
@@ -721,21 +721,27 @@ local function HoldSensedTarget(actor,target,why)
     if not safeValid(bb) or key==nil then return false end
     local okNow,current=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(key))end)
     if not okNow then return false end
-    -- Only when it holds the player: anything else it holds is the game's own and is left alone.
     local wanted=safeValid(target) and target or nil
     local player=GetPlayerPawn()
-    if not player or UEObserve.key(current)~=UEObserve.key(player) then return true end
+    local wasPlayer=safeValid(player) and UEObserve.key(current)==UEObserve.key(player)
+    if not wasPlayer then
+        if safeValid(current) or not wanted then return true end
+        local primaryKey=UEObserve.field(handler,'Target Key')
+        if primaryKey==nil then return false end
+        local read,primary=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(primaryKey))end)
+        if not read then return false end
+        if safeValid(primary) then return true end
+    end
     if wanted then pcall(function()bb:SetValueAsObject(key,wanted)end)
     else pcall(function()bb:ClearValue(key)end) end
-    local _,after=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(key))end)
-    local ok=wanted and UEObserve.key(after)==UEObserve.key(wanted) or (not wanted and not safeValid(after))
+    local readAfter,after=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(key))end)
+    local ok=readAfter and (wanted and UEObserve.key(after)==UEObserve.key(wanted) or (not wanted and not safeValid(after)))
     if not ok then senseHold.failed=senseHold.failed+1 elseif wanted then senseHold.written=senseHold.written+1 else senseHold.cleared=senseHold.cleared+1 end
-    local wasPlayer=player~=nil and UEObserve.key(current)==UEObserve.key(player)
-    if senseHold.lines<12 or not ok then
+    if senseHold.lines<12 then
         senseHold.lines=senseHold.lines+1
-        log(string.format('[Arena] 锁定回退目标 %s 的 Last Sensed Actor：%s%s -> %s；读回=%s；%s',objectName(actor),
+        log(string.format('[Arena] 锁定回退目标 %s 的 Last Sensed Actor：%s%s -> %s；写后=%s；读回=%s；%s',objectName(actor),
             safeValid(current) and objectName(current) or '空',wasPlayer and '（玩家）' or '',wanted and objectName(wanted) or '清空',
-            safeValid(after) and objectName(after) or '空',tostring(why)))
+            safeValid(after) and objectName(after) or '空',tostring(ok),tostring(why)))
     end
     local now=os.clock()
     senseHold.summaryAt=senseHold.summaryAt or now
@@ -1430,6 +1436,13 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         end
         local spawnWarning
         if arenaSupport.remoteReflect then arenaSupport.remoteReflect:capture(actor,unitPath,escort) end
+        if arenaSupport.xianzhePhantom then
+            local called,ok,reason=pcall(function()return arenaSupport.xianzhePhantom:capture(actor,unitPath,escort)end)
+            if not called or ok~=true then
+                spawnWarning=reason or '弦者技能虚化设置未确认，请查看日志'
+                log('[XianZhePhantom] 召唤设置未确认：'..tostring(reason or ok))
+            end
+        end
         if arenaSupport.phantom then
             local called,ok,reason=pcall(function()return arenaSupport.phantom:beforeActivate(actor,unitPath,escort)end)
             if not called or not ok then
@@ -1531,7 +1544,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         if not sg then return nil end
         local ok,tag=pcall(function()return FNameToString(sg.CurrentStateTag.TagName)end)
         if not ok or type(tag)~='string' then return nil end
-        return tag:find('Combat',1,true)~=nil,tag
+        return tag=='AI.State.Combat' or tag:sub(1,#'AI.State.Combat.')=='AI.State.Combat.',tag
     end,
     -- Sends a unit that left combat back at its opponent: hatred entry and ForceIntoCombat. The faction
     -- relation and blackboard target written by ForceAttack at the start still hold.
@@ -2012,6 +2025,9 @@ executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getControll
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
 arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
+arenaSupport.xianzhePhantom=require('xianzhe_phantom').new({log=log,members=ArenaMembers,clock=LiveSeconds,
+    ready=function()return runtimeSession:status().game_ready==true end,
+    rule=function(id)return arenaSupport.unitRules:get(id,'phantom')end})
 arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end})
 arenaSupport.remoteReflect=require('remote_reflect').new({log=log,members=ArenaMembers,
@@ -2088,6 +2104,7 @@ local function supportSteps(self)
     step('summonKeep',function()self.summonKeep:tick()end)
     step('phantom',function()self.phantom:tick()end)
     step('remoteReflect',function()self.remoteReflect:tick()end)
+    step('xianzhePhantom',function()self.xianzhePhantom:tick()end)
     step('offCombatRegen',function()self.offCombatRegen:tick()end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
@@ -2211,6 +2228,7 @@ if ModRef then
         arenaSupport.stands:silence()
         arenaSupport.summonKeep:silence()
         arenaSupport.remoteReflect:silence()
+        arenaSupport.xianzhePhantom:silence()
         arenaSupport.offCombatRegen:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
