@@ -117,6 +117,7 @@ const RealRuntime = (() => {
     executionCamera: { supported: false, on: false, state: "off" },
     // companion_executions*: whether companions may execute bosses (companion_executions.lua).
     companionExec: { supported: false, on: false },
+    offCombatRegen: { supported: false, on: false, state: "off", failures: 0 },
     // track_*: 镜头跟踪 (camera_track.lua). targets: { key, cls, team } of the units it can follow, while the free camera runs.
     track: { supported: false, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     // unit_rules: what each unit's card says, BP_X:lock=kill;BP_Y:phantom=keep (unit_rules.lua).
@@ -441,6 +442,8 @@ const RealRuntime = (() => {
       const f = s.fun;
       s.combo.supported = yes("boss_combos_supported");
       s.combo.on = yes("boss_combos");
+      s.offCombatRegen = { supported: yes("offcombat_regen_supported"), on: yes("offcombat_regen_disabled"),
+        state: v.offcombat_regen_state || "off", failures: num("offcombat_regen_failures") };
       f.supported = yes("fun_supported");
       f.shachi = yes("fun_shachi");
       f.deflect = yes("fun_deflect");
@@ -603,6 +606,7 @@ const RealRuntime = (() => {
     else if (action === "configure_summon_queue") body = { action, ...payload };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
+    else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };
@@ -653,6 +657,7 @@ const RealRuntime = (() => {
     if (action === "set_boss_combos" && done.status === "succeeded") s.combo.on = payload.enabled;
     if (action === "set_team_immortal" && done.status === "succeeded") s.immortal[payload.team] = payload.enabled;
     if (action === "set_clock_hud" && done.status === "succeeded") s.clockHud.on = payload.enabled;
+    if (action === "set_offcombat_regen" && done.status === "succeeded") Object.assign(s.offCombatRegen, { on: payload.enabled, state: payload.enabled ? "waiting" : "off" });
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
     if (action === "set_companion_executions" && done.status === "succeeded") s.companionExec.on = payload.enabled;
     if (action === "set_unit_rule" && done.status === "succeeded") (s.unitRules[payload.unit] ||= {})[payload.rule] = payload.value;

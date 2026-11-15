@@ -98,6 +98,7 @@ const MockRuntime = (() => {
     clockHud: { supported: true, on: savedClockHud, state: savedClockHud ? "waiting" : "off" },  // off | waiting | shown | failed
     executionCamera: { supported: true, on: savedExecCam, state: savedExecCam ? "waiting" : "off" },  // off | waiting | running
     companionExec: { supported: true, on: savedCompanionExec },
+    offCombatRegen: { supported: true, on: false, state: "off", failures: 0 },
     companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     track: { supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
@@ -312,6 +313,9 @@ const MockRuntime = (() => {
       case "set_clock_hud":
         s.clockHud = { supported: true, on: p.enabled, state: p.enabled ? (s.fight === "idle" ? "waiting" : "shown") : "off" };
         try { localStorage.setItem(CLOCK_HUD_KEY, String(p.enabled)); } catch { /* ignore */ }
+        return;
+      case "set_offcombat_regen":
+        s.offCombatRegen = { supported: true, on: p.enabled, state: p.enabled ? "on" : "off", failures: 0 };
         return;
       case "set_execution_camera":
         s.executionCamera = { supported: true, on: p.enabled, state: p.enabled ? "waiting" : "off" };

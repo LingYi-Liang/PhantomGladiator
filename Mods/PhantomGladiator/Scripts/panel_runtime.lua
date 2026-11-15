@@ -169,6 +169,11 @@ function Runtime.new(options)
             if not options.bossCombos then return {ok=false,message='连携技模块未加载',spawned_count=0} end
             return options.bossCombos:set(command.key_spawn=='ON')
         end,
+        set_offcombat_regen=function(command)
+            local feature=options.support and options.support.offCombatRegen
+            if not feature then return {ok=false,message='脱战回血模块未加载'} end
+            return feature:set(command.key_start)
+        end,
         -- The difficulty token travels in the key_spawn column (FOLLOW, EASY, NORMAL, HARD, NIGHTMARE).
         set_spawn_difficulty=function(command)
             if not options.spawnDifficulty then return {ok=false,message='召唤难度模块未加载',spawned_count=0} end
@@ -450,6 +455,14 @@ function Runtime.new(options)
         local fun=options.funFeatures and options.funFeatures:status() or {}
         out.boss_combos_supported=not not options.bossCombos
         out.boss_combos=options.bossCombos and options.bossCombos:status().enabled==true or false
+        local regen=options.support and options.support.offCombatRegen and options.support.offCombatRegen:status() or {}
+        out.offcombat_regen_supported=regen.supported==true
+        out.offcombat_regen_disabled=regen.on==true
+        out.offcombat_regen_state=regen.state or 'off'
+        out.offcombat_regen_blocked=regen.blocked or 0
+        out.offcombat_regen_cleared=regen.cleared or 0
+        out.offcombat_regen_failures=regen.failures or 0
+        out.offcombat_regen_hooks=regen.hooks or 0
         out.fun_supported=not not options.funFeatures
         out.fun_shachi=fun.shachi==true
         out.fun_deflect=fun.deflect==true

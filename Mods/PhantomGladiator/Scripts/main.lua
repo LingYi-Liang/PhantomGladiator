@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.14"
+local BUILD = "v0.40.15-beta-1"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -2012,6 +2012,8 @@ executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getControll
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
 arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
+arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
+    ready=function()return runtimeSession:status().game_ready==true end})
 arenaSupport.remoteReflect=require('remote_reflect').new({log=log,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end,
     rule=function(id)return arenaSupport.unitRules:get(id,'remote_reflect')end})
@@ -2086,6 +2088,7 @@ local function supportSteps(self)
     step('summonKeep',function()self.summonKeep:tick()end)
     step('phantom',function()self.phantom:tick()end)
     step('remoteReflect',function()self.remoteReflect:tick()end)
+    step('offCombatRegen',function()self.offCombatRegen:tick()end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)
@@ -2208,6 +2211,7 @@ if ModRef then
         arenaSupport.stands:silence()
         arenaSupport.summonKeep:silence()
         arenaSupport.remoteReflect:silence()
+        arenaSupport.offCombatRegen:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
         aiParams:silence()

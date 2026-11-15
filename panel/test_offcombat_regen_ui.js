@@ -1,0 +1,18 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync(__dirname+'/prototype/app.js','utf8');
+const start=source.indexOf('  function offCombatRegenRow() {'),end=source.indexOf('  // Status updates re-render a card;',start);
+assert(start>=0&&end>start);
+let online=true;
+const c={S:{offCombatRegen:{supported:true,on:false,state:'off'}},ui:{busy:new Set()},RT:{online:()=>online},esc:String,icon:()=>''};
+vm.createContext(c);vm.runInContext(source.slice(start,end),c);
+let html=c.offCombatRegenRow();assert(html.includes('禁止脱战回血')&&html.includes('aria-checked="false"')&&!html.includes(' disabled'));
+c.S.offCombatRegen.on=true;c.S.offCombatRegen.state='waiting';html=c.offCombatRegenRow();assert(html.includes('等待游戏就绪')&&html.includes('aria-checked="true"'));
+c.S.offCombatRegen.state='failed';assert(c.offCombatRegenRow().includes('未确认'));
+c.S.offCombatRegen.state='on';html=c.offCombatRegenRow();assert(html.includes('技能回血、吸血仍保留')&&html.includes('不锁血'));
+c.ui.busy.add('set_offcombat_regen');assert(c.offCombatRegenRow().includes(' disabled')&&c.offCombatRegenRow().includes('aria-busy="true"'));
+c.ui.busy.clear();online=false;assert(c.offCombatRegenRow().includes(' disabled'));
+online=true;c.S.offCombatRegen.supported=false;assert(c.offCombatRegenRow().includes('请更新并重载')&&c.offCombatRegenRow().includes(' disabled'));
+const action=source.match(/"offcombat-regen": \(\) => (run\([^\n]+\)),/)[1];
+let sent;c.S.offCombatRegen.on=false;c.run=(name,options)=>sent={name,...options};vm.runInContext(action,c);
+assert.equal(sent.name,'set_offcombat_regen');assert.equal(sent.payload.enabled,true);
+console.log('offcombat_regen_ui: PASS (confirmed state, save failure, readiness, busy and isolated scope text)');

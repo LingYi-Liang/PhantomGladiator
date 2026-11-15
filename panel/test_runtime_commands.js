@@ -7,7 +7,7 @@ const source = fs.readFileSync(sourceArg ? sourceArg.slice(9) : __dirname + '/pr
 const flush = async () => { for (let i = 0; i < 35; i++) await Promise.resolve(); };
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 const response = (data, ok = true, status = 200) => ({ ok, status, json: async () => data });
-function harness(post, lang = 'zh') {
+function harness(post, lang = 'zh', values = {}) {
   let now = 0, serial = 0;
   const i18n = createI18n();i18n.set(lang);
   const timers = new Map(), requests = [], queue = [];
@@ -21,7 +21,7 @@ function harness(post, lang = 'zh') {
       if (path.split('?')[0] === '/api/status') {
         const watched = (new URL(path, 'http://fixture')).searchParams.get('watch')?.split(',') || [];
         return Promise.resolve(response({ csrf_token: 'token', game: {
-        online: true, ready: true, game_session: 'session', values: { unit_keys_revision: '1' } }, catalog: { total: 1 },
+        online: true, ready: true, game_session: 'session', values: { unit_keys_revision: '1', ...values } }, catalog: { total: 1 },
         queue: queue.slice(-100), watched_commands: watched.map(id => queue.find(q => String(q.id) === id)).filter(Boolean) }));
       }
       if (path === '/api/catalog') return Promise.resolve(response({ units: [{ internal_name: 'BP_Test', id: '/Game/BP_Test.BP_Test_C' }] }));
@@ -42,6 +42,16 @@ function harness(post, lang = 'zh') {
   };
 }
 (async () => {
+  for (const succeeded of [true, false]) {
+    const h = harness(() => Promise.resolve(response({ id: 60 })), 'zh', { offcombat_regen_supported: 'true', offcombat_regen_disabled: 'false', offcombat_regen_state: 'off' });
+    await flush();assert.equal(h.rt.state.offCombatRegen.supported, true);
+    const pending = h.rt.command('set_offcombat_regen', { enabled: true });await flush();
+    assert.deepEqual(JSON.parse(h.requests.find(r => r.options?.method === 'POST').options.body), { action: 'set_offcombat_regen', enabled: true });
+    assert.equal(h.rt.state.offCombatRegen.on, false, 'do not enable before a receipt');
+    h.queue.push({ id: 60, action: 'set_offcombat_regen', status: succeeded ? 'succeeded' : 'failed', payload: { enabled: true } });
+    await h.advance(500);await pending;
+    assert.equal(h.rt.state.offCombatRegen.on, succeeded, 'a failed save must not flip the switch');
+  }
   for (const bodyOnly of [false, true]) {
     const pending = deferred();
     const h = harness(() => bodyOnly ? Promise.resolve({ ok: true, status: 200, json: () => pending.promise }) : pending.promise);

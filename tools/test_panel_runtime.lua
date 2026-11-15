@@ -712,6 +712,19 @@ test("the on-screen clock switch takes ON/OFF from key_start and reports its sta
     assert(not missing.result.ok and missing.reported.clock_hud_supported==false)
 end)
 
+test('off-combat regen uses a game-thread switch and reports verified state',function()
+    local h=harness();local on=false
+    local feature={set=function(_,token)assert(h.inGame);assert(token=='ON' or token=='OFF');on=token=='ON';return {ok=true,message='saved'}end,
+        status=function()return {supported=true,on=on,state=on and 'on' or 'off',blocked=2,cleared=1,failures=0,hooks=1}end}
+    h.runtime=h.new({support={offCombatRegen=feature,status=function()return {}end,tick=function()end}});h.runtime:start()
+    h.inbox={action='set_offcombat_regen',key_start='ON'};h:tick()
+    assert(h.result.ok and on and h.reported.offcombat_regen_supported and h.reported.offcombat_regen_disabled)
+    assert(h.reported.offcombat_regen_blocked==2 and h.reported.offcombat_regen_state=='on')
+    h.inbox={action='set_offcombat_regen',key_start='OFF'};h:tick();assert(h.result.ok and not on and not h.reported.offcombat_regen_disabled)
+    local missing=harness();missing.runtime:start();missing.inbox={action='set_offcombat_regen',key_start='ON'};missing:tick()
+    assert(not missing.result.ok and missing.reported.offcombat_regen_supported==false)
+end)
+
 test('camera buttons and configured keys use synchronous game-thread handlers; exit survives loading',function()
     local h=harness();local active=false;local toggles,exits=0,0
     h.runtime=h.new({camera={status=function()assert(h.inGame);return {active=active,pending=false}end,

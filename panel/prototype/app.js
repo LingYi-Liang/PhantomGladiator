@@ -1156,7 +1156,17 @@
         <span class="control-icon">${icon("swap")}</span>
         <div class="control-main"><div class="control-title">${esc(t("ai.combo"))}</div><div class="control-desc">${esc(t("ai.combo.desc"))}</div></div>
         <button class="switch" type="button" role="switch" aria-checked="${!!S.combo?.on}" data-action="boss-combos" aria-label="${esc(t("ai.combo"))}" ${RT.online() && S.combo?.supported && !ui.busy.has("set_boss_combos") ? "" : "disabled"}></button>
-      </div>`;
+      </div>${offCombatRegenRow()}`;
+  }
+  function offCombatRegenRow() {
+    const h = S.offCombatRegen || {}, busy = ui.busy.has("set_offcombat_regen");
+    const description = !RT.online() ? "连接游戏后可设置。默认保留原版脱战回血。" : !h.supported ? "请更新并重载支持此功能的游戏内模组。"
+      : h.on && h.state === "failed" ? "拦截或已有回血清除未确认，请查看操作记录并导出诊断。"
+      : h.on && h.state === "waiting" ? "设置已保存，等待游戏就绪或召唤单位后生效。"
+      : h.on ? "已禁止模组管理单位的脱战回血；角色技能回血、吸血仍保留。" : "默认原版。开启后保留战后残血，已有和新召唤单位均生效。";
+    return `<div class="control-row${h.on ? " is-on" : ""}" style="margin-top:10px">
+      <span class="control-icon">${icon("shield")}</span><div class="control-main"><div class="control-title">禁止脱战回血</div><div class="control-desc">${esc(description)}</div></div>
+      <button class="switch" type="button" role="switch" aria-checked="${!!h.on}" aria-busy="${busy}" data-action="offcombat-regen" aria-label="禁止脱战回血" title="只拦截原版脱战逐步回血和立即回满，不锁血、不取消正常脱战，也不改变地图原生单位。已回的血不会扣回；关闭后不补回被拦截的血量。" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button></div>`;
   }
   // Status updates re-render a card; this keeps the field being typed in.
   function keepTyping(el) {
@@ -2710,6 +2720,7 @@
       case "set_fun_feature": return t("action.set_fun_feature", { name: t("fun." + p.feature + ".name"), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_offcombat_regen": return `${p.enabled ? "开启" : "关闭"}禁止脱战回血`;
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
@@ -2989,6 +3000,7 @@
 
   // ---------- Events ----------
   const actions = {
+    "offcombat-regen": () => run("set_offcombat_regen", { payload: { enabled: !S.offCombatRegen?.on } }),
     "open-manual-beta": () => openManualBeta(),
     "check-manual-beta": () => checkManualBeta(),
     "install-manual-beta": () => installManualBeta(),

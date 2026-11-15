@@ -518,6 +518,16 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(bad)
 
+    def test_offcombat_regen_requires_boolean_and_travels_in_start_column(self):
+        for enabled, token in ((True, "ON"), (False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_offcombat_regen", "enabled": enabled})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+            self.assertEqual(columns[1:8], ["set_offcombat_regen", "", "blue", "1", "", token, ""])
+        for request in ({"action": "set_offcombat_regen"}, {"action": "set_offcombat_regen", "enabled": 1},
+                        {"action": "set_offcombat_regen", "enabled": True, "team": "red"}):
+            with self.subTest(request=request), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(request)
+
     def test_execution_camera_travels_in_the_start_key_column(self):
         for enabled, token in ((True, "ON"), (False, "OFF")):
             command = self.bridge.enqueue({"action": "set_execution_camera", "enabled": enabled})

@@ -1570,7 +1570,7 @@ namespace PhantomGladiator
                     add(Path.Combine(game.Ue4ssDir, "UE4SS.log"), "UE4SS.log");
                     foreach (var name in new[] { "status.tsv", "ack.tsv", "command-journal.tsv", "function-keybinds-state.tsv", "spawn-attempts.tsv",
                         "ai-params-settings.tsv", "unit-rules.tsv", "function-keybinds.tsv", "unit-keybinds.tsv",
-                        "monster-pools.tsv", "monster-pools-state.tsv", "spawn-level-settings.tsv", "summon-queue-settings.tsv" })
+                        "monster-pools.tsv", "monster-pools-state.tsv", "spawn-level-settings.tsv", "summon-queue-settings.tsv", "offcombat-regen.tsv" })
                         add(Path.Combine(game.RuntimeDir, name), "Runtime/" + name);
                     if (Directory.Exists(game.RuntimeDir))
                         foreach (var run in Directory.GetFiles(game.RuntimeDir, "run-*.log").OrderByDescending(f => f).Take(2))
