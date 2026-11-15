@@ -101,22 +101,27 @@ function Track.new(options)
         return not (ok and type(hp)=='number' and hp<=0)
     end
     local function isBoss(actor,key)
-        if boss[key]==nil then
-            local ok,yes=false,false
-            if options.isBoss then ok,yes=pcall(options.isBoss,actor) end
-            boss[key]=ok and yes==true
-        end
-        return boss[key]
+        local named,name=pcall(function()return actor:GetFullName()end)
+        name=named and type(name)=='string' and name or nil
+        local row=boss[key]
+        if name and row and row.name==name then return row.value end
+        local ok,yes=false,false
+        if options.isBoss then ok,yes=pcall(options.isBoss,actor) end
+        local value=ok and yes==true
+        boss[key]=name and {name=name,value=value} or nil
+        return value
     end
     -- Who can be followed: on the field, not a stand or a reserve, with health left. Bosses first.
     local function candidates()
-        local list={}
+        local list,present={},{}
         for _,member in ipairs(options.members() or {})do
             local key=U.key(member.actor)
             if key and not member.stand and not member.reserve and alive(member.actor) then
+                present[key]=true
                 list[#list+1]={actor=member.actor,key=key,team=member.team,boss=isBoss(member.actor,key),order=#list}
             end
         end
+        for key in pairs(boss)do if not present[key] then boss[key]=nil end end
         table.sort(list,function(a,b)
             if a.boss~=b.boss then return a.boss end
             return a.order<b.order

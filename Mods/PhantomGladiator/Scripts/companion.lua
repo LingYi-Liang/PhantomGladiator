@@ -86,6 +86,17 @@ function Companion.new(options)
         moves=0,teleports=0,gaits=0,stateLines=0,repairs=0,repairLines=0}
     local units,serial,followClass,inspected={},0,nil,false
     local function say(m)log('[Companion] '..m)end
+    local function identity(actor)
+        if not U.valid(actor) then return nil end
+        local ok,name=pcall(function()return actor:GetFullName()end)
+        return ok and type(name)=='string' and name or nil
+    end
+    local function controllable(actor)
+        if not U.valid(actor) then return false end
+        if not options.hp then return true end
+        local ok,hp=pcall(options.hp,actor)
+        return ok and type(hp)=='number' and hp==hp and hp>0 and hp<math.huge
+    end
 
     -- Read-only: what the official follow state carries, logged once per Lua lifetime.
     local function inspect(cls)
@@ -212,10 +223,11 @@ function Companion.new(options)
     -- the unit is still summoned and stays the player's companion on the steps that did.
     function self:prepare(actor,unitPath)
         local key=U.key(actor)
-        if not key then return {ok=false,message='随从对象无效'} end
+        local name=identity(actor)
+        if not key or not name then return {ok=false,message='随从对象或身份未确认'} end
         self.prepared=self.prepared+1
         local player=options.getPlayer and options.getPlayer()
-        local record={actor=actor,path=unitPath,at=clock()}
+        local record={actor=actor,name=name,path=unitPath,at=clock()}
         units[key]=record
         local parts={}
         -- 1. official follow idle state
@@ -258,7 +270,7 @@ function Companion.new(options)
     function self:afterActivate(actor,unitPath)
         local record=units[U.key(actor) or '']
         local ai=aiOf(actor)
-        if not record or not ai then return end
+        if not record or record.name~=identity(actor) or not ai then return end
         local restarted=''
         if record.restart then
             local stopped=pcall(function()ai:StopAI()end)
@@ -627,26 +639,35 @@ function Companion.new(options)
     function self:tick()
         if not self.alive then return end
         local now=clock()
-        local player=options.getPlayer and options.getPlayer()
+        local members=options.members and options.members() or {}
         local live={}
-        for _,member in ipairs(options.members and options.members() or {})do
+        for _,member in ipairs(members)do
             local key=member.team=='companion' and U.key(member.actor)
             if key then live[key]=member end
         end
         for key in pairs(units)do if not live[key] then units[key]=nil end end
+        if not next(live) then
+            self.count=0
+            if self.prepared>0 then self.message='随从已全部离场' end
+            return
+        end
+        local player=options.getPlayer and options.getPlayer()
         -- Every unit this mod summoned, any team: a companion does not pick a fight with them by itself.
         local ours={}
-        for _,member in ipairs(options.members and options.members() or {})do
+        for _,member in ipairs(members)do
             local key=U.key(member.actor)
             if key then ours[key]=true end
         end
         local count=0
         for key,member in pairs(live)do
+          local name=controllable(member.actor) and identity(member.actor) or nil
+          if name then
             if not member.stand then count=count+1 end
             local record=units[key]
+            if record and record.name~=name then record=nil;units[key]=nil end
             if not record then
                 -- e.g. a companion's own summons, adopted into its team without a follow state
-                record={actor=member.actor,path=member.class_path,at=now,adopted=true}
+                record={actor=member.actor,name=name,path=member.class_path,at=now,adopted=true}
                 units[key]=record
                 say('登记随从（未经召唤准备，例如随从自己的召唤物） unit='..tostring(member.class_path))
             end
@@ -725,6 +746,7 @@ function Companion.new(options)
                     say('跟随观察 '..className(member.actor)..' 距玩家='..fmt(d)..' 状态='..state..' 闲置数据='..(ai and show(idleData(ai)) or '?'))
                 end
             end
+          end
         end
         self.count=count
         if count==0 and self.prepared>0 then self.message='随从已全部离场' end
@@ -745,7 +767,8 @@ function Companion.new(options)
                 if okHP and type(hp)=='number' and hp>0 then
                     count=count+1
                     local key=U.key(actor)
-                    local record=key and units[key] or {actor=actor}
+                    local record=key and units[key]
+                    if not record or record.name~=identity(actor) then record={actor=actor,name=identity(actor)} end
                     local moved=teleport(record,actor,player,distance(actor,player),now,'召回到玩家身边',count)
                     local after=distance(actor,player)
                     if moved and after and after<=RECALL_NEAR_M then

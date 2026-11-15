@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Track=require('camera_track')
+local Track=arg[1] and dofile(arg[1]) or require('camera_track')
 local serial=0
 local function near(a,b,tolerance)return math.abs(a-b)<(tolerance or 0.5) end
 local function wrap(a)return (a+180)%360-180 end
@@ -9,6 +9,7 @@ local function unit(class,x,y,z,fields)
     o.live=true
     o.IsValid=function(self)return self.live end
     o.GetAddress=function()return address end
+    o.GetFullName=function()return o.fullName or (class..' /World.Actor_'..address)end
     o.GetClass=function()return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class end}end}end
     o.at={X=x,Y=y,Z=z}
     o.hp=100
@@ -58,6 +59,20 @@ local function harness(extra)
     end
     function h.all()return table.concat(h.lines,'\n')end
     return h
+end
+
+do
+    local h=harness();local a=h.add('Minion_C',0,0,100);local b=h.add('Boss_C',100,0,100)
+    h.bosses[b]=true
+    assert(h.track:targets():match('^([^:]+)')==tostring(b.GetAddress()))
+    a.fullName='ReplacementBoss_C /World.New_Actor';h.bosses[a]=true
+    assert(h.track:targets():match('^([^:]+)')==tostring(a.GetAddress()),'an address reused by a new boss cannot inherit the previous minion role')
+    h.members={{actor=b,team='red'}};h.track:targets()
+    a.fullName=nil;h.bosses[a]=false;h.members={{actor=a,team='blue'},{actor=b,team='red'}}
+    assert(h.track:targets():match('^([^:]+)')==tostring(b.GetAddress()))
+    h.members={};h.track:targets();h.bosses[a]=true;h.members={{actor=a,team='blue'},{actor=b,team='red'}}
+    assert(h.track:targets():match('^([^:]+)')==tostring(a.GetAddress()),'leaving the roster retires the role cache even without camera tracking')
+    print('PASS camera candidate roles follow actor identity and departed records are retired while idle')
 end
 
 do

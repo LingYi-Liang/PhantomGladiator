@@ -1,11 +1,12 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Companion=dofile('Mods/PhantomGladiator/Scripts/companion.lua')
+local Companion=dofile(arg[1] or 'Mods/PhantomGladiator/Scripts/companion.lua')
 local address=0
 local function object(fields,name)
     address=address+1;local a=address
     fields.IsValid=function()return true end
     fields.GetAddress=function()return a end
     fields.GetFName=function()return {ToString=function()return name end}end
+    fields.GetFullName=function()return fields.fullName or (name..' /World.Object_'..a)end
     return fields
 end
 local function tag(name)return {TagName=name}end
@@ -63,6 +64,43 @@ local c=Companion.new({log=function(s)lines[#lines+1]=s end,getPlayer=function()
     getLocation=function(a)return locations[a] or {X=0,Y=0,Z=0} end})
 local function all()return table.concat(lines,'\n')end
 local function test(name,fn)fn();print('ok - '..name)end
+test('idle support samples the roster once and avoids player queries with no companions',function()
+    local rosterReads,playerReads=0,0
+    local idle=Companion.new({members=function()rosterReads=rosterReads+1;return {}end,
+        getPlayer=function()playerReads=playerReads+1;return player end})
+    for _=1,100 do idle:tick()end
+    print('100 idle companion ticks: roster reads='..rosterReads..' player reads='..playerReads)
+    assert(rosterReads==100 and playerReads==0)
+end)
+test('dead or unconfirmed companions receive no assist, follow or combat commands and may recover later',function()
+    local ally,ai=unit(false);local enemy=unit(false)
+    ai.AIPerception=object({GetPerceivedHostileActors=function(_,out)out.OutActors={enemy}end},'Perception')
+    local force=0;ai.ForceIntoCombat=function()force=force+1 end
+    local hp=0;local shared=0;local previous=player.BP_PBZHatredManagerComponent.HatredList;local previousNow=now
+    player.BP_PBZHatredManagerComponent.HatredList={enemy}
+    local co=Companion.new({getPlayer=function()return player end,getWorld=function()return world end,
+        hp=function(actor)if actor==ally then return hp else return 100 end end,clock=function()return now end,
+        aiLib=function()return object({SyncHatredList=function()shared=shared+1 end},'AI Library')end,
+        members=function()return {{actor=ally,team='companion'}}end,
+        getLocation=function(actor)return {X=actor==player and 0 or actor==ally and 400 or 500,Y=0,Z=100}end})
+    co:tick();print('dead companion native assist='..shared..' engage='..force)
+    assert(shared==0 and force==0 and co:status().count==0,'corpses must not be given native follow/attack work')
+    hp=nil;now=now+1;co:tick();assert(shared==0 and force==0,'unknown health cannot be treated as a living companion')
+    hp=100;now=now+1;co:tick();assert(force==1 and co:status().count==1,'confirmed revival resumes companion control')
+    player.BP_PBZHatredManagerComponent.HatredList=previous
+    now=previousNow
+end)
+test('an adopted companion reusing an address cannot inherit the former actor side and retry cache',function()
+    local ally=unit(false);local changes=0
+    local faction=ally['Faction Component'];local set=faction.SetFaction
+    faction.SetFaction=function(self,value)changes=changes+1;return set(self,value)end
+    local co=Companion.new({getPlayer=function()return player end,clock=function()return now end,
+        members=function()return {{actor=ally,team='companion'}}end,busy=function()return true end})
+    co:tick();co:tick();changes=0
+    ally.fullName='ReplacementCompanion_C /World.NewActor';faction.faction=tag('Faction.Monster')
+    co:tick();print('same-address replacement companion side writes='..changes)
+    assert(changes==1 and faction.faction.TagName=='Faction.Player','a replacement actor needs its own adoption')
+end)
 
 local a,aiA=unit(true)
 test('a companion gets the official follow state, the player faction and a friendly relation',function()

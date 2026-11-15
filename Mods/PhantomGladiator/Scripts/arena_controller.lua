@@ -27,6 +27,8 @@ function Arena.new(options)
     assert(finite(maxUnits) and maxUnits%1==0 and maxUnits>=0,'invalid arena unit limit')
     local catalog = options.catalog
     local units, selected, team, count = {}, nil, "blue", 1
+    local rosterRevision,indexRevision=0,-1
+    local byKey,unkeyed={},{}
     local state, message, busy = "idle", "请选择单位与队伍", false
     local lastRestoreConfirmed = true
     local unknownSpawn = false
@@ -167,7 +169,7 @@ function Arena.new(options)
     end
     -- In the fight as a body: what a skill asking for "the player" may be given, out of reach or not.
     local function fighting(unit)
-        return unit and not stand(unit) and unit.dormant~=true and alive_readback(unit)==true
+        return unit and not stand(unit) and not dormant(unit) and alive_readback(unit)==true
     end
     -- And what a unit may be sent at.
     local function targetable(unit)
@@ -175,13 +177,34 @@ function Arena.new(options)
     end
     local function unit_by_key(key)
         if not key then return nil end
-        for _,unit in ipairs(units)do
-            unit.key=unit.key or actor_key(unit.actor)
-            if unit.key==key then return unit end
+        if indexRevision~=rosterRevision then
+            byKey,unkeyed={},{}
+            for _,unit in ipairs(units)do
+                unit.key=unit.key or actor_key(unit.actor)
+                if unit.key then
+                    if not byKey[unit.key] then byKey[unit.key]=unit end
+                else unkeyed[#unkeyed+1]=unit end
+            end
+            indexRevision=rosterRevision
         end
+        if byKey[key] then return byKey[key] end
+        -- Unknown identities can become readable without changing the roster; retry only those records.
+        if #unkeyed>0 then
+            local pending={}
+            for _,unit in ipairs(unkeyed)do
+                unit.key=unit.key or actor_key(unit.actor)
+                if unit.key then
+                    if not byKey[unit.key] then byKey[unit.key]=unit end
+                else pending[#pending+1]=unit end
+            end
+            unkeyed=pending
+        end
+        return byKey[key]
     end
 
     local function notify_units()
+        rosterRevision=rosterRevision+1
+        indexRevision=-1;byKey,unkeyed=nil,nil
         if not options.onUnitsChanged then return true end
         local copy = {}
         for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,summoner=unit.summoner,aid=unit.aid==true } end
@@ -198,16 +221,19 @@ function Arena.new(options)
     end
 
     local function prune()
-        local kept, changed = {}, false
-        for _, unit in ipairs(units) do
+        local kept, changed
+        for i, unit in ipairs(units) do
             -- 有效性读回未知时保留所有权，不能把回调错误当作已销毁。
             local gone,proof=removed(unit.actor)
             if gone==true then
+                if not kept then
+                    kept={};for j=1,i-1 do kept[#kept+1]=units[j] end
+                end
                 changed=true;log('移出已销毁登记：'..tostring(unit.class_path)..'；读回='..proof)
-            else kept[#kept+1]=unit end
+            elseif kept then kept[#kept+1]=unit end
         end
-        units = kept
         if changed then
+            units = kept
             notify_units()
             if arena_records()==0 and state=="cleanup_pending" then
                 state=lastRestoreConfirmed and "idle" or "restore_pending"
@@ -362,7 +388,10 @@ function Arena.new(options)
     -- A call returning normally is not proof that native target assignment succeeded.
     -- Retain only confirmed targets; retry partial failures without repeatedly interrupting active combat.
     local function assign_target(unit,target,now)
+        if not fighting(unit) or not targetable(target) then return false end
+        local revision=rosterRevision
         local called,verified=invoke('forceAttack',unit.actor,target.actor)
+        if revision~=rosterRevision then return false end
         local confirmed=called and verified==true
         if confirmed then
             unit.assignedTarget,unit.assignedKey=target.actor,target.key or actor_key(target.actor)
@@ -387,14 +416,18 @@ function Arena.new(options)
         for _,other in ipairs(active) do
             if other.assignedKey and not other.attackPending then load[other.assignedKey]=(load[other.assignedKey] or 0)+1 end
         end
-        local best,bestLoad
-        for _,other in ipairs(active) do
-            if other.team~=unit.team and not other.untargetable then
-                local n=load[other.key] or 0
-                if not best or n<bestLoad then best,bestLoad=other,n end
+        local refused={}
+        while true do
+            local best,bestLoad
+            for _,other in ipairs(active) do
+                if other.team~=unit.team and not other.untargetable and not refused[other] then
+                    local n=load[other.key] or 0
+                    if not best or n<bestLoad then best,bestLoad=other,n end
+                end
             end
+            if not best or targetable(best) then return best end
+            refused[best]=true
         end
-        return best
     end
 
     -- The moment a fighting unit's AI drops out of combat (combat_lock.lua sees its CombatToIdle
@@ -494,6 +527,7 @@ function Arena.new(options)
     function instance:tickReinforcements()
         if not battleActive or busy or state=='cleanup_pending' or state=='restore_pending' or spawn_block() then return end
         prune()
+        local revision=rosterRevision
         local active,participants={},{}
         for _,unit in ipairs(units) do
             if (unit.team=='blue' or unit.team=='red') and alive_readback(unit)==true then
@@ -515,12 +549,15 @@ function Arena.new(options)
         local scan=not reengage.scanAt or now-reengage.scanAt>=REENGAGE_SECONDS
         if scan then reengage.scanAt=now end
         for _,unit in ipairs(participants) do
+            if not battleActive or busy or revision~=rosterRevision then return end
             if unit.needsJoin then
                 local verified=true
                 for _,other in ipairs(participants) do
                     if other~=unit then
+                        if live(unit.actor)~=true or live(other.actor)~=true then verified=false;break end
                         local relation=unit.team==other.team and 0 or 2
                         local ok,readback=invoke('setRelation',unit.actor,other.actor,relation)
+                        if not battleActive or busy or revision~=rosterRevision then return end
                         verified=verified and ok and readback==true
                     end
                 end
@@ -529,13 +566,22 @@ function Arena.new(options)
             end
         end
         for _,unit in ipairs(active) do
-          if not phase_busy(unit) then
+          if not battleActive or busy or revision~=rosterRevision then return end
+          if fighting(unit) and not phase_busy(unit) then
             if unit.phaseHeld then
                 unit.phaseHeld=nil;unit.attackPending=true;unit.attackRetryAt=nil;unit.attackFailures=nil;unit.heldTargetKey=nil
             end
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
-            if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget,unit.class_path) end
-            if scan and options.holdMount and unit.assignedTarget then invoke('holdMount',unit.actor,unit.assignedTarget) end
+            if scan and options.unstick then
+                invoke('unstick',unit.actor,unit.assignedTarget,unit.class_path)
+                if not battleActive or busy or revision~=rosterRevision then return end
+                if not fighting(unit) or phase_busy(unit) then goto continueCombat end
+            end
+            if scan and options.holdMount and unit.assignedTarget then
+                invoke('holdMount',unit.actor,unit.assignedTarget)
+                if not battleActive or busy or revision~=rosterRevision then return end
+                if not fighting(unit) or phase_busy(unit) then goto continueCombat end
+            end
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.
             local held=unit_by_key(unit.assignedKey)
@@ -546,6 +592,8 @@ function Arena.new(options)
                     if assign_target(unit,target,now) then
                         log('增援/换敌请求 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)..'；读回=true')
                     end
+                    if not battleActive or busy or revision~=rosterRevision then return end
+                    if not fighting(unit) then goto continueCombat end
                 elseif not target and held then
                     unit.assignedTarget,unit.assignedKey=nil,nil
                     log('暂不迎敌 '..actor_name(unit.actor)..'：对手 '..actor_name(held.actor)..' 按游戏设定暂时不能被锁定，等新的对手出现')
@@ -554,6 +602,8 @@ function Arena.new(options)
                 local okState,combat,stateName=invoke('inCombat',unit.actor)
                 if okState and combat==false then
                     local called,engaged,after,detail=invoke('engage',unit.actor,unit.assignedTarget)
+                    if not battleActive or busy or revision~=rosterRevision then return end
+                    if not fighting(unit) then goto continueCombat end
                     reengage.total=reengage.total+1
                     reengage.window=(reengage.window or 0)+1
                     if reengage.lines<REENGAGE_LINES then
@@ -566,9 +616,12 @@ function Arena.new(options)
             local heldKey=targetable(unit_by_key(unit.assignedKey)) and unit.assignedKey or false
             if scan or unit.heldTargetKey~=heldKey then
                 hold_target(unit,'定时检查');unit.heldTargetKey=heldKey
+                if not fighting(unit) then goto continueCombat end
             end
+            if not battleActive or busy or revision~=rosterRevision then return end
             release_lock(unit)
           end
+          ::continueCombat::
         end
         if not reengage.since then reengage.since=now end
         if now-reengage.since>=SUMMARY_SECONDS then
