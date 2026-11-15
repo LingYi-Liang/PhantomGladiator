@@ -1,9 +1,10 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Activity=require('arena_activity')
+local Activity=arg[1] and assert(loadfile(arg[1]))() or require('arena_activity')
 local function object(id,data)
     local obj=data or {};obj.alive=true
     function obj:IsValid()return self.alive end
     function obj:GetAddress()assert(self.alive);return id end
+    function obj:GetFullName()assert(self.alive);return self.fullName or ('Object /Test/Object_'..id)end
     return obj
 end
 local actor=object(1,{bDisableAllOptimizationsOnBeginPlay=false})
@@ -71,4 +72,32 @@ activity:sync({{actor=actor}});assert(activity:status().bone_refresh_count==0)
 actor.AttributeSetBase.alive=false
 setmetatable(actor.AttributeSetBase,{__index=function()error('invalid attribute set accessed')end})
 for _=1,10 do activity:sync({{actor=actor}})end
-print('arena_activity: PASS (native ownership and validity, bounded one-variable bone refresh, URO/tick unchanged, drift visible)')
+do
+    local function owned(id,proxyId,meshId,name)
+        local a=object(id,{fullName=name})
+        local p=object(proxyId,{wave=0,calls=0})
+        function p:GetOwner()return a end
+        function p:GetOptimizationWave()return self.wave end
+        function p:DisableAllOptimizations()self.calls=self.calls+1;self.wave=1 end
+        local m=object(meshId,{VisibilityBasedAnimTickOption=2})
+        function m:GetOwner()return a end
+        function m:GetComponentTickInterval()return 0 end
+        a.OptimizationProxy,a.Mesh=p,m;return a,p,m
+    end
+    local activity=Activity.new({isNPC=function()return true end})
+    local a,p=owned(501,601,701,'NPC /World/First')
+    activity:sync({{actor=a}});assert(p.calls==1)
+    local b,p2,m2=owned(501,602,702,'NPC /World/ReusedAddress')
+    activity:sync({{actor=b}})
+    print('new actor same address optimization writes='..p2.calls)
+    assert(p2.calls==1 and m2.VisibilityBasedAnimTickOption==0,'a new actor must not inherit a settled address or exhausted budget')
+    local _,p3,m3=owned(502,603,703,'NPC /World/Unused')
+    p3.GetOwner=function()return b end;m3.GetOwner=function()return b end
+    b.OptimizationProxy,b.Mesh=p3,m3
+    for _=1,10 do activity:sync({{actor=b}})end
+    assert(p3.calls==1 and m3.VisibilityBasedAnimTickOption==0,'replacement owned components have their own bounded write budgets')
+    m3.alive=false
+    for _=1,10 do activity:sync({{actor=b}})end
+    assert(activity:status().bone_refresh_count==0,'invalid replacement components cannot keep a successful bone readback')
+end
+print('arena_activity: PASS (identity and ownership, bounded per-component bone refresh, URO/tick unchanged, drift visible)')

@@ -58,6 +58,8 @@ function HUD.new(options)
         end end
         for key in pairs(self.attempts)do if not desired[key] and not self.records[key]then self.attempts[key]=nil end end
         local rows={blue=0,red=0};local privateKeys,displayed={},{}
+        -- A per-sync numeric snapshot is shared by the private bars, never retained between ticks.
+        local frame={}
         for _,key in ipairs(ordered)do
             local data=desired[key];local unit=data.unit;rows[unit.team]=rows[unit.team]+1
             local record=self.records[key]
@@ -70,7 +72,7 @@ function HUD.new(options)
                 local name=(options.getName and options.getName(unit)) or self.names[unit.class_path] or data.extraName
                     or (unit.class_path or ''):match('%.([^%.]+)$') or 'BOSS'
                 local title=self.teams[unit.team]..' · '..name
-                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team])
+                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team],frame)
                 if state then
                     result.registered=result.registered+1
                     if state.visible then result.visible=result.visible+1 end

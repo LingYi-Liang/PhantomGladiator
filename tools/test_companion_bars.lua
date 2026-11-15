@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Bars=require('companion_bars')
+local Bars=arg[1] and assert(loadfile(arg[1]))() or require('companion_bars')
 local serial,calls=0,{}
 local function note(name)calls[#calls+1]=name end
 local function class(name)return {IsValid=function()return true end,GetFName=function()return {ToString=function()return name end}end}end
@@ -91,4 +91,25 @@ for _=1,3 do bars:sync({{actor=bare,team='companion',class_path='/Game/X/BP_Othe
 assert(#logs==before+1 and logged('没有头顶血条组件 unit=BP_Other 类=BP_Other_C'))
 bare.alive=false;bars:sync({{actor=bare,team='companion'}})
 assert(bars:status().companions==0)
-print('companion_bars: PASS (own bar created and bound, shown, health, re-shown when hidden, fallen hidden, fallback init, no component, others untouched)')
+do
+    local a=makeActor('BP_Rebuilt_C',true);a.hp=50
+    local probe=Bars.new({hp=function(v)return v.hp end,maxHP=function(v)return v.max end})
+    local list={{actor=a,team='companion'}}
+    probe:sync(list);assert(a.hpbar.widget.hpbar.CurPercent==0.5)
+    local rebuilt=makeWidget();rebuilt.SelfActor=a;rebuilt.visibility=4;a.hpbar.widget=rebuilt
+    probe:sync(list)
+    print('replacement companion bar ratio='..rebuilt.hpbar.CurPercent)
+    assert(rebuilt.hpbar.CurPercent==0.5,'a replacement widget cannot inherit the prior widget health write')
+    rebuilt.hpbar.CurPercent=1;probe:sync(list)
+    assert(rebuilt.hpbar.CurPercent==0.5,'native resets must be read back even while companion HP is unchanged')
+    local original=rebuilt.ForSeq_UpdateHealth
+    rebuilt.hpbar.CurPercent=1;rebuilt.ForSeq_UpdateHealth=function()end;probe:sync(list)
+    assert(probe.records[tostring(a:GetAddress())].ratio==nil,'unconfirmed health writes are not cached as complete')
+    assert(probe:status().failures==1,'one failed readback must not throw an internal diagnostic error')
+    rebuilt.ForSeq_UpdateHealth=original;probe:sync(list);assert(rebuilt.hpbar.CurPercent==0.5)
+    rebuilt.SelfActor=blue;rebuilt.Init=function()end
+    calls={};probe:sync(list)
+    assert(probe:status().shown==0 and #calls==0,'failed binding must not update a foreign actor widget')
+    a.hp=0;probe:sync(list);assert(#calls==0,'death cleanup cannot hide a widget rebound to somebody else')
+end
+print('companion_bars: PASS (own bar created and bound, health readback, re-shown, rebuilt/native reset recovery, fallen hidden, fallback init, foreign binding gate)')

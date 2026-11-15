@@ -105,11 +105,10 @@ for _,name in ipairs({
 Aim.aims=AIMS
 
 local function addr(object)
-    if object==nil then return nil end
-    local ok,key=pcall(function()return object:GetAddress()end)
-    return ok and key~=nil and tostring(key) or nil
+    return U.key(object)
 end
 local function className(object)
+    if not U.valid(object) then return '?' end
     local ok,class=pcall(function()return object:GetClass()end)
     if not ok or not U.valid(class) then return '?' end
     local named,name=pcall(function()return class:GetFName():ToString()end)
@@ -128,6 +127,7 @@ function Aim.new(options)
     local cache,cacheAt={},nil   -- context address -> unit address or false
     local seenLines,lines={},0
     local quietSince,summaryAt,passedWindow=nil,nil,0
+    local uninstallAt=0
     local probe=nil       -- a class let through during the install check only
     local listed={}       -- class name -> whether it or a parent class is listed (左殇's knives run the base's code)
     local function aims(object,cls)
@@ -200,6 +200,26 @@ function Aim.new(options)
         cache[first]=false
         return nil
     end
+    -- A native story pair owns its own targets until its scoped phase finishes.
+    local phaseErrors=0
+    local function phaseResult(ok,value)
+        if not ok and phaseErrors<8 then
+            phaseErrors=phaseErrors+1;say('阶段归属读回未确认，保留原生目标 '..tostring(value))
+        end
+        return not ok or value==true
+    end
+    local function phaseBusy(unit)
+        if not unit then return false end
+        if options.phaseBusyKey then
+            local ok,value=pcall(options.phaseBusyKey,unit)
+            return phaseResult(ok,value)
+        end
+        if not options.phaseBusy then return false end
+        local ok,actor=pcall(function()return options.actorOf and options.actorOf(unit)end)
+        if not ok or not U.valid(actor) then return true end
+        local called,value=pcall(options.phaseBusy,actor)
+        return phaseResult(called,value)
+    end
 
     -- A caller outside the list that acts for a fighting unit keeps the player; it is named once in the log, so a skill
     -- that still goes for the player can be found. A few tries per class, since the first object may act for nobody.
@@ -233,7 +253,7 @@ function Aim.new(options)
                 if cls~=probe and not aims(object,cls) then noteUnlisted(object,cls,name);return nil end
                 unit=unitOf(object)
             end
-            if not unit or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+            if not unit or phaseBusy(unit) or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             local ok,target=pcall(options.opponentOf,unit)
             if not ok or not U.valid(target) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             if warning and not U.npcPath(target) then return nil end
@@ -265,7 +285,7 @@ function Aim.new(options)
         local object=U.unwrap(ability)
         if not U.valid(object) then return nil end
         local unit=unitOf(object)
-        if not unit or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+        if not unit or phaseBusy(unit) or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
         self.redirected=self.redirected+1
         self.counts.force=self.counts.force+1;self.window.force=self.window.force+1
         local where=className(object)
@@ -289,7 +309,7 @@ function Aim.new(options)
         local ability=U.field(actor,'Source Ability')
         if not U.valid(ability) then return false end
         local unit=unitOf(ability)
-        if not unit then return false end
+        if not unit or phaseBusy(unit) then return false end
         local okTarget,target=pcall(options.opponentOf,unit)
         if not okTarget or not U.valid(target) then say('招式锁定没改：'..className(ability)..' 没有对手');return false end
         local root=U.field(target,'RootComponent')
@@ -333,7 +353,7 @@ function Aim.new(options)
         local onStand=fighters[U.key(owner)]=='stand'
         if not onStand and not isPlayer(owner) then return nil end
         local unit=unitOf(ability)
-        if not unit or (options.paused and options.paused()) then return nil end
+        if not unit or phaseBusy(unit) or (options.paused and options.paused()) then return nil end
         local okTarget,target=pcall(options.opponentOf,unit)
         if not okTarget or not U.valid(target) then return nil end
         local root=U.field(target,'RootComponent')
@@ -362,7 +382,7 @@ function Aim.new(options)
         local owner=U.unwrap(avatar)
         if not U.valid(owner) then return nil end
         local key=U.key(owner)
-        if not key or not fighters[key] or (options.paused and options.paused()) then return nil end
+        if not key or not fighters[key] or phaseBusy(key) or (options.paused and options.paused()) then return nil end
         local okTarget,target=pcall(options.opponentOf,key)
         if not okTarget or not U.valid(target) then return nil end
         local root=U.field(target,'RootComponent')
@@ -424,7 +444,7 @@ function Aim.new(options)
         if not U.valid(bullet) then return nil end
         local owner=U.field(bullet,'BulletOwnerAvatar')
         local key=U.valid(owner) and U.key(owner)
-        if not key or not fighters[key] then return nil end
+        if not key or not fighters[key] or phaseBusy(key) then return nil end
         local okTarget,target=pcall(options.opponentOf,key)
         target=okTarget and U.valid(target) and target or nil
         local _,hit=holderOf(bullet)
@@ -498,7 +518,7 @@ function Aim.new(options)
                     local data=U.field(bullet,'BulletData')
                     local dataName=U.valid(data) and nameOf(data) or nil
                     local comp=U.field(bullet,'ParticleComponent')
-                    if ownerKey and fighters[ownerKey] and dataName and EFFECT_AIMS[dataName] and U.valid(comp) then
+                    if ownerKey and fighters[ownerKey] and not phaseBusy(ownerKey) and dataName and EFFECT_AIMS[dataName] and U.valid(comp) then
                         effects[key]={bullet=bullet,comp=comp,owner=ownerKey,data=dataName,spec=EFFECT_AIMS[dataName],since=clock(),writes=0}
                     end
                 end
@@ -516,6 +536,7 @@ function Aim.new(options)
         local data=U.field(item.bullet,'BulletData')
         local dataName=U.valid(data) and nameOf(data) or nil
         if not key or not fighters[key] or not EFFECT_AIMS[dataName] then return false end
+        if phaseBusy(key) then return false end
         local comp=U.field(item.bullet,'ParticleComponent')
         if not U.valid(comp) then return end
         -- Pooled bullets can change owner or component while their previous wrappers still look valid.
@@ -559,7 +580,8 @@ function Aim.new(options)
         for key,item in pairs(effects)do
             local status=statusOf(item.bullet)
             if (status==RUNNING or status==READY) and now-item.since<EFFECT_SECONDS then
-                if not (options.paused and options.paused()) and aimEffect(item)==false then releaseEffect(item);effects[key]=nil end
+                local owner=U.key(U.field(item.bullet,'BulletOwnerAvatar'))
+                if phaseBusy(owner) or not (options.paused and options.paused()) and aimEffect(item)==false then releaseEffect(item);effects[key]=nil end
             else
                 releaseEffect(item);effects[key]=nil
             end
@@ -571,7 +593,9 @@ function Aim.new(options)
         local action=U.unwrap(context)
         if not U.valid(action) then return nil end
         local data=U.field(action,'Bullet Data')
-        if not U.valid(data) or not EFFECT_AIMS[nameOf(data)] or not unitOf(action) then return nil end
+        if not U.valid(data) or not EFFECT_AIMS[nameOf(data)] then return nil end
+        local unit=unitOf(action)
+        if not unit or phaseBusy(unit) then return nil end
         effectScans=EFFECT_SCANS
         if not effectLoop then
             local ok,handle=pcall(LoopInGameThreadWithDelay,EFFECT_MS,effectTick)
@@ -656,6 +680,8 @@ function Aim.new(options)
     end
     local function spoofTick()
         if not self.alive or not spoof then stopSpoof('已停止');return end
+        while spoof and phaseBusy(spoof.owner) do closeSpoof('阶段配对保留原生目标')end
+        if not spoof then stopSpoof('阶段配对保留原生目标');return end
         local now=clock()
         while spoof and now-spoof.since>=SPOOF_SECONDS do closeSpoof('到时',true) end
         if spoof and now>=spoof.checkAt then
@@ -715,7 +741,7 @@ function Aim.new(options)
         end
         if not effectSkillClass[name] then return nil end
         local unit=unitOf(ability)
-        if not unit then return nil end
+        if not unit or phaseBusy(unit) then return nil end
         self.redirected=self.redirected+1
         self.counts.skillStart=self.counts.skillStart+1;self.window.skillStart=self.window.skillStart+1
         local older=spoof
@@ -762,21 +788,24 @@ function Aim.new(options)
             selfCheck()
         else self.state='failed';self.message='取玩家函数挂钩失败' end
     end
-    local function uninstall(reason)
+    local function uninstall(reason,force)
         if not next(hooks) then return end
+        if not force and clock()<uninstallAt then return end
+        uninstallAt=clock()+1
         stopEffectLoop();effectScans=0
         stopSpoof('摘钩')
         for key,item in pairs(effects)do releaseEffect(item);effects[key]=nil end
         local kept={}
         for name,hook in pairs(hooks)do
-            if not pcall(UnregisterHook,Aim.paths[name],hook.pre,hook.post) then kept[name]=hook end
+            local ok,result=pcall(UnregisterHook,Aim.paths[name],hook.pre,hook.post)
+            if not ok or result==false then kept[name]=hook end
         end
         local parts={}
         for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.counts[name] end
         parts[#parts+1]=LABEL.flying..'='..self.counts.flying
         say('摘除挂钩（'..reason..'） 改写 '..table.concat(parts,' ')..' 其他调用照旧='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
         hooks=kept
-        if not next(hooks) then self.state='idle';self.message='没有进行中的战斗' end
+        if not next(hooks) then self.state='idle';self.message='没有进行中的战斗';uninstallAt=0 end
     end
 
     function self:tick()
@@ -829,7 +858,7 @@ function Aim.new(options)
         end
     end
     function self:status()return {state=self.state,redirected=self.redirected,passed=self.passed,message=self.message}end
-    function self:silence(reason)uninstall(reason or 'Mod卸载');self.alive=false end
+    function self:silence(reason)self.alive=false;uninstall(reason or 'Mod卸载',true)end
     return self
 end
 return Aim

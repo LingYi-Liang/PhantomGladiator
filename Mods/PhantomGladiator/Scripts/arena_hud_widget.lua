@@ -70,14 +70,21 @@ function Renderer.new(options)
         if value>0 and rounded==0 then rounded=0.1 end
         return rounded%1==0 and string.format('%.0f',rounded) or string.format('%.1f',rounded)
     end
-    function self:update(record,unit,hp,maximum,title,row)
+    function self:update(record,unit,hp,maximum,title,row,frame)
         local widget,numeric=record.widget,record.numeric
         if not U.valid(widget) or not U.valid(numeric) or not same(U.field(widget,'Character'),unit.actor) then return false,'private binding lost' end
         local ok,result=pcall(function()
-            local layout=library('/Script/UMG.Default__WidgetLayoutLibrary')
-            local size=call(layout,'GetViewportSize',record.world);local scale=call(layout,'GetViewportScale',record.world)
-            local width=U.struct(size,'X');assert(type(width)=='number' and type(scale)=='number' and scale>0,'viewport size unavailable')
-            local screenWidth=width/scale;local barWidth=math.min(700,math.max(240,(screenWidth-72)/2))
+            assert(U.valid(record.world),'HUD world unavailable')
+            local worldKey=U.key(record.world)
+            local screenWidth=frame and worldKey and frame[worldKey]
+            if not screenWidth then
+                local layout=library('/Script/UMG.Default__WidgetLayoutLibrary')
+                local size=call(layout,'GetViewportSize',record.world);local scale=call(layout,'GetViewportScale',record.world)
+                local width=U.struct(size,'X');assert(type(width)=='number' and type(scale)=='number' and scale>0,'viewport size unavailable')
+                screenWidth=width/scale
+                if frame and worldKey then frame[worldKey]=screenWidth end
+            end
+            local barWidth=math.min(700,math.max(240,(screenWidth-72)/2))
             local x=unit.team=='blue' and 24 or screenWidth-24-barWidth
             local placement=unit.team..':'..row..':'..screenWidth
             if record.placement~=placement then

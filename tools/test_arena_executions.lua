@@ -301,13 +301,23 @@ do
         h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
         h.fighting=false
         h.members={{actor=mate,team='companion'}}
-        local exec=h.new({companions=function()return on end,isStand=opts.isStand})
+        local exec=h.new({companions=function()return on end,isStand=opts.isStand,phaseBusy=opts.phaseBusy})
         return h,exec,boss,mate,function(value)on=value end
     end
     regression('the switch off: a boss a companion is after is left to the player',function()
         local h,exec=companionCase({on=false})
         h.run(exec,2);assert(exec:status().started==0)
         exec:stop('regression')
+    end)
+    regression('a scripted phase is not borrowed as a target or executor and resumes after the phase',function()
+        for _,which in ipairs({'boss','executor'})do
+            local busy=true;local held
+            local h,exec,boss,mate=companionCase({phaseBusy=function(actor)return busy and actor==held end})
+            held=which=='boss' and boss or mate
+            h.run(exec,2);assert(exec:status().started==0,'scripted actor cannot be borrowed')
+            busy=false;h.run(exec,0.5);assert(exec:status().started==1,'normal executions resume after the phase')
+            exec:stop('phase fixture')
+        end
     end)
     regression('the switch on: the companion executes a boss of the map, with no arena fight on',function()
         local h,exec,boss,mate=companionCase()

@@ -82,7 +82,8 @@ local function press(...)
     inGame=true;frameLoops[1]();pressed={};frameLoops[1]();inGame=false
 end
 package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end,
-    GetGameViewportClient=function()return {IsValid=function()return true end,World=world}end}
+    GetGameViewportClient=function()return {IsValid=function()return true end,World=world,
+        GameInstance={IsValid=function()return true end,LocalPlayers={keyController.Player}}}end}
 local arenaOptions,statMatchInstance,companionStatsInstance,spectatorOptions,runtimeInstance
 local Arena=require('arena_controller');local realArenaNew=Arena.new
 Arena.new=function(options)arenaOptions=options;return realArenaNew(options)end
@@ -187,7 +188,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.15-beta-2',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.15-beta-3',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -474,7 +475,8 @@ do
     local current={IsValid=function()return true end,GetAddress=function()return 8107 end,
         GetClass=function()return controllerClass end,Player=localPlayer,Pawn=currentPawn,GetWorld=function()return currentWorld end}
     localPlayer.PlayerController=current
-    local viewport={IsValid=function()return true end,World=currentWorld}
+    local viewport={IsValid=function()return true end,World=currentWorld,
+        GameInstance={IsValid=function()return true end,LocalPlayers={localPlayer}}}
     helper.GetGameViewportClient=function()return viewport end
     controllers={stale,current};world=oldWorld
     FindAllOf=function(name)

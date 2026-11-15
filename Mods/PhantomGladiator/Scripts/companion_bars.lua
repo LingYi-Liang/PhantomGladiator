@@ -38,7 +38,9 @@ function Bars.new(options)
         local ok,widget=call(component,'GetUserWidgetObject')
         return ok and U.valid(widget) and widget or nil
     end
-    local function bound(widget,actor)return U.key((U.field(widget,'SelfActor')))==U.key(actor)end
+    local function bound(widget,actor)
+        local key=U.key(actor);return key~=nil and U.key((U.field(widget,'SelfActor')))==key
+    end
     local function describe(component,widget,actor)
         local _,visible=call(component,'IsVisible')
         local text='组件可见='..tostring(visible)..' 组件隐藏='..tostring((U.field(component,'bHiddenInGame')))
@@ -71,6 +73,7 @@ function Bars.new(options)
         if not bound(widget,actor) then
             local okInit=call(widget,'Init',actor)
             say('控件没绑定本单位，调用Init='..tostring(okInit)..' 读回绑定='..tostring(bound(widget,actor))..' unit='..record.path)
+            if not bound(widget,actor) then self.failures=self.failures+1;record.shown=false;return end
         end
         local _,componentVisible=call(component,'IsVisible')
         local _,visibility=call(widget,'GetVisibility')
@@ -88,14 +91,22 @@ function Bars.new(options)
             local _,now=call(widget,'GetVisibility')
             if SHOWN[now]~=true then call(widget,'SetVisibility',VISIBLE)end
         end
-        if ratio and (record.ratio==nil or math.abs(record.ratio-ratio)>0.001) then
-            call(widget,'ForSeq_UpdateHealth',ratio);record.ratio=ratio
+        local actual=U.field(U.field(widget,'hpbar'),'CurPercent')
+        if ratio and (record.ratio==nil or math.abs(record.ratio-ratio)>0.001 or type(actual)~='number' or math.abs(actual-ratio)>0.001) then
+            local wrote=call(widget,'ForSeq_UpdateHealth',ratio)
+            local after=U.field(U.field(widget,'hpbar'),'CurPercent')
+            local verified=wrote and type(after)=='number' and math.abs(after-ratio)<=0.001
+            record.ratio=verified and ratio or nil
+            if not verified then
+                self.failures=self.failures+1
+                say('血条比例未确认 unit='..record.path..' 目标='..ratio..' 读回='..tostring(after))
+            end
         end
         if first then say('显示后 unit='..record.path..'：'..describe(component,widget,actor))end
         record.widget,record.shown=widget,true
     end
     local function hide(record)
-        if record.shown and U.valid(record.widget) then
+        if record.shown and U.valid(record.widget) and bound(record.widget,record.actor) then
             call(record.widget,'SetVisibility',COLLAPSED)
             say('随从倒下，收起血条 unit='..record.path)
         end
@@ -114,6 +125,7 @@ function Bars.new(options)
                     record={path=tostring((unit.class_path or ''):match('([^/%.]+)_C$') or unit.class_path or key)}
                     self.records[key]=record
                 end
+                record.actor=unit.actor
                 local okHP,hp=pcall(options.hp,unit.actor)
                 local okMax,maximum=pcall(options.maxHP,unit.actor)
                 hp,maximum=okHP and tonumber(hp) or nil,okMax and tonumber(maximum) or nil

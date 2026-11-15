@@ -344,6 +344,17 @@ function Arena.new(options)
     local REENGAGE_SECONDS,REENGAGE_LINES,SUMMARY_SECONDS=1,20,10
     local reengage={lines=0,total=0}
     local failedAssignments={lines=0,total=0}
+    local phaseWarnings=0
+    local function phase_busy(unit)
+        if not options.phaseBusy then return false end
+        local called,busy=invoke('phaseBusy',unit.actor)
+        if not called or type(busy)~='boolean' then
+            if phaseWarnings<12 then phaseWarnings=phaseWarnings+1;log('原生阶段状态未确认，暂缓该单位强制索敌：'..actor_name(unit.actor)) end
+            busy=true
+        end
+        if busy then unit.phaseHeld=true end
+        return busy
+    end
     local function current_time()
         local called,now=invoke('now')
         return called and finite(now) and now or os.clock()
@@ -393,6 +404,7 @@ function Arena.new(options)
         if not battleActive or busy or not key then return false end
         for _,unit in ipairs(units) do
             if unit.key==key and (unit.team=='blue' or unit.team=='red') then
+                if phase_busy(unit) or unit.phaseHeld then return false end
                 if stand(unit) or dormant(unit) or alive_readback(unit)~=true or not targetable(unit_by_key(unit.assignedKey)) then return false end
                 local called,engaged,after,detail=invoke('engage',unit.actor,unit.assignedTarget)
                 instant.total=instant.total+1
@@ -414,6 +426,7 @@ function Arena.new(options)
     -- value is left alone (options.holdTarget).
     local function hold_target(unit,why)
         if not options.holdTarget or stand(unit) or dormant(unit) then return end
+        if phase_busy(unit) or unit.phaseHeld then return end
         local target=unit.assignedTarget
         if target and not targetable(unit_by_key(unit.assignedKey)) then target=nil end
         invoke('holdTarget',unit.actor,target,why)
@@ -422,6 +435,7 @@ function Arena.new(options)
     -- (options.releaseLock, lock_release.lua): a lock taken before her summons came stayed on 冷荼.
     local function release_lock(unit)
         if not options.releaseLock or stand(unit) or dormant(unit) then return end
+        if phase_busy(unit) or unit.phaseHeld then return end
         local target=unit.assignedTarget
         if target and not targetable(unit_by_key(unit.assignedKey)) then target=nil end
         invoke('releaseLock',unit.actor,target)
@@ -459,6 +473,7 @@ function Arena.new(options)
         if not battleActive or busy or not key then return false end
         for _,unit in ipairs(units)do
             if unit.key==key and (unit.team=='blue' or unit.team=='red') and not unit.aid and not stand(unit) and not dormant(unit) and alive_readback(unit)==true then
+                if phase_busy(unit) or unit.phaseHeld then return false end
                 hold_target(unit,'感知更新后');release_lock(unit);return true
             end
         end
@@ -514,6 +529,10 @@ function Arena.new(options)
             end
         end
         for _,unit in ipairs(active) do
+          if not phase_busy(unit) then
+            if unit.phaseHeld then
+                unit.phaseHeld=nil;unit.attackPending=true;unit.attackRetryAt=nil;unit.attackFailures=nil;unit.heldTargetKey=nil
+            end
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
             if scan and options.unstick then invoke('unstick',unit.actor,unit.assignedTarget,unit.class_path) end
             if scan and options.holdMount and unit.assignedTarget then invoke('holdMount',unit.actor,unit.assignedTarget) end
@@ -549,6 +568,7 @@ function Arena.new(options)
                 hold_target(unit,'定时检查');unit.heldTargetKey=heldKey
             end
             release_lock(unit)
+          end
         end
         if not reengage.since then reengage.since=now end
         if now-reengage.since>=SUMMARY_SECONDS then
@@ -858,20 +878,28 @@ function Arena.new(options)
                     local opponent = opponents[(i - 1) % #opponents + 1]
                     if live(attacker) == true and live(opponent) == true then
                         local attackerKey=actor_key(attacker)
-                        local verified=false
+                        local verified,phaseHeld=false,false
                         for _,unit in ipairs(units) do
                             if attackerKey and actor_key(unit.actor)==attackerKey then
+                              if phase_busy(unit) then
+                                phaseHeld=true
+                                verified=true -- the native phase owns this actor's current action
+                              else
+                                unit.phaseHeld=nil
                                 local target=unit_by_key(actor_key(opponent))
                                 if target then verified=assign_target(unit,target,now) end
                                 if verified then unit.needsJoin=false end
+                                requests=requests+1
+                              end
                                 break
                             end
                         end
-                        requests = requests + 1
                         if not verified then failures = failures + 1 end
-                        log("开战请求 " .. actor_name(attacker) .. " -> " .. actor_name(opponent)
+                        if phaseHeld then
+                            log('暂缓普通攻击 '..actor_name(attacker)..'；保留该单位原生阶段或待确认状态，其他参赛者继续')
+                        else log("开战请求 " .. actor_name(attacker) .. " -> " .. actor_name(opponent)
                             .. "；读回=" .. tostring(verified) .. "；HP=" .. health(attacker) .. "/" .. health(opponent)
-                            .. "；朝向与对手方向夹角=" .. facing_gap(attacker, opponent))
+                            .. "；朝向与对手方向夹角=" .. facing_gap(attacker, opponent)) end
                     else failures = failures + 1 end
                 end
             end

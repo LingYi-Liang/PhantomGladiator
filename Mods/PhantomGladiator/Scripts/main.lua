@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.15-beta-2"
+local BUILD = "v0.40.15-beta-3"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -178,6 +178,17 @@ function arenaSupport:controllerCurrent(pc,world)
     local owner=UEObserve.field(player,'PlayerController')
     local key=UEObserve.key(pc)
     if not key or UEObserve.key(owner)~=key then return false end
+    if type(UEHelpers.GetGameViewportClient)=='function' then
+        local ok,viewport=pcall(UEHelpers.GetGameViewportClient)
+        if ok and safeValid(viewport) then
+            if not safeValid(UEObserve.field(viewport,'World')) then return false end
+            local players=UEObserve.array(UEObserve.field(UEObserve.field(viewport,'GameInstance'),'LocalPlayers'))
+            if not players then return false end
+            local found=false
+            for _,current in ipairs(players)do if UEObserve.key(current)==UEObserve.key(player) then found=true;break end end
+            if not found then return false end
+        end
+    end
     if safeValid(world) then
         local ok,current=pcall(function()return pc:GetWorld()end)
         if not ok or UEObserve.key(current)~=UEObserve.key(world) then return false end
@@ -187,17 +198,33 @@ end
 
 -- A retained controller can remain valid after its local player has moved to another controller/world.
 local function GetRealPlayerController()
-    local ok, list = pcall(FindAllOf, "PlayerController")
-    if not ok or not list then return nil end
     local world=arenaSupport:viewportWorld()
-    for _, pc in ipairs(list) do
+    local function current(pc)
         local okP, good = pcall(function()
-            if not pc:IsValid() then return false end
+            if not safeValid(pc) then return false end
             local cls = pc:GetClass()
             if not safeValid(cls) or objectName(cls):find("DebugCameraController") then return false end
             return arenaSupport:controllerCurrent(pc,world)
         end)
-        if okP and good then return pc end
+        return okP and good
+    end
+    -- Resolve the viewport's current local players afresh; no controller survives here across calls/worlds.
+    if type(UEHelpers.GetGameViewportClient)=='function' then
+        local ok,viewport=pcall(UEHelpers.GetGameViewportClient)
+        if ok and safeValid(viewport) and not safeValid(world) then return nil end
+        if ok and safeValid(viewport) then
+            local instance=UEObserve.field(viewport,'GameInstance')
+            for _,player in ipairs(UEObserve.array(UEObserve.field(instance,'LocalPlayers')) or {})do
+                local pc=UEObserve.field(player,'PlayerController')
+                if current(pc) then return pc end
+            end
+            return nil
+        end
+    end
+    local ok,list=pcall(FindAllOf,'PlayerController')
+    if not ok then return nil end
+    for _,pc in ipairs(UEObserve.array(list) or {})do
+        if current(pc) then return pc end
     end
     return nil
 end
@@ -589,6 +616,10 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         return false,"FinishSpawn前对象失效或进入销毁，保留清理记录"
     end
     local name=objectName(pawn)
+    if arenaSupport.menghuaPhase and not leader then
+        local ready,why=arenaSupport.menghuaPhase:prepare(pawn)
+        if not ready then return false,why end
+    end
     local standalone
     if route=='npc' and not leader and arenaSupport.standaloneStoryUnits:matches(name) then
         local why
@@ -652,8 +683,8 @@ local function GetHP(pawn)
     if okDirect and type(direct) == "number" then return direct end
     local hp = nil
     pcall(function()
-        local ok, sets = pcall(FindAllOf, "BasicAttributeSet")
-        if not ok or not sets then return end
+        local sets=arenaSupport:attributeSetsForSupport()
+        if not sets then return end
         local pawnAddr = pawn:GetAddress()
         local ascAddr = nil
         pcall(function()
@@ -754,21 +785,19 @@ end
 
 local function ForceAttack(attacker, victim)
     if not safeValid(attacker) or not safeValid(victim) then return false end
+    if arenaSupport.menghuaPhase and arenaSupport.menghuaPhase:busy(attacker) then return false end
     local okF = SetFactionRelation(attacker, victim, HOSTILE)
     local okH, how = AddHatred(attacker, victim)
     local sg = GetAIComp(attacker)
     local okForce = false
     if sg then okForce = pcall(function() sg:ForceIntoCombat(victim) end) end
+    local targetVerified
     -- 只写实际绑定该控制器的黑板键，并保留原目标供F4恢复。
-    if sg then pcall(function()
+    if sg then local wrote=pcall(function()
         local bb=sg.BlackboardComponent
         if not safeValid(bb) then return end
-        local okHandlers,handlers=pcall(FindAllOf,"PBZ_TargetingHandler_AI_C")
-        if not okHandlers or not handlers then return end
-        for _,handler in ipairs(handlers) do
-            if safeValid(handler) then
-                local bound=handler.Blackboard
-                if safeValid(bound) and bound:GetAddress()==bb:GetAddress() then
+        local handler=arenaSupport:targetHandler(attacker,bb)
+        if safeValid(handler) then
                     local key=handler["Target Key"]
                     local original=bb:GetValueAsObject(key)
                     local originalValid=safeValid(original)
@@ -789,17 +818,29 @@ local function ForceAttack(attacker, victim)
                     end)
                     checked(victim)
                     bb:SetValueAsObject(key,victim)
-                    log("参赛目标写入=" .. objectName(victim) .. "；黑板读回=" .. objectName(bb:GetValueAsObject(key)))
-                    break
-                end
-            end
+                    local actual=UEObserve.unwrap(bb:GetValueAsObject(key))
+                    targetVerified=UEObserve.key(actual)==UEObserve.key(victim)
+                    log("参赛目标写入=" .. objectName(victim) .. "；黑板读回=" .. objectName(actual)..'；确认='..tostring(targetVerified))
         end
-    end) end
+    end);if not wrote then targetVerified=false end end
     local state = "UNKNOWN"
     if sg then pcall(function() state = FNameToString(sg.CurrentStateTag.TagName) end) end
     log("作战请求=" .. tostring(okForce) .. "；状态读回=" .. state
         .. "；仇恨=" .. tostring(okH) .. "/" .. tostring(how) .. "；实际出招待观察")
-    return okF and okH and okForce
+    return okF and okH and okForce and targetVerified~=false
+end
+
+function arenaSupport:targetHandler(actor,bb)
+    if not UEObserve.valid(bb) then return nil end
+    local function bound(handler)
+        return UEObserve.valid(handler) and UEObserve.key(UEObserve.field(handler,'Blackboard'))==UEObserve.key(bb)
+            and UEObserve.field(handler,'Target Key')~=nil
+    end
+    local own=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
+    if bound(own) then return own end
+    local ok,list=pcall(FindAllOf,'PBZ_TargetingHandler_AI_C')
+    for _,handler in ipairs(ok and UEObserve.array(list) or {})do if bound(handler) then return handler end end
+    return nil
 end
 
 -- 不再调用通用ApplyDamage种仇恨；本版不执行假伤害或假死亡。
@@ -1210,6 +1251,24 @@ local function FindActiveDebugCam()
     return nil
 end
 
+-- Only supportSteps owns this short-lived snapshot; no UObject survives into the next support tick.
+function arenaSupport:supportRead(key,reader)
+    local frame=self.frameContext
+    if not frame then return reader() end
+    local entry=frame[key]
+    if not entry then entry={value=reader()};frame[key]=entry end
+    return entry.value
+end
+function arenaSupport:debugCameraForSupport()
+    return self:supportRead('debugCamera',FindActiveDebugCam)
+end
+function arenaSupport:attributeSetsForSupport()
+    return self:supportRead('attributeSets',function()
+        local ok,list=pcall(FindAllOf,'BasicAttributeSet')
+        return ok and UEObserve.array(list) or nil
+    end)
+end
+
 local observerGuard=ObserverGuard.new({log=log,getSpectator=function()return spectator end})
 local freeCamera=FreeCamera.new({path=Config.RuntimePath,log=log,getController=GetRealPlayerController,guard=observerGuard,
     getWorld=GetCurrentWorld,moveSpeed=Config.FreeCamera.MoveSpeed,mouseSensitivity=Config.FreeCamera.MouseSensitivity,
@@ -1371,6 +1430,7 @@ spectator=SpectatorMode.new({log=log,valid=engineValid,getPlayer=GetPlayerPawn,p
         return out
     end})
 arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=objectName,now=GameSeconds,
+    phaseBusy=function(actor)return arenaSupport.menghuaPhase and arenaSupport.menghuaPhase:busy(actor) or false end,
     actorKey=function(actor) checked(actor);return actor:GetAddress() end,
     hp=function(actor) if spawnRoutes[actor]=='actor' then return nil end;return GetHP(actor) end,
     hasCombatHealth=function(actor) return spawnRoutes[actor]~='actor' end,
@@ -1559,6 +1619,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     destroy=function(actor)
         checked(actor)
+        if arenaSupport.menghuaPhase and not arenaSupport.menghuaPhase:releaseActor(actor) then error('梦华阶段帮手回收未确认') end
         if arenaSupport.lionNPC and not arenaSupport.lionNPC:releaseActor(actor) then error('下桩清理未读回') end
         if arenaSupport.lionStage then arenaSupport.lionStage:releaseActor(actor) end
         checked(actor); actor:K2_DestroyActor()
@@ -1574,10 +1635,12 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         local polesRestored=not arenaSupport.lionNPC or arenaSupport.lionNPC:stop('停止并清理')
         if bossHUD then bossHUD:clear(true) end
         local grabRestored=not arenaGrabs or arenaGrabs:restore()
+        local phaseRestored=not arenaSupport.menghuaPhase or arenaSupport.menghuaPhase:stop()
         local battleRestored=battle:reset("停止参赛者")
-        return guillotineRestored and polesRestored and grabRestored and battleRestored
+        return guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
     end,
     onUnitsChanged=function(units)
+        if arenaSupport.menghuaPhase then arenaSupport.menghuaPhase:syncParents(units) end
         if statMatch then statMatch:roster(units) end
         if arenaSupport.standaloneStoryUnits then arenaSupport.standaloneStoryUnits:prune(units) end
         arenaActors={}
@@ -1594,10 +1657,13 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end})
 
 local summonLinks=SummonLinks.new({getWorld=GetCurrentWorld,getNPCs=CollectNPCs,log=log})
+arenaSupport.menghuaPhase=require('menghua_phase').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,hp=GetHP,isDestroying=actorIsDestroying,
+    ready=function()return runtimeSession:status().game_ready==true end,
+    boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end})
 arenaActivity=ArenaActivity.new({log=log,isNPC=function(actor)return spawnRoutes[actor]~='actor' end,
-    freeCam=function()return freeCamera:isActive() or safeValid(FindActiveDebugCam()) end,
+    freeCam=function()return freeCamera:isActive() or safeValid(arenaSupport:debugCameraForSupport()) end,
     context=function()
-        local debugCamera=FindActiveDebugCam()
+        local debugCamera=arenaSupport:debugCameraForSupport()
         local original=UEObserve.field(debugCamera,'OriginalControllerRef')
         local originalPawn=UEObserve.field(original,'Pawn')
         local world=GetCurrentWorld()
@@ -1870,6 +1936,7 @@ end
 -- faction set to the player's) is the player's help in that story fight: 冷荼's 彭猛, 峨眉/华山, 风雪刀客, 舞狮 and
 -- 雷当, 梦华's 虚空. In the arena it is taken out as it comes; true once it is gone or going.
 function arenaSupport:removeHelper(link)
+    if self.menghuaPhase and self.menghuaPhase:handle(link) then return true end
     local actor=link.actor
     if not safeValid(actor) then return true end
     local name=objectName(actor)
@@ -1954,7 +2021,9 @@ arenaSupport.summonKeep=require('summon_keep').new({log=log,members=ArenaMembers
 -- A fighter locked on a boss the game keeps out of reach is moved to its opponent (lock_release.lua).
 arenaSupport.lockRelease=require('lock_release').new({log=log,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end})
-companions=Companion.new({log=log,busy=function(actor)return arenaExecutions and arenaExecutions:executing(actor) or false end,getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
+companions=Companion.new({log=log,busy=function(actor)
+    return arenaSupport.menghuaPhase:busy(actor) or arenaExecutions and arenaExecutions:executing(actor) or false
+end,getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     members=ArenaMembers,clock=LiveSeconds})
 -- Read-only: which of a companion's attacks may hit the player, and why (companion_hit_probe.lua).
 companionHitProbe=Config.EnableCompanionHitProbe and CompanionHitProbe.new({log=log,getPlayer=GetPlayerPawn,hp=GetHP,location=GetLocation,
@@ -1987,6 +2056,7 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
 combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,hp=GetHP,label=objectName,
+    phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     hates=HatredListContains,vehicles=function(members)return mounts and mounts:vehicles(members) or {} end,
     -- Called inside the game's transition; the send-back runs on the next game-thread tick instead.
     onDropped=function(key)ExecuteInGameThread(function()if not (mounts and mounts:dropped(key)) then arena:reengage(key) end end)end,
@@ -2007,6 +2077,7 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
         return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
     end})
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
+    phaseBusyKey=function(key)return arenaSupport.menghuaPhase:busyKey(key)end,
     abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
     player=GetPlayerPawn,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
@@ -2041,6 +2112,7 @@ arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log
         return safeValid(player) and safeValid(actor) and player:GetAddress()==actor:GetAddress()
     end}) or nil
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
+    phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,camera=executionCamera,
@@ -2086,6 +2158,7 @@ local function supportSteps(self)
         local spent=(os.clock()-t)*1000
         parts[#parts+1]=string.format('%s=%.1f',name,spent);costs[name]=spent
     end
+    step('menghuaPhase',function()self.menghuaPhase:tick()end)
     step('prune',function()
         local memberKeys={}
         for _,entry in ipairs(tickMembers)do local key=UEObserve.key(entry.actor);if key then memberKeys[key]=true end end
@@ -2144,9 +2217,15 @@ local function supportSteps(self)
     supportMeter:add(total,started,costs)
 end
 function arenaSupport:tick()
-    tickMembers,tickStatus=arena:members(),arena:status()
-    local ok,err=pcall(supportSteps,self)
-    tickMembers,tickStatus=nil,nil
+    local previous=self.frameContext
+    local previousMembers,previousStatus=tickMembers,tickStatus
+    self.frameContext={}
+    local ok,err=pcall(function()
+        tickMembers,tickStatus=arena:members(),arena:status()
+        supportSteps(self)
+    end)
+    tickMembers,tickStatus=previousMembers,previousStatus
+    self.frameContext=previous
     if not ok then error(err,0) end
 end
 function arenaSupport:status()
@@ -2229,6 +2308,7 @@ if ModRef then
         arenaSupport.summonKeep:silence()
         arenaSupport.remoteReflect:silence()
         arenaSupport.xianzhePhantom:silence()
+        arenaSupport.menghuaPhase:silence()
         arenaSupport.offCombatRegen:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')

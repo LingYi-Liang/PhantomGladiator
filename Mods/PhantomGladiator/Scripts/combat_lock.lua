@@ -68,7 +68,10 @@ function Lock.new(options)
     local dropped={}      -- unit address -> clock() of the last send-back
     local identities={}   -- names only for addresses with corpse or send-back state
     local actorObjects={}
+    local objectNames,componentNames={},{}
     local identityLines=0
+    local installAt,installDelay,unhookAt,unhookLines=0,1,0,0
+    local installWarnings={}
     local lines,quietSince,summaryAt={},nil,nil
     for _,name in ipairs(ORDER)do lines[name]=0 end
     local function say(m)log('[CombatLock] '..m)end
@@ -89,12 +92,39 @@ function Lock.new(options)
             end
         end
     end
+    local function component_cache(key,actor,now)
+        local c=cache[key]
+        local stale=c and ((c.aiObject and (addr(c.aiObject)~=c.ai or identity(c.aiObject)~=c.aiName))
+            or (c.hatredObject and (addr(c.hatredObject)~=c.hatred or identity(c.hatredObject)~=c.hatredName)))
+        if not c or stale or now-c.checkedAt>=1 then
+            local aiObject=options.aiOf(actor)
+            local hatredObject=options.hatredOf and options.hatredOf(actor)
+            c={ai=addr(aiObject),hatred=addr(hatredObject),aiObject=aiObject,hatredObject=hatredObject,
+                aiName=identity(aiObject),hatredName=identity(hatredObject),checkedAt=now}
+        end
+        return c
+    end
+    local function owned_address(object,names)
+        local key=addr(object)
+        if not key or type(names[key])~='string' or identity(object)~=names[key] then return nil end
+        return key
+    end
+    local function component_address(context)
+        local key=owned_address(U.unwrap(context),componentNames)
+        local owner=key and owners[key]
+        if not owner or not owned_address(actorObjects[owner],objectNames) then return nil end
+        if options.phaseBusy then
+            local ok,busy=pcall(options.phaseBusy,actorObjects[owner])
+            if not ok or busy~=false then return nil end
+        end
+        return key
+    end
 
     local callbacks={}
     -- AI component: after an action, stay in combat.
     callbacks.exit=function(context)
-        if not self.alive then return nil end
-        local team=components[addr(U.unwrap(context)) or '']
+        if not self.alive or not next(components) then return nil end
+        local team=components[component_address(context) or '']
         if not team then self.passed=self.passed+1;return nil end
         self.held=self.held+1
         count('exit',function()return team end)
@@ -103,16 +133,16 @@ function Lock.new(options)
     -- Hatred manager (owned by one unit) asked about another actor: allowed when both are ours and on
     -- opposite sides. Either check gets the same answer whichever side it is asked from.
     local function opponents(context,actor)
-        local mine=managers[addr(U.unwrap(context)) or '']
+        local mine=managers[component_address(context) or '']
         if not mine then return nil end
-        local theirs=teams[addr(U.unwrap(actor)) or '']
+        local theirs=teams[owned_address(U.unwrap(actor),objectNames) or '']
         if theirs and theirs~=mine then return mine,theirs end
     end
     for _,name in ipairs({'canHate','canBeHated'})do
         callbacks[name]=function(context,actor)
-            if not self.alive then return nil end
-            local asked=addr(U.unwrap(actor)) or ''
-            if managers[addr(U.unwrap(context)) or ''] and (corpses[asked] or mounts[asked]) then
+            if not self.alive or not next(managers) then return nil end
+            local asked=owned_address(U.unwrap(actor),objectNames) or ''
+            if managers[component_address(context) or ''] and (corpses[asked] or mounts[asked]) then
                 self.refused=self.refused+1
                 return false
             end
@@ -124,8 +154,8 @@ function Lock.new(options)
     end
     -- AI component transition: CombatToIdle on a fighting unit sends it back at its target.
     callbacks.transition=function(context,tag)
-        if not self.alive or not options.onDropped then return nil end
-        local component=addr(U.unwrap(context)) or ''
+        if not self.alive or not next(components) or not options.onDropped then return nil end
+        local component=component_address(context) or ''
         local team,unit=components[component],owners[component]
         if not team or not unit or tagName(tag)~=DROP then return nil end
         local now=clock()
@@ -141,8 +171,8 @@ function Lock.new(options)
     -- hostile; a fighting unit's is set back to its opponent on the next game-thread tick (options.onSensed).
     for _,name in ipairs({'sensed','sensedInfo'})do
         callbacks[name]=function(context)
-            if not self.alive or not options.onSensed then return nil end
-            local component=addr(U.unwrap(context)) or ''
+            if not self.alive or not next(components) or not options.onSensed then return nil end
+            local component=component_address(context) or ''
             local team,unit=components[component],owners[component]
             if not team or not unit then return nil end
             count(name,function()return team end)
@@ -151,35 +181,57 @@ function Lock.new(options)
         end
     end
 
+    local function missing_hooks()
+        for _,name in ipairs(ORDER)do if not hooks[name] then return true end end
+        return false
+    end
     local function install()
+        if clock()<installAt then return end
+        installAt=clock()+installDelay;installDelay=math.min(installDelay*2,8)
         for _,fn in ipairs({'StaticFindObject','RegisterHook','UnregisterHook'})do
-            if type(_G[fn])~='function' then self.state='failed';self.message='缺少 '..fn;say(self.message);return end
+            if type(_G[fn])~='function' then
+                self.state='failed';self.message='缺少 '..fn
+                if not installWarnings[fn] then installWarnings[fn]=true;say(self.message..'；保留限频重试') end
+                return
+            end
         end
         for _,name in ipairs(ORDER)do
+          if not hooks[name] then
             local path=Lock.paths[name]
             local okFind,found=pcall(StaticFindObject,path)
-            if not okFind or not U.valid(found) then say('找不到函数 '..path)
+            if not okFind or not U.valid(found) then
+                if not installWarnings[path] then installWarnings[path]=true;say('找不到函数 '..path..'；保留限频重试') end
             else
                 local ok,pre,post=pcall(RegisterHook,path,callbacks[name])
                 if ok and type(pre)=='number' and type(post)=='number' then
                     hooks[name]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post)
-                else say('挂钩注册失败 '..name..'：'..tostring(pre))end
+                elseif not installWarnings['register:'..path] then
+                    installWarnings['register:'..path]=true;say('挂钩注册失败 '..name..'：'..tostring(pre)..'；保留限频重试')
+                end
             end
+          end
         end
         if next(hooks) then self.state='running';self.message='战斗中，参战单位不中途退出、互相仇恨'
         else self.state='failed';self.message='找不到退出战斗判断函数' end
+        if not missing_hooks() then installAt=0;installDelay=1
+        elseif next(hooks) then self.message='战斗保护部分挂钩未就绪，保留限频重试' end
     end
-    local function uninstall(reason)
-        if not next(hooks) then return end
+    local function uninstall(reason,force)
+        if not next(hooks) or not force and clock()<unhookAt then return end
+        unhookAt=clock()+1
         local kept={}
         for name,hook in pairs(hooks)do
-            if not pcall(UnregisterHook,Lock.paths[name],hook.pre,hook.post) then kept[name]=hook end
+            local ok,value=pcall(UnregisterHook,Lock.paths[name],hook.pre,hook.post)
+            if not ok or value==false then kept[name]=hook end
         end
         local parts={}
         for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.counts[name] end
-        say('摘除挂钩（'..reason..'） '..table.concat(parts,' ')..' 其他AI照常='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
+        if unhookLines<LINES or not next(kept) then
+            unhookLines=unhookLines+1
+            say('摘除挂钩（'..reason..'） '..table.concat(parts,' ')..' 其他AI照常='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
+        end
         hooks=kept
-        if not next(hooks) then self.state='idle';self.message='没有进行中的战斗' end
+        if not next(hooks) then self.state='idle';self.message='没有进行中的战斗';unhookAt=0;unhookLines=0 end
     end
 
     -- True only for a read that says no health is left; a unit whose health cannot be read counts as alive.
@@ -224,7 +276,7 @@ function Lock.new(options)
         if not self.alive then return end
         local now=clock()
         local ai,hatred,units,known,own,bodies,horses={},{},{},{},{},{},{}
-        local fresh,living,present,objects={},{},{},{}
+        local fresh,living,present,objects,names,boundNames={},{},{},{},{},{}
         local fighting=options.fighting()
         local members=options.members() or {}
         for _,member in ipairs(members)do
@@ -234,7 +286,7 @@ function Lock.new(options)
             if (member.team=='blue' or member.team=='red') and not member.reserve and not member.stand then
                 local key=U.key(member.actor)
                 if key then
-                    present[key]=true;objects[key]=member.actor
+                    present[key]=true;objects[key]=member.actor;names[key]=identity(member.actor)
                     refreshIdentity(key,member.actor)
                 end
                 if key and dead(member.actor) then
@@ -244,11 +296,11 @@ function Lock.new(options)
                     forgotten[key]=nil
                     living[#living+1]=member
                     if fighting then
-                        local c=cache[key] or {ai=addr(options.aiOf(member.actor)),hatred=options.hatredOf and addr(options.hatredOf(member.actor))}
+                        local c=component_cache(key,member.actor,now)
                         known[key]=c
                         if not member.untargetable then units[key]=member.team end
-                        if c.ai then ai[c.ai]=member.team;own[c.ai]=key end
-                        if c.hatred then hatred[c.hatred]=member.team end
+                        if c.ai then ai[c.ai]=member.team;own[c.ai]=key;boundNames[c.ai]=c.aiName end
+                        if c.hatred then hatred[c.hatred]=member.team;own[c.hatred]=key;boundNames[c.hatred]=c.hatredName end
                     end
                 end
             end
@@ -257,16 +309,17 @@ function Lock.new(options)
             for _,vehicle in ipairs(options.vehicles and options.vehicles(members) or {})do
                 local key=U.key(vehicle.actor)
                 if key then
-                    objects[key]=vehicle.actor;refreshIdentity(key,vehicle.actor)
-                    local c=cache[key] or {ai=addr(options.aiOf(vehicle.actor)),hatred=options.hatredOf and addr(options.hatredOf(vehicle.actor))}
+                    objects[key]=vehicle.actor;names[key]=identity(vehicle.actor);refreshIdentity(key,vehicle.actor)
+                    local c=component_cache(key,vehicle.actor,now)
                     known[key]=c
                     horses[key]=true
-                    if c.ai then ai[c.ai]=vehicle.team;own[c.ai]=key end
-                    if c.hatred then hatred[c.hatred]=vehicle.team end
+                    if c.ai then ai[c.ai]=vehicle.team;own[c.ai]=key;boundNames[c.ai]=c.aiName end
+                    if c.hatred then hatred[c.hatred]=vehicle.team;own[c.hatred]=key;boundNames[c.hatred]=c.hatredName end
                 end
             end
         end
         components,managers,teams,cache,owners,corpses,mounts,actorObjects=ai,hatred,units,known,own,bodies,horses,objects
+        objectNames,componentNames=names,boundNames
         -- Departed actors must not retain corpse completion or send-back throttles at a reused address.
         for key in pairs(forgotten)do if not present[key] then forgotten[key]=nil end end
         for key in pairs(dropped)do if not known[key] then dropped[key]=nil end end
@@ -281,7 +334,7 @@ function Lock.new(options)
         for key in pairs(identities)do if not forgotten[key] and not dropped[key] then identities[key]=nil end end
         if next(teams) then
             quietSince=nil
-            if not next(hooks) and self.state~='failed' then install() end
+            if missing_hooks() then install() end
         elseif next(hooks) then
             quietSince=quietSince or now
             if now-quietSince>=UNHOOK_SECONDS then uninstall('战斗已结束') end
@@ -297,7 +350,7 @@ function Lock.new(options)
         end
     end
     function self:status()return {state=self.state,held=self.held,refused=self.refused,message=self.message,counts=self.counts}end
-    function self:silence(reason)uninstall(reason or 'Mod卸载');self.alive=false end
+    function self:silence(reason)self.alive=false;uninstall(reason or 'Mod卸载',true) end
     return self
 end
 return Lock

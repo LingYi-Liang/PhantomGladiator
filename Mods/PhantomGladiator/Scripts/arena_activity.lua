@@ -6,6 +6,11 @@ local Activity={}
 function Activity.new(options)
     local self={records={},camera=nil,count=0,boneCount=0,ticks=0,contextSamples=0}
     local log=options.log or function()end
+    local function fullName(actor)
+        if not U.valid(actor) then return nil end
+        local ok,name=pcall(function()return actor:GetFullName()end)
+        return ok and type(name)=='string' and name or nil
+    end
     local function attribute(attributes,name)
         local data=U.field(attributes,name)
         local value=U.struct(data,'CurrentValue')
@@ -40,17 +45,23 @@ function Activity.new(options)
         local kept,count,boneCount,sampled={},0,0,0
         local verify=changed or sample or self.ticks%10==0
         for _,unit in ipairs(members)do
-            local settled=not verify and self.records[U.key(unit.actor) or '']
+            local key,name=U.key(unit.actor),fullName(unit.actor)
+            local managed=key and name and options.isNPC(unit.actor)
+            local previous=managed and self.records[key]
+            if previous and previous.name~=name then previous=nil end
+            local settled=not verify and previous
             if settled and settled.settled then
-                kept[U.key(unit.actor)]=settled
+                kept[key]=settled
                 if settled.full then count=count+1 end
                 if settled.bone then boneCount=boneCount+1 end
-            elseif U.valid(unit.actor) and options.isNPC(unit.actor) then
-                local key=U.key(unit.actor);local proxy=U.field(unit.actor,'OptimizationProxy')
+            elseif managed then
+                local proxy=U.field(unit.actor,'OptimizationProxy')
                 if key and U.valid(proxy) then
                     local ok,owner=pcall(function()return proxy:GetOwner()end)
                     if ok and U.key(owner)==key then
-                        local record=self.records[key] or {attempts=0,boneAttempts=0,samples=0}
+                        local record=previous or {attempts=0,boneAttempts=0,samples=0,name=name}
+                        local proxyKey=U.key(proxy)
+                        if record.proxy~=proxyKey then record.proxy=proxyKey;record.applied=false;record.attempts=0 end
                         kept[key]=record
                         local beforeOK,before=pcall(function()return proxy:GetOptimizationWave()end)
                         local current=beforeOK and before or nil
@@ -64,9 +75,12 @@ function Activity.new(options)
                         end
                         if record.applied and current==1 then count=count+1 end
                         local mesh=U.field(unit.actor,'Mesh')
+                        record.bone=false
                         if U.valid(mesh) then
                             local ownerOK,meshOwner=pcall(function()return mesh:GetOwner()end)
                             if ownerOK and U.key(meshOwner)==key then
+                                local meshKey=U.key(mesh)
+                                if record.mesh~=meshKey then record.mesh=meshKey;record.boneAttempts=0 end
                                 local mode=U.field(mesh,'VisibilityBasedAnimTickOption')
                                 -- One-variable F6 experiment: force bone refresh, leaving
                                 -- tick intervals, URO and the camera implementation unchanged.

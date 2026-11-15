@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Renderer=require('arena_hud_widget')
+local Renderer=arg[1] and assert(loadfile(arg[1]))() or require('arena_hud_widget')
 local serial=0;local registry={}
 local function obj(path,properties)
     serial=serial+1;local id=serial;local o=properties or {};o.alive=true;o.visibility=0
@@ -19,8 +19,9 @@ local library=obj('/Script/UMG.Default__WidgetBlueprintLibrary')
 local texts=obj('/Script/Engine.Default__KismetTextLibrary')
 function texts:Conv_StringToText(value)return value end
 local layout=obj('/Script/UMG.Default__WidgetLayoutLibrary')
-function layout:GetViewportSize(context)assert(context==world);return {X=3840,Y=2160}end
-function layout:GetViewportScale(context)assert(context==world);return 2 end
+local viewportWidth,sizeReads,scaleReads=3840,0,0
+function layout:GetViewportSize(context)sizeReads=sizeReads+1;assert(context==world and context.alive);return {X=viewportWidth,Y=2160}end
+function layout:GetViewportScale(context)scaleReads=scaleReads+1;assert(context==world and context.alive);return 2 end
 local widget,tree,original
 function library:Create(context,class,player)
     assert(context==world and class==cls and player==pc)
@@ -97,5 +98,42 @@ do
     idle:syncNative({},{},true)
     assert(scans==1,'explicit unbound cleanup still searches the HUD')
     FindAllOf=previous
+end
+-- Each sync owns its viewport snapshot; it never holds a native object across updates.
+do
+    local records={};local count=100
+    for i=1,count do records[i]=assert(renderer:create(unit))end
+    sizeReads,scaleReads=0,0
+    local frame={}
+    for i,r in ipairs(records)do assert(renderer:update(r,unit,50,100,'batch',i,frame))end
+    print('viewport batch='..count..' size_reads='..sizeReads..' scale_reads='..scaleReads)
+    assert(sizeReads==1 and scaleReads==1,'a HUD sync must read a common viewport once')
+    viewportWidth=2000
+    local resized={}
+    assert(renderer:update(records[1],{actor=actor,team='red'},50,100,'resized',1,resized))
+    assert(sizeReads==2 and scaleReads==2 and records[1].widget.position.X==512,'the next sync reads the changed width')
+    world.alive=false
+    local before=sizeReads
+    assert(not renderer:update(records[1],unit,50,100,'invalid world',1,{}))
+    assert(sizeReads==before,'invalid world cannot reach a native viewport call')
+    world.alive=true
+end
+do
+    local HUD=require('arena_hud')
+    local list={}
+    for i=1,50 do
+        local a=obj('/Test.FrameActor'..i);function a:GetOuter()return world end
+        list[#list+1]={actor=a,team=i%2==0 and 'red' or 'blue'}
+    end
+    local hudBars=HUD.new({renderer=renderer,isBoss=function()return true end,hp=function()return 50 end,
+        maxHP=function()return 100 end,getWorld=function()return world end,getName=function()return 'batch' end})
+    sizeReads,scaleReads=0,0
+    hudBars:sync(list)
+    assert(hudBars:status().visible==50 and sizeReads==1 and scaleReads==1,'real HUD sync shares the local viewport snapshot')
+    viewportWidth=2400;hudBars:sync(list)
+    assert(sizeReads==2 and scaleReads==2,'a later HUD sync must not reuse the previous viewport')
+    assert(hudBars.records[tostring(list[2].actor:GetAddress())].widget.position.X==612)
+    print('real HUD bars=50 syncs=2 size_reads='..sizeReads..' scale_reads='..scaleReads)
+    hudBars:clear()
 end
 print('arena_hud_widget: PASS (private tree, numeric placement/text readback, persistent visibility, duplicate isolation, foreign binding gate, cleanup)')

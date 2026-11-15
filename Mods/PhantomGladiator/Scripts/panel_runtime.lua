@@ -487,6 +487,14 @@ function Runtime.new(options)
         out.xianzhe_phantom_state=xianzhe.state or 'off'
         out.xianzhe_phantom_blocked=xianzhe.blocked or 0
         out.xianzhe_phantom_failures=xianzhe.failures or 0
+        local phase=options.support and options.support.menghuaPhase and options.support.menghuaPhase:status() or {}
+        out.menghua_phase_supported=phase.supported==true
+        out.menghua_phase_state=phase.state or 'off'
+        out.menghua_phase_helpers=phase.helpers or 0
+        out.menghua_phase_busy=phase.busy or 0
+        out.menghua_phase_failures=phase.failures or 0
+        out.menghua_phase_completed=phase.completed or 0
+        out.menghua_phase_anchors=phase.anchors or 0
         out.unit_keys_revision=unitKeys.revision or 0
         out.unit_keys_event=unitKeys.event or 0
         out.unit_keys_last_unit=unitKeys.unit or ''

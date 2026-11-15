@@ -318,4 +318,87 @@ do
     print('target safety action=invalid-hook-context-and-target address_reads='..addressReads..' expected=0')
     assert(addressReads==0 and #h.dropped==0 and #h.sensed==0,'invalid hook objects are rejected before asking their address')
 end
-print('combat_lock: PASS (hooks only in a fight, exit held, hatred allowed for opposite sides only, send-back on CombatToIdle, perception fallback, summary, unhook, rehook, leave, missing functions, stands, corpses, mounts, invalid hook objects)')
+if not arg[2] or arg[2]=='late-functions' then
+    for _,partial in ipairs({false,true})do
+        local h=harness();h.missing={}
+        for name,path in pairs(Lock.paths)do if not partial or name=='canHate' then h.missing[path]=true end end
+        local lock=h.new();h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+        local before=h.ids;for _=1,20 do lock:tick()end;assert(h.ids==before,'missing hook recovery must be paced')
+        h.missing=nil;h.now=1;lock:tick()
+        print('hook recovery action=late-functions partial='..tostring(partial)..' registered='..h.ids..' expected=6')
+        assert(h.ids==6,'late functions must recover without restarting the mod or duplicating existing hooks')
+    end
+end
+if not arg[2] or arg[2]=='register-failure' then
+    local h=harness();local original=RegisterHook;local reject=true;local attempts=0
+    RegisterHook=function(path,callback)attempts=attempts+1;if reject then error('temporary native rejection')end;return original(path,callback)end
+    local lock=h.new();h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+    local before=attempts;for _=1,100 do lock:tick()end;assert(attempts==before)
+    reject=false;h.now=1;lock:tick()
+    print('hook recovery action=registration-recovered registered='..h.ids..' expected=6')
+    assert(h.ids==6)
+end
+if not arg[2] or arg[2]=='unhook-false' then
+    local h=harness();local original=UnregisterHook;local reject=true;local attempts=0
+    UnregisterHook=function(...)attempts=attempts+1;if reject then return false end;return original(...)end
+    local lock=h.new();local _,blue=h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+    h.fighting=false;h.now=1;lock:tick();h.now=12;lock:tick()
+    assert(h.hooks[Lock.path] and h.call('exit',blue)==nil,'retained hooks must have no gameplay effect outside a fight')
+    local before=attempts;lock:tick();assert(attempts==before,'native unhook rejection must not retry every support tick')
+    reject=false;h.now=13;lock:tick()
+    print('hook recovery action=unhook-recovered completed='..#h.unhooked..' expected=6')
+    assert(#h.unhooked==6 and next(h.hooks)==nil,'explicit native false must retain the ids for retry')
+end
+if not arg[2] or arg[2]=='components' then
+    local h=harness();local lock=h.new();local actor,oldAI,oldHatred=h.unit('blue');local red=h.unit('red')
+    h.fighting=true;lock:tick()
+    local ai,hatred=object('NewAI'),object('NewHatred');h.ai[actor],h.hatred[actor]=ai,hatred
+    h.now=1;lock:tick()
+    print('component recovery action=changed-binding exit='..tostring(h.call('exit',ai))..' expected=false')
+    assert(h.call('exit',ai)==false and h.call('exit',oldAI)==nil,'controller replacement must update cached AI binding')
+    assert(h.call('canHate',hatred,red)==true and h.call('canHate',oldHatred,red)==nil,'hatred replacement must update cached manager binding')
+end
+if not arg[2] or arg[2]=='reused-component' then
+    local h=harness();local lock=h.new();local actor,ai,hatred=h.unit('blue');local red=h.unit('red')
+    h.fighting=true;lock:tick()
+    local mapAI,mapHatred,mapActor=object('MapAI'),object('MapHatred'),object('MapActor')
+    mapAI.GetAddress=ai.GetAddress;mapHatred.GetAddress=hatred.GetAddress;mapActor.GetAddress=red.GetAddress
+    print('component recovery action=reused-address map_exit='..tostring(h.call('exit',mapAI))..' expected=nil')
+    assert(h.call('exit',mapAI)==nil and h.call('canHate',mapHatred,red)==nil,'reused component address cannot acquire mod overrides')
+    assert(h.call('canHate',hatred,mapActor)==nil,'reused target address cannot acquire another unit\'s team')
+end
+if not arg[2] or arg[2]=='native-phase' then
+    local h=harness();local busy={}
+    local lock=h.new({phaseBusy=function(actor)return busy[actor]==true end})
+    local blueActor,blue,blueHatred=h.unit('blue');local redActor,red,redHatred=h.unit('red')
+    h.fighting=true;lock:tick();busy[blueActor]=true
+    assert(h.call('exit',blue)==nil and h.call('canHate',blueHatred,redActor)==nil)
+    h.call('transition',blue,tag('AI.Transition.CombatToIdle'));h.call('sensed',blue)
+    assert(#h.dropped==0 and #h.sensed==0,'phase actor keeps its own native decisions')
+    assert(h.call('exit',red)==false and h.call('canHate',redHatred,blueActor)==true,'other fighters keep their protection and enemy roster')
+    busy[blueActor]=false;assert(h.call('exit',blue)==false and h.call('canHate',blueHatred,redActor)==true)
+    print('PASS per-source native-phase hook isolation and normal recovery')
+end
+if not arg[2] or arg[2]=='component-cadence' then
+    local h=harness();local aiReads,hatredReads=0,0
+    local lock=h.new({aiOf=function(actor)aiReads=aiReads+1;return h.ai[actor]end,
+        hatredOf=function(actor)hatredReads=hatredReads+1;return h.hatred[actor]end})
+    h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+    h.now=0.2;for _=1,20 do lock:tick()end
+    assert(aiReads==2 and hatredReads==2,'stable binding lookup must not repeat every support tick')
+    h.now=1;lock:tick();assert(aiReads==4 and hatredReads==4)
+    print('PASS current component binding lookup bounded to one-second refresh')
+end
+if not arg[2] or arg[2]=='idle-callbacks' then
+    local h=harness();local lock=h.new();h.unit('blue');h.unit('red');h.fighting=true;lock:tick()
+    h.fighting=false;h.now=1;lock:tick();assert(next(h.hooks),'quiet window deliberately retains hooks briefly')
+    local inspections=0;local outside=object('MapAI')
+    outside.IsValid=function()inspections=inspections+1;return true end
+    for _=1,100 do
+        assert(h.call('exit',outside)==nil);assert(h.call('canHate',outside,outside)==nil);assert(h.call('canBeHated',outside,outside)==nil)
+        h.call('transition',outside,tag('AI.Transition.CombatToIdle'));h.call('sensed',outside);h.call('sensedInfo',outside)
+    end
+    print('idle hook performance callbacks=600 native_validity_reads='..inspections..' expected=0')
+    assert(inspections==0,'idle retained hooks must avoid inspecting unrelated native objects')
+end
+print('combat_lock: PASS (owned scope, bounded recovery, identity, native-phase isolation and idle native-call avoidance)')

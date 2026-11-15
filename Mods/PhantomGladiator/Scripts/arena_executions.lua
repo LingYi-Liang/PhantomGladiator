@@ -135,6 +135,11 @@ function Exec.new(options)
     local findAll=options.findAll or FindAllOf
     local name=options.fname or FName
     local now=options.now
+    local function phaseBusy(actor)
+        if not options.phaseBusy then return false end
+        local ok,value=pcall(options.phaseBusy,actor)
+        return not ok or value~=false
+    end
     local data=options.data or require('execution_data')
     local dataFold={};for key,value in pairs(data)do dataFold[key:lower()]=value end
     local function animationData(key)return data[key] or dataFold[key:lower()]end
@@ -324,7 +329,7 @@ function Exec.new(options)
             local against
             if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
             else against=member.team=='companion' end
-            if against and not member.reserve and not member.aid and U.valid(other)
+            if against and not member.reserve and not member.aid and U.valid(other) and not phaseBusy(other)
                 and not (options.onPole and options.onPole(other)) then
                 local hp=read(other,'Health')
                 local d=hp and hp>0 and distance(target,other)
@@ -750,6 +755,7 @@ local function closeOneGrab(pose,why,restore)
         return true,'原版受抓收尾已启动'
     end
     function self:startGuillotineHold(actor,stillValid)
+        if phaseBusy(actor) then return false,'原生阶段正在配对，保留当前动作' end
         local targetKey=U.key(actor)
         local conflict=active and (U.key(active.executor)==targetKey or U.key(active.boss)==targetKey)
         if not targetKey or conflict or grabPoses[targetKey] or next(pendingBodies) then return false,'目标已有抓取或处决' end
@@ -1014,6 +1020,7 @@ local function closeOneGrab(pose,why,restore)
         if not shown then say('处决镜头出错：'..tostring(err)) end
     end
     local function start(executor,boss,info,d,reason,adopted)
+        if phaseBusy(executor) or phaseBusy(boss) then return false end
         local unit=units[U.key(boss)]
         if unit and not adopted then unit.state='done' end
         self.started=self.started+1
@@ -1206,6 +1213,7 @@ local function closeOneGrab(pose,why,restore)
     end
 
     local function adoptNative(event)
+        if phaseBusy(event.executor) or phaseBusy(event.target) then return end
         if next(pendingBodies) or not (U.valid(event.executor) and U.valid(event.target)) then return end
         local timing=animationData(short(event.execution))
         if not timing then return end
@@ -1237,6 +1245,7 @@ local function closeOneGrab(pose,why,restore)
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     local function tryExecute(target,unit,t,team)
+        if phaseBusy(target) then return false end
         if options.onPole and options.onPole(target) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
@@ -1318,7 +1327,7 @@ local function closeOneGrab(pose,why,restore)
         for _,member in ipairs(members)do
             local target=member.actor
             local key=U.key(target)
-            if key and not member.stand and options.killOnLock(target) and not (options.isImmortal and options.isImmortal(member.team)) then
+            if key and not member.stand and not phaseBusy(target) and options.killOnLock(target) and not (options.isImmortal and options.isImmortal(member.team)) then
                 local unit=units[key]
                 if not unit then unit=inspect(target);units[key]=unit end
                 local hp=read(target,'Health')
@@ -1376,7 +1385,7 @@ local function closeOneGrab(pose,why,restore)
             local target=member.actor
             local key=U.key(target)
             -- A helper the other side's boss brought out is left to that boss's script, not finished here.
-            if key and (member.team=='blue' or member.team=='red') and not member.aid then
+            if key and (member.team=='blue' or member.team=='red') and not member.aid and not phaseBusy(target) then
                 local unit=units[key]
                 if not unit then
                     unit=inspect(target);units[key]=unit

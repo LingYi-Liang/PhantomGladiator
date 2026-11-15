@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Lock=require('lock_release')
+local Lock=arg[1] and dofile(arg[1]) or require('lock_release')
 local address=0
 local function object(name,fields)
     address=address+1;local a=address
@@ -7,7 +7,7 @@ local function object(name,fields)
     o.alive=true
     o.IsValid=function(self)return self.alive end
     o.GetAddress=function()return a end
-    o.GetFName=function()return {ToString=function()return name end}end
+    o.GetFName=function(self)assert(self.alive,'invalid UObject name access');return {ToString=function()return name end}end
     return o
 end
 local function fname(text)return {text=text,ToString=function(self)return self.text end} end
@@ -38,7 +38,7 @@ local function harness()
     return h
 end
 local tests=0
-local function test(name,fn)fn();tests=tests+1;print('ok - '..name) end
+local function test(name,fn)if not arg[2] or name:find(arg[2],1,true) then fn();tests=tests+1;print('ok - '..name) end end
 
 test('a lock on the boss nobody is sent at moves to the opponent, same part and socket, read back',function()
     local h=harness()
@@ -97,4 +97,47 @@ test('a call that fails or does not read back is counted as not taken',function(
     assert(h.lock:status().lock_failed==3)
 end)
 
+test('invalid destination components never reach the native setter',function()
+    local h=harness();local held,target=unit('Held'),unit('Target');h.aside[held]=true
+    local a,tc=fighter('A',held);target.Mesh.alive=false;target.RootComponent.alive=false
+    local changed=h.lock:release(a,target)
+    print('lock release invalid destination native_calls='..#tc.calls..' expected=0 result='..tostring(changed))
+    assert(not changed and #tc.calls==0 and h.lock:status().lock_failed==1)
+end)
+test('a missing mesh uses a verified root without inheriting the old mesh socket',function()
+    local h=harness();local held,target=unit('Held'),unit('Target');h.aside[held]=true
+    local a,tc=fighter('A',held,nil,fname('Head'));target.Mesh.alive=false
+    assert(h.lock:release(a,target))
+    assert(tc.calls[1][2].Component==target.RootComponent and tc.calls[1][2].SocketName.text=='None')
+end)
+test('readback failure is not proof that a lock was cleared',function()
+    for _,failure in ipairs({'lock','owner','owner_nil','component'})do
+        local h=harness();local held=unit('Held');h.aside[held]=true
+        local a,tc=fighter('A',held)
+        if failure=='lock' then
+            tc.StopLockTarget=function(self)
+                self.LockTarget=nil
+                setmetatable(self,{__index=function(_,k)if k=='LockTarget' then error('unreadable lock')end end})
+            end
+        elseif failure=='owner' then tc.StopLockTarget=function()held.Mesh.GetOwner=function()error('unreadable owner')end end
+        elseif failure=='owner_nil' then tc.StopLockTarget=function()held.Mesh.GetOwner=function()return nil end end
+        else tc.StopLockTarget=function(self)self.alive=false end end
+        local changed=h.lock:release(a,nil)
+        print('lock release readback='..failure..' result='..tostring(changed)..' expected=false')
+        assert(not changed and h.lock:status().lock_failed==1)
+    end
+end)
+test('a mesh owned by another actor is not passed as the new target component',function()
+    local h=harness();local held,target,other=unit('Held'),unit('Target'),unit('Other');h.aside[held]=true
+    local a,tc=fighter('A',held);target.Mesh=other.Mesh
+    assert(h.lock:release(a,target) and tc.calls[1][2].Component==target.RootComponent)
+end)
+test('logging never dereferences an actor destroyed by a native lock call',function()
+    local h=harness();local held,target=unit('Held'),unit('Target');h.aside[held]=true
+    local a,tc=fighter('A',held)
+    local original=tc.SetLockTarget
+    tc.SetLockTarget=function(self,lock)original(self,lock);a.alive=false end
+    local ok=pcall(function()h.lock:release(a,target)end)
+    assert(ok,'native calls can invalidate objects before the diagnostic log')
+end)
 print('lock_release: PASS ('..tests..' groups)')

@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Aim=require('player_aim')
+local Aim=arg[1] and assert(loadfile(arg[1]))() or require('player_aim')
 local address=0
 local function object(name,fields)
     address=address+1;local a=address
@@ -50,7 +50,7 @@ local function harness()
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
             opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
-            paused=function()return h.paused end})
+            paused=function()return h.paused end,phaseBusyKey=h.phaseBusyKey,phaseBusy=h.phaseBusy})
     end
     function h.all()return table.concat(h.lines,'\n')end
     return h
@@ -300,7 +300,7 @@ test('a selector not loaded yet is hooked once it is there',function()
     h.now=7;aim:tick();assert(h.hooks[Aim.paths.bullet]~=nil,'hooked on the next try')
 end)
 test('an effect that reads the player position by itself follows the opponent while its bullet runs',function()
-    local h=harness();local aim=h.new()
+    local h=harness();h.phaseBusyKey=function(k)return h.phaseOwner==k end;local aim=h.new()
     FName=function(text)return text end
     local blue,red=h.unit('blue'),h.unit('red')
     h.targets[key(blue)]=red;h.targets[key(red)]=blue
@@ -367,6 +367,14 @@ test('an effect that reads the player position by itself follows the opponent wh
     local again=bullet(blue,rain,2);list={again}
     launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}))
     loop();assert(again.ParticleComponent.sets.UE_UseTestTargetPos==true)
+    h.phaseOwner=key(blue);h.paused=true;loop()
+    assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false,'an existing owned override is released for the native pair, even during global pause')
+    while loop do loop()end
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}))
+    assert(loop==nil,'a busy phase cannot start a new particle redirect')
+    h.phaseOwner=nil;h.paused=false
+    launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}));loop()
+    assert(again.ParticleComponent.sets.UE_UseTestTargetPos==true)
     h.fighting=false;aim:tick();h.now=h.now+20;aim:tick()
     assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false and loop==nil and h.hooks[Aim.paths.launch]==nil)
     LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
@@ -405,7 +413,7 @@ test('a skill whose effect only reads the player position: the global value foll
     CancelDelayedAction=function()cancelled=cancelled+1;loop=nil end
     local aim=Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,members=function()return h.members end,fighting=function()return h.fighting end,
         statics=function()return h.statics end,opponentOf=function(k)return h.targets[k] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
-        world=function()return object('World') end,paused=function()return h.paused end})
+        world=function()return object('World') end,paused=function()return h.paused end,phaseBusyKey=function(k)return h.phaseOwner==k end})
     h.fighting=true;aim:tick()
     local start=h.hooks[Aim.paths.skillStart]
     assert(start,'hooked during a fight')
@@ -441,6 +449,11 @@ test('a skill whose effect only reads the player position: the global value foll
     assert(h.all():find('全局角色位置还原 招式=GA_LengTu_CA_02_C',1,true),h.all())
     first.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop();assert(loop==nil)
     start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
+    h.phaseOwner=key(blue);h.paused=true;value={R=5000,G=0,B=0,A=0.5};loop()
+    assert(loop==nil and value.R==5000,'an existing owner spoof retires without changing a native pair target')
+    start(skill('GA_MengHua_CA_03_C',blue));assert(loop==nil,'a native phase must not start a new global spoof')
+    h.paused=false;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil,'an unrelated owner keeps its effect')
+    h.phaseOwner=nil
     h.fighting=false;aim:tick();h.now=h.now+20;aim:tick();assert(loop==nil and h.hooks[Aim.paths.skillStart]==nil)
     StaticFindObject=real;LoopInGameThreadWithDelay,CancelDelayedAction=nil,nil
 end)
@@ -465,5 +478,92 @@ test('stands keep offensive aiming but are never accepted as bullet or lock targ
     local sword=object('BP_Bullet_ZuoShang_FlyingSword_C',{BulletOwnerAvatar=red,CurrentTarget={Component=stand.RootComponent}})
     h.hooks[Aim.paths.FlyingSwordStart](sword)
     assert(sword.CurrentTarget.Component==blue.RootComponent)
+end)
+test('native pair phases retain only their own player getters and target selectors',function()
+    FName=function(text)return {name=text}end
+    local h=harness();local blue,red=h.unit('blue'),h.unit('red');local busy=true
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local checks=0
+    h.phaseBusyKey=function(k)checks=checks+1;return busy and k==key(blue)end
+    local aim=h.new();h.fighting=true;aim:tick()
+    for _,a in ipairs({blue,red,h.player})do a.RootComponent=object('Capsule',{GetOwner=function()return a end})end
+    local blueSkill=object('GA_MoTian_Skill_08_C',{GetAvatarActorFromActorInfo=function()return blue end,['Lock Target']={Component=h.player.RootComponent}})
+    local redSkill=object('GA_MoTian_Skill_08_C',{GetAvatarActorFromActorInfo=function()return red end})
+    assert(h.ask('character',blueSkill)==h.player and h.askForce(blueSkill)==true,'the phase owner keeps its native player selection')
+    assert(h.ask('character',redSkill)==blue and h.askForce(redSkill)==false,'another fight participant keeps ordinary redirection')
+    local value={Component=h.player.RootComponent}
+    local out={type=function()return 'RemoteUnrealParam'end,get=function()return value end,set=function(_,v)value=v end}
+    h.hooks[Aim.paths.bullet](nil,blue,nil,blueSkill,nil,true,out)
+    h.hooks[Aim.paths.lock](blueSkill,nil,nil,out)
+    assert(value.Component==h.player.RootComponent and blueSkill['Lock Target'].Component==h.player.RootComponent)
+    local before=checks
+    h.ask('character',object('GA_MoTian_Skill_08_C',{GetAvatarActorFromActorInfo=function()return h.player end}))
+    assert(checks==before,'unowned contexts must not query the phase manager')
+    busy=false
+    assert(h.ask('character',blueSkill)==red and h.askForce(blueSkill)==false,'phase completion re-enables ordinary redirection')
+end)
+test('the optional actor-based phase guard uses only a live owned actor',function()
+    local h=harness();local blue,red=h.unit('blue'),h.unit('red');h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local asked
+    h.phaseBusy=function(actor)asked=actor;return actor==blue end
+    local aim=h.new();h.fighting=true;aim:tick()
+    local skill=object('GA_MoTian_Skill_08_C',{GetAvatarActorFromActorInfo=function()return blue end})
+    assert(h.ask('character',skill)==h.player and asked==blue)
+end)
+test('shutdown makes retained callbacks inert before invoking native unregistration',function()
+    local h=harness();local blue,red=h.unit('blue'),h.unit('red');h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local aim=h.new();h.fighting=true;aim:tick()
+    local skill=object('GA_MoTian_Skill_08_C',{GetAvatarActorFromActorInfo=function()return blue end})
+    local callback=h.hooks[Aim.paths.character];local original=UnregisterHook;local asked,redirected=0,0
+    assert(callback(nil,skill)==red,'the fixture must exercise a live redirect before shutdown')
+    UnregisterHook=function(...)
+        asked=asked+1;if callback(nil,skill)~=nil then redirected=redirected+1 end
+        return original(...)
+    end
+    aim:silence('fixture shutdown');assert(asked==8)
+    print('shutdown native callback redirects='..redirected)
+    assert(redirected==0,'shutdown cannot redirect through a reentrant native callback')
+    UnregisterHook=original
+end)
+test('loaded registration failures already follow lookup backoff',function()
+    local h=harness();local blue,red=h.unit('blue'),h.unit('red');h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local original=RegisterHook;local attempts=0
+    RegisterHook=function(path,...)
+        if path==Aim.paths.bullet then attempts=attempts+1;error('registration fixture')end
+        return original(path,...)
+    end
+    local aim=h.new();h.fighting=true
+    for i=0,1200 do h.now=i*0.05;aim:tick()end
+    print('registration failure 60seconds attempts='..attempts)
+    assert(attempts==6,'keep the existing exponential function-path backoff')
+    RegisterHook=original;aim:silence('fixture cleanup')
+end)
+test('throwing unregistration has a retry deadline',function()
+    local h=harness();local aim=h.new();local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue;h.fighting=true;aim:tick()
+    local original=UnregisterHook;local attempts=0
+    UnregisterHook=function()attempts=attempts+1;error('native retry fixture')end
+    h.fighting=false;aim:tick();h.now=16;aim:tick()
+    for i=1,19 do h.now=16+i*0.05;aim:tick()end
+    print('unregister throwing ticks=20 attempts='..attempts)
+    assert(attempts==8,'a native failure must not be retried every support tick')
+    UnregisterHook=original;aim:silence('fixture cleanup')
+end)
+test('failed unregistration is paced and its bookkeeping survives explicit false',function()
+    local h=harness();local aim=h.new();local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue;h.fighting=true;aim:tick()
+    local original=UnregisterHook;local attempts=0;local failure=true
+    UnregisterHook=function(...)
+        attempts=attempts+1
+        if failure then return false end
+        return original(...)
+    end
+    h.fighting=false;aim:tick();h.now=16;aim:tick()
+    for i=1,19 do h.now=16+i*0.05;aim:tick()end
+    print('unregister failed ticks=20 attempts='..attempts)
+    assert(attempts==8,'failed hooks must stay tracked and be attempted only once within one second')
+    failure=false;h.now=17.1;aim:tick();assert(attempts==16 and aim:status().state=='idle')
+    assert(next(h.hooks)==nil,'successful retry removes every retained native hook')
+    UnregisterHook=original
 end)
 print('player_aim: all tests passed')

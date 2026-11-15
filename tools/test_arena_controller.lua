@@ -1093,4 +1093,29 @@ if not arg[2] or arg[2]=='retry-bound' then
     assert(calls==before+1,'a recovered native assignment completes at most eight seconds later and is not restarted')
     print('PASS bounded persistent assignment retries and recovery')
 end
-print("arena_controller: PASS (spawn policy, loading gate, pending-cleanup gate, combat preflight, warning ownership, spacing, teams, caps, partial failures, cleanup retries, deferred destruction, unknown readbacks, escorts, stands, helpers of the other side, relay clock and slots, verified target assignment retries)")
+if not arg[2] or arg[2]=='native-phase' then
+    local now,busy,calls=0,{},{}
+    local function protected(name,actor)calls[#calls+1]={name,actor};return true end
+    local f=fixture({now=function()return now end,phaseBusy=function(actor)return busy[actor]==true end,
+        holdTarget=function(actor)return protected('hold',actor)end,releaseLock=function(actor)return protected('lock',actor)end,
+        unstick=function(actor)return protected('unstick',actor)end,holdMount=function(actor)return protected('mount',actor)end,
+        engage=function(actor)return protected('engage',actor)end,inCombat=function()return true end})
+    assert(f.arena:spawn(nil,'blue',2).ok and f.arena:spawn(nil,'red',1).ok)
+    local phaseActor=f.actors[1];busy[phaseActor]=true
+    local result=f.arena:start()
+    print('native phase start attack_requests='..tostring(result.attack_requests)..' expected=2')
+    assert(result.ok and result.attack_requests==2,'a native phase participant must not be forced or count as an attack failure')
+    f.arena:tickReinforcements();now=2;f.arena:tickReinforcements()
+    assert(not f.arena:reengage(tostring(phaseActor)) and not f.arena:holdSensed(tostring(phaseActor)))
+    for _,row in ipairs(calls)do assert(row[2]~=phaseActor,'native phase actor must retain its own targeting, lock and movement')end
+    local count=0;for _,row in ipairs(f.trace)do if type(row)=='table' and row[1]=='attack' and row[2]==phaseActor then count=count+1 end end
+    assert(count==0 and f.arena:status().blue_count==2 and f.arena:status().red_count==1,'phase preserves counts and other fighters')
+    busy[phaseActor]=false;now=2.1;f.arena:tickReinforcements()
+    count=0;for _,row in ipairs(f.trace)do if type(row)=='table' and row[1]=='attack' and row[2]==phaseActor then count=count+1 end end
+    assert(count==1,'a finished native phase resumes ordinary target assignment once')
+    for _=1,20 do f.arena:tickReinforcements()end
+    local after=0;for _,row in ipairs(f.trace)do if type(row)=='table' and row[1]=='attack' and row[2]==phaseActor then after=after+1 end end
+    assert(after==1)
+    print('PASS per-unit native-phase suspension and verified normal targeting resumption')
+end
+print("arena_controller: PASS (owned lifecycle, targeting retries, native-phase isolation and resumption)")
