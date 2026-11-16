@@ -108,6 +108,7 @@ class LocalAudio:
     def _import(self,task,source):
         target=self.root/(task['id']+'.wav');guard=None;committed=False
         try:
+            if not self._import_active(task):return
             # Remote paths and alternate streams are not opened by the import worker.
             if source.startswith(('\\\\','//'))or '\x00'in source or (os.name=='nt'and (not re.match(r'^[A-Za-z]:[\\/]',source)or ':'in source[2:])):raise ValueError('请选择本地磁盘上的音频文件')
             path=Path(source).resolve(strict=True)
@@ -115,6 +116,7 @@ class LocalAudio:
             with self.lock:referenced={r['asset']for r in self.mapping.values()}
             if self.player:referenced.add(getattr(self,'play_asset',''))
             for old in self.root.glob('*.wav'):
+                if not self._import_active(task):return
                 if old.stem not in referenced and ASSET.fullmatch(old.stem)and not old.is_symlink():
                     try:old.unlink()
                     except OSError:pass
@@ -124,8 +126,11 @@ class LocalAudio:
                   '-threads','1','-filter_threads','1','-protocol_whitelist','file,pipe','-probesize','5000000','-analyzeduration','5000000',
                   '-i',str(path),'-map','0:a:0','-vn','-sn','-dn','-map_metadata','-1','-threads','1','-ac','2','-ar','44100',
                   '-c:a','pcm_s16le','-t',str(MAX_SECONDS+1),'-fs',str(MAX_WAVE),'-y',str(target)]
+            if not self._import_active(task):return
             guard=self.child(args,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            with self.lock:self.convert=guard
+            with self.lock:
+                if not self._import_active(task):return
+                self.convert=guard
             try:code=guard.process.wait(timeout=45)
             except subprocess.TimeoutExpired:raise ValueError('音频处理超时，已停止；请尝试较短的文件')
             if code!=0 or not target.is_file()or target.stat().st_size>=MAX_WAVE:raise ValueError('无法解码该音频，已保留原配置')
@@ -149,8 +154,12 @@ class LocalAudio:
                 try:target.unlink(missing_ok=True)
                 except OSError:pass
 
+    def _import_active(self,task):
+        with self.lock:return not self.closed.is_set()and not task['cancel']and self.importing is task
+
     def _stop(self):
-        player=self.player;self.player=None;self.token='';self.source='';self.sent_volume=None;self.ack_state=''
+        with self.lock:
+            player=self.player;self.player=None;self.token='';self.source='';self.sent_volume=None;self.ack_state=''
         if player:player.close()
 
     def _log(self,text):
@@ -192,12 +201,26 @@ class LocalAudio:
             self._stop();asset=self.root/(mapping[unit]['asset']+'.wav')
             if asset.is_symlink()or not asset.is_file():self.failed.add(unit);self.message='本地曲目文件已丢失，已跳过';selected=False
             else:
+                candidate=None
                 try:
-                    self.player=self.child([str(self.tools/'LocalAudioPlayer.exe'),str(asset)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,memory=256<<20)
-                    self.token,self.source=token,unit;self.ack_at=self.clock();self.ack_state='opening';self.opened_at=self.clock();self.play_asset=mapping[unit]['asset']
-                    threading.Thread(target=self._listen,args=(self.player,),name='local-audio-readback',daemon=True).start()
+                    candidate=self.child([str(self.tools/'LocalAudioPlayer.exe'),str(asset)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,memory=256<<20)
+                    fresh=self.game_status();fv=fresh.get('values',{})
+                    with self.lock:
+                        row=self.mapping.get(unit)
+                        current=(not self.closed.is_set()and row and row['asset']==mapping[unit]['asset']and unit not in self.failed
+                            and fresh.get('ready')is True and fresh.get('game_session')==session
+                            and fresh.get('age_seconds')is not None and 0<=fresh['age_seconds']<=2.5
+                            and fv.get('battle_music_mode')=='LOCAL'and fv.get('battle_local_client')==self.client
+                            and fv.get('battle_local_token')==token and fv.get('battle_local_unit')==unit)
+                        if current:
+                            self.player=candidate;self.token,self.source=token,unit;self.ack_at=self.clock();self.ack_state='opening'
+                            self.opened_at=self.clock();self.play_asset=row['asset'];self.position=-1;self.progress_at=self.clock();volume=self.volume
+                            published=candidate;candidate=None
+                    if current:threading.Thread(target=self._listen,args=(published,),name='local-audio-readback',daemon=True).start()
                 except OSError:
                     self.failed.add(unit);self.message='独立播放器无法启动，已跳过本场曲目';self._stop();selected=False
+                finally:
+                    if candidate:candidate.close()
         if self.player:
             if self.player.process.poll()is not None or self.ack_state=='failed'or self.clock()-self.ack_at>2 or (self.ack_state=='opening'and self.clock()-self.opened_at>2)or (self.sent_volume is not None and self.clock()-self.progress_at>3):
                 self.failed.add(self.source);self.message='播放器未及时响应，已停止并交还原版';self._stop()
@@ -209,8 +232,9 @@ class LocalAudio:
                 elif v.get('battle_local_ready')!='true'and self.sent_volume is not None:self._stop()
         if available and not self.closed.is_set()and self.clock()>=self.next_link:
             self.next_link=self.clock()+1
-            ids=','.join(sorted(u for u in mapping if u not in self.failed))
-            prepared=self.token if self.player and self.ack_state in ('ready','playing')else '-'
+            with self.lock:
+                ids=','.join(sorted(u for u in self.mapping if u not in self.failed))
+                prepared=self.token if self.player and self.ack_state in ('ready','playing')else '-'
             if not TOKEN.fullmatch(session):return
             atomic(self.link,'LocalMusicLinkV1\t'+str(int(self.wall()))+'\t'+session+'\t'+self.client+'\t'+prepared+'\t'+ids+'\n',durable=False)
 

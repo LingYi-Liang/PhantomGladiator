@@ -3,12 +3,14 @@ import ctypes
 from ctypes import wintypes
 import os
 import subprocess
+import threading
 
 
 class Child:
     def __init__(self, args, *, stdin=None, stdout=None, stderr=None, memory=512 << 20):
         if os.name != 'nt':
             raise OSError('本地音频仅支持 Windows')
+        self._close_lock=threading.Lock();self._closed=False
         k = ctypes.WinDLL('kernel32', use_last_error=True)
         class Basic(ctypes.Structure):
             _fields_ = [('user', ctypes.c_int64), ('job', ctypes.c_int64), ('flags', wintypes.DWORD),
@@ -38,14 +40,17 @@ class Child:
             self.close();raise
 
     def close(self):
-        if self.job:
-            self.k.CloseHandle(self.job);self.job = None
-        if self.process:
-            if self.process.poll() is None:
-                self.process.kill()
-            try:self.process.wait(timeout=1)
-            except subprocess.TimeoutExpired:pass
-            for pipe in (self.process.stdin,self.process.stdout,self.process.stderr):
+        with self._close_lock:
+            if self._closed:return
+            self._closed=True;job=self.job;self.job=None;process=self.process
+        if job:self.k.CloseHandle(job)
+        if process:
+            if process.poll() is None:
+                try:process.kill()
+                except OSError:pass
+            try:process.wait(timeout=1)
+            except (OSError,subprocess.TimeoutExpired):pass
+            for pipe in (process.stdin,process.stdout,process.stderr):
                 if pipe:
                     try:pipe.close()
                     except OSError:pass

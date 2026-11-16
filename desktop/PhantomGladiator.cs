@@ -464,7 +464,16 @@ namespace PhantomGladiator
             process = Process.Start(psi);
             if (job != IntPtr.Zero) Native.AssignProcessToJobObject(job, process.Handle);
             var p = process;
-            DataReceivedEventHandler collect = (s, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
+            DataReceivedEventHandler collect = (s, e) => {
+                if(e.Data==null)return;
+                lock(sb) {
+                    const int capacity=65536;
+                    var text=e.Data.Length>capacity-2 ? e.Data.Substring(e.Data.Length-(capacity-2)) : e.Data;
+                    var overflow=sb.Length+text.Length+Environment.NewLine.Length-capacity;
+                    if(overflow>0)sb.Remove(0,overflow);
+                    sb.AppendLine(text);
+                }
+            };
             p.ErrorDataReceived += collect;
             p.OutputDataReceived += collect;
             p.BeginErrorReadLine();

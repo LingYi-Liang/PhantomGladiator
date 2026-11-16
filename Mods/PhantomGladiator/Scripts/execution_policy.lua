@@ -25,11 +25,11 @@ function Policy.new(o)
         local current={}
         for _,m in ipairs(members)do
             if(m.team=='blue'or m.team=='red')and not m.reserve and not m.stand and not m.aid then
-                local key,n=U.key(m.actor),name(m.actor)
-                if key and n then
+                local key=U.key(m.actor)
+                if key then
+                    local id=(m.class_path or''):match('([^/%.]+)$');if id then id=id:gsub('_C$','')end
                     local row=records[key]
-                    if not row or row.name~=n then row={name=n,decisions={}}end
-                    row.id=(m.class_path or''):match('([^/%.]+)$');if row.id then row.id=row.id:gsub('_C$','')end
+                    if not row or row.id~=id then row={id=id,decisions={}}end
                     row.actor=m.actor;row.team=m.team;current[key]=row
                 end
             end
@@ -39,7 +39,11 @@ function Policy.new(o)
     function self:allow(executor,target,isMob)
         if not isMob or not self.enabled then return true end
         local e,t=records[U.key(executor)or''],records[U.key(target)or'']
-        if not e or not t or e.team==t.team or e.name~=name(executor)or t.name~=name(target)then return false end
+        if not e or not t or e.team==t.team then return false end
+        local en,tn=name(executor),name(target)
+        if not en or not tn then return false end
+        if e.name~=en then e.name=en;e.boss=nil;e.decisions={}end
+        if t.name~=tn then t.name=tn;t.boss=nil;t.decisions={}end
         local setting=e.id and o.rule(e.id)or'on_100'
         if setting=='on_100'then return true end
         if e.boss==nil then e.boss=boss(executor)end
@@ -50,12 +54,12 @@ function Policy.new(o)
         if not percent or percent<0 or percent>100 then return false end
         if percent==0 then return false end
         local key=U.key(executor);local d=t.decisions[key]
-        if d and d.name==e.name and d.setting==setting then return d.allowed end
+        if d and d.name==e.name and d.id==e.id and d.setting==setting then return d.allowed end
         if self.draws>=4096 then return false end
         local ok,roll=pcall(random)
         if not ok or type(roll)~='number'or roll~=roll or roll<0 or roll>=1 then return false end
         local allowed=roll*100<percent
-        t.decisions[key]={name=e.name,setting=setting,allowed=allowed};self.draws=self.draws+1
+        t.decisions[key]={name=e.name,id=e.id,setting=setting,allowed=allowed};self.draws=self.draws+1
         if lines<40 then lines=lines+1;(o.log or function()end)('[ExecutionPolicy] 处决小怪抽签：源='..e.name..'；目标='..t.name..'；概率='..percent..'；读回='..tostring(allowed))end
         return allowed
     end
