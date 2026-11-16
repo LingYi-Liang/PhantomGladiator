@@ -53,6 +53,11 @@ local EFFECT_SKILLS={
 Aim.effectSkills=EFFECT_SKILLS
 Aim.paths.skillStart='/MagCombatAbilities/Abilities/BP_ActionAbilityBase_Simple.BP_ActionAbilityBase_Simple_C:K2_ActivateAbility'
 ORDER[#ORDER+1]='skillStart';LABEL.skillStart='私有特效'
+Aim.paths.iceSpawn=STATICS..'BeginDeferredActorSpawnFromClass'
+ORDER[#ORDER+1]='iceSpawn';LABEL.iceSpawn='冰柱施法归属'
+local ICE_CLASS='BP_QiShu_Bing_Icicle_C'
+local ICE_SPAWNERS={BP_QiShu_Bing_IcicleSpawner_C=true,BP_Qishu_Bing_SpawnIcicle_C=true}
+local ICE_CASTERS={BP_Monster_QiShu_Bing_C=true,BP_Monster_Scavenger_C=true,BP_Monster_Scavenger_P2_C=true}
 -- Attacks that aim at or lock onto the player (the call's world context is an object of the class or a subclass).
 local AIMS={}
 for _,name in ipairs({
@@ -69,6 +74,9 @@ for _,name in ipairs({
     'GA_XuKong_Skill_04_C',                                                               -- 虚空
     'GA_DangHui_SwitchSelf_C',                                                            -- 荡秽's swap dodge
     'GAA_ForceLockTarget_C',                                                              -- the shared "force lock target" action
+    'BP_YuBi_CA02_Arena_C',                                                              -- boundary actor and ASC cache
+    'BP_Bullet_LengTu_StickyWire_C',                                                     -- rope user skeletal-mesh target
+    'BP_QiShu_Bing_Icicle_C',                                                            -- in-range frost victim comparison and application
 })do AIMS[name]=true end
 Aim.aims=AIMS
 
@@ -114,7 +122,22 @@ function Aim.new(options)
     local function say(text)log('[PlayerAim] '..text)end
     local retry=Retry.new({clock=clock,log=say})
     local flyingWanted=false
+    local iceWanted=false
     local flyingClasses={}
+    local iceClasses={}
+    local function iceCaster(actor)
+        local leaf=className(actor)
+        if iceClasses[leaf]~=nil then return iceClasses[leaf]end
+        local got,cls=pcall(function()return actor:GetClass()end)
+        local found=false
+        for _=1,16 do
+            if not got or not U.valid(cls)then break end
+            local named,name=pcall(function()return cls:GetFName():ToString()end)
+            if named and ICE_CASTERS[name]then found=true;break end
+            got,cls=pcall(function()return cls:GetSuperStruct()end)
+        end
+        iceClasses[leaf]=found;return found
+    end
     local function flyingCaster(actor)
         local leaf=className(actor)
         if flyingClasses[leaf]~=nil then return flyingClasses[leaf] end
@@ -136,7 +159,8 @@ function Aim.new(options)
     -- be a shared template whose outer is its class), then the fields, then the outer.
     local function step(object)
         local cls=className(object)
-        local getter=(cls:find('^GAA?_') or cls:find('^LGAAction')) and (cls:find('^GA_') and 'GetAvatarActorFromActorInfo' or 'GetAvatarActor')
+        local getter=(cls:find('^GA_') or cls:find('^SubGA_')) and 'GetAvatarActorFromActorInfo'
+            or (cls:find('^GAA_') or cls:find('^GAAction_') or cls:find('^LGAAction')) and 'GetAvatarActor'
         if getter then
             local ok,avatar=pcall(function()return object[getter](object)end)
             avatar=ok and U.unwrap(avatar) or nil
@@ -197,6 +221,38 @@ function Aim.new(options)
     end
 
     function self:canRedirect(key)return self.alive and fighters[key]~=nil and not phaseBusy(key)end
+    local iceLines=0
+    local function iceSpawn(_,context,actorClass,_,_,ownerParam)
+        if not self.alive or not next(fighters) then return nil end
+        local spawner=U.unwrap(context)
+        if not ICE_SPAWNERS[className(spawner)] then return nil end
+        local cls=U.unwrap(actorClass)
+        if not U.valid(cls) then return nil end
+        local named,name=pcall(function()return cls:GetFName():ToString()end)
+        if not named or name~=ICE_CLASS or U.valid(U.unwrap(ownerParam)) then return nil end
+        local kind=U.kind(ownerParam)
+        if kind~='RemoteUnrealParam' and kind~='LocalUnrealParam' then return nil end
+        local source=unitOf(U.field(spawner,'Source Ability'))
+        if not source or phaseBusy(source) or options.paused and options.paused() then return nil end
+        local got,actor=pcall(function()return options.actorOf and options.actorOf(source)end)
+        local targeted,target=pcall(opponentOf,source)
+        if not got or U.key(actor)~=source or not targeted or not U.valid(target) then return nil end
+        if options.world then
+            local known,world=pcall(options.world)
+            if not known or not U.inWorld(spawner,world) or not U.inWorld(actor,world) then return nil end
+        end
+        local wrote=pcall(function()ownerParam:set(actor)end)
+        local good=U.key(U.unwrap(ownerParam))==source
+        if good then
+            self.redirected=self.redirected+1
+            self.counts.iceSpawn=self.counts.iceSpawn+1;self.window.iceSpawn=self.window.iceSpawn+1
+        end
+        if iceLines<8 then
+            iceLines=iceLines+1
+            say('冰柱延迟生成保留施法归属：源='..className(actor)..'；Owner参数写入='..tostring(wrote)..'；读回='..tostring(good))
+        end
+        return nil
+    end
     -- A caller outside the list that acts for a fighting unit keeps the player; it is named once in the log, so a skill
     -- that still goes for the player can be found. A few tries per class, since the first object may act for nobody.
     local unlistedTries,unlistedLines={},0
@@ -611,6 +667,7 @@ function Aim.new(options)
     -- A blueprint that is not loaded yet (a selector comes in with the first bullet data) is tried again while the fight runs.
     local function needed(name)
         return next(fighters)~=nil and not hooks[name] and (not FLYING[name] or flyingWanted)
+            and (name~='iceSpawn' or iceWanted)
     end
     local function register(name)
         if not needed(name) then return end
@@ -623,6 +680,7 @@ function Aim.new(options)
         end
         local handler=name=='force' and forced or name=='lock' and relock or (name=='bullet' or name=='bulletAbility') and retarget
             or name=='launch' and launched or name=='skillStart' and skillStarted
+            or name=='iceSpawn' and iceSpawn
             or FLYING[name] and function(context)
                 self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
                 return flight(FLYING[name],context)
@@ -666,6 +724,7 @@ function Aim.new(options)
         local now=clock()
         local units,current,added={},{},false
         flyingWanted=false
+        iceWanted=false
         local members=options.members()
         if options.prepareMembers then options.prepareMembers(members)end
         companions={}
@@ -683,11 +742,12 @@ function Aim.new(options)
                         local entry=roster[key]
                         if not identity or not entry or entry.name~=identity then
                             if not entry or identity and entry.name~=identity then added=true end
-                            entry={name=identity,flying=flyingCaster(member.actor)}
+                            entry={name=identity,flying=flyingCaster(member.actor),ice=iceCaster(member.actor)}
                         end
                         local caster=entry.flying
                         current[key]=entry
                         if caster then flyingWanted=true end
+                        if entry.ice then iceWanted=true end
                     end
                 end
             end
