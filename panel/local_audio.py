@@ -200,7 +200,7 @@ class LocalAudio:
         unit=v.get('battle_local_unit','');token=v.get('battle_local_token','')
         selected=available and v.get('battle_local_client')==self.client and unit in mapping and unit not in failed and TOKEN.fullmatch(token)
         if not selected:self._stop()
-        elif token!=self.token:
+        elif token!=self.token or mapping[unit]['asset']!=getattr(self,'play_asset',None):
             self._stop();asset=self.root/(mapping[unit]['asset']+'.wav')
             if asset.is_symlink()or not asset.is_file():self.failed.add(unit);self.message='本地曲目文件已丢失，已跳过';selected=False
             else:

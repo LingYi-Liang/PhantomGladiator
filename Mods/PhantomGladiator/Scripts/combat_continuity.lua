@@ -64,7 +64,7 @@ function Continuity.new(options)
     function self:beginTick(members,active)
         epoch=epoch+1
         samples={};local current={}
-        for _,m in ipairs(members or{})do
+        for _,m in ipairs(active and members or{})do
             if(m.team=='blue'or m.team=='red')and not m.stand and not m.reserve and not m.aid then
                 local key,n=U.key(m.actor),name(m.actor)
                 if key and n then current[key]={actor=m.actor,name=n,team=m.team}end

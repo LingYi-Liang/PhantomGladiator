@@ -1,6 +1,6 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 FName=setmetatable({},{__call=function(_,s)return s end})
-local Probe=require('grab_probe')
+local Probe=arg[1]and assert(loadfile(arg[1]))()or require('grab_probe')
 local serial=0
 local function object(name,fields)
     serial=serial+1;local address=serial
@@ -119,5 +119,17 @@ do
     assert(loaded.removed==2 and loaded.mod.alive==false)
     loaded.mod:tick()
     assert(not loaded.callback,'stays off')
+end
+do
+    local h=harness(true);h.members={{actor=object('Unit'),team='blue'}};h.mod:tick()
+    local reads=0;local target=unit('Target',{});local original=target.AbilitySystemComponent.GetGameplayTagCount
+    target.AbilitySystemComponent.GetGameplayTagCount=function(self,t)reads=reads+1;return original(self,t)end
+    local event,bullet=object('Event'),object('Bullet')
+    for _=1,100 do h.callback(event,bullet,{EventActor=target})end
+    local before=reads
+    for _=1,1000 do h.callback(event,bullet,{EventActor=target})end
+    h.now=5;h.mod:tick();h.now=6;h.mod:tick()
+    print('MEASURE exhausted grab diagnostic budget: further tag reads='..(reads-before))
+    assert(reads==before,'discarded diagnostic records must not keep querying actors or scheduling reports')
 end
 print('grab_probe: PASS')

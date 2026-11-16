@@ -55,6 +55,13 @@ class Tests(unittest.TestCase):
         self.service.configure({'action':'volume','volume':25})
         again=audio.LocalAudio(self.root/'runtime',self.root/'data',self.root/'tools',{'BOSS':'Boss'},self.game)
         self.assertEqual(again.volume,25);again.close()
+    def test_replacing_music_for_playing_boss_refreshes_the_asset(self):
+        self.mapped();self.service.tick();old=self.children[0];self.service.ack_state='ready'
+        asset='c'*32;(self.service.root/(asset+'.wav')).write_bytes(b'new fixture')
+        self.service._update(lambda m,v:({'BOSS':{'asset':asset,'name':'replacement.wav','seconds':1}},v))
+        self.service.tick()
+        self.assertTrue(old.closed);self.assertEqual(len(self.children),2)
+        self.assertTrue(self.children[1].args[-1].endswith(asset+'.wav'))
     def test_slow_configuration_io_does_not_hold_status_lock(self):
         entered=threading.Event();finish=threading.Event();original=audio.atomic
         def slow(*args,**kw):entered.set();finish.wait(1);return original(*args,**kw)

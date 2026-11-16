@@ -3547,6 +3547,21 @@
   });
 
   // ---------- Runtime events ----------
+  let jobPaint = null;
+  function queueJobPaint(action) {
+    if (!jobPaint) {
+      jobPaint = { dock: false, selection: false };
+      Promise.resolve().then(() => {
+        const pending = jobPaint;jobPaint = null;
+        renderTopbar();
+        if (dlg?.kind === "history") setDialog(historyHTML());
+        if (pending.dock && ui.page === "arena") renderDock();
+        if (pending.selection) renderSelection();
+      });
+    }
+    if (action === "toggle_spectator") jobPaint.dock = true;
+    if (action === "select_unit") jobPaint.selection = true;
+  }
   RT.subscribe(event => {
     switch (event.type) {
       case "game":
@@ -3585,10 +3600,8 @@
         toast({ kind: "info", title: t("toast.teamKey", { team: teamName(event.team) }), body: t("toast.teamKey.body") });
         break;
       case "job":
-        renderTopbar();
-        if (dlg?.kind === "history") setDialog(historyHTML());
-        if (event.job.action === "toggle_spectator" && ui.page === "arena") renderDock();
-        if (event.job.action === "select_unit") renderSelection();
+        // A status response may settle many jobs. Keep their receipts separate, but paint once before the next frame.
+        queueJobPaint(event.job.action);
         break;
       case "scan":
         if (ui.page === "settings") renderPage();

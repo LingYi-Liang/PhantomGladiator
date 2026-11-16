@@ -548,27 +548,31 @@ const RealRuntime = (() => {
     // Re-render only the parts whose data moved, so a 500 ms poll never resets what the player is doing.
     const sig = {
       topbar: [s.game, jobs.filter(j => j.status === "failed" || j.status === "uncertain").length],
-      sel: [s.game, s.cleanup, s.team, JSON.stringify(s.synced), s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
+      sel: [s.game, s.cleanup, s.team, s.synced, s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
-      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, JSON.stringify({ ...s.companionStats, values: undefined })],
-      match: [s.game, JSON.stringify({ ...s.statMatch, values: undefined })],
-      diff: [s.game, JSON.stringify(s.difficulty), s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
-      fun: [s.game, JSON.stringify(s.fun)],
-      battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, JSON.stringify([s.keys.start, s.keys.stop]),
+      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, { ...s.companionStats, values: undefined }],
+      match: [s.game, { ...s.statMatch, values: undefined }],
+      diff: [s.game, s.difficulty, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
+      fun: [s.game, s.fun],
+      battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, [s.keys.start, s.keys.stop],
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
-      view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, JSON.stringify(s.camSettings), JSON.stringify([s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next]), JSON.stringify(s.track), JSON.stringify(s.clockHud), JSON.stringify(s.executionCamera)],
-      keys: [s.game, JSON.stringify(s.keys), s.dismissKeySupported],
-      grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, JSON.stringify(s.unitRules)],
-      settings: [s.game, JSON.stringify(s.scan)],
-      battleMusic: [s.game, JSON.stringify(s.battleMusic), JSON.stringify(s.localAudio)],
-      summonQueue: [s.game, JSON.stringify(s.summonQueue)],
-      poolStatus: [JSON.stringify(s.poolStatus)],
+      view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
+      keys: [s.game, s.keys, s.dismissKeySupported],
+      grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
+      settings: [s.game, s.scan],
+      battleMusic: [s.game, s.battleMusic, s.localAudio],
+      summonQueue: [s.game, s.summonQueue],
+      poolStatus: [s.poolStatus],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
-    const parts = new Set(Object.keys(sig).filter(k => JSON.stringify(sig[k]) !== JSON.stringify(lastSig[k])));
-    lastSig = sig;
+    const parts = new Set();
+    for (const key of Object.keys(sig)) {
+      const value = JSON.stringify(sig[key]);
+      if (value !== lastSig[key]) parts.add(key);
+      lastSig[key] = value;
+    }
     if (parts.size) emit({ type: "state", parts });
   }
 

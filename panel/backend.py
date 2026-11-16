@@ -6,6 +6,7 @@ inbox.tsv and waits for the game's matching ack.tsv. No ACK means no success.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import io
 import importlib.util
@@ -370,6 +371,7 @@ class Bridge:
         self.lock = threading.RLock()
         self.disk_lock = threading.Lock()
         self.disk_cache = None
+        self.catalog_summary_cache = None
         self.transport_error = None
         database_path = self.runtime / "panel_queue.sqlite3"
         lock_path = self.runtime / "panel.lock"
@@ -386,6 +388,7 @@ class Bridge:
         if "game_session" not in {row[1] for row in self.db.execute("PRAGMA table_info(commands)")}:
             self.db.execute("ALTER TABLE commands ADD COLUMN game_session TEXT")
         self.db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS commands_state_id ON commands(state,id)")
         self.db.commit()
         self.transport_code = None
         self.summon_queue_scope = None
@@ -619,7 +622,7 @@ class Bridge:
                 'registry_crosscheck':report.get('registry_crosscheck'),
                 'files':[{k:v for k,v in r.items() if k!='search'} for r in selected[offset:offset+limit]]}
 
-    def catalog(self):
+    def catalog(self, game=None):
         all_catalog=False
         try:
             policy_settings=json.loads(bounded_read(self.validation_path,65536) or '{}')
@@ -628,7 +631,7 @@ class Bridge:
             pass
         final_path = self._path("catalog.tsv")
         partial_path = self._path("catalog.tsv.partial")
-        values = self.game_status().get("values", {})
+        values = (self.game_status() if game is None else game).get("values", {})
         shortcuts,shortcut_errors=self._unit_shortcuts(values.get('unit_keys_epoch',''))
         use_partial = False
         if partial_path.exists() and (values.get("catalog_state") == "scanning" or not final_path.exists()):
@@ -784,6 +787,32 @@ class Bridge:
                 'spawn_mode':'all_catalog' if all_catalog else 'validated',
                 'unit_shortcuts_supported':True,'unit_shortcut_errors':shortcut_errors,
                 'location_scope': '图鉴归属，不是全部出现地图或刷怪地点'}
+
+    def _catalog_summary(self, game):
+        # Only the display summary is cached. Spawn validation always reads the current full catalog.
+        names=('catalog.tsv','catalog.tsv.partial','codex.tsv','codex-locations.tsv','inventory-report.json','unit-evidence.json')
+        def fingerprint():
+            paths=[self._path(name)for name in names]+[self.validation_path]
+            parts=[]
+            for path in paths:
+                try:
+                    stat=path.stat()
+                    parts.append((str(path.resolve()),stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns,stat.st_ctime_ns))
+                except FileNotFoundError:parts.append((str(path),None))
+            values=game.get('values',{})
+            return tuple(parts)+(values.get('catalog_state'),values.get('catalog_started_at'))
+        key=fingerprint();now=time.monotonic();cached=self.catalog_summary_cache
+        if cached and cached[0]==key and now-cached[1]<5:
+            return copy.deepcopy(cached[2])
+        self.catalog_summary_cache=None
+        catalog=self.catalog(game)
+        summary={key:catalog.get(key,[])if key=='codex_errors'else catalog[key]
+                 for key in ('available','partial','total','errors','excluded_non_units','codex_errors')}
+        summary.update(primary_count=catalog.get('primary_count',0),mapped_count=catalog.get('mapped_count',0),
+                       location_errors=catalog.get('location_errors',[]),inventory_audit=catalog.get('inventory_audit',{}),
+                       inventory_errors=catalog.get('inventory_errors',[]),configured_count=catalog.get('configured_count',0))
+        if fingerprint()==key:self.catalog_summary_cache=(key,now,copy.deepcopy(summary))
+        return summary
 
     def game_status(self):
         try:
@@ -1111,6 +1140,10 @@ class Bridge:
 
     def _command(self, command_id):
         row = self.db.execute("SELECT * FROM commands WHERE id=?", (command_id,)).fetchone()
+        return self._command_row(row)
+
+    @staticmethod
+    def _command_row(row):
         if row is None:
             return None
         result = dict(row)
@@ -1364,8 +1397,8 @@ class Bridge:
             except (OSError, UnicodeError, ValueError, sqlite3.Error) as error:
                 self._problem("error", str(error))
 
-    def function_keybinds(self):
-        game=self.game_status();values=game.get('values',{})
+    def function_keybinds(self, game=None):
+        game=self.game_status()if game is None else game;values=game.get('values',{})
         bindings={name:{'key_code':0,'modifiers':0,'active':False,'message':''} for name in BINDING_NAMES}
         revision=0;errors=[]
         def read_keys(name):
@@ -1668,10 +1701,10 @@ class Bridge:
             result["error"] = str(error)
         return result
 
-    def keybinds(self):
+    def keybinds(self, game=None):
         with self.lock:
             row = self.db.execute("SELECT value FROM settings WHERE key='requested_keys'").fetchone()
-            values = self.game_status().get("values", {})
+            values = (self.game_status()if game is None else game).get("values", {})
             return {"requested": json.loads(row[0]) if row else None,
                     "active": {name: values.get("key_" + name) for name in BINDING_NAMES},
                     "message": "提交仅请求保存；实际生效键以游戏状态为准，可能需要 Restart All Mods。"}
@@ -1696,27 +1729,22 @@ class Bridge:
             raise ValidationError('invalid watched command ids')
         watch_ids = list(dict.fromkeys(watch_ids))
         with self.lock:
-            rows = self.db.execute("SELECT id FROM commands ORDER BY id DESC LIMIT 100").fetchall()
-            watched = self.db.execute('SELECT id FROM commands WHERE id IN (' + ','.join('?' for _ in watch_ids) + ') ORDER BY id', watch_ids).fetchall() if watch_ids else []
+            rows = self.db.execute("SELECT * FROM commands ORDER BY id DESC LIMIT 100").fetchall()
+            watched = self.db.execute('SELECT * FROM commands WHERE id IN (' + ','.join('?' for _ in watch_ids) + ') ORDER BY id', watch_ids).fetchall() if watch_ids else []
+            game = self.game_status()
             try:
-                catalog = self.catalog()
-                catalog_summary = {key: catalog.get(key, []) if key == "codex_errors" else catalog[key]
-                                   for key in ("available", "partial", "total", "errors", "excluded_non_units", "codex_errors")}
-                catalog_summary.update(primary_count=catalog.get('primary_count',0), mapped_count=catalog.get('mapped_count',0),
-                                       location_errors=catalog.get('location_errors',[]))
-                catalog_summary.update(inventory_audit=catalog.get('inventory_audit',{}),inventory_errors=catalog.get('inventory_errors',[]),configured_count=catalog.get('configured_count',0))
+                catalog_summary = self._catalog_summary(game)
             except (OSError, UnicodeError, ValueError) as error:
                 catalog_summary = {"available": False, "total": 0, "errors": [str(error)]}
-            keys = self.keybinds()
-            game = self.game_status()
+            keys = self.keybinds(game)
             summon_transit = self._summon_transit(game.get("game_session"), self._summon_epoch(game))
             return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": game,
                     "summon_queue_transit": summon_transit, "monster_pools": self._pool_status(game),
-                    "catalog": catalog_summary, "queue": [self._command(row[0]) for row in reversed(rows)],
+                    "catalog": catalog_summary, "queue": [self._command_row(row) for row in reversed(rows)],
                     "local_audio": self.local_audio.snapshot()if self.local_audio else {"supported":False},
-                    "watched_commands": [self._command(row[0]) for row in watched],
+                    "watched_commands": [self._command_row(row) for row in watched],
                     "keybinds": keys["active"], "requested_keybinds": keys["requested"],
-                    "function_keys": self.function_keybinds(),"function_keys_supported": True,
+                    "function_keys": self.function_keybinds(game),"function_keys_supported": True,
                     "allowed_keys": sorted(ALLOWED_KEYS), "transport_error": self.transport_error,
                     "transport_code": self.transport_code}
 

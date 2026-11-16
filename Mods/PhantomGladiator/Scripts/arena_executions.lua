@@ -851,6 +851,57 @@ local function closeOneGrab(pose,why,restore)
         end
         return asc,removed,read(actor,'Health_Min')
     end
+    -- Removing a final floor may succeed even when GE_Kill does not. Keep that narrow
+    -- completion request until health confirms death, with live identity and phase checks.
+    local function finalDeath(target,unit,t,mode,team)
+        local hp,floor,max=read(target,'Health'),read(target,'Health_Min'),read(target,'Health_Max')
+        local r=unit.finalDeath
+        local key=U.key(target)
+        local named,identity=call(target,'GetFullName')
+        local worldKey=options.getWorld and U.key(options.getWorld())or nil
+        local finite=function(n)return type(n)=='number'and n==n and n~=math.huge and n~=-math.huge end
+        if r and(not named or options.getWorld and not worldKey)then return nil end
+        if r and (r.key~=key or identity~=r.name or r.world~=worldKey)then
+            unit.finalDeath=nil;return nil
+        end
+        if not finite(hp)or not finite(floor)or max~=nil and(not finite(max)or max<0)then return nil end
+        max=max or 0
+        local ceiling=DEATH_LOCK*max+1
+        if r and (hp>r.limit or floor>ceiling)then unit.finalDeath=nil;return nil end
+        if r and hp<=0 then unit.finalDeath=nil;unit.state='done';self.kills=self.kills+1;return nil end
+        if hp<=0 or floor>ceiling then return nil end
+        if not r then
+            r={key=key,name=named and identity or nil,world=worldKey,limit=floor+1+floor*.01,nextAt=0,mode=mode,team=team}
+            unit.finalDeath=r
+        end
+        if t<r.nextAt then return nil end
+        r.nextAt=t+1
+        local asc,removed,after
+        if floor>0 then asc,removed,after=unlock(target,unit)
+        else asc,removed,after=ascOf(target),{},floor end
+        local currentHP=read(target,'Health')
+        if not finite(after)or after>ceiling or not finite(currentHP)or currentHP<=0 or currentHP>r.limit or phaseBusy(target)then return nil end
+        local ge=object(GE_KILL)
+        local checked,currentName=call(target,'GetFullName')
+        if U.key(target)~=r.key or r.name and(not checked or currentName~=r.name)
+            or options.getWorld and U.key(options.getWorld())~=r.world then return nil end
+        local stillMember=false
+        for _,member in ipairs(options.members()or{})do
+            if U.key(member.actor)==r.key and member.team==r.team and not member.stand
+                and not(r.mode=='stuck'and member.untargetable)then stillMember=true;break end
+        end
+        local liveHP,liveFloor=read(target,'Health'),read(target,'Health_Min')
+        if units[r.key]~=unit or not stillMember or not finite(liveHP)or liveHP<=0 or liveHP>r.limit
+            or not finite(liveFloor)or liveFloor>ceiling or phaseBusy(target)
+            or options.isImmortal and options.isImmortal(r.team)
+            or r.mode=='stuck'and options.fighting and not options.fighting()
+            or r.mode=='card'and options.killOnLock and not options.killOnLock(target)then return nil end
+        local applied,err=false,'没有 GE_Kill'
+        if ge then applied,err=call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{})end
+        local remaining=read(target,'Health')
+        if finite(remaining)and remaining<=0 then unit.finalDeath=nil;unit.state='done';self.kills=self.kills+1 end
+        return {removed=removed,after=after,applied=applied,err=err,hp=remaining}
+    end
     -- The prologue's grab can leave its final 4% floor active in the arena. Release only that effect after a stall.
     local function releasePrologueFloor(actor,unit,t)
         local hp,floor,max=read(actor,'Health'),read(actor,'Health_Min'),read(actor,'Health_Max')
@@ -1338,7 +1389,7 @@ local function closeOneGrab(pose,why,restore)
     end
     -- 打到死 (a unit's card, unit_rules.lua): a unit on its death lock dies there, without waiting for anyone. Any team: the
     -- same lock stops the player and the companions. The way a level script ends it (SpawnerToDieNS): the lock off, GE_Kill.
-    local function endLocks(members)
+    local function endLocks(members,t)
         if not options.killOnLock then return end
         for _,member in ipairs(members)do
             local target=member.actor
@@ -1347,16 +1398,13 @@ local function closeOneGrab(pose,why,restore)
                 local unit=units[key]
                 if not unit then unit=inspect(target);units[key]=unit end
                 local hp=read(target,'Health')
-                if unit.state~='done' and hp and hp>0 and onLock(target,unit,hp)
-                    and (read(target,'Health_Min') or 0)<=DEATH_LOCK*(read(target,'Health_Max') or 0)+1 then
-                    local asc,removed,after=unlock(target,unit)
-                    local ge=object(GE_KILL)
-                    local applied,err=false,'没有 GE_Kill'
-                    if ge then applied,err=call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{}) end
-                    if applied then self.kills=self.kills+1 end
-                    unit.state='done'
-                    say(string.format('到锁血线直接打死（卡面设置）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',className(target),table.concat(removed,' '),
-                        fmt(after),tostring(applied),applied and '' or '('..tostring(err)..')',fmt(read(target,'Health'))))
+                if unit.state~='done' and (unit.finalDeath or hp and hp>0 and onLock(target,unit,hp)
+                    and (read(target,'Health_Min') or 0)<=DEATH_LOCK*(read(target,'Health_Max') or 0)+1)then
+                    local result=finalDeath(target,unit,t,'card',member.team)
+                    if result then
+                        say(string.format('到锁血线直接打死（卡面设置）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',className(target),table.concat(result.removed,' '),
+                            fmt(result.after),tostring(result.applied),result.applied and '' or '('..tostring(result.err)..')',fmt(result.hp)))
+                    end
                 end
             end
         end
@@ -1369,7 +1417,7 @@ local function closeOneGrab(pose,why,restore)
         local present={}
         for _,member in ipairs(members)do
             local key=U.key(member.actor)
-            if key then present[key]=true end
+            if key then present[key]=member end
         end
         local foes=companionFoes(members)
         for _,foe in ipairs(foes)do present[foe.key]=true end
@@ -1377,6 +1425,9 @@ local function closeOneGrab(pose,why,restore)
             if not present[key] then
                 units[key]=nil
                 if not unit.foe then say('单位已离场，清除处决判断 读回=不在当前名单') end
+            elseif unit.finalDeath and unit.finalDeath.mode=='card'and options.killOnLock then
+                local member=present[key]
+                if type(member)=='table'and not options.killOnLock(member.actor)then unit.finalDeath=nil end
             end
         end
         for _,control in pairs(pendingGrabControls)do
@@ -1395,7 +1446,7 @@ local function closeOneGrab(pose,why,restore)
         if next(pendingBodies) then self.message='面部附着恢复待重试，请停止/清场';return end
         if active then watch();return end
         local t=now()
-        endLocks(members)
+        endLocks(members,t)
         if options.fighting and(policyFight==false or policyFight==nil and not options.fighting())then
             for _,unit in pairs(units) do unit.prologueSince=nil end
             considerFoes(foes,t);return
@@ -1424,7 +1475,7 @@ local function closeOneGrab(pose,why,restore)
                 end
                 if unit.state~='ready' and unit.state~='done' and not immortal then
                     local hp=read(target,'Health')
-                    if hp and hp>0 and onLock(target,unit,hp) then
+                    if unit.finalDeath or hp and hp>0 and onLock(target,unit,hp) then
                         if not unit.stuck then
                             unit.stuck=t
                             say(string.format('卡在锁血线，但它没有能用的处决动作，不处决（也不按倒下算）：%s HP=%s 底线=%s',className(target),fmt(hp),
@@ -1432,20 +1483,17 @@ local function closeOneGrab(pose,why,restore)
                         end
                         local floor=read(target,'Health_Min') or 0
                         if unit.boss and not member.untargetable and t-unit.stuck>=STUCK_SECONDS and floor<=DEATH_LOCK*(read(target,'Health_Max') or 0)+1 then
-                            local asc,removed,after=unlock(target,unit)
-                            local ge=object(GE_KILL)
-                            local applied,err=false,'没有 GE_Kill'
-                            if ge then applied,err=call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{}) end
-                            if applied then self.kills=self.kills+1 end
-                            unit.state='done'
-                            say(string.format('卡在锁血线 %d 秒，没有处决动作，按倒下收尾（%s）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',STUCK_SECONDS,unit.rank,className(target),
-                                table.concat(removed,' '),fmt(after),tostring(applied),applied and '' or '('..tostring(err)..')',fmt(read(target,'Health'))))
+                            local result=finalDeath(target,unit,t,'stuck',member.team)
+                            if result then
+                                say(string.format('卡在锁血线 %d 秒，没有处决动作，按倒下收尾（%s）%s：去锁血[%s] 读回底线=%s；GE_Kill=%s%s 读回HP=%s',STUCK_SECONDS,unit.rank,className(target),
+                                    table.concat(result.removed,' '),fmt(result.after),tostring(result.applied),result.applied and '' or '('..tostring(result.err)..')',fmt(result.hp)))
+                            end
                         end
                     else
                         unit.stuck=nil
                     end
                 end
-                if unit.state=='ready' and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
+                if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
             end
         end
         considerFoes(foes,t)

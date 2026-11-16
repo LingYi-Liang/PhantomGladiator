@@ -634,7 +634,10 @@ function Arena.new(options)
             end
             if held and not (fighting(held) and untargetable(held)) then held=nil end
             if unit.attackPending or not unit.assignedTarget or not targetable(unit_by_key(unit.assignedKey)) then
-                local target=leastAttacked(unit,active)
+                -- A failed request cannot be retried before its deadline. Only a protected held
+                -- opponent needs an earlier scan to distinguish waiting from switching targets.
+                local retryDue=not unit.attackRetryAt or now>=unit.attackRetryAt
+                local target=(retryDue or held)and leastAttacked(unit,active)or nil
                 if target and (not unit.attackRetryAt or now>=unit.attackRetryAt) then
                     if assign_target(unit,target,now) then
                         log('增援/换敌请求 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)..'；读回=true')

@@ -56,6 +56,7 @@ function Probe.new(options)
         return string.format('%.1fm',math.sqrt((pa.X-pb.X)^2+(pa.Y-pb.Y)^2+(pa.Z-pb.Z)^2)/100)
     end
     local function report(entry,label)
+        if lines>=LINES then return end
         local target,grabber=entry.target,entry.grabber
         say(string.format('%s 目标=%s 被抓标签=%s Executing=%s Dead=%s 蒙太奇=%s 施法方=%s 蒙太奇=%s 距离=%s',label,className(target),
             tag(target,'Ability.Executed'),tag(target,'CharacterState.HitReact.State.Executing'),tag(target,'CharacterState.Dead'),
@@ -63,7 +64,7 @@ function Probe.new(options)
     end
     -- After the function has run: the target's ability has been given and tried.
     local function onGrab(context,bullet,data)
-        if not self.alive then return nil end
+        if not self.alive or lines>=LINES then return nil end
         local event=U.unwrap(context)
         local target=U.struct(data,'EventActor')
         target=U.unwrap(target)
@@ -102,6 +103,7 @@ function Probe.new(options)
     end
     function self:tick()
         if not self.alive then return end
+        if lines>=LINES then pending={};return end
         if next(options.members() or {}) then install() else uninstall('场上没有单位') end
         local t=clock()
         for i=#pending,1,-1 do

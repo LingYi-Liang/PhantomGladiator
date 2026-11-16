@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-10"
+local BUILD = "v0.40.16-beta-11"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -2197,7 +2197,7 @@ local function supportSteps(self)
     local function step(name,fn)
         local t=os.clock();fn()
         local spent=(os.clock()-t)*1000
-        parts[#parts+1]=string.format('%s=%.1f',name,spent);costs[name]=spent
+        parts[#parts+1]=name;costs[name]=spent
     end
     step('menghuaPhase',function()self.menghuaPhase:tick()end)
     step('combatIntent',function()self.combatContinuity:beginTick(tickMembers,tickStatus.battle_active==true)end)
@@ -2259,6 +2259,7 @@ local function supportSteps(self)
     local total=(os.clock()-started)*1000
     if total>=SLOW_TICK_MS and slowTicks<60 then
         slowTicks=slowTicks+1
+        for i,name in ipairs(parts)do parts[i]=string.format('%s=%.1f',name,costs[name])end
         log(string.format('[Perf] 支持循环耗时 %.1fms：%s',total,table.concat(parts,' ')))
     end
     supportMeter:add(total,started,costs)
