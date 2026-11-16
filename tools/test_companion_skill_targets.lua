@@ -71,6 +71,22 @@ if not only or only=='subga'then test('shared SubGA abilities resolve their live
     assert(forced()==false,'a SubGA companion spell must reach the forced-player guard')
     avatar=h.player;assert(forced()==true,'a shared SubGA handed to the real player stays native')
 end)end
+if not only or only=='horse_warning'then test('the catalog horse-cart HookMan warning follows the enemy instead of the player',function()
+    local h=fixture()
+    local native=object('Native');native.GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC'end
+    local cls=object('Class');cls.GetFullName=function()return 'BlueprintGeneratedClass /Test/Enemy.Enemy_C'end
+    cls.GetSuperStruct=function()return native end;h.enemy.GetClass=function()return cls end
+    local skill=object('GA_HookMan_HorseCart_Skill_06_C')
+    local avatar=h.actor
+    local warning=object('GAAction_ParticleOnPlayer_C',{GetAbility=function()return skill end,GetAvatarActor=function()return avatar end})
+    local function target()
+        local answer=h.hooks[Aim.paths.pawn](nil,warning,0)
+        if answer~=nil then return answer end
+        return h.player
+    end
+    assert(target()==h.enemy,'the second offensive ParticleOnPlayer user must not be excluded')
+    avatar=h.player;assert(target()==h.player,'player warning actions remain native')
+end)end
 if not only then
 test('native map pillars and existing owners are never reassigned',function()
     local h=fixture();local ability=object('GA_Test_C',{GetAvatarActorFromActorInfo=function()return h.actor end})

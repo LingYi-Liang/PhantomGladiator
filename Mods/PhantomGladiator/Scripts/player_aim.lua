@@ -58,6 +58,7 @@ ORDER[#ORDER+1]='iceSpawn';LABEL.iceSpawn='冰柱施法归属'
 local ICE_CLASS='BP_QiShu_Bing_Icicle_C'
 local ICE_SPAWNERS={BP_QiShu_Bing_IcicleSpawner_C=true,BP_Qishu_Bing_SpawnIcicle_C=true}
 local ICE_CASTERS={BP_Monster_QiShu_Bing_C=true,BP_Monster_Scavenger_C=true,BP_Monster_Scavenger_P2_C=true}
+local WARNING_SKILLS={GA_MBoss_Skill_02_C4_C=true,GA_HookMan_HorseCart_Skill_06_C=true}
 -- Attacks that aim at or lock onto the player (the call's world context is an object of the class or a subclass).
 local AIMS={}
 for _,name in ipairs({
@@ -274,10 +275,10 @@ function Aim.new(options)
             local unit
             local warning=name=='pawn' and cls=='GAAction_ParticleOnPlayer_C'
             if warning then
-                -- This action is shared. Only the guillotine warning uses the arena opponent.
+                -- This shared action is redirected only for inspected offensive telegraphs.
                 local got,ability=pcall(function()return object:GetAbility()end)
                 ability=got and U.unwrap(ability) or nil
-                if not U.valid(ability) or className(ability)~='GA_MBoss_Skill_02_C4_C' then return nil end
+                if not U.valid(ability) or not WARNING_SKILLS[className(ability)] then return nil end
                 local found,avatar=pcall(function()return object:GetAvatarActor()end)
                 local key=found and U.key(U.unwrap(avatar))
                 if key and fighters[key]==true then unit=key end
