@@ -35,7 +35,7 @@ local DEPTH=8
 local STEPS={'Pawn','BulletOwnerAvatar','Owner','Instigator','Source Ability'}
 local UNLISTED_LINES,BULLET_LINES,FLIGHT_LINES,FLIGHT_PER_KIND=40,60,240,3
 -- Particle bullets that aim through their effect: bullet data -> the effect's user switch and position.
-local EFFECT_AIMS={BD_ZuoShang_Skill_19={use='UE_UseTestTargetPos',pos='UE_TestTargetPos'}}
+local EFFECT_AIMS={BD_ZuoShang_Skill_19={use='UE_UseTestTargetPos',pos='UE_TestTargetPos',system='NS_ZuoShang_SwordShooting_001'}}
 Aim.effectAims=EFFECT_AIMS
 Aim.paths.launch='/PBZDeflectSystem/Actions/GAA_DelayDeflectProjectileBullet.GAA_DelayDeflectProjectileBullet_C:Go go go'
 ORDER[#ORDER+1]='launch';LABEL.launch='特效目标'
@@ -101,6 +101,7 @@ function Aim.new(options)
     local hooks={}
     local fighters={}     -- owned arena fighters and companions; stand sources cannot be targets
     local companions={}
+    local teams={}
     local roster={}    -- unit address -> full object identity and flying-weapon capability
     local seenLines,lines={},0
     local quietSince,summaryAt,passedWindow=nil,nil,0
@@ -192,6 +193,9 @@ function Aim.new(options)
     local function opponentOf(key)
         if companions[key] then return options.companionTargetOf(companions[key])end
         return options.opponentOf(key)
+    end
+    local function sameTeam(source,target)
+        return source==target or teams[source]~=nil and teams[source]==teams[target]
     end
     function self:ownerOf(object)return unitOf(object)end
     function self:hasSources()return self.alive and next(fighters)~=nil end
@@ -384,9 +388,10 @@ function Aim.new(options)
         local okOwner,owner=pcall(function()return comp:GetOwner()end)
         if not okOwner or not U.valid(owner) then return nil end
         local onStand=fighters[U.key(owner)]=='stand'
-        if not onStand and not isPlayer(owner) then return nil end
         local unit=unitOf(ability)
         if not unit or phaseBusy(unit) or (options.paused and options.paused()) then return nil end
+        local onAlly=sameTeam(unit,U.key(owner))
+        if not onStand and not onAlly and not isPlayer(owner) then return nil end
         local okTarget,target=pcall(opponentOf,unit)
         if not okTarget or not U.valid(target) then return nil end
         local root=U.field(target,'RootComponent')
@@ -399,7 +404,7 @@ function Aim.new(options)
         if (lockLines[where] or 0)<2 then
             lockLines[where]=(lockLines[where] or 0)+1
             local back=U.field(ability,'Lock Target')
-            say(string.format('招式的锁定落在%s，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',onStand and '替身' or '玩家',where,className(target),tostring(okSet),tostring(okOut),
+            say(string.format('招式的锁定落在%s，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',onStand and '替身' or onAlly and '友方' or '玩家',where,className(target),tostring(okSet),tostring(okOut),
                 addr(back and U.struct(back,'Component'))==addr(root) and '生效' or '没生效',self.counts.lock))
         end
         return nil
@@ -427,7 +432,7 @@ function Aim.new(options)
             local okOwner,hit=pcall(function()return comp:GetOwner()end)
             if okOwner and U.valid(hit) then
                 had=className(hit)
-                if fighters[U.key(hit)]==true then
+                if fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit)) then
                     local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
                     if not bulletSeen['ok'..where] and bulletLines<BULLET_LINES then
                         bulletSeen['ok'..where]=true;bulletLines=bulletLines+1
@@ -454,6 +459,7 @@ function Aim.new(options)
     -- Once a flying weapon starts: a target that is not a fighting unit becomes the opponent, on the bullet itself. When it
     -- ends: where it is against the player, its target and its caster, which says what it really flew at.
     local function place(actor)
+        if not U.valid(actor) then return nil end
         local ok,at=pcall(function()return actor:K2_GetActorLocation()end)
         return ok and at or nil
     end
@@ -482,7 +488,7 @@ function Aim.new(options)
         target=okTarget and U.valid(target) and target or nil
         local _,hit=holderOf(bullet)
         local note=''
-        if kind=='start' and target and not (hit and fighters[U.key(hit)]==true) and not (options.paused and options.paused()) then
+        if kind=='start' and target and not (hit and fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit))) and not (options.paused and options.paused()) then
             local root=U.field(target,'RootComponent')
             if U.valid(root) then
                 local had=hit and className(hit) or '空'
@@ -528,12 +534,34 @@ function Aim.new(options)
     end
 
     local effects,effectLoop,effectScans={},nil,0   -- bullet address -> what is being aimed; the fast loop runs only while one flies
+    local effectGeneration,effectCancelAt=0,0
     local function nameOf(object)
+        if not U.valid(object) then return '?'end
         local ok,name=pcall(function()return object:GetFName():ToString()end)
         return ok and type(name)=='string' and name or '?'
     end
     local function stopEffectLoop()
-        if effectLoop then pcall(CancelDelayedAction,effectLoop);effectLoop=nil end
+        if not effectLoop or clock()<effectCancelAt then return end
+        effectCancelAt=clock()+1
+        local ok,result=pcall(CancelDelayedAction,effectLoop)
+        if ok and result~=false then effectLoop=nil;effectGeneration=effectGeneration+1;effectCancelAt=0 end
+    end
+    local function objectName(object)
+        if not U.valid(object)then return nil end
+        local ok,name=pcall(function()return object:GetFullName()end)
+        return ok and type(name)=='string'and name or nil
+    end
+    local function particleComponent(bullet,spec)
+        local comp=U.field(bullet,'ParticleComponent')
+        if not U.valid(comp)then return nil end
+        local got,owner=pcall(function()return comp:GetOwner()end)
+        local asset=U.field(comp,'Asset')
+        if not got or U.key(owner)~=U.key(bullet)or not U.valid(asset)or nameOf(asset)~=spec.system then return nil end
+        return comp,asset
+    end
+    local function setVariable(comp,method,name,value)
+        if not U.valid(comp)then return false end
+        return pcall(function()comp[method](comp,FName(name),value)end)
     end
     local function statusOf(bullet)
         return U.valid(bullet) and U.unwrap(U.field(bullet,'BulletStatus')) or nil
@@ -550,9 +578,11 @@ function Aim.new(options)
                     local ownerKey=U.valid(owner) and U.key(owner)
                     local data=U.field(bullet,'BulletData')
                     local dataName=U.valid(data) and nameOf(data) or nil
-                    local comp=U.field(bullet,'ParticleComponent')
-                    if ownerKey and fighters[ownerKey] and not phaseBusy(ownerKey) and dataName and EFFECT_AIMS[dataName] and U.valid(comp) then
-                        effects[key]={bullet=bullet,comp=comp,owner=ownerKey,data=dataName,spec=EFFECT_AIMS[dataName],since=clock(),writes=0}
+                    local spec=dataName and EFFECT_AIMS[dataName]
+                    local comp,asset
+                    if spec then comp,asset=particleComponent(bullet,spec)end
+                    if ownerKey and fighters[ownerKey] and not phaseBusy(ownerKey) and comp then
+                        effects[key]={bullet=bullet,bulletKey=key,comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0}
                     end
                 end
             end
@@ -570,12 +600,13 @@ function Aim.new(options)
         local dataName=U.valid(data) and nameOf(data) or nil
         if not key or not fighters[key] or not EFFECT_AIMS[dataName] then return false end
         if phaseBusy(key) then return false end
-        local comp=U.field(item.bullet,'ParticleComponent')
-        if not U.valid(comp) then return end
+        local comp,asset=particleComponent(item.bullet,EFFECT_AIMS[dataName])
+        if not comp then return false end
         -- Pooled bullets can change owner or component while their previous wrappers still look valid.
         if item.owner~=key or item.data~=dataName or addr(item.comp)~=addr(comp) then
             if addr(item.comp)~=addr(comp) then releaseEffect(item) end
             item.owner,item.data,item.spec,item.comp=key,dataName,EFFECT_AIMS[dataName],comp
+            item.asset,item.compName=U.key(asset),objectName(comp)
             item.switched=nil;item.since=clock();item.writes=0
             sayEffect('刷新特效归属 读回施法者='..key..' 组件='..tostring(addr(comp))..' 数据='..dataName)
         end
@@ -583,14 +614,15 @@ function Aim.new(options)
         if not okTarget or not U.valid(target) then return end
         local at=place(target)
         local okRead,x,y,z=pcall(function()return at.X,at.Y,at.Z end)
-        if not okRead or type(x)~='number' then return end
+        local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
+        if not okRead or not finite(x)or not finite(y)or not finite(z)then return end
         local spot={X=x,Y=y,Z=z}
         -- Which of the two the effect declared cannot be read offline; setting the other only adds an unused value.
-        local okPosition=pcall(function()item.comp:SetVariablePosition(FName(item.spec.pos),spot)end)
-        local okVector=pcall(function()item.comp:SetVariableVec3(FName(item.spec.pos),spot)end)
+        local okPosition=setVariable(item.comp,'SetVariablePosition',item.spec.pos,spot)
+        local okVector=setVariable(item.comp,'SetVariableVec3',item.spec.pos,spot)
         item.writes=item.writes+1
         if not item.switched then
-            local okUse=pcall(function()item.comp:SetVariableBool(FName(item.spec.use),true)end)
+            local okUse=setVariable(item.comp,'SetVariableBool',item.spec.use,true)
             item.switched=okUse
             self.redirected=self.redirected+1
             self.counts.launch=self.counts.launch+1;self.window.launch=self.window.launch+1
@@ -603,7 +635,14 @@ function Aim.new(options)
         end
     end
     releaseEffect=function(item)
-        local ok=U.valid(item.comp) and pcall(function()item.comp:SetVariableBool(FName(item.spec.use),false)end)
+        local ok=false
+        if U.valid(item.comp)and objectName(item.comp)==item.compName then
+            local got,owner=pcall(function()return item.comp:GetOwner()end)
+            local asset=U.field(item.comp,'Asset')
+            if got and U.key(owner)==item.bulletKey and U.key(asset)==item.asset and nameOf(asset)==item.spec.system then
+                ok=setVariable(item.comp,'SetVariableBool',item.spec.use,false)
+            end
+        end
         sayEffect(string.format('特效目标还原 子弹=%s 跟随对手写入=%d次 关开关=%s',item.data,item.writes,tostring(ok==true)))
     end
     local function effectTick()
@@ -631,8 +670,12 @@ function Aim.new(options)
         if not unit or phaseBusy(unit) then return nil end
         effectScans=EFFECT_SCANS
         if not effectLoop then
-            local ok,handle=pcall(LoopInGameThreadWithDelay,EFFECT_MS,effectTick)
-            if ok then effectLoop=handle else say('特效目标循环启动失败：'..tostring(handle)) end
+            effectGeneration=effectGeneration+1;local generation=effectGeneration
+            local ok,handle=pcall(LoopInGameThreadWithDelay,EFFECT_MS,function()
+                if generation==effectGeneration and self.alive then effectTick()end
+            end)
+            if ok and handle~=nil and handle~=false then effectLoop=handle
+            else effectGeneration=effectGeneration+1;say('特效目标循环启动失败：'..tostring(handle)) end
         end
         return nil
     end
@@ -729,6 +772,7 @@ function Aim.new(options)
         local members=options.members()
         if options.prepareMembers then options.prepareMembers(members)end
         companions={}
+        teams={}
         local fighting=options.fighting()
             for _,member in ipairs(members)do
                 local companion=member.team=='companion' and type(options.companionTargetOf)=='function'
@@ -737,6 +781,7 @@ function Aim.new(options)
                     -- A stand can cast a skill, but cannot be the opponent a skill aims at.
                     if key then
                         units[key]=member.stand and 'stand' or true
+                        teams[key]=member.team
                         if companion and not member.stand then companions[key]=member.actor end
                         local named,identity=pcall(function()return member.actor:GetFullName()end)
                         identity=named and type(identity)=='string'and identity or nil

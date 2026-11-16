@@ -52,6 +52,7 @@ function Effects.new(options)
     local register,unregister=options.register or RegisterHook,options.unregister or UnregisterHook
     local groups,records,hooks,failAt={},{},{},{}
     local serial,frame,armedUntil,nextScan,loop,internal=0,0,0,0,nil,0
+    local loopGeneration,cancelAt=0,0
     local nextHook=0
     local messages={}
     local messageKeys,messageAt={},0
@@ -175,11 +176,11 @@ function Effects.new(options)
         return value
     end
     local function updateGroup(group,key)
+        if group.frame==frame then return true end
         local currentWorld=world()
         if not currentWorld or group.world~=U.key(currentWorld)or not U.inWorld(group.actor,currentWorld)then return false end
-        if group.frame==frame then return true end
         local target=options.targetOf(key)
-        if not U.valid(target)then return false end
+        if not U.valid(target)or not U.inWorld(target,currentWorld)then return false end
         local spot=at(target)
         if not spot then return false end
         local wrote=call(group.collection,'SetColorParameter','CharRootPos',spot)
@@ -193,10 +194,19 @@ function Effects.new(options)
         if U.key(U.field(item.comp,'Asset'))~=U.key(item.copy)then return true end
         local currentWorld=world()
         if not currentWorld or item.world~=U.key(currentWorld) or not U.inWorld(item.comp,currentWorld)then return true end
-        local _,active=call(item.comp,'IsActive')
+        if clock()<(item.restoreAt or 0)then return false end
+        item.restoreAt=clock()+1
+        -- Retiring a system must not start its original, player-targeting attack again.
+        local stopped=mutate(item.comp,'Deactivate')
+        local checked,active=call(item.comp,'IsActive')
+        if not stopped or not checked or active~=false then
+            log('stop:'..tostring(U.key(item.comp)),'特效停止未确认（'..reason..'），暂不切回原资产')
+            return false
+        end
+        if U.key(U.field(item.comp,'Asset'))~=U.key(item.copy)then return true end
         local changed=mutate(item.comp,'SetAsset',item.original,false)
         local good=U.key(U.field(item.comp,'Asset'))==U.key(item.original)
-        if good and (active==true or reactivate==true)then mutate(item.comp,'Activate',true)end
+        if good and reactivate==true and own(item.comp)==item.key and allowed(item.key)then mutate(item.comp,'Activate',true)end
         log('restore:'..tostring(U.key(item.comp)),'还原特效资产（'..reason..'）：调用='..tostring(changed)..'；读回='..tostring(good))
         return good
     end
@@ -215,7 +225,7 @@ function Effects.new(options)
             log('failed:'..stamp,'私有特效目标准备未确认：'..tostring(problem or '当前敌人或坐标读回失败')..'；源='..tostring(name(actor))..'；系统='..tostring(name(original))..'；未写世界玩家坐标')
             return nil
         end
-        return {comp=comp,key=key,actor=actor,actorName=name(actor),original=original,copy=asset,group=group,world=U.key(currentWorld),since=clock()}
+        return {comp=comp,key=key,actor=actor,actorName=name(actor),original=original,copy=asset,group=group,world=U.key(currentWorld),since=clock(),stamp=stamp}
     end
     local function ensure(comp,key,original)
         local id=U.key(comp);if not id then return end
@@ -228,6 +238,8 @@ function Effects.new(options)
         if not known or type(active)~='boolean'then return end
         records[id]=item
         if not mutate(comp,'SetAsset',item.copy,false)or U.key(U.field(comp,'Asset'))~=U.key(item.copy)then
+            failAt[item.stamp]=clock()+5;self.failed=self.failed+1
+            item.recover='绑定未确认';item.reactivate=active
             if restore(item,'绑定未确认',active)then records[id]=nil end
             return
         end
@@ -235,7 +247,12 @@ function Effects.new(options)
             local read,running=call(comp,'IsActive')
             if not read or not running then mutate(comp,'Activate',true)end
             local checked,playing=call(comp,'IsActive')
-            if not checked or playing~=true then if restore(item,'副本未运行',true)then records[id]=nil end;return end
+            if not checked or playing~=true then
+                failAt[item.stamp]=clock()+5;self.failed=self.failed+1
+                item.recover='副本未运行';item.reactivate=true
+                if restore(item,'副本未运行',true)then records[id]=nil end
+                return
+            end
         end
         records[id]=item;self.changed=self.changed+1
         log('bind:'..id,'隔离特效目标：源='..tostring(item.actorName)..'；系统='..tostring(short(original))..'；组件资产读回=true；世界玩家参数不写入')
@@ -257,7 +274,10 @@ function Effects.new(options)
         end
     end
     local function stopLoop()
-        if loop then local ok,result=pcall(options.cancel or CancelDelayedAction,loop);if ok and result~=false then loop=nil end end
+        if not loop or clock()<cancelAt then return end
+        cancelAt=clock()+1
+        local ok,result=pcall(options.cancel or CancelDelayedAction,loop)
+        if ok and result~=false then loop=nil;loopGeneration=loopGeneration+1;cancelAt=0 end
     end
     local function run()
         if not self.alive or not thread()then return end
@@ -270,6 +290,8 @@ function Effects.new(options)
             local status=U.field(bullet,'BulletStatus')
             local ended=status~=nil and status~=1 and status~=2 or clock()-item.since>LIMIT_SECONDS
             if not U.valid(item.comp)or U.key(U.field(item.comp,'Asset'))~=U.key(item.copy)then records[id]=nil
+            elseif item.recover then
+                if restore(item,item.recover,item.reactivate)then records[id]=nil end
             elseif key~=item.key or not allowed(key)or name(item.actor)~=item.actorName or ended then
                 if restore(item,'结束或移交')then records[id]=nil end
             elseif not options.paused or not options.paused()then updateGroup(item.group,key)end
@@ -278,8 +300,12 @@ function Effects.new(options)
     end
     local function startLoop()
         if loop then return end
-        local ok,handle=pcall(options.loop or LoopInGameThreadWithDelay,50,run)
-        if ok and handle~=nil then loop=handle else log('loop','特效隔离循环注册未确认')end
+        loopGeneration=loopGeneration+1;local generation=loopGeneration
+        local ok,handle=pcall(options.loop or LoopInGameThreadWithDelay,50,function()
+            if generation==loopGeneration and self.alive then run()end
+        end)
+        if ok and handle~=nil and handle~=false then loop=handle
+        else loopGeneration=loopGeneration+1;log('loop','特效隔离循环注册未确认')end
     end
     function self:arm()
         if not self.alive or not thread()then return end
@@ -295,12 +321,17 @@ function Effects.new(options)
                     if found and U.valid(fn)then
                         local ok,a,b=pcall(register,path,function(context,asset)
                             if not self.alive or internal>0 or not thread()or not options.active()and not next(records)then return end
+                            if kind=='activate'and clock()>=armedUntil and not next(records)then return end
                             local comp=U.unwrap(context);local id=U.key(comp)
                             if not id then return end
                             local original=kind=='asset'and U.unwrap(asset)or U.field(comp,'Asset')
                             if not records[id]and(not U.valid(original)or not Effects.systems[short(original)])then return end
                             local old=records[id];local source=own(comp)
-                            if old and source~=old.key then if restore(old,'激活前归属变化')then records[id]=nil end end
+                            if old and source~=old.key then
+                                if not restore(old,'激活前归属变化')then return end
+                                records[id]=nil
+                                if kind=='activate'then original=U.field(comp,'Asset')end
+                            end
                             if kind=='asset' and allowed(source)then
                                 if U.valid(original)and Effects.systems[short(original)]then self:arm()end
                             elseif kind=='activate'and allowed(source)then

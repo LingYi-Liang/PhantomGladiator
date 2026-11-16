@@ -59,6 +59,7 @@ local function harness()
 end
 local function key(actor)return tostring(actor.GetAddress())end
 local function test(name,fn)fn();print('ok - '..name)end
+if arg[2]=='fixture'then return harness,object,key end
 
 
 local only=arg[2]

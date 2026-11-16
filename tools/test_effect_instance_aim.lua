@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Effects=require('effect_instance_aim')
+local Effects=arg[1]and assert(loadfile(arg[1]))()or require('effect_instance_aim')
 local U=require('ue_observe')
 FName=function(text)return text end
 local serial=0
@@ -61,7 +61,9 @@ local function fixture()
             if not h.rejectAsset then self.Asset=value end
             if h.deactivateOnSet then self.active=false end
         end
+        function c:Deactivate()self.active=false;h.deactivations=(h.deactivations or 0)+1 end
         function c:Activate()
+            h.activations=(h.activations or 0)+1
             assert(h.thread);self.active=not h.badActivation or self.Asset==h.original
         end
         b.ParticleComponent=c
@@ -95,7 +97,7 @@ local function fixture()
                 n.Collection=h.parent
                 n.ParameterStorage={ParameterData={GetArrayDataAddress=function()return h.aliasBuffer and 10000 or 20000+U.key(n) end}}
                 n.OverridenParameters={}
-                function n:SetColorParameter(_,value)assert(h.thread);self.color=value end
+                function n:SetColorParameter(_,value)assert(h.thread);self.color=value;h.writes=(h.writes or 0)+1 end
                 function n:GetColorParameter()return self.color or {R=0,G=0,B=0,A=1}end
             else
                 n.EmitterHandles={1,2};n.SystemSpawnScript=not h.incomplete and h.original.SystemSpawnScript or nil
@@ -109,10 +111,12 @@ local function fixture()
         loop=function(ms,fn)assert(ms==50);h.loop=fn;return 'loop'end,cancel=function()h.loop=nil;return true end,
         log=function(text)h.logs[#h.logs+1]=text end}
     h.effects=Effects.new(options)
+    h.options=options
     h.makeBullet=bullet
     function h:step()assert(self.loop);self.loop()end
     return h
 end
+if arg[2]=='fixture'then return fixture,typed end
 local passed=0
 local function test(label,fn)fn();passed=passed+1;print('PASS '..label)end
 test('owned effects receive private systems and collections while player effects and global values stay native',function()
@@ -172,6 +176,7 @@ test('unknown or player activations do not create copies and owned activation is
     local h=fixture();h.effects:tick()
     h.hooks[Effects.paths.activate](h.playerComp);assert(#h.copies==0)
     h.hooks[Effects.paths.activate](h.actor);assert(#h.copies==0)
+    h.effects:arm()
     h.hooks[Effects.paths.activate](h.comp);assert(h.comp.Asset~=h.original and h.playerComp.Asset==h.original)
 end)
 test('stopping the owned roster cancels pending scans and restores attached assets',function()

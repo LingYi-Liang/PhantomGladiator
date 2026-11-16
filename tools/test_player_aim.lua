@@ -319,8 +319,11 @@ test('an effect that reads the player position by itself follows the opponent wh
         comp.SetVariableBool=function(self,name,value)self.sets[name]=value end
         comp.SetVariablePosition=function(self,name,value)self.sets[name]=value;self.sets.position=true end
         comp.SetVariableVec3=function(self,name,value)self.sets[name]=value;self.sets.vector=true end
-        return object('PBZ_ParticleBullet',{BulletOwnerAvatar=owner,BulletData=data,BulletStatus=status,ParticleComponent=comp,
+        local bullet=object('PBZ_ParticleBullet',{BulletOwnerAvatar=owner,BulletData=data,BulletStatus=status,ParticleComponent=comp,
             BulletSourceAbility=object('GA_ZuoShang_Skill_19_C'),K2_GetActorLocation=function()return {X=1500,Y=0,Z=0} end})
+        comp.GetOwner=function()return bullet end
+        comp.Asset=named('NS_ZuoShang_SwordShooting_001')
+        return bullet
     end
     local rain=named('BD_ZuoShang_Skill_19')
     h.fighting=true;aim:tick()
@@ -353,6 +356,7 @@ test('an effect that reads the player position by itself follows the opponent wh
     assert(scans==3,'looks only a few times')
     local replacement=bullet(red,rain,2)
     mine.BulletOwnerAvatar=red;mine.ParticleComponent=replacement.ParticleComponent
+    mine.ParticleComponent.GetOwner=function()return mine end
     loop()
     assert(mine.ParticleComponent.sets.UE_TestTargetPos and mine.ParticleComponent.sets.UE_TestTargetPos.X==1000,
         'a reused bullet must follow its current owner opponent')
