@@ -603,7 +603,7 @@ const RealRuntime = (() => {
   }
   async function executeCommand(action, payload) {
     if (!online()) throw fail("offline");
-    if (["spawn", "queue_spawn", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
+    if (["spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
     if ((action === "toggle_camera" || action === "toggle_time_stop") && !s.freeCam && !ready()) throw fail("notInMap");
     let path = "/api/command", body;
     if (action === "spawn" || action === "queue_spawn" || action === "select_unit") body = { action, unit_id: gameId(payload.unit_id), team: payload.team, count: payload.count };
@@ -624,6 +624,7 @@ const RealRuntime = (() => {
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
     else if (action === "set_battle_music") body = { action, mode: payload.mode, track: payload.track };
+    else if (action === 'hun_body_probe') body = { action, team: payload.team, count: payload.count, profile_revision: payload.profile_revision };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };
@@ -769,6 +770,14 @@ const RealRuntime = (() => {
     poolUnitId,
     poolUnitPath: id => toGame.get(id) || id,
     saveMonsterPools,
+    hun: {
+      async load() {
+        const {response,data}=await readJSON('/api/hun');
+        if(!response.ok)throw fail('rejected',data.error || '魂方案读取失败');
+        return data;
+      },
+      save: request => submitCommand('/api/hun-profile',request),
+    },
     localAudio: {
       pick: () => host("pickAudio"),
       async change(request) {

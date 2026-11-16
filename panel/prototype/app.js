@@ -398,10 +398,11 @@
       renderDock();
       return;
     }
-    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML }[ui.page]();
+    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML, hun: () => window.PGHun.html() }[ui.page]();
     content.innerHTML = `<div class="page page-scroll scroll">${html}</div>`;
     if (ui.page === "pool") renderPoolSummon();
     if (ui.page === "settings") renderBattleMusicState();
+    if (ui.page === "hun") window.PGHun.mount();
   }
 
   // ---------- Arena: catalog ----------
@@ -2854,6 +2855,7 @@
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_offcombat_regen": return t(p.enabled ? "offcombatRegen.history.on" : "offcombatRegen.history.off");
       case "set_battle_music": return "设置战斗音乐：" + (p.mode === "NATIVE" ? "原版" : p.mode === "AUTO" ? "自动" : p.mode === "LOCAL" ? "本地替换" : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track);
+      case 'hun_body_probe': return '魂 · 本体验证 ×'+(p.count || 1);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");

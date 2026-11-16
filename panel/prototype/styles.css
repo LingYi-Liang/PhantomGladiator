@@ -1414,3 +1414,22 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .local-music h3 { font-size: 15px; margin: 0 0 10px; }
 .local-music #local-music-volume { width: 76px; }
 .local-music #local-music-boss { max-width: 280px; }
+.hun-notice { padding: 16px; margin: 18px 0; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; }
+.hun-notice p { margin: 8px 0 0; line-height: 1.65; }
+.hun-toolbar, .hun-options, .hun-equipment-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.hun-toolbar label, .hun-options label, .hun-item label { display: flex; flex-direction: column; gap: 6px; }
+.hun-item-list { max-height: 520px; overflow: auto; }
+.hun-item { display: grid; grid-template-columns: minmax(200px,1fr) 150px 100px 90px; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.hun-item .hun-item-name { display: block; line-height: 1.7; }
+.hun-item-name small { display: block; opacity: .65; font-size: 11px; }
+.hun-item input[type=number], .hun-options input, .hun-toolbar input[type=number] { max-width: 120px; }
+#hun-page textarea { display: block; width: 100%; box-sizing: border-box; margin: 8px 0 16px; font: 13px var(--font-mono); padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+#hun-page details { margin: 16px 0; }
+#hun-page .select { background-image: none; appearance: auto; padding-right: 12px; }
+.hun-field-list { overflow-wrap: anywhere; line-height: 1.8; }
+#hun-page > .card { margin-top: 16px; }
+#hun-page input:not([type=checkbox]):not([type=file]) { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+.hun-item label:nth-child(3) { flex-direction: row; align-items: center; }
+.hun-phase { border: 1px solid var(--border); padding: 14px; border-radius: 10px; margin: 12px 0; }
+#hun-page [data-hun-add-name] { max-width: 480px; }
+@media(max-width: 900px) { .hun-item { grid-template-columns: 1fr 120px; } }

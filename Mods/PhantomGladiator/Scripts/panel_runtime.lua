@@ -74,6 +74,14 @@ function Runtime.new(options)
         if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开',spawned_count=0} end
     end
     self.handlers={
+        hun_body_probe=function(command)
+            local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
+            local body=options.support and options.support.hunBody
+            if not body then return {ok=false,message='魂本体验证模块未加载',spawned_count=0}end
+            if self.summonQueue.enabled then return {ok=false,message='本体验证需先关闭排队/接力，完整配置召唤尚未接入',spawned_count=0}end
+            if command.unit_id~=''then return {ok=false,message='本体验证不接受自定义类路径',spawned_count=0}end
+            return body:spawn(options.arena,command.team,command.count,command.key_spawn)
+        end,
         spawn=function(command)
             local why=readyError(); if why then return {ok=false,message=why,spawned_count=0} end
             if self.summonQueue.enabled then return {ok=false,message='排队模式已开启，请重新提交召唤',spawned_count=0} end
@@ -225,6 +233,7 @@ function Runtime.new(options)
             return options.arena:start()
         end,
         stop=function()
+            if options.support and options.support.hunBody then options.support.hunBody:cancel()end
             local pending=self.summonPending~=nil
             self.summonPending=nil;self.summonSkipped=0
             if pending then self.log('[SummonKey] 停止并清理：旧召唤回调已失效；待执行槽读回=空') end
@@ -488,6 +497,8 @@ function Runtime.new(options)
         out.battle_local_ready=music.local_ready==true
         out.battle_local_supported=true
         out.execution_minions_rule_supported=true
+        local body=options.support and options.support.hunBody
+        out.hun_body_probe_supported=body~=nil
         out.fun_supported=not not options.funFeatures
         out.fun_shachi=fun.shachi==true
         out.fun_deflect=fun.deflect==true

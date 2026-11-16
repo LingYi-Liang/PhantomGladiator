@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-11"
+local BUILD = "v0.40.16-beta-12"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -572,6 +572,7 @@ local function SpawnViaAILib(cls, t, world, given)
     local okV = safeValid(pawn)
     if not okV then return nil, "延迟生成接口未返回有效实例；创建结果未知","uncertain" end
     spawnRoutes[pawn]=npc and 'npc' or 'actor'
+    if arenaSupport.hunBody then arenaSupport.hunBody:capture(pawn,classPath)end
     log('生成路径读回='..spawnRoutes[pawn]..'；actor='..objectName(pawn))
     return pawn,nil,"created"
 end
@@ -581,6 +582,10 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     if not summonActorLive(pawn) or not safeValid(world) then return false,"Actor/World无效或Actor正在销毁，保留清理记录" end
     local route=spawnRoutes[pawn]
     if route~='npc' and route~='actor' then return false,'生成路径未登记，保留清理记录' end
+    if arenaSupport.hunBody then
+        local ready,why=arenaSupport.hunBody:prepare(pawn)
+        if not ready then return false,why end
+    end
     if route=='npc' and arenaActivity then arenaActivity:prepare(pawn) end
     -- The app's chosen difficulty goes into this actor's own config slots before it initialises.
     if route=='npc' and spawnDifficulty then
@@ -639,6 +644,10 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
     local audited=spawnAudit:record("finish_spawn_return",name,"call="..tostring(ok2).." live="..tostring(live)..' '..space)
     if not ok2 or not audited then return false,"FinishSpawn未确认: "..tostring(err2).."；保留对象供F4清理" end
     if not live then return false,"FinishSpawn 后对象进入销毁或状态不可读" end
+    if arenaSupport.hunBody then
+        local ready,why=arenaSupport.hunBody:finished(pawn)
+        if not ready then return false,why end
+    end
     if standalone and not arenaSupport.standaloneStoryUnits:verify(standalone) then
         return false,'出场时的剧情查找未读回；保留对象供清理'
     end
@@ -2061,6 +2070,7 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
     clock=function()local s=ArenaStatus();return s.battle_clock,s.battle_seconds end})
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
+arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp})
 arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
     context=function()return arena:intentContext()end,
     deferTargetHold=true,
@@ -2201,6 +2211,7 @@ local function supportSteps(self)
     end
     step('menghuaPhase',function()self.menghuaPhase:tick()end)
     step('combatIntent',function()self.combatContinuity:beginTick(tickMembers,tickStatus.battle_active==true)end)
+    step('hunBody',function()self.hunBody:tick(tickMembers)end)
     step('prune',function()
         local memberKeys={}
         for _,entry in ipairs(tickMembers)do local key=UEObserve.key(entry.actor);if key then memberKeys[key]=true end end
@@ -2362,6 +2373,7 @@ if ModRef then
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
         arenaSupport.combatContinuity:silence()
+        arenaSupport.hunBody:silence()
         arenaSupport.effectAim:silence()
         aiParams:silence()
         bossCombos:silence()

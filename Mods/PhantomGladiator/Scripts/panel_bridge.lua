@@ -16,6 +16,7 @@ local JOURNAL, COMPACT = "command-journal.tsv", "command-journal.compact.tsv"
 local MAX_STATUS = 256
 local MAX_COUNT = 100   -- units per summon, as arena_controller.lua MAX_BATCH
 local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, configure_summon_queue=true,cancel_summon_queue = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
+    hun_body_probe=true,
     toggle_track = true, track_pick = true, track_next = true, set_camera_track = true, set_offcombat_regen = true, set_battle_music = true,
     configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
     toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
@@ -135,7 +136,7 @@ function Bridge:_sessionError(command)
     if id~=command.id or session~=current.game_session then
         return "stale_game_session: 指令属于旧会话或缺少绑定，请重新请求"
     end
-    if (command.action=="spawn" or command.action=="queue_spawn" or command.action=="start" or command.action=="toggle_spectator")
+    if (command.action=="spawn" or command.action=="queue_spawn" or command.action=="hun_body_probe" or command.action=="start" or command.action=="toggle_spectator")
         and current.game_ready~=true then
         return "game_not_ready: 尚未进入可控制场景，指令未执行"
     end

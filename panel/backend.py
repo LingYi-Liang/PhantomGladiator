@@ -31,11 +31,14 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 _audio_spec=importlib.util.spec_from_file_location('phantom_local_audio',Path(__file__).with_name('local_audio.py'))
 _audio_module=importlib.util.module_from_spec(_audio_spec);_audio_spec.loader.exec_module(_audio_module)
+_hun_spec=importlib.util.spec_from_file_location('phantom_hun_profiles',Path(__file__).with_name('hun_profiles.py'))
+_hun_module=importlib.util.module_from_spec(_hun_spec);_hun_spec.loader.exec_module(_hun_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
+ACTIONS.add('hun_body_probe')
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
@@ -202,7 +205,7 @@ MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
 POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"spawn", "queue_spawn", "start", "toggle_spectator"}
+READY_ACTIONS = {"spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -393,6 +396,9 @@ class Bridge:
         self.transport_code = None
         self.summon_queue_scope = None
         self.local_audio = None
+        self.hun_profile_error=''
+        try:self.hun_profiles = _hun_module.Store(self._path('hun-profile.json'),STAT_FIELDS,AI_PARAMS)
+        except (OSError,ValueError)as error:self.hun_profiles=None;self.hun_profile_error=str(error)
         self._number_after_journal()
 
     def _journal_ids(self):
@@ -432,7 +438,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
+        if name not in {"hun-profile.json", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -870,6 +876,18 @@ class Bridge:
             if count > unit.get("max_count", MAX_SPAWN_COUNT):
                 raise ValidationError("该单位处于单只测试阶段，数量必须为 1")
             payload.update(unit_id=unit_id, team=team, count=count)
+        elif action == 'hun_body_probe':
+            allowed|={'team','count','profile_revision'}
+            team=request.get('team','blue');count=request.get('count',1);revision=request.get('profile_revision')
+            if team not in TEAMS:raise ValidationError('阵营无效')
+            _hun_module.integer(count,1,MAX_SPAWN_COUNT,'召唤数量')
+            _hun_module.integer(revision,0,2147483646,'方案版本')
+            game=self.game_status()
+            if not game['ready']or game.get('values',{}).get('hun_body_probe_supported')!='true':raise ValidationError('请更新并重载本体验证模块后进入地图')
+            if game.get('values',{}).get('summon_queue_enabled')=='true':raise ValidationError('本体验证需先关闭排队/接力')
+            if self.hun_profiles is None:raise ValidationError('魂方案路径不可用，请检查配置：'+self.hun_profile_error)
+            snapshot=self.hun_profiles.immutable_snapshot(revision)
+            payload.update(team=team,count=count,profile_revision=revision,profile_sha256=snapshot['sha256'])
         elif action == 'configure_unit_key':
             allowed|={'unit_id','key_code','modifiers','team','count'}
             unit_id=clean_field(request.get('unit_id'),'unit_id',512)
@@ -1131,6 +1149,9 @@ class Bridge:
             with self.db:
                 if action in {"stop", "cancel_summon_queue"} or (action == "set_summon_queue" and not payload["enabled"]):
                     self._cancel_waiting_summons(game["game_session"], "已取消等待投递的召唤")
+                if action=='stop':
+                    self.db.execute("UPDATE commands SET state='failed',completed=?,message=? WHERE action='hun_body_probe' AND state='pending'",
+                                    (self.clock(),'停止清理已取消待执行的魂本体验证'))
                 cursor = self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
                     (payload["action"], json.dumps(payload, ensure_ascii=False), "pending", self.clock(), game["game_session"]))
                 if payload["action"] == "configure_keys":
@@ -1183,6 +1204,8 @@ class Bridge:
             bindings={'spawn':payload['queue_epoch']}
         elif payload['action']=='set_battle_music':
             bindings={'spawn':payload['mode'],'start':payload['track']}
+        elif payload['action']=='hun_body_probe':
+            bindings={'spawn':str(payload['profile_revision'])}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
         elif payload['action']=='set_camera_track':
@@ -1384,8 +1407,10 @@ class Bridge:
                         payload = json.loads(pending["payload"])
                         if pending["action"] == "queue_spawn" and payload.pop("queue_epoch", None) != self._summon_epoch(game):
                             raise ValidationError("该请求属于已取消的召唤队列")
+                        if pending['action']=='hun_body_probe':
+                            payload.pop('profile_sha256',None)
                         self._validate(payload)
-                    except ValidationError as error:
+                    except ValueError as error:
                         with self.db:
                             self.db.execute("UPDATE commands SET state='failed',completed=?,message=? WHERE id=?", (self.clock(), "投递前资格检查失败，未执行：" + str(error), pending["id"]))
                         return
@@ -1812,6 +1837,12 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.keybinds()
             elif path == "/api/monster-pools":
                 result = self.server.bridge.monster_pools()
+            elif path == '/api/hun':
+                bridge=self.server.bridge
+                snapshot=bridge.hun_profiles.snapshot()if bridge.hun_profiles else {'revision':0,'profile':_hun_module.default_profile(),'error':bridge.hun_profile_error}
+                result={**snapshot,'catalog':_hun_module.CATALOG,'defaults':_hun_module.default_profile(),
+                        'attributes':list(STAT_FIELDS),'ai_parameters':AI_PARAMS,'full_ready':False,
+                        'probe_supported':bridge.game_status().get('values',{}).get('hun_body_probe_supported')=='true'}
             elif path == "/api/stat-settings":
                 result = self.server.bridge.stat_settings()
             elif path == "/api/companion-stats":
@@ -1857,7 +1888,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted(write=True):
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools", "/api/local-audio"}:
+        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools", "/api/local-audio", "/api/hun-profile"}:
             self._reply(404, {"error": "unknown API"}); return
         try:
             if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
@@ -1865,11 +1896,18 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("Content-Type", "").split(";", 1)[0].strip() != "application/json":
                 raise ValidationError("Content-Type must be application/json")
             length = int(self.headers.get("Content-Length", "0"))
-            limit = MAX_POOL_BYTES if path == "/api/monster-pools" else 16384
+            limit = _hun_module.MAX_BYTES if path=='/api/hun-profile'else MAX_POOL_BYTES if path == "/api/monster-pools" else 16384
             if not 0 < length <= limit:
                 raise ValidationError(f"request body must be 1..{limit} bytes")
             self.connection.settimeout(5)
-            request = json.loads(self.rfile.read(length).decode("utf-8"))
+            text=self.rfile.read(length).decode('utf-8')
+            request = _hun_module.decode(text)if path=='/api/hun-profile'else json.loads(text)
+            if path=='/api/hun-profile':
+                if self.server.bridge.hun_profiles is None:raise ValidationError('魂方案路径不可用：'+self.server.bridge.hun_profile_error)
+                if isinstance(request,dict)and set(request)=={'revision','import_text'}:
+                    result=self.server.bridge.hun_profiles.import_text(request['revision'],request['import_text'])
+                else:result=self.server.bridge.hun_profiles.save(request)
+                self._reply(200,result);return
             if path == '/api/local-audio':
                 if not self.server.bridge.local_audio:raise ValidationError('本地音频服务不可用')
                 self._reply(202,self.server.bridge.local_audio.configure(request));return
