@@ -15,6 +15,7 @@ local function object(name,fields)
     local o=fields or {};o.live=true
     o.IsValid=function(self)return self.live end
     o.GetAddress=function()return address end
+    o.GetFullName=o.GetFullName or function()return name..'_'..address end
     o.GetFName=function()return {ToString=function()return name end}end
     o.GetClass=function()return {IsValid=function()return true end,GetFName=o.GetFName,GetSuperStruct=function()return nil end}end
     return o
@@ -150,44 +151,26 @@ test('only the verified ZuoShang families and their subclasses discover flying w
     h.members[1].actor.GetClass=function()return cls end
     h.mod:tick();assert(totalFlying(h)==8,'derived caster was missed')
 end)
-test('missing effect libraries and collection do not cause per-frame global lookups',function()
-    local h=aimFixture('BP_Monster_ZuoShang_P2_C');h.load('skillStart')
-    h.target=object('Target',{K2_GetActorLocation=function()return {X=0,Y=0,Z=0}end})
-    h.world=object('World')
-    local loop
-    LoopInGameThreadWithDelay=function(_,fn)loop=fn;return 1 end
-    CancelDelayedAction=function()loop=nil end
+test('missing instance adapter never falls back to global library lookups',function()
+    local h=aimFixture('BP_Monster_ZuoShang_P2_C');h.load('skillStart');h.mod:tick()
     local ability=object('GA_ZuoShang_P2_Skill_17_C',{GetAvatarActorFromActorInfo=function()return h.members[1].actor end})
-    h.mod:tick()
-    for i=0,18000 do
-        h.now=i/100
-        if i%1000==0 then h.hooks[Aim.paths.skillStart](ability)end
-        if loop then loop()end
-    end
-    for path,n in pairs(h.counts)do assert(n<=8,path..' effect queries='..n)end
-    assert((h.counts['/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'] or 0)>0)
-    assert((h.counts['/PBZVFXPack/VFX/A_Niagara/CommonNPC/MPC_CharInfo_001.MPC_CharInfo_001'] or 0)>0)
+    local before={};for path,n in pairs(h.counts)do before[path]=n end
+    for i=0,18000 do h.now=i/100;h.hooks[Aim.paths.skillStart](ability)end
+    for path,n in pairs(h.counts)do assert(n==before[path],'unexpected effect/global lookup '..path)end
+    assert(not h.counts['/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'])
+    assert(not h.counts['/PBZVFXPack/VFX/A_Niagara/CommonNPC/MPC_CharInfo_001.MPC_CharInfo_001'])
 end)
-test('successful collection lookup remains available on the first frame of every later cast',function()
-    local h=aimFixture('BP_Monster_ZuoShang_P2_C');h.load('skillStart')
-    h.target=object('Target',{K2_GetActorLocation=function()return {X=100,Y=0,Z=0}end});h.world=object('World')
-    FName=function(text)return text end
-    local writes,loop=0,nil
-    local collection=object('Collection',{GetColorParameter=function()return {R=100,G=0,B=0,A=1}end})
-    h.loaded['/Script/Niagara.Default__NiagaraFunctionLibrary']=object('Library',{GetNiagaraParameterCollection=function()return collection end})
-    h.loaded['/PBZVFXPack/VFX/A_Niagara/CommonNPC/NPC_CharInfo_001.NPC_CharInfo_001']=object('CollectionAsset')
-    h.loaded['/Script/Engine.Default__KismetMaterialLibrary']=object('MaterialLibrary',{SetVectorParameterValue=function()writes=writes+1 end,
-        GetVectorParameterValue=function()return {R=100,G=0,B=0,A=1}end})
-    h.loaded['/PBZVFXPack/VFX/A_Niagara/CommonNPC/MPC_CharInfo_001.MPC_CharInfo_001']=object('MaterialCollection')
-    LoopInGameThreadWithDelay=function(_,fn)loop=fn;return 1 end;CancelDelayedAction=function()loop=nil end
+
+test('each later cast arms its instance adapter immediately without a global lookup deadline',function()
+    local h=aimFixture('BP_Monster_ZuoShang_P2_C');h.load('skillStart');h.mod:tick()
+    local arms=0;h.mod.effects={arm=function()arms=arms+1 end}
     local ability=object('GA_ZuoShang_P2_Skill_17_C',{GetAvatarActorFromActorInfo=function()return h.members[1].actor end})
-    h.mod:tick()
     for cast=0,7 do
-        h.now=cast*25;h.hooks[Aim.paths.skillStart](ability);loop()
-        assert(writes==cast+1,'cast '..cast..' was delayed by a successful lookup backoff')
-        h.now=h.now+20;loop();assert(loop==nil)
+        h.now=cast*25;h.hooks[Aim.paths.skillStart](ability)
+        assert(arms==cast+1,'cast '..cast..' was delayed')
     end
 end)
+
 test('continuous reinforcements reset pending lookups at most once every ten seconds',function()
     local h=aimFixture('BP_Monster_ZuoShang_C')
     local last,early=0,false

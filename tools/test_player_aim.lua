@@ -7,6 +7,7 @@ local function object(name,fields)
     o.alive=true
     o.IsValid=function(self)return self.alive end
     o.GetAddress=function()return a end
+    o.GetFullName=o.GetFullName or function()return name..'_'..a end
     local class={GetFName=function()return {ToString=function()return name end}end,IsValid=function()return true end}
     o.GetClass=function()return class end
     o.GetOuter=function(self)return self.outer end
@@ -379,84 +380,24 @@ test('an effect that reads the player position by itself follows the opponent wh
     assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false and loop==nil and h.hooks[Aim.paths.launch]==nil)
     LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
 end)
-test('a skill whose effect only reads the player position: the global value follows the opponent while it runs',function()
-    local h=harness()
-    FName=function(text)return text end
-    local blue,red=h.unit('blue'),h.unit('red')
-    h.targets[key(blue)]=red;h.targets[key(red)]=blue
-    local redAt={X=100,Y=0,Z=0}
-    blue.K2_GetActorLocation=function()return {X=1000,Y=0,Z=0} end
-    red.K2_GetActorLocation=function()return redAt end
-    h.player.K2_GetActorLocation=function()return {X=5000,Y=0,Z=0} end
-    -- As in the game: the Niagara variable is a colour taken from the material collection, so its vector calls find nothing.
-    local value={R=5000,G=0,B=0,A=0.5}
-    local copied={R=5000,G=0,B=0,A=0.5}
-    local vectorWrites=0
-    local instance=object('NiagaraParameterCollectionInstance',{
-        SetVectorParameter=function()vectorWrites=vectorWrites+1 end,GetVectorParameter=function()return {X=0,Y=0,Z=0} end,
-        GetColorParameter=function(_,name)assert(name=='CharRootPos');return copied end})
-    local materialLib=object('KismetMaterialLibrary',{
-        SetVectorParameterValue=function(_,world,collection,name,v)assert(world and collection and name=='CharRootPos');value=v end,
-        GetVectorParameterValue=function(_,world,collection,name)assert(world and collection and name=='CharRootPos');return value end})
-    local real=StaticFindObject
-    local active=true
-    StaticFindObject=function(path)
-        if path:find('NiagaraFunctionLibrary') then return object('NiagaraFunctionLibrary',{GetNiagaraParameterCollection=function()return instance end}) end
-        if path:find('NPC_CharInfo_001') then return object('NPC_CharInfo_001') end
-        if path:find('KismetMaterialLibrary') then return materialLib end
-        if path:find('MPC_CharInfo_001') then return object('MPC_CharInfo_001') end
-        if path:find('AbilitySystemBlueprintLibrary') then return object('AbilitySystemBlueprintLibrary',{IsGameplayAbilityActive=function(_,ability)return active and not ability.over end}) end
-        return real(path)
-    end
-    local loop,cancelled=nil,0
-    LoopInGameThreadWithDelay=function(ms,fn)assert(ms==1 and loop==nil);loop=fn;return 'handle' end
-    CancelDelayedAction=function()cancelled=cancelled+1;loop=nil end
-    local aim=Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,members=function()return h.members end,fighting=function()return h.fighting end,
-        statics=function()return h.statics end,opponentOf=function(k)return h.targets[k] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
-        world=function()return object('World') end,paused=function()return h.paused end,phaseBusyKey=function(k)return h.phaseOwner==k end})
-    h.fighting=true;aim:tick()
+test('effect skills delegate to isolated instances and never write the world player position',function()
+    local h=harness();local aim=h.new()
+    local blue,red=h.unit('blue'),h.unit('red');h.targets[key(blue)]=red;h.fighting=true;aim:tick()
+    local armed=0;aim.effects={arm=function()armed=armed+1 end}
+    local oldLoop=LoopInGameThreadWithDelay
+    LoopInGameThreadWithDelay=function()error('a global player-position loop must not be started')end
+    local function skill(name,owner)return object(name,{GetAvatarActorFromActorInfo=function()return owner end})end
     local start=h.hooks[Aim.paths.skillStart]
-    assert(start,'hooked during a fight')
-    local function skill(name,owner)return object(name,{GetAvatarActorFromActorInfo=function()return owner end}) end
-    start(skill('GA_Other_C',blue));assert(loop==nil,'any other skill costs nothing')
-    start(skill('GA_MengHua_CA_03_C',object('BP_Monster_MengHua_C')));assert(loop==nil,'not a fighting unit: as the game made it')
-    start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
-    loop()
-    assert(value.R==100 and value.G==0 and value.B==0 and value.A==0.5,'the opponent, in the material collection, keeping the alpha')
-    assert(vectorWrites==0,'the Niagara vector call does nothing in the game')
-    assert(h.all():find('全局角色位置改成对手 招式=GA_MengHua_CA_03_C 第1次 对手=BP_Monster_red_C 材质集合写入前距玩家=0.0m 距对手=49.0m 写入=true 读回距对手=0.0m Niagara集合距玩家=0.0m 距对手=49.0m',1,true),h.all())
-    -- The world tick copied the value to the Niagara instance, and the player class then wrote its own to the material collection.
-    copied=value;redAt={X=300,Y=0,Z=0};value={R=5000,G=0,B=0,A=0.5};loop();assert(value.R==300,'follows it, and wins over what the player class wrote')
-    assert(h.all():find('第2次 对手=BP_Monster_red_C 材质集合写入前距玩家=0.0m 距对手=47.0m 写入=true 读回距对手=0.0m Niagara集合距玩家=49.0m 距对手=2.0m',1,true),h.all())
-    h.paused=true;redAt={X=999,Y=0,Z=0};loop();assert(value.R==300,'not while time stands still');h.paused=false
-    active=false;h.now=h.now+1;loop();assert(loop~=nil,'the effect may outlive the skill')
-    value={R=5000,G=0,B=0,A=0.5}
-    h.now=h.now+7;loop();assert(loop==nil and cancelled==1 and h.all():find('全局角色位置还原 招式=GA_MengHua_CA_03_C 写入=3次（招式结束） 还原时读回距玩家=0.0m',1,true),h.all())
-    -- A second skill while one runs takes over; the fight ending stops it.
-    active=true;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil);redAt={X=0,Y=0,Z=0};loop();assert(value.R==1000,'its own opponent')
-    start(skill('GA_ZuoShang_P2_Skill_17_C',blue));loop();assert(value.R==0)
-    h.now=h.now+25;loop();assert(loop==nil,'capped')
-    -- A subclass plays the same effect.
+    start(skill('GA_Other_C',blue));start(skill('GA_MengHua_CA_03_C',h.player));assert(armed==0)
+    for name in pairs(Aim.effectSkills)do start(skill(name,blue))end
+    assert(armed==7,'all known collection-based offensive skills arm instance isolation')
     local child=skill('GA_ZuoShang_P2_Skill_17_NoCD_C',blue)
-    child.GetClass().GetSuperStruct=function()return {GetFName=function()return {ToString=function()return 'GA_ZuoShang_P2_Skill_17_C' end}end,IsValid=function()return true end} end
-    start(child);assert(loop~=nil,'a subclass counts');h.now=h.now+25;loop();assert(loop==nil)
-    -- Two at once: the newest has the value; when it ends the older one gets it back, not the player.
-    redAt={X=300,Y=0,Z=0}
-    local first,second=skill('GA_MengHua_CA_03_C',blue),skill('GA_LengTu_CA_02_C',red)
-    start(first);start(second);loop();assert(value.R==1000,'the newer skill: its opponent')
-    second.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop()
-    assert(loop~=nil and value.R==300,'the older skill again: its opponent')
-    assert(h.all():find('全局角色位置还原 招式=GA_LengTu_CA_02_C',1,true),h.all())
-    first.over=true;h.now=h.now+0.5;loop();h.now=h.now+7;loop();assert(loop==nil)
-    start(skill('GA_MengHua_CA_03_C',blue));assert(loop~=nil)
-    h.phaseOwner=key(blue);h.paused=true;value={R=5000,G=0,B=0,A=0.5};loop()
-    assert(loop==nil and value.R==5000,'an existing owner spoof retires without changing a native pair target')
-    start(skill('GA_MengHua_CA_03_C',blue));assert(loop==nil,'a native phase must not start a new global spoof')
-    h.paused=false;start(skill('GA_LengTu_CA_02_C',red));assert(loop~=nil,'an unrelated owner keeps its effect')
-    h.phaseOwner=nil
-    h.fighting=false;aim:tick();h.now=h.now+20;aim:tick();assert(loop==nil and h.hooks[Aim.paths.skillStart]==nil)
-    StaticFindObject=real;LoopInGameThreadWithDelay,CancelDelayedAction=nil,nil
+    child.GetClass().GetSuperStruct=function()return {GetFName=function()return {ToString=function()return 'GA_ZuoShang_P2_Skill_17_C'end}end,IsValid=function()return true end}end
+    start(child);assert(armed==8,'subclasses retain the effect adapter')
+    aim.effects=nil;start(skill('GA_MengHua_CA_03_C',blue));assert(armed==8,'an absent adapter never falls back to a global write')
+    LoopInGameThreadWithDelay=oldLoop
 end)
+
 test('stands keep offensive aiming but are never accepted as bullet or lock targets',function()
     FName=function(text)return {name=text} end
     local h=harness();local aim=h.new()

@@ -70,7 +70,7 @@ test('a recycled lock ability cannot inherit the five second already-locked resu
     assert(aim:lockAbilityOf(object('Weapon',{['Source Ability']=new})))
     assert(new['Lock Target'] and new['Lock Target'].Component==blue.RootComponent,'new ability never received its lock')
 end)
-test('unitOf walks the same context outer chain only once within one second',function()
+test('unitOf rechecks ownership on each call and observes a same-frame context handoff',function()
     local now,hooks,walks=0,{},0
     StaticFindObject=function()return object('Function')end
     RegisterHook=function(path,cb)hooks[path]=cb;return 1,2 end;UnregisterHook=function()end
@@ -82,11 +82,11 @@ test('unitOf walks the same context outer chain only once within one second',fun
         members=function()return members end,opponentOf=function(key)return key==tostring(blue.key) and red or blue end})
     aim:tick()
     for i=0,99 do now=i/100;assert(hooks[Aim.paths.pawn](nil,context)==red)end
-    assert(walks==1,'same context outer walks='..walks)
-    owner=red;now=1;assert(hooks[Aim.paths.pawn](nil,context)==blue)
-    assert(walks==2,'cache must expire at one second')
+    assert(walks==100,'one bounded owner walk per query; walks='..walks)
+    owner=red;assert(hooks[Aim.paths.pawn](nil,context)==blue)
+    assert(walks==101,'same-frame ownership must not wait for a cache deadline')
     members[3]={actor=object('New'),team='red'};owner=blue;now=1.1;aim:tick()
-    assert(hooks[Aim.paths.pawn](nil,context)==red and walks==3,'new roster must clear the owner cache')
+    assert(hooks[Aim.paths.pawn](nil,context)==red and walks==102,'a new roster still uses the current owner')
     members[1]=members[3];members[3]=nil;now=1.2;aim:tick()
     assert(hooks[Aim.paths.pawn](nil,context)==nil,'departed owner must not remain cached')
 end)
