@@ -40,6 +40,10 @@ function Arena.new(options)
     local fight={}
     local teamRevision=0
     local instance = {}
+    function instance:intentContext()
+        if not battleActive or busy or state=='cleanup_pending'or state=='restore_pending'then return nil end
+        return rosterRevision
+    end
 
     local function log(text)
         if options.log then pcall(options.log, "[Arena] " .. text) end
@@ -397,8 +401,9 @@ function Arena.new(options)
     end
     local function resume_intent(unit)
         if not unit.intentWaiting then return true end
+        local revision=rosterRevision
         local ok,done=invoke('resumeIntent',unit.actor)
-        if not ok or done~=true then return false end
+        if not ok or done~=true or not battleActive or busy or revision~=rosterRevision then return false end
         unit.intentWaiting,unit.waitRetryAt=nil,nil
         unit.attackRetryAt,unit.attackFailures=nil,nil
         return true
@@ -415,10 +420,12 @@ function Arena.new(options)
     -- A call returning normally is not proof that native target assignment succeeded.
     -- Retain only confirmed targets; retry partial failures without repeatedly interrupting active combat.
     local function assign_target(unit,target,now)
+        local revision=rosterRevision
+        local started,locked=battleActive,busy
         if not fighting(unit) or not targetable(target) then return false end
         if action_busy(unit)then unit.attackPending=true;return false end
         if not resume_intent(unit)then return false end
-        local revision=rosterRevision
+        if battleActive~=started or busy~=locked or revision~=rosterRevision or not fighting(unit)or not targetable(target)or action_busy(unit)then return false end
         local called,verified=invoke('forceAttack',unit.actor,target.actor)
         if revision~=rosterRevision then return false end
         local confirmed=called and verified==true
@@ -660,6 +667,7 @@ function Arena.new(options)
                     end
                 end
             end
+            if not battleActive or busy or revision~=rosterRevision then return end
             local heldKey=targetable(unit_by_key(unit.assignedKey)) and unit.assignedKey or false
             if scan or unit.heldTargetKey~=heldKey then
                 hold_target(unit,'定时检查');unit.heldTargetKey=heldKey

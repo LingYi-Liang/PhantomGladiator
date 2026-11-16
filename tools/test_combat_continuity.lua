@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local C=require('combat_continuity')
+local C=arg[1]and assert(loadfile(arg[1]))()or require('combat_continuity')
 local id=0
 local function obj(label,outer)
     id=id+1;local key=id
@@ -48,6 +48,7 @@ local function fixture()
     function h:block()self.boss.tags['CharacterState.Unselectable']=1;self.c:beginTick(self.members,true)end
     return h
 end
+if arg[2]=='fixture'then return fixture,obj end
 local n=0;local function test(label,fn)fn();n=n+1;print('PASS '..label)end
 test('idle minion waits without changing boss AI or cancelling an ability',function()
     local h=fixture();h:block();assert(h.c:wait(h.actor,h.boss))

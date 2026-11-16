@@ -21,6 +21,7 @@ local function setup()
     end
     return h
 end
+if only=='fixture'then return setup,stageCount end
 test('hold_50',function()
     local h=setup();h.boss.protected=true;h.boss.phase=true
     for i=1,40 do h.now=i*0.05;h.f.arena:tickReinforcements()end

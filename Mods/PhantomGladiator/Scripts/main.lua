@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-6"
+local BUILD = "v0.40.16-beta-7"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -2062,6 +2062,8 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
 arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
+    context=function()return arena:intentContext()end,
+    deferTargetHold=true,
     hp=GetHP,aiOf=GetAIComp,hatredOf=GetHatredComp,hates=HatredListContains,addHatred=AddHatred,
     holdTarget=HoldSensedTarget,engage=function(actor,target)return arenaSupport:engage(actor,target)end,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
