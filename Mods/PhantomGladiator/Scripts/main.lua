@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-5"
+local BUILD = "v0.40.16-beta-6"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1450,6 +1450,11 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return okTag and (name=='None' or name=='')
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
+    targetProtected=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:protected(actor)end,
+    actionBusy=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:actionBusy(actor)or false end,
+    waitForTarget=function(actor,target)return arenaSupport.combatContinuity:wait(actor,target)end,
+    resumeIntent=function(actor)return arenaSupport.combatContinuity:resume(actor)end,
+    maintainTarget=function(actor,target)return arenaSupport.combatContinuity:maintain(actor,target)end,
     isStoryTeamActor=function(actor)
         return arenaSupport.standaloneStoryUnits:isTeamActor(actor)
     end,
@@ -2056,6 +2061,19 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
     clock=function()local s=ArenaStatus();return s.battle_clock,s.battle_seconds end})
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
+arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
+    hp=GetHP,aiOf=GetAIComp,hatredOf=GetHatredComp,hates=HatredListContains,addHatred=AddHatred,
+    holdTarget=HoldSensedTarget,engage=function(actor,target)return arenaSupport:engage(actor,target)end,
+    phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
+    ordinary=function(actor)
+        local cfg=UEObserve.field(actor,'Actor Config')
+        local value=UEObserve.struct(UEObserve.field(cfg,'Difficulty Tag'),'TagName')
+        if value==nil then return nil end
+        local ok,label=pcall(FNameToString,value)
+        if not ok or type(label)~='string'or not label:find('^CharacterType.Difficulty%.')then return nil end
+        return label:match('Boss$')==nil
+    end,
+    track=function(key,restore)battle:remember(key,restore);return true end})
 combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,hp=GetHP,label=objectName,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     hates=HatredListContains,vehicles=function(members)return mounts and mounts:vehicles(members) or {} end,
@@ -2177,6 +2195,7 @@ local function supportSteps(self)
         parts[#parts+1]=string.format('%s=%.1f',name,spent);costs[name]=spent
     end
     step('menghuaPhase',function()self.menghuaPhase:tick()end)
+    step('combatIntent',function()self.combatContinuity:beginTick(tickMembers,tickStatus.battle_active==true)end)
     step('prune',function()
         local memberKeys={}
         for _,entry in ipairs(tickMembers)do local key=UEObserve.key(entry.actor);if key then memberKeys[key]=true end end
@@ -2333,6 +2352,7 @@ if ModRef then
         arenaSupport.battleMusic:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         playerAim:silence('Mod卸载')
+        arenaSupport.combatContinuity:silence()
         arenaSupport.effectAim:silence()
         aiParams:silence()
         bossCombos:silence()

@@ -163,9 +163,14 @@ function Arena.new(options)
     -- Out of reach by its own design for now (冷荼 until she comes down to fight herself, boss_stages.lua):
     -- it still fights, but nobody is sent at it.
     local function untargetable(unit)
+        if not unit then return true end
+        if options.targetProtected then
+            local ok,result=invoke('targetProtected',unit.actor)
+            if not ok or result~=false then return true end
+        end
         if not options.untargetable then return false end
         local ok,result=invoke('untargetable',unit.actor)
-        return ok and result==true
+        return not ok or result~=false
     end
     -- In the fight as a body: what a skill asking for "the player" may be given, out of reach or not.
     local function fighting(unit)
@@ -385,10 +390,34 @@ function Arena.new(options)
         local called,now=invoke('now')
         return called and finite(now) and now or os.clock()
     end
+    local function action_busy(unit)
+        if not options.actionBusy then return false end
+        local ok,value=invoke('actionBusy',unit.actor)
+        return not ok or value~=false
+    end
+    local function resume_intent(unit)
+        if not unit.intentWaiting then return true end
+        local ok,done=invoke('resumeIntent',unit.actor)
+        if not ok or done~=true then return false end
+        unit.intentWaiting,unit.waitRetryAt=nil,nil
+        unit.attackRetryAt,unit.attackFailures=nil,nil
+        return true
+    end
+    local function wait_for_target(unit,target,now,immediate)
+        if not options.waitForTarget or not target or not fighting(target)then return false end
+        unit.intentWaiting=true
+        if action_busy(unit)then return true end
+        if not immediate and unit.waitRetryAt and now<unit.waitRetryAt then return true end
+        unit.waitRetryAt=now+1
+        invoke('waitForTarget',unit.actor,target.actor)
+        return true
+    end
     -- A call returning normally is not proof that native target assignment succeeded.
     -- Retain only confirmed targets; retry partial failures without repeatedly interrupting active combat.
     local function assign_target(unit,target,now)
         if not fighting(unit) or not targetable(target) then return false end
+        if action_busy(unit)then unit.attackPending=true;return false end
+        if not resume_intent(unit)then return false end
         local revision=rosterRevision
         local called,verified=invoke('forceAttack',unit.actor,target.actor)
         if revision~=rosterRevision then return false end
@@ -438,7 +467,14 @@ function Arena.new(options)
         for _,unit in ipairs(units) do
             if unit.key==key and (unit.team=='blue' or unit.team=='red') then
                 if phase_busy(unit) or unit.phaseHeld then return false end
-                if stand(unit) or dormant(unit) or alive_readback(unit)~=true or not targetable(unit_by_key(unit.assignedKey)) then return false end
+                if stand(unit) or dormant(unit) or alive_readback(unit)~=true then return false end
+                local target=unit_by_key(unit.assignedKey)
+                if target and fighting(target)and untargetable(target)then return wait_for_target(unit,target,current_time(),true)end
+                if not targetable(target)or action_busy(unit)or not resume_intent(unit)then return false end
+                if options.maintainTarget then
+                    local ok,done=invoke('maintainTarget',unit.actor,target.actor)
+                    return ok and done==true
+                end
                 local called,engaged,after,detail=invoke('engage',unit.actor,unit.assignedTarget)
                 instant.total=instant.total+1
                 if instant.lines<REENGAGE_LINES then
@@ -572,12 +608,12 @@ function Arena.new(options)
                 unit.phaseHeld=nil;unit.attackPending=true;unit.attackRetryAt=nil;unit.attackFailures=nil;unit.heldTargetKey=nil
             end
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
-            if scan and options.unstick then
+            if scan and options.unstick and not action_busy(unit)then
                 invoke('unstick',unit.actor,unit.assignedTarget,unit.class_path)
                 if not battleActive or busy or revision~=rosterRevision then return end
                 if not fighting(unit) or phase_busy(unit) then goto continueCombat end
             end
-            if scan and options.holdMount and unit.assignedTarget then
+            if scan and options.holdMount and unit.assignedTarget and not action_busy(unit)then
                 invoke('holdMount',unit.actor,unit.assignedTarget)
                 if not battleActive or busy or revision~=rosterRevision then return end
                 if not fighting(unit) or phase_busy(unit) then goto continueCombat end
@@ -585,6 +621,10 @@ function Arena.new(options)
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.
             local held=unit_by_key(unit.assignedKey)
+            local resumed=unit.intentWaiting and held and targetable(held)
+            if unit.intentWaiting and(not held or not fighting(held)or resumed)then
+                if not resume_intent(unit)then goto continueCombat end
+            end
             if held and not (fighting(held) and untargetable(held)) then held=nil end
             if unit.attackPending or not unit.assignedTarget or not targetable(unit_by_key(unit.assignedKey)) then
                 local target=leastAttacked(unit,active)
@@ -595,10 +635,17 @@ function Arena.new(options)
                     if not battleActive or busy or revision~=rosterRevision then return end
                     if not fighting(unit) then goto continueCombat end
                 elseif not target and held then
-                    unit.assignedTarget,unit.assignedKey=nil,nil
-                    log('暂不迎敌 '..actor_name(unit.actor)..'：对手 '..actor_name(held.actor)..' 按游戏设定暂时不能被锁定，等新的对手出现')
+                    if wait_for_target(unit,held,now)then
+                        -- Logical opponent identity survives protection; no attack is issued against it.
+                        if action_busy(unit)then goto continueCombat end
+                    else
+                        unit.assignedTarget,unit.assignedKey=nil,nil
+                        log('暂不迎敌 '..actor_name(unit.actor)..'：对手 '..actor_name(held.actor)..' 按游戏设定暂时不能被锁定，等新的对手出现')
+                    end
                 end
-            elseif scan and options.inCombat and options.engage then
+            elseif options.maintainTarget and(scan or resumed)then
+                invoke('maintainTarget',unit.actor,unit.assignedTarget)
+            elseif scan and options.inCombat and options.engage and not action_busy(unit)then
                 local okState,combat,stateName=invoke('inCombat',unit.actor)
                 if okState and combat==false then
                     local called,engaged,after,detail=invoke('engage',unit.actor,unit.assignedTarget)

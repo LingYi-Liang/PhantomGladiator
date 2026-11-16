@@ -67,6 +67,7 @@ local function stageCount(fixtureValue, stage)
     return count
 end
 
+if arg[2]=='fixture'then return fixture,stageCount end
 local f = fixture()
 local warningSpawn=fixture({activate=function()return true,'activated','数值未统一，已回滚到原生值' end})
 assert(warningSpawn.arena:spawn(nil,'blue',1).ok)
