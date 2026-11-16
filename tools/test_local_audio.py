@@ -80,5 +80,30 @@ class Tests(unittest.TestCase):
         until=time.monotonic()+1
         while self.service.importing and time.monotonic()<until:time.sleep(.01)
         self.assertEqual(self.children,[]);self.assertEqual(self.service.mapping,{})
+    def test_transient_heartbeat_file_lock_does_not_retire_player(self):
+        self.mapped();self.service.tick();self.service.ack_state='ready';self.values['battle_local_ready']='true'
+        original=audio.atomic;attempts=[]
+        def busy_once(path,text,**kwargs):
+            attempts.append(path)
+            if len(attempts)==1:raise PermissionError('simulated shared reader')
+            return original(path,text,**kwargs)
+        audio.atomic=busy_once
+        try:
+            self.clock+=1;self.service.tick()
+            self.assertIsNotNone(self.service.player);self.assertEqual(self.service.failed,set())
+            self.clock+=1;self.service.ack_at=self.clock;self.service.tick()
+            self.assertIsNotNone(self.service.player);self.assertEqual(len(attempts),2)
+        finally:audio.atomic=original
+    def test_permanent_heartbeat_file_lock_has_bounded_retries(self):
+        self.mapped();self.service.tick();self.service.ack_state='playing';self.values['battle_local_ready']='true'
+        original=audio.atomic;attempts=[]
+        def busy(path,text,**kwargs):attempts.append(path);raise PermissionError('simulated permanent lock')
+        audio.atomic=busy
+        try:
+            for _ in range(100):
+                self.clock+=1;self.service.ack_at=self.clock;self.service.progress_at=self.clock;self.service.tick()
+            self.assertIsNone(self.service.player);self.assertEqual(len(attempts),3);self.assertEqual(len(self.children),1)
+        finally:audio.atomic=original
+        self.service.configure({'action':'retry'});self.service.tick();self.assertEqual(len(self.children),2)
 
 if __name__=='__main__':unittest.main()

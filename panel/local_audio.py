@@ -46,6 +46,7 @@ class LocalAudio:
         self.importing=None;self.convert=None;self.player=None;self.token='';self.source='';self.sent_volume=None
         self.ack_state='';self.ack_at=0;self.failed=set();self.next_link=0;self.thread=None
         self.opened_at=0;self.progress_at=0;self.position=-1;self.log_lines=0
+        self.link_failures=0;self.link_faulted=False
         self.link=self.runtime/'battle-local-link.tsv';self.settings=self.root/'settings.json'
         try:
             if self.settings.exists():
@@ -79,6 +80,7 @@ class LocalAudio:
             if self.settings.read_text(encoding='utf-8')!=text:raise OSError('音频设置保存未确认')
             with self.lock:
                 self.mapping=mapping;self.volume=volume;self.revision+=1;self.failed.clear()
+                self.link_failures=0;self.link_faulted=False
         finally:self.save_lock.release()
 
     def configure(self,request):
@@ -94,7 +96,8 @@ class LocalAudio:
                 if self.importing and self.importing['boss']==request['boss']:self.importing['cancel']=True
             self.message='已移除该 BOSS 的本地音乐'
         elif action=='retry'and set(request)=={'action'}:
-            self.failed.clear();self.message='已允许本场重新尝试本地音乐'
+            with self.lock:self.failed.clear();self.link_failures=0;self.link_faulted=False
+            self.message='已允许本场重新尝试本地音乐'
         elif action=='import'and set(request)=={'action','boss','path'}:
             if request['boss']not in self.bosses or not isinstance(request['path'],str)or len(request['path'])>4096:raise ValueError('BOSS 或文件路径无效')
             with self.lock:
@@ -230,13 +233,22 @@ class LocalAudio:
                     self._send('PLAY '+str(volume));self.sent_volume=volume
                     self.progress_at=self.clock()
                 elif v.get('battle_local_ready')!='true'and self.sent_volume is not None:self._stop()
-        if available and not self.closed.is_set()and self.clock()>=self.next_link:
+        if available and not self.closed.is_set()and not self.link_faulted and self.clock()>=self.next_link:
             self.next_link=self.clock()+1
             with self.lock:
                 ids=','.join(sorted(u for u in self.mapping if u not in self.failed))
                 prepared=self.token if self.player and self.ack_state in ('ready','playing')else '-'
             if not TOKEN.fullmatch(session):return
-            atomic(self.link,'LocalMusicLinkV1\t'+str(int(self.wall()))+'\t'+session+'\t'+self.client+'\t'+prepared+'\t'+ids+'\n',durable=False)
+            try:
+                atomic(self.link,'LocalMusicLinkV1\t'+str(int(self.wall()))+'\t'+session+'\t'+self.client+'\t'+prepared+'\t'+ids+'\n',durable=False)
+                self.link_failures=0
+            except (OSError,ValueError)as error:
+                self.link_failures=3 if isinstance(error,ValueError)else self.link_failures+1
+                self._log('heartbeat write failed: '+type(error).__name__+' attempt='+str(self.link_failures))
+                if self.link_failures>=3:
+                    with self.lock:self.failed.update(self.mapping);self.link_faulted=True
+                    self._stop();self.message='音乐状态连续未同步，已停止本地播放；可手动重试'
+                else:self.message='音乐状态暂未同步，稍后自动重试；连续失败会停止本地播放'
 
     def _loop(self):
         while not self.closed.wait(0.25):
