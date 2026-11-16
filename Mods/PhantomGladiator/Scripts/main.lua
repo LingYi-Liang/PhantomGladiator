@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-7"
+local BUILD = "v0.40.16-beta-8"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -2135,6 +2135,7 @@ arenaSupport.xianzhePhantom=require('xianzhe_phantom').new({log=log,members=Aren
 arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end})
 arenaSupport.battleMusic=require('battle_music').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,
+    session=function()return runtimeSession:status().game_session end,
     members=ArenaMembers,status=ArenaStatus,hp=GetHP,world=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end,
     subsystem=function()return arenaSupport:worldSubsystem('MusicSubsystem')end,
@@ -2150,6 +2151,8 @@ arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log
         return safeValid(player) and safeValid(actor) and player:GetAddress()==actor:GetAddress()
     end}) or nil
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
+    executionPolicyConfigured=function()return arenaSupport.unitRules:hasExecutionOverrides()end,
+    executionPolicy=function(id)return arenaSupport.unitRules:get(id,'execution_minions')end,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
@@ -2218,7 +2221,10 @@ local function supportSteps(self)
     step('remoteReflect',function()self.remoteReflect:tick()end)
     step('xianzhePhantom',function()self.xianzhePhantom:tick()end)
     step('offCombatRegen',function()self.offCombatRegen:tick()end)
-    step('battleMusic',function()self.battleMusic:tick()end)
+    step('battleMusic',function()
+        local now=LiveSeconds()
+        if not self.musicNext or now>=self.musicNext then self.musicNext=now+0.25;self.battleMusic:tick()end
+    end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
     step('stands',function()self.stands:tick()end)

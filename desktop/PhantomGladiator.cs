@@ -459,6 +459,7 @@ namespace PhantomGladiator
                 StandardOutputEncoding = Encoding.UTF8,
             };
             psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+            psi.EnvironmentVariables["PG_DATA_DIR"] = Paths.Data;
             var sb = new StringBuilder();
             process = Process.Start(psi);
             if (job != IntPtr.Zero) Native.AssignProcessToJobObject(job, process.Handle);
@@ -1419,6 +1420,9 @@ namespace PhantomGladiator
                 case "pickFolder":
                     using (var dialog = new FolderBrowserDialog { Description = "选择《影之刃零》的安装文件夹（里面有 platform\\steam\\PBZ.exe）", ShowNewFolderButton = false })
                         return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedPath : null;
+                case "pickAudio":
+                    using(var dialog=new OpenFileDialog { Title="选择 BOSS 本地音乐",Filter="音频文件|*.mp3;*.wav;*.flac;*.aac;*.m4a;*.ogg;*.opus;*.wma;*.aiff;*.ape;*.alac;*.mka;*.ac3;*.amr|所有文件|*.*",CheckFileExists=true,Multiselect=false })
+                        return dialog.ShowDialog(this)==DialogResult.OK ? dialog.FileName : null;
                 case "setGamePath":
                 {
                     var g = GameLocator.FromPath(p.ContainsKey("path") ? p["path"] as string : "");

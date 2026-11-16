@@ -356,6 +356,7 @@ const RealRuntime = (() => {
 
   function apply(data) {
     csrf = data.csrf_token || csrf;
+    s.localAudio = data.local_audio || { supported: false };
     const g = data.game || {}, v = g.values || {};
     const num = k => Number(v[k]) || 0, yes = k => v[k] === "true";
     const online = !!(g.online && g.game_session);
@@ -449,6 +450,7 @@ const RealRuntime = (() => {
         state: v.offcombat_regen_state || "off", failures: num("offcombat_regen_failures") };
       s.battleMusic = { supported: yes("battle_music_supported"), mode: v.battle_music_mode || "NATIVE", track: v.battle_music_track || "MOYUAN_P1",
         state: v.battle_music_state || "native", message: v.battle_music_message || "", playing: num("battle_music_playing_id"), pending: yes("battle_music_pending") };
+      s.localMusicSupported=yes("battle_local_supported");
       f.supported = yes("fun_supported");
       f.shachi = yes("fun_shachi");
       f.deflect = yes("fun_deflect");
@@ -473,6 +475,7 @@ const RealRuntime = (() => {
         target: v.track_target || "", targetClass: v.track_target_class || "", otherClass: v.track_other_class || "",
         targets: (v.track_targets || "").split(";").filter(Boolean).map(item => { const [key, cls, team] = item.split(":"); return { key, cls, team }; }) };
       s.unitRulesSupported = yes("unit_rules_supported");
+      s.executionMinionsSupported = yes("execution_minions_rule_supported");
       s.remoteReflectSupported = yes("remote_reflect_supported");
       s.xianzhePhantomSupported = yes("xianzhe_phantom_supported");
       s.menghuaStageSupported = yes("menghua_stage_rule_supported");
@@ -559,7 +562,7 @@ const RealRuntime = (() => {
       keys: [s.game, JSON.stringify(s.keys), s.dismissKeySupported],
       grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
-      battleMusic: [s.game, JSON.stringify(s.battleMusic)],
+      battleMusic: [s.game, JSON.stringify(s.battleMusic), JSON.stringify(s.localAudio)],
       summonQueue: [s.game, JSON.stringify(s.summonQueue)],
       poolStatus: [JSON.stringify(s.poolStatus)],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
@@ -762,6 +765,15 @@ const RealRuntime = (() => {
     poolUnitId,
     poolUnitPath: id => toGame.get(id) || id,
     saveMonsterPools,
+    localAudio: {
+      pick: () => host("pickAudio"),
+      async change(request) {
+        const reply = await submitCommand("/api/local-audio", request);
+        s.localAudio = reply;
+        emit({ type: "state", parts: new Set(["battleMusic"]) });
+        return reply;
+      },
+    },
     launchGame,
     setup,
     update,

@@ -99,6 +99,17 @@ do
     assert(rules:set(id,'phantom','keep').ok)
     assert(rules:status().text=='' and new(fs):get(id,'phantom')=='keep')
 end
+do
+    local fs=filesystem();local rules=new(fs)
+    assert(not rules:hasExecutionOverrides()and rules:get('BP_Monster_MoTian','execution_minions')=='on_100')
+    assert(rules:set('BP_Monster_MoTian','execution_minions','off_37').ok and rules:hasExecutionOverrides())
+    local reloaded=new(fs)
+    assert(reloaded:hasExecutionOverrides()and reloaded:get('BP_Monster_MoTian','execution_minions')=='off_37')
+    for _,bad in ipairs({'on_101','off_-1','on_nan','on_50.5','50'})do assert(not rules:set('BP_Monster_MoTian','execution_minions',bad).ok)end
+    fs.deny=true;assert(not rules:set('BP_Monster_MoTian','execution_minions','on_25').ok)
+    assert(rules:get('BP_Monster_MoTian','execution_minions')=='off_37')
+    fs.deny=false;assert(rules:set('BP_Monster_MoTian','execution_minions','on_100').ok and not rules:hasExecutionOverrides())
+end
 print('unit_rules: PASS')
 do
     local fs=filesystem();local rules=new(fs)

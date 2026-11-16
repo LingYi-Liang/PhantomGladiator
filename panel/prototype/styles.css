@@ -1410,3 +1410,7 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .language-support summary { padding: 10px 12px; cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
 .language-support-copy { line-height: 1.7; overflow-wrap: anywhere; }
 .language-support details .language-support-copy { padding: 0 12px 4px; font-size: 13px; }
+.local-music { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.local-music h3 { font-size: 15px; margin: 0 0 10px; }
+.local-music #local-music-volume { width: 76px; }
+.local-music #local-music-boss { max-width: 280px; }

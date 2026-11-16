@@ -188,6 +188,7 @@ local function harness()
     return h
 end
 
+if arg[1]=='fixture'then return harness end
 do
     local h=harness()
     local victim=h.enemy({X=100,Y=0,Z=0},{})

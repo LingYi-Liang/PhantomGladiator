@@ -2,7 +2,7 @@
 
 usage: python tools/package/build.py --deps <folder> [--seed <Runtime folder>] [--version 0.30.0] [--channel nexus]
 
---deps holds the three third-party downloads pinned below (fetched once, by hand, from the listed
+--deps holds the third-party files pinned below (fetched once, by hand, from the listed
 URLs). --seed is a Runtime folder whose codex export becomes the slim catalog shipped with the app;
 it defaults to the author's game install. Nothing here touches the game or the player's data.
 
@@ -34,6 +34,10 @@ DEPS = {
     # app's v0.37.5 package, which unpacked the original zip (SHA-256 67b81fca…0d31) into app/payload/ue4ss.
     "ue4ss": ("PhantomGladiator-0.37.5-win64.zip", "ec6e57bca09ffad7fdce500ab0a8179c7745465a05567781b186ff0387ebfffa",
               "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.37.5/PhantomGladiator-0.37.5-win64.zip"),
+    "ffmpeg": ("ffmpeg-8.1.1.exe", "09948d4cdd0650da6ff5a87577469f2a218dc2615ae379f8f734d24c49de0f73",
+               "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.1-full_build.7z (bin/ffmpeg.exe)"),
+    "ffmpeg_license": ("FFmpeg-GPLv3.txt", "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+                       "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.1-full_build.7z (LICENSE)"),
 }
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
 VERIFIED_GAME_BUILD = "26367565"
@@ -45,8 +49,8 @@ MANIFESTS = [
     f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
     f"github|https://raw.githubusercontent.com/{REPO}/main/release/safe/latest.json",
 ]
-UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "battle-music.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png"]
-BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "unit_validation.json", "battle-music.json"]
+UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "battle-music.js", "local-audio.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png"]
+BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "local_audio.py", "audio_process.py", "unit_validation.json", "battle-music.json", "local-bosses.json"]
 SEED_FILES = ["catalog.tsv", "codex.tsv", "codex-locations.tsv", "inventory-report.json"]
 CSC = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 FRAMEWORK_REFS = ["System.dll", "System.Core.dll", "System.Drawing.dll", "System.Windows.Forms.dll", "System.Web.Extensions.dll",
@@ -169,6 +173,7 @@ https://github.com/{repo}
 UE4SS（MIT 许可，见 app\\payload\\ue4ss\\ue4ss\\LICENSE）
 Python {python}（PSF 许可，见 app\\python\\LICENSE.txt）
 Microsoft Edge WebView2 SDK（见 licenses\\WebView2-LICENSE.txt）
+FFmpeg 8.1.1（GPLv3，独立本地音频转换组件，许可和源码入口见 licenses\\FFmpeg-*）
 
 ---------------------------------------------------------------
 Phantom Gladiator — NPC battles for Phantom Blade Zero  v{version}
@@ -234,6 +239,12 @@ def main() -> None:
         unpack_stdlib(app / "python")
     extract(dependency(args.deps, "webview2"), build / "webview2", ["lib/net462/", "runtimes/win-x64/native/", "LICENSE"])
     extract(dependency(args.deps, "ue4ss"), app / "payload" / "ue4ss", strip=UE4SS_IN_PACKAGE)
+    (app / 'audio').mkdir()
+    shutil.copy2(dependency(args.deps,'ffmpeg'),app/'audio/ffmpeg.exe')
+    wpf=CSC.parent/'WPF'
+    subprocess.run([str(CSC),'/nologo','/target:exe','/platform:x64','/optimize+','/utf8output','/codepage:65001',
+                    '/r:System.dll','/r:System.Core.dll','/r:System.Web.Extensions.dll',f'/r:{wpf / "WindowsBase.dll"}',
+                    f'/r:{wpf / "PresentationCore.dll"}',f'/out:{app / "audio/LocalAudioPlayer.exe"}',str(ROOT/'desktop/LocalAudioPlayer.cs')],check=True)
 
     # Game-specific UE4SS files (signatures and memory layout) and the mod itself.
     shutil.copytree(ROOT / "GameConfig", app / "payload" / "gameconfig")
@@ -291,6 +302,8 @@ def main() -> None:
     for lic in wv.glob("LICENSE*"):
         shutil.copy2(lic, out / "licenses" / "WebView2-LICENSE.txt")
     shutil.copy2(ROOT / "LICENSE", out / "licenses" / "PhantomGladiator-LICENSE.txt")
+    shutil.copy2(dependency(args.deps,'ffmpeg_license'),out/'licenses/FFmpeg-GPLv3.txt')
+    (out/'licenses/FFmpeg-source.txt').write_text('FFmpeg 8.1.1, Gyan full build. Used as a separate executable for optional local audio.\nBinary build and build configuration: https://www.gyan.dev/ffmpeg/builds/\nFFmpeg source: https://ffmpeg.org/releases/ffmpeg-8.1.1.tar.xz\nSource mirrors and build scripts: https://github.com/GyanD/codexffmpeg\n',encoding='utf-8')
     readme = README.format(version=args.version, repo=REPO, game_build=VERIFIED_GAME_BUILD, python="3.11.9")
     if nexus:
         readme = readme.replace("【第三方组件】", README_NEXUS.format(page=NEXUS_PAGE) + "【第三方组件】", 1) + README_NEXUS_EN.format(page=NEXUS_PAGE)
@@ -307,7 +320,8 @@ def main() -> None:
                 entry = zipfile.ZipInfo.from_file(path, Path(name) / path.relative_to(out))
                 entry.date_time = built
                 entry.compress_type = zipfile.ZIP_DEFLATED
-                z.writestr(entry, path.read_bytes(), compresslevel=9)
+                with path.open('rb')as source,z.open(entry,'w')as target:
+                    shutil.copyfileobj(source,target,length=1<<20)
     digest = sha256(archive)
     (args.out / f"{name}-win64.zip.sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8")
     if not nexus:  # the update feed only lists the GitHub release

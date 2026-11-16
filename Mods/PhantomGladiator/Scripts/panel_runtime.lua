@@ -482,6 +482,12 @@ function Runtime.new(options)
         out.battle_music_message=music.message or ''
         out.battle_music_playing_id=music.playing or 0
         out.battle_music_pending=music.pending==true
+        out.battle_local_token=music.local_token or ''
+        out.battle_local_unit=music.local_unit or ''
+        out.battle_local_client=music.local_client or ''
+        out.battle_local_ready=music.local_ready==true
+        out.battle_local_supported=true
+        out.execution_minions_rule_supported=true
         out.fun_supported=not not options.funFeatures
         out.fun_shachi=fun.shachi==true
         out.fun_deflect=fun.deflect==true

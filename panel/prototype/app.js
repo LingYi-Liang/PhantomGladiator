@@ -486,7 +486,8 @@
   const xianzhePhantomRule = (id, rule) => id === "BP_Monster_XianZhe" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => xianzhePhantomRule(id, rule) ? t("xianzhePhantom." + (value === "off" ? "off" : "keep"))
+  const unitRuleLabel = (id, rule, value) => rule === "execution_minions" ? (value.startsWith("off_") ? "关闭自动处决小怪" : `自动处决小怪 ${Number(value.split("_")[1])}%`)
+    : xianzhePhantomRule(id, rule) ? t("xianzhePhantom." + (value === "off" ? "off" : "keep"))
     : rule === "menghua_stage" ? t("menghuaStage." + (value === "skip" ? "skip" : "keep"))
     : rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
     ? (value === "off" ? t("unit.permanent.off") : t("unit.permanent.on"))
@@ -517,7 +518,24 @@
       const busy = ui.busy.has("set_unit_rule");
       html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(t("shieldReflect.label", { name: u.name }))}" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
     }
+    if (u.boss && (!RT.online() || S.executionMinionsSupported)) {
+      const value=S.unitRules?.[u.id]?.execution_minions || "on_100";
+      const label=value.startsWith("off_") ? "处决小怪：关闭" : `处决小怪：${Number(value.split("_")[1])}%`;
+      html += `<button class="card-rule${value!=="on_100" ? " is-changed" : ""}" type="button" tabindex="${u.id===ui.selectedId ? 0 : -1}" data-action="execution-options" data-id="${esc(u.id)}" title="设置这个 BOSS 自动处决小怪的开关和概率；不影响投技、反制、BOSS阶段或主角处决">${esc(label)}</button>`;
+    }
     return html;
+  }
+  function openExecutionOptions(id) {
+    const unit=byId.get(id);if(!unit?.boss)return;
+    const value=S.unitRules?.[id]?.execution_minions || "on_100", chance=Number(value.split("_")[1]);
+    openDialog("execution-options",`<div class="dialog-head"><h2>${esc(unit.name)} · 自动处决小怪</h2><button class="icon-btn" data-action="dialog-close" aria-label="关闭">×</button></div><div class="dialog-body"><label class="row"><span>允许自动处决小怪</span><input id="execution-minions-on" type="checkbox" ${value.startsWith("on_") ? "checked" : ""}></label><label class="row"><span>处决概率（0～100%）</span><input class="input" id="execution-minions-chance" type="number" min="0" max="100" step="1" value="${chance}"></label><p class="muted">每个 BOSS 对每个小怪固定抽签，条件满足后才可能处决。50% 表示平均约一半获准，并非保证每场恰好一半。仅影响尚未开始的自动收尾，已开始的动作完整结束；投技、反制、BOSS阶段和主角处决保留。</p></div><div class="dialog-foot"><button class="btn btn-primary" data-action="execution-options-save" data-id="${esc(id)}">保存设置</button></div>`);
+  }
+  async function saveExecutionOptions(id) {
+    const chance=$("#execution-minions-chance")?.value;
+    if(!/^\d{1,3}$/.test(chance || "") || Number(chance)>100 || ui.busy.has("set_unit_rule"))return;
+    const value=($("#execution-minions-on").checked ? "on_" : "off_")+Number(chance);
+    await run("set_unit_rule",{payload:{unit:id,rule:"execution_minions",value},ok:()=>"自动处决小怪设置已保存"});
+    renderGrid();
   }
   async function toggleUnitRule(id, rule) {
     if (ui.busy.has("set_unit_rule")) return;
@@ -2486,10 +2504,10 @@
     const usable = RT.online() && saved.supported && !ui.busy.has("set_battle_music");
     return `<section class="card"><div class="card-head"><h2 class="card-title">战斗音乐（测试）</h2></div><div class="card-body">
       <p class="muted">默认保留原版。自动模式只为蓝红对战中有默认配乐的存活单位选择主题；也可指定游戏自带曲目。来源死亡、离场或停止对战后停止对应曲目，并交还原版音乐。阶段曲可手动指定，不叠加多首。</p>
-      <div class="music-controls"><label>播放方式<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE","保留原版"],["AUTO","自动选择参战主题"],["TRACK","手动指定曲目"]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
+      <div class="music-controls"><label>播放方式<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE","保留原版"],["AUTO","自动选择参战主题"],["TRACK","手动指定曲目"],["LOCAL","本地替换指定 BOSS"]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
       <label>曲目<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${(window.PG_MUSIC_TRACKS || []).map(row => `<option value="${esc(row.id)}" ${draft.track === row.id ? "selected" : ""}>${esc(row.label)}</option>`).join("")}</select></label>
       <button class="btn btn-secondary" type="button" id="battle-music-save" data-action="battle-music-save" ${usable ? "" : "disabled"}>保存音乐设置</button></div>
-      <p id="battle-music-status" class="muted" aria-live="polite"></p></div></section>`;
+      <p id="battle-music-status" class="muted" aria-live="polite"></p>${window.PGLocalAudio?.html() || ""}</div></section>`;
   }
   function renderBattleMusicState() {
     const status = $("#battle-music-status"); if (!status) return;
@@ -2497,11 +2515,12 @@
     status.textContent = !RT.online() ? "连接游戏后可设置。" : !music.supported ? "请更新并重载支持战斗音乐的游戏内模组。" : music.message || "设置由游戏读回，尚未开始播放。";
     for (const id of ["#battle-music-mode", "#battle-music-save"]) if ($(id)) $(id).disabled = !usable;
     if ($("#battle-music-track")) $("#battle-music-track").disabled = !usable || $("#battle-music-mode").value !== "TRACK";
+    window.PGLocalAudio?.render();
   }
   async function saveBattleMusic() {
     if (!RT.online() || !S.battleMusic?.supported || ui.busy.has("set_battle_music")) return;
     const mode = $("#battle-music-mode")?.value, track = $("#battle-music-track")?.value;
-    if (!["NATIVE", "AUTO", "TRACK"].includes(mode) || !(window.PG_MUSIC_TRACKS || []).some(row => row.id === track)) return;
+    if (!["NATIVE", "AUTO", "TRACK", "LOCAL"].includes(mode) || !(window.PG_MUSIC_TRACKS || []).some(row => row.id === track)) return;
     ui.musicDraft = { mode, track };
     const result = run("set_battle_music", { payload: { mode, track }, ok: () => "音乐设置已保存，播放状态以游戏读回为准" });
     renderBattleMusicState();
@@ -2834,11 +2853,11 @@
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_offcombat_regen": return t(p.enabled ? "offcombatRegen.history.on" : "offcombatRegen.history.off");
-      case "set_battle_music": return "设置战斗音乐：" + (p.mode === "NATIVE" ? "原版" : p.mode === "AUTO" ? "自动" : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track);
+      case "set_battle_music": return "设置战斗音乐：" + (p.mode === "NATIVE" ? "原版" : p.mode === "AUTO" ? "自动" : p.mode === "LOCAL" ? "本地替换" : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
-      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : p.rule === "menghua_stage" ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
+      case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : ["menghua_stage","execution_minions"].includes(p.rule) ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
       case "set_companion_stats": return t("action.set_companion_stats", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
@@ -3118,6 +3137,10 @@
   const actions = {
     "offcombat-regen": () => run("set_offcombat_regen", { payload: { enabled: !S.offCombatRegen?.on } }),
     "battle-music-save": () => saveBattleMusic(),
+    "local-music-import": el => window.PGLocalAudio?.act("import",el),
+    "local-music-remove": el => window.PGLocalAudio?.act("remove",el),
+    "local-music-volume": el => window.PGLocalAudio?.act("volume",el),
+    "local-music-retry": el => window.PGLocalAudio?.act("retry",el),
     "open-manual-beta": () => openManualBeta(),
     "check-manual-beta": () => checkManualBeta(),
     "install-manual-beta": () => installManualBeta(),
@@ -3172,6 +3195,8 @@
     "toast-close": el => dismissToast(el.dataset.toastId),
     select: el => { selectUnit(el.dataset.id, { scroll: !!el.dataset.scroll }); },
     "unit-rule": el => toggleUnitRule(el.dataset.id, el.dataset.rule),
+    "execution-options": el => openExecutionOptions(el.dataset.id),
+    "execution-options-save": el => saveExecutionOptions(el.dataset.id),
     quick: el => { if (ui.selectedId !== el.dataset.id) selectUnit(el.dataset.id); if (!ui.busy.has("spawn")) summon(el.dataset.id, el.dataset.team, ui.count); },
     type: el => { ui.type = el.dataset.type; renderToolbar(); renderGrid({ animate: true }); },
     "clear-search": () => { ui.query = ""; const input = $("#search"); input.value = ""; input.focus(); renderToolbar(); renderGrid(); },

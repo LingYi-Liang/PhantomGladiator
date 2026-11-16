@@ -148,6 +148,7 @@ function Exec.new(options)
         members=options.members,isImmortal=options.isImmortal,registerHook=options.registerHook,unregisterHook=options.unregisterHook,
         health=function(actor)local value=stats:read(actor,'Health');return value and value.current end})
     local self={enabled=options.enabled~=false,started=0,finished=0,failures=0,kills=0,message=''}
+    local policy=require('execution_policy').new({configured=options.executionPolicyConfigured,rule=options.executionPolicy,log=log,random=options.executionRandom,world=options.getWorld})
     local units={}      -- actor key -> {state='none'|'nopair'|'nodata'|'ready'|'done', pair, locks, timing, since, waited}
     local humanoidLines=0
     local tagRead=nil   -- how the executable tags read back the first time, logged once
@@ -322,8 +323,8 @@ function Exec.new(options)
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
     -- team: the target's arena team, or nil for a companion's foe, which only companions go for.
     -- A helper the other side's boss brought out (member.aid, arena_controller.lua) does not finish anyone.
-    local function opponent(target,team,reach,anyone,executionType)
-        local best,bestDistance
+    local function opponent(target,team,reach,anyone,executionType,isMob)
+        local best,bestDistance,denied
         for _,member in ipairs(options.members() or {}) do
             local other=member.actor
             local against
@@ -335,11 +336,11 @@ function Exec.new(options)
                 local d=hp and hp>0 and distance(target,other)
                 if d and d<=reach and (not bestDistance or d<bestDistance) and (anyone or isHumanoid(other))
                     and (anyone or ruleAllows(other,Rules[executionType],'executor')) then
-                    best,bestDistance=other,d
+                    if policy:allow(other,target,isMob)then best,bestDistance=other,d else denied=true end
                 end
             end
         end
-        return best,bestDistance
+        return best,bestDistance,denied
     end
     -- The executor faces its target before the call, as the game warps the player to; read back.
     local function face(executor,target)
@@ -1264,9 +1265,24 @@ local function closeOneGrab(pose,why,restore)
             say('处决会改剧情，不用它：'..className(target)..' '..short(selected.pair.execution)..' '..tostring(selected.storyWhy))
             return false
         end
-        local executor,d
-        if selected.state=='ready' then executor,d=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type)end
+        local executor,d,denied
+        if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob)end
         if executor then start(executor,target,selected,d,reason);return true end
+        -- A denied finisher cannot leave a minion immortal at its final death floor.
+        if denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
+            local floor,max=read(target,'Health_Min'),read(target,'Health_Max')
+            if floor and max and floor<=DEATH_LOCK*max+1 and hp<=floor+1 then
+                unit.policyRetry=t+1
+                local asc,removed,after=unlock(target,unit)
+                if after and after<=DEATH_LOCK*max+1 then
+                    local ge=object(GE_KILL);local sent=ge and call(asc,'BP_ApplyGameplayEffectToSelf',ge,0.0,{})
+                    local remaining=read(target,'Health')
+                    say('小怪末端锁血免动画收尾：调用='..tostring(sent)..'；HP读回='..tostring(remaining))
+                    if sent and remaining and remaining<=0 then unit.state='done';self.kills=self.kills+1 end
+                    return true
+                end
+            end
+        end
         if selected.state~='ready' and not unit.conditionWait then unit.conditionWait=true;say('有处决数据，当前原生标签/骑乘条件未满足：'..className(target)) end
         if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有对手，等对手靠近：'..className(target)) end
         return false
@@ -1347,6 +1363,9 @@ local function closeOneGrab(pose,why,restore)
     end
     function self:tick()
         local members=options.members() or {}
+        local policyFight
+        if options.executionPolicyConfigured and options.executionPolicyConfigured()==true then policyFight=not options.fighting or options.fighting()==true end
+        policy:sync(members,policyFight==true)
         local present={}
         for _,member in ipairs(members)do
             local key=U.key(member.actor)
@@ -1377,7 +1396,7 @@ local function closeOneGrab(pose,why,restore)
         if active then watch();return end
         local t=now()
         endLocks(members)
-        if options.fighting and not options.fighting() then
+        if options.fighting and(policyFight==false or policyFight==nil and not options.fighting())then
             for _,unit in pairs(units) do unit.prologueSince=nil end
             considerFoes(foes,t);return
         end

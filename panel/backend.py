@@ -28,6 +28,8 @@ decorate_row = _labels_module.decorate_row
 _taxonomy_spec = importlib.util.spec_from_file_location('phantom_catalog_taxonomy', Path(__file__).with_name('catalog_taxonomy.py'))
 _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
+_audio_spec=importlib.util.spec_from_file_location('phantom_local_audio',Path(__file__).with_name('local_audio.py'))
+_audio_module=importlib.util.module_from_spec(_audio_spec);_audio_spec.loader.exec_module(_audio_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
@@ -52,6 +54,7 @@ HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
 # Rules set on a unit's card (unit_rules.lua).
 UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off"), "menghua_stage": ("keep", "skip")}
+UNIT_RULES['execution_minions']=tuple(f'{state}_{chance}'for state in ('on','off')for chance in range(101))
 THORN_SHIELD_UNITS = {"BP_Monster_JingYe", "BP_Monster_MaleThug_Club_Yellow_Shield", "BP_Monster_MaleThug_Club_Yellow_Shield_Teaching"}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
 FUN_FEATURES = ("SHACHI", "DEFLECT", "DODGE")
@@ -386,6 +389,7 @@ class Bridge:
         self.db.commit()
         self.transport_code = None
         self.summon_queue_scope = None
+        self.local_audio = None
         self._number_after_journal()
 
     def _journal_ids(self):
@@ -418,6 +422,7 @@ class Bridge:
                 self.db.execute("UPDATE sqlite_sequence SET seq=? WHERE name='commands'", (highest,))
 
     def close(self):
+        if self.local_audio:self.local_audio.close()
         with self.lock:
             self.db.close()
             self.lease.close()
@@ -1007,10 +1012,12 @@ class Bridge:
         elif action == "set_battle_music":
             allowed.update(("mode", "track"))
             mode, track = request.get("mode"), request.get("track")
-            if not isinstance(mode, str) or not isinstance(track, str) or mode not in ("NATIVE", "AUTO", "TRACK") or track not in MUSIC_TRACK_IDS:
+            if not isinstance(mode, str) or not isinstance(track, str) or mode not in ("NATIVE", "AUTO", "TRACK", "LOCAL") or track not in MUSIC_TRACK_IDS:
                 raise ValidationError("无效的战斗音乐选项")
             if self.game_status().get('values', {}).get('battle_music_supported') != 'true':
                 raise ValidationError("请更新并重载支持战斗音乐的游戏内Mod")
+            if mode=='LOCAL'and self.game_status().get('values',{}).get('battle_local_supported')!='true':
+                raise ValidationError('请更新并重载支持本地音乐的游戏内Mod')
             payload.update(mode=mode, track=track)
         elif action == "configure_keys":
             allowed.add("bindings")
@@ -1706,6 +1713,7 @@ class Bridge:
             return {"schema_version": 1, "stat_match_supported": True, "runtime_dir": str(self.runtime), "game": game,
                     "summon_queue_transit": summon_transit, "monster_pools": self._pool_status(game),
                     "catalog": catalog_summary, "queue": [self._command(row[0]) for row in reversed(rows)],
+                    "local_audio": self.local_audio.snapshot()if self.local_audio else {"supported":False},
                     "watched_commands": [self._command(row[0]) for row in watched],
                     "keybinds": keys["active"], "requested_keybinds": keys["requested"],
                     "function_keys": self.function_keybinds(),"function_keys_supported": True,
@@ -1821,7 +1829,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted(write=True):
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools"}:
+        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools", "/api/local-audio"}:
             self._reply(404, {"error": "unknown API"}); return
         try:
             if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
@@ -1834,6 +1842,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValidationError(f"request body must be 1..{limit} bytes")
             self.connection.settimeout(5)
             request = json.loads(self.rfile.read(length).decode("utf-8"))
+            if path == '/api/local-audio':
+                if not self.server.bridge.local_audio:raise ValidationError('本地音频服务不可用')
+                self._reply(202,self.server.bridge.local_audio.configure(request));return
             if path == "/api/monster-pools":
                 self._reply(200, self.server.bridge.save_monster_pools(request)); return
             if path == "/api/queue/clear":
@@ -1857,6 +1868,15 @@ def main():
     parser.add_argument("--static-dir", type=Path, default=Path(__file__).parent / "static")
     args = parser.parse_args()
     bridge = Bridge(args.runtime_dir)
+    audio_data=Path(os.environ.get('PG_DATA_DIR')or Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'PhantomGladiator')/'local-audio'
+    try:
+        rows=json.loads(Path(__file__).with_name('local-bosses.json').read_text(encoding='utf-8'))
+        bosses={row['id']:row['name']for row in rows if _audio_module.UNIT.fullmatch(row['id'])}
+        bridge.local_audio=_audio_module.LocalAudio(bridge.runtime,audio_data,Path(__file__).resolve().parent.parent/'audio',bosses,bridge.game_status)
+        bridge.local_audio.start()
+    except Exception as error:
+        print('[LocalAudio] optional startup skipped: '+type(error).__name__,flush=True)
+        bridge.local_audio=None
     try:
         server = PanelServer(bridge, args.static_dir, args.port)
     except OSError:

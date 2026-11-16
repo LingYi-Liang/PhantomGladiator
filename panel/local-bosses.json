@@ -1,0 +1,358 @@
+[
+  {
+    "id": "BP_Monster_ZuoShang_Young_Tutorial",
+    "name": "少年左殇"
+  },
+  {
+    "id": "BP_Monster_ZuoShang",
+    "name": "组织冥主：左殇"
+  },
+  {
+    "id": "BP_Monster_HookMan_HorseCartCombat",
+    "name": "猎杀者：追命（序章版）"
+  },
+  {
+    "id": "BP_Monster_MobMan_Elite_Sword",
+    "name": "痴狂暴徒：残钢"
+  },
+  {
+    "id": "BP_Monster_PengMeng_Axe",
+    "name": "斧老大：彭猛"
+  },
+  {
+    "id": "BP_Monster_YuCong_FirstTime",
+    "name": "三张脸的诡异魔偶"
+  },
+  {
+    "id": "BP_Monster_HookMan_P2",
+    "name": "追命：六绝凶镰"
+  },
+  {
+    "id": "BP_Monster_AHua_GuiTouDao",
+    "name": "新娘阿花"
+  },
+  {
+    "id": "BP_Monster_Scavenger",
+    "name": "活人偶清道夫"
+  },
+  {
+    "id": "BP_Monster_QiShu_Bing",
+    "name": "灭法之法：寒岁"
+  },
+  {
+    "id": "BP_Monster_MoTian_LongZhu_01",
+    "name": "金面具黑衣人"
+  },
+  {
+    "id": "BP_Monster_MoTian",
+    "name": "暗魔天堡之主：魔渊"
+  },
+  {
+    "id": "BP_Monster_HuaQianXIao",
+    "name": "剑痴：花千笑"
+  },
+  {
+    "id": "BP_Monster_LuanShi",
+    "name": "拳痴：铁狂"
+  },
+  {
+    "id": "BP_Monster_JingYe",
+    "name": "亡命徒：荆野"
+  },
+  {
+    "id": "BP_Monster_ChiLian",
+    "name": "双蛇夫人：白赤练"
+  },
+  {
+    "id": "BP_Monster_ChiLian_P2",
+    "name": "白赤练：献祭之蛇"
+  },
+  {
+    "id": "BP_Monster_YuCong_P1",
+    "name": "卅四号.混沌魔偶：“玉琮”"
+  },
+  {
+    "id": "BP_Monster_YuCong_WuLi",
+    "name": "“玉琮”：钢刃"
+  },
+  {
+    "id": "BP_Monster_YuCong_Bing",
+    "name": "“玉琮”：寒冰"
+  },
+  {
+    "id": "BP_Monster_YuCong_HunDun",
+    "name": "“玉琮”：混沌"
+  },
+  {
+    "id": "BP_Monster_Zhuobi",
+    "name": "守门人拙壁"
+  },
+  {
+    "id": "BP_Monster_CanQu_BiHai",
+    "name": "苦叶寺：碧海大师残躯"
+  },
+  {
+    "id": "BP_Monster_BiYuan",
+    "name": "天玄派：毕远掌门残躯"
+  },
+  {
+    "id": "BP_Monster_FemaleVessel_YuZan",
+    "name": "三号.乐师偶：“玉瓒”"
+  },
+  {
+    "id": "BP_Monster_QiShu_Huo",
+    "name": "灭法之法：炎茹"
+  },
+  {
+    "id": "BP_Monster_Danghui",
+    "name": "操偶师：荡秽"
+  },
+  {
+    "id": "BP_Monster_MuXiaoKui",
+    "name": "组织少主：沐小葵"
+  },
+  {
+    "id": "BP_Monster_MuXiaoKui_P2",
+    "name": "沐小葵：铁玉女王"
+  },
+  {
+    "id": "BP_Monster_Yuu",
+    "name": "少主护卫：玉妖"
+  },
+  {
+    "id": "BP_Monster_TieGui",
+    "name": "少主护卫：铁鬼"
+  },
+  {
+    "id": "BP_Monster_GuiChai_Red",
+    "name": "鬼差队长：火流星"
+  },
+  {
+    "id": "BP_Monster_GuiChai_Red_P2",
+    "name": "火流星：磷火意识"
+  },
+  {
+    "id": "BP_Monster_GuiChai_Yellow_MoDao",
+    "name": "鬼差高手：斩骑"
+  },
+  {
+    "id": "BP_Monster_GuiChai_Yellow_ShuangGou",
+    "name": "鬼差高手：勾魂"
+  },
+  {
+    "id": "BP_Monster_HuoDaoDuiZhang",
+    "name": "火刀：祝原"
+  },
+  {
+    "id": "BP_Monster_WuXuan",
+    "name": "堕落将军武轩"
+  },
+  {
+    "id": "BP_Monster_GuWanYue",
+    "name": "女妖骨婉约"
+  },
+  {
+    "id": "BP_Monster_Maddoctor_Elite",
+    "name": "神医：谢秋冬"
+  },
+  {
+    "id": "BP_Monster_YouLong_SecondBrother",
+    "name": "水行帮主：游龙"
+  },
+  {
+    "id": "BP_Monster_QiShu_Lei",
+    "name": "灭法之法：雷婷"
+  },
+  {
+    "id": "BP_Monster_ChangHong_Spear",
+    "name": "组织高手：长鸿"
+  },
+  {
+    "id": "BP_Monster_ChangHong_P2",
+    "name": "长鸿：雷电枪骑"
+  },
+  {
+    "id": "BP_Monster_LionDancer",
+    "name": "舞狮尊主"
+  },
+  {
+    "id": "BP_Monster_LionDancer_P2",
+    "name": "舞狮尊主：烈焰"
+  },
+  {
+    "id": "BP_Monster_XiaoXue",
+    "name": "吞噬尸体的小雪"
+  },
+  {
+    "id": "BP_Monster_WanJun_JinGua",
+    "name": "巨锤客：万钧"
+  },
+  {
+    "id": "BP_Monster_EMei_Sword_Top",
+    "name": "红衣女剑客"
+  },
+  {
+    "id": "BP_Monster_HuaShan_Blue",
+    "name": "七星剑阵：大师兄"
+  },
+  {
+    "id": "BP_Monster_HuaShan_JianOu",
+    "name": "大师兄的绝望剑意"
+  },
+  {
+    "id": "BP_Monster_WuLengShuang",
+    "name": "软剑乌冷霜"
+  },
+  {
+    "id": "BP_Monster_YuBi",
+    "name": "廿一号.剑偶：“玉璧”"
+  },
+  {
+    "id": "BP_Monster_MobMan_Elite",
+    "name": "癫狂暴徒铁杀"
+  },
+  {
+    "id": "BP_Monster_GreatBladeMan",
+    "name": "横刀：毕峰"
+  },
+  {
+    "id": "BP_Monster_YanYan_Club",
+    "name": "疯婆子奎艳艳"
+  },
+  {
+    "id": "BP_Monster_JadeMaskMan",
+    "name": "玉面郎君"
+  },
+  {
+    "id": "BP_Monster_MBoss",
+    "name": "昆仑叛教者：荒行子"
+  },
+  {
+    "id": "BP_Monster_MBossVariants",
+    "name": "荒行子：撕裂锯轮"
+  },
+  {
+    "id": "BP_Monster_GuiChai_Cyan_ShuangYue",
+    "name": "鬼差高手：断肠"
+  },
+  {
+    "id": "BP_Monster_QiShu_Du",
+    "name": "灭法之法：蛊鹤"
+  },
+  {
+    "id": "BP_Monster_HuaShan_RedTroop_BigBro",
+    "name": "悲痛欲绝的阿瑾"
+  },
+  {
+    "id": "BP_Monster_DuYanBoss",
+    "name": "独眼弓客"
+  },
+  {
+    "id": "BP_Monster_YouLong_Harpoon",
+    "name": "发狂的水行帮主：游龙"
+  },
+  {
+    "id": "BP_Monster_YanQianSui",
+    "name": "琴女烟千岁"
+  },
+  {
+    "id": "BP_Monster_FengXueDaoKe",
+    "name": "风雪刀客"
+  },
+  {
+    "id": "BP_Monster_YingMei_RedShadowBoneBlade",
+    "name": "赤影骨刃：囚锋"
+  },
+  {
+    "id": "BP_Monster_FemaleVessel_YuDing",
+    "name": "十二号.偃月刀偶“玉鼎”"
+  },
+  {
+    "id": "BP_Monster_LeiDang",
+    "name": "组织高手：雷当"
+  },
+  {
+    "id": "BP_Monster_LeiDang_P2",
+    "name": "雷当：独臂虎"
+  },
+  {
+    "id": "BP_Monster_PowerMan",
+    "name": "力者和锯者"
+  },
+  {
+    "id": "BP_Monster_PowerMan_P2",
+    "name": "力者：石破天惊之态"
+  },
+  {
+    "id": "BP_Monster_LengTu",
+    "name": "梦差：冷荼"
+  },
+  {
+    "id": "BP_Monster_MengHua",
+    "name": "救苦救难梦华圣母娘娘"
+  },
+  {
+    "id": "BP_Monster_ZuoShang_Ending",
+    "name": "组织冥主：左殇（银发）"
+  },
+  {
+    "id": "BP_Monster_ZuoShang_P2",
+    "name": "龙体左殇"
+  },
+  {
+    "id": "BP_Monster_XuKong",
+    "name": "虚空"
+  },
+  {
+    "id": "BP_Monster_PengMeng_Axe_NPC",
+    "name": "彭猛（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_EMei_Sword_NPC",
+    "name": "峨眉剑客（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_HuaShan_Blue_NPC",
+    "name": "华山双剑（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_FengXueDaoKe_NPC",
+    "name": "风雪刀客（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_LionDancer_P2_NPC",
+    "name": "舞狮（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_LeiDang_NPC",
+    "name": "雷当（剧情援军）"
+  },
+  {
+    "id": "BP_Monster_XianZhe",
+    "name": "弦者"
+  },
+  {
+    "id": "BP_Monster_GuiFengKe",
+    "name": "鬼斩客"
+  },
+  {
+    "id": "BP_Monster_IronMaskMan_Boss",
+    "name": "铁面杀手（首领版）"
+  },
+  {
+    "id": "BP_Monster_HookMan",
+    "name": "追命（一阶段）"
+  },
+  {
+    "id": "BP_Monster_EMei_Sword_JianZhen",
+    "name": "红衣女剑客（剑阵版）"
+  },
+  {
+    "id": "BP_Monster_TieGui_Solo",
+    "name": "铁鬼（独战版）"
+  },
+  {
+    "id": "BP_Monster_YuCong",
+    "name": "玉琮（原版战斗体）"
+  }
+]

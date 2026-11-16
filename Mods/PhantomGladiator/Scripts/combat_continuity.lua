@@ -25,9 +25,10 @@ function Continuity.new(options)
     local tagNames,engageAfter={},{}
     local messages,lines={},{}
     local function log(key,text)
+        local kind=key:match('^[^:]+')or key
+        if(lines[kind]or 0)>=12 then return end
         if messages[key]==text then return end
         messages[key]=text
-        local kind=key:match('^[^:]+')or key
         if(lines[kind]or 0)<12 then lines[kind]=(lines[kind]or 0)+1;(options.log or function()end)('[CombatIntent] '..text)end
     end
     local function alive(actor)
@@ -224,14 +225,19 @@ function Continuity.new(options)
     function self:maintain(actor,target)
         local c=operation(actor,target)
         if not current(c,false)then return false end
-        if not self:resume(actor)then return false end
-        if not current(c,false)then return false end
+        local held=leases[U.key(actor)or'']
+        if held and held.owns then
+            if not self:resume(actor)or not current(c,false)then return false end
+        end
         local ai=options.aiOf(actor);local s=state(ai)
         if not s then return false end
         local hm=options.hatredOf(actor)
         if not U.valid(hm)then return false end
         local read,has=pcall(options.hates,hm,target)
         if not read or type(has)~='boolean'then return false end
+        if has and options.deferTargetHold and s:find('^AI.State.Combat')then
+            return self.alive and c.epoch==epoch and(not options.context or options.context()==c.token)
+        end
         local sent=false
         if not has then
             if not current(c,false,true)then return false end

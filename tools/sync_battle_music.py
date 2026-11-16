@@ -17,3 +17,7 @@ lua.append('}}')
 ui = [{key: row[key] for key in ('id', 'label')} for row in data['tracks']]
 (ROOT / 'panel/prototype/battle-music.js').write_text('"use strict";\nwindow.PG_MUSIC_TRACKS = ' + json.dumps(ui, ensure_ascii=False) + ';\n', encoding='utf-8', newline='\n')
 print('Music metadata:', len(tracks), 'tracks;', len(data['units']), 'unit defaults')
+source=(ROOT/'panel/prototype/units.js').read_text(encoding='utf-8').split('window.PG_UNITS =',1)[1].strip().removesuffix(';')
+bosses=[{'id':row['id'],'name':row['name']}for row in json.loads(source)if row.get('boss')is True]
+(ROOT/'panel/local-bosses.json').write_text(json.dumps(bosses,ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
+print('Local music targets:',len(bosses),'boss cards')

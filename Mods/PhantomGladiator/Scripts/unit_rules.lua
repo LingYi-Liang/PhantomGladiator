@@ -15,6 +15,9 @@ Rules.THORN_COUNTERS={
 local HEADER='UnitRulesV1'
 Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true},menghua_stage={keep=true,skip=true}}
 Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep',menghua_stage='keep'}
+Rules.VALUES.execution_minions={}
+for i=0,100 do Rules.VALUES.execution_minions['on_'..i]=true;Rules.VALUES.execution_minions['off_'..i]=true end
+Rules.DEFAULTS.execution_minions='on_100'
 local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
     remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'},
     menghua_stage={keep='保留梦华剧情联动（下次召唤生效）',skip='跳过梦华剧情联动（下次召唤生效）'}}
@@ -28,6 +31,7 @@ local function defaultValue(id,rule)
 end
 
 local function labelFor(id,rule,value)
+    if rule=='execution_minions'then return value:sub(1,3)=='on_'and('处决小怪概率 '..value:match('%d+$')..'%')or'已关闭自动处决小怪'end
     if id==XIANZHE and rule=='phantom' then
         return value=='off' and '关闭技能虚化无敌（下次召唤生效）' or '保留技能虚化无敌（下次召唤生效）'
     end
@@ -45,9 +49,14 @@ function Rules.new(options)
     local file=options.path..'/unit-rules.tsv'
     local self={}
     local rules={}   -- unit id -> {rule=value}
+    local executionOverrides=false
+    local function refreshExecution()
+        executionOverrides=false
+        for _,row in pairs(rules)do if row.execution_minions then executionOverrides=true;break end end
+    end
     local function readFile()
         local f=fs.open(file,'r');if not f then return nil end
-        local value=f:read('*a');f:close();return value
+        local value=f:read(131073);f:close();return type(value)=='string'and #value<=131072 and value or nil
     end
     local function render(from)
         local ids={}
@@ -74,6 +83,7 @@ function Rules.new(options)
             end
         end
     end
+    refreshExecution()
     function self:set(id,rule,value)
         if not validId(id) then return {ok=false,message='单位规则：单位编号不对',spawned_count=0} end
         if not Rules.VALUES[rule] or not Rules.VALUES[rule][value] then return {ok=false,message='单位规则：规则或取值不对',spawned_count=0} end
@@ -92,7 +102,7 @@ function Rules.new(options)
         local wrote=f and f:write(text)
         local closed=f and f:close()
         local saved=f~=nil and wrote~=nil and wrote~=false and closed==true and readFile()==text
-        if saved then rules=copy end
+        if saved then rules=copy;refreshExecution()end
         log(string.format('[UnitRules] 设置 单位=%s %s=%s 保存读回=%s',id,rule,value,tostring(saved)))
         return {ok=saved,spawned_count=0,message=saved and labelFor(id,rule,value) or '单位规则没有保存'}
     end
@@ -112,6 +122,7 @@ function Rules.new(options)
         end
         return id and rules[id] and rules[id][rule] or defaultValue(id,rule)
     end
+    function self:hasExecutionOverrides()return executionOverrides end
     -- For the app: BP_Monster_MoTian:lock=kill;BP_Monster_FemaleDoll_QinNv:phantom=keep
     function self:status()
         local parts={}

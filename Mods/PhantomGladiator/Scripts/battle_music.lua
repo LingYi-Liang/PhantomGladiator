@@ -33,6 +33,7 @@ function Music.new(options)
     local nativeDepth,retryAt,hookRetryAt,unhookRetryAt=0,0,0,0
     local attemptKey,attempts=nil,0
     local notices={}
+    local localMusic
     local function log(kind,text)
         if notices[kind]==text then return end
         notices[kind]=text;(options.log or function()end)('[BattleMusic] '..text)
@@ -42,7 +43,7 @@ function Music.new(options)
         local f=fs.open(path,'rb');if not f then return nil end
         local text=f:read(512);f:close();return text
     end
-    local function valid(mode,track)return (mode=='NATIVE' or mode=='AUTO' or mode=='TRACK') and Catalog.tracks[track]~=nil end
+    local function valid(mode,track)return (mode=='NATIVE' or mode=='AUTO' or mode=='TRACK' or mode=='LOCAL') and Catalog.tracks[track]~=nil end
     for _,path in ipairs({file,file..'.bak'})do
         local text=read(path)
         local mode,track
@@ -118,10 +119,11 @@ function Music.new(options)
                 if not found or not U.valid(fn) then complete=false
                 else
                     local ok,pre,post=pcall(register,path,function(ctx)
-                        if not self.alive or nativeDepth>0 or not self.lease then return end
+                        if not self.alive or nativeDepth>0 or not(self.lease or localMusic and localMusic:owns())then return end
                         if not gameThread() then self.suspended=true;return end
                         local object=U.unwrap(ctx)
-                        if U.key(object)==self.lease.subKey and nameOf(object)==self.lease.subName then self.suspended=true end
+                        if localMusic and localMusic:yield(U.key(object),nameOf(object))then self.suspended=true end
+                        if self.lease and U.key(object)==self.lease.subKey and nameOf(object)==self.lease.subName then self.suspended=true end
                     end)
                     if ok and type(pre)=='number' and type(post)=='number' then hooks[path]={pre,post}
                     else complete=false end
@@ -191,9 +193,19 @@ function Music.new(options)
         if not restoreNative(ctx,after,restore)then return false end
         state('native','模组曲目停止已读回，原版接管音乐');return true
     end
+    localMusic=require('local_boss_music').new({clock=clock,wall=options.wallClock or os.time,
+        session=options.session or function()return ''end,
+        read=function()local f=fs.open(options.path..'/battle-local-link.tsv','rb');if not f then return nil end;local text=f:read(24577);f:close();return text end,
+        active=function()return self.alive and options.status().battle_active==true and not self.suspended end,
+        context=context,snapshot=snapshot,native=native,restore=restoreNative,hooks=ensureHooks,
+        members=options.members,unitId=unitId,eligible=eligible,actorState=actorState,state=state,
+        log=function(text)log('local',text)end})
     function self:tick()
         if not self.alive or not gameThread() then return end
-        if self.mode=='NATIVE' and not self.lease and not self.restorePending then if next(hooks)then unhook()end;state('native','保留原版音乐');return end
+        if self.mode=='NATIVE' and not self.lease and not self.restorePending and not localMusic:owns()then if next(hooks)then unhook()end;state('native','保留原版音乐');return end
+        if self.mode=='LOCAL'and self.lease then if not release(context(),true)then return end end
+        if self.mode=='LOCAL'and options.status().battle_active~=true then self.suspended=false end
+        if localMusic:tick(self.mode=='LOCAL')then return end
         local status=options.status() or {};local active=status.battle_active==true
         if not active and not self.lease and not self.restorePending then
             self.suspended=false;attemptKey=nil;attempts=0
@@ -269,23 +281,30 @@ function Music.new(options)
         log('setting','保存音乐设置='..mode..'/'..track..'；读回='..tostring(saved))
         if not saved then return {ok=false,message='战斗音乐设置保存未确认，旧设置继续生效'} end
         if self.lease and (mode~=self.mode or track~=self.track) then self.lease.track=''end
-        self.mode,self.track,self.suspended=mode,track,false;retryAt=0;attemptKey=nil;attempts=0
+        self.mode,self.track,self.suspended=mode,track,false;localMusic.failed=false;retryAt=0;attemptKey=nil;attempts=0
         self:tick()
         return {ok=true,message='音乐设置已保存；'..self.message}
     end
     function self:stop()
         self.suspended=true
+        if localMusic:owns()then
+            local ok=localMusic:stop();return {ok=ok,message=ok and '本地音乐已停止并交还原版' or self.message}
+        end
         if not self.lease and not self.restorePending then return {ok=true,message='没有模组音乐需要停止'}end
         if self.restorePending then self:tick()end
         local ok=release(context(),true)
         return {ok=ok,message=ok and '战斗音乐停止已读回' or self.message}
     end
     function self:status()
-        return {supported=supported(),mode=self.mode,track=self.track,state=self.state,message=self.message,playing=self.lease and self.lease.id or 0,pending=self.restorePending~=nil or (self.lease~=nil and self.lease.stopAt~=nil)}
+        local result=localMusic:status()
+        result.supported=supported();result.mode=self.mode;result.track=self.track;result.state=self.state;result.message=self.message
+        result.playing=self.lease and self.lease.id or 0;result.pending=self.restorePending~=nil or (self.lease~=nil and self.lease.stopAt~=nil)or result.local_pending
+        return result
     end
     function self:silence()
         self.alive=false;unhook(true)
         if self.lease then log('unload','音乐恢复记录仍在；卸载不访问游戏对象，重载前需停止清理')end
+        if localMusic:owns()then log('local-unload','本地音乐交还记录仍在；卸载不访问游戏对象，重载前需停止清理')end
     end
     return self
 end
