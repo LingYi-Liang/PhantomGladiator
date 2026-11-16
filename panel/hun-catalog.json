@@ -18,12 +18,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_WoodBlade.T_Icon_Weapon_WoodBlade"
     },
     {
       "id": "main_weapon_22897439aec8ec98",
       "kind": "main_weapon",
-      "name": "木制黑伤(大魂用)",
+      "name": "木制黑伤",
       "native_id": "WoodenSwordHun",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -36,7 +39,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "成年形态",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_WoodBlade.T_Icon_Weapon_WoodBlade"
     },
     {
       "id": "main_weapon_3bcd8273adf841ba",
@@ -54,12 +60,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiShang.T_Icon_Weapon_HeiShang"
     },
     {
       "id": "main_weapon_1353fcf45251daf7",
       "kind": "main_weapon",
-      "name": "黑伤(马车战)",
+      "name": "黑伤",
       "native_id": "Tang_HorseCartCombat",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -72,12 +81,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "马车战",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiShang.T_Icon_Weapon_HeiShang"
     },
     {
       "id": "main_weapon_6462a841260ca873",
       "kind": "main_weapon",
-      "name": "黑伤(马车战后半段)",
+      "name": "黑伤",
       "native_id": "TangPrologue",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -90,7 +102,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "马车战后半段",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiShang.T_Icon_Weapon_HeiShang"
     },
     {
       "id": "main_weapon_4034505435d0049b",
@@ -108,7 +123,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_CanGang.T_Icon_Weapon_CanGang"
     },
     {
       "id": "main_weapon_b5d147ceccb796b5",
@@ -126,7 +144,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiShangShuangRen.T_Icon_Weapon_HeiShangShuangRen"
     },
     {
       "id": "main_weapon_82e5dbb97b5bec69",
@@ -144,7 +165,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_ChangXingHeiShang.T_Icon_Weapon_ChangXingHeiShang"
     },
     {
       "id": "main_weapon_cda4c37be66bfc9a",
@@ -162,7 +186,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HongZhuangGuiZhan.T_Icon_Weapon_HongZhuangGuiZhan"
     },
     {
       "id": "main_weapon_faf61c1206a6e856",
@@ -180,7 +207,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_ChiZheCanJian.T_Icon_Weapon_ChiZheCanJian"
     },
     {
       "id": "main_weapon_9d04fbc883461a07",
@@ -198,7 +228,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_WangMingZhanMaDao.T_Icon_Weapon_WangMingZhanMaDao"
     },
     {
       "id": "main_weapon_11db74c258db3587",
@@ -216,7 +249,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_BaiMangChiLian.T_Icon_Weapon_BaiMangChiLian"
     },
     {
       "id": "main_weapon_8944a328cf231994",
@@ -234,7 +270,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_TianXuanQingTongJian.T_Icon_Weapon_TianXuanQingTongJian"
     },
     {
       "id": "main_weapon_0729bf3c1a76aa71",
@@ -252,7 +291,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_BieLiCanGou.T_Icon_Weapon_BieLiCanGou"
     },
     {
       "id": "main_weapon_2fe4b8483f524390",
@@ -270,7 +312,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_TianShaShuangYue.T_Icon_Weapon_TianShaShuangYue"
     },
     {
       "id": "main_weapon_5389e5a020f8514d",
@@ -288,7 +333,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_PoJun.T_Icon_Weapon_PoJun"
     },
     {
       "id": "main_weapon_fff24e4ce50c2001",
@@ -306,7 +354,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_LingSheRuanJian.T_Icon_Weapon_LingSheRuanJian"
     },
     {
       "id": "main_weapon_e3023412378cf219",
@@ -324,7 +375,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_BaiShanFengLeiJian.T_Icon_Weapon_BaiShanFengLeiJian"
     },
     {
       "id": "main_weapon_bf7c9e6e25696de4",
@@ -342,7 +396,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_DangKouXiongRen.T_Icon_Weapon_DangKouXiongRen"
     },
     {
       "id": "main_weapon_91e3409feaad2cce",
@@ -360,7 +417,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_YuShuangHuan.T_Icon_Weapon_YuShuangHuan"
     },
     {
       "id": "main_weapon_5cb297cc84219678",
@@ -378,12 +438,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/White/Weapon/New0306/T_Weapon_ZhuGuangBaoQi_w.T_Weapon_ZhuGuangBaoQi_w"
     },
     {
       "id": "main_weapon_8b58b3b9d1680d73",
       "kind": "main_weapon",
-      "name": "邪火",
+      "name": "炽刃",
       "native_id": "XieHuo",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -396,7 +459,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/White/Weapon/New0306/T_Weapon_XieHuo_w.T_Weapon_XieHuo_w"
     },
     {
       "id": "main_weapon_3f85292865769cc1",
@@ -414,7 +480,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_YaoJu.T_Icon_Weapon_YaoJu"
     },
     {
       "id": "main_weapon_2c46be3701ffb096",
@@ -432,7 +501,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_DuanZhiJu.T_Icon_Weapon_DuanZhiJu"
     },
     {
       "id": "main_weapon_cbbfc8e4a23a2bd5",
@@ -450,7 +522,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_YanYueDao.T_Icon_Weapon_YanYueDao"
     },
     {
       "id": "main_weapon_59e18a66ad87c1bf",
@@ -468,7 +543,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_CiGuHunDun.T_Icon_Weapon_CiGuHunDun"
     },
     {
       "id": "main_weapon_71ecb8de4dc432f8",
@@ -486,7 +564,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_BaiYing.T_Icon_Weapon_BaiYing"
     },
     {
       "id": "main_weapon_d9971346ba29858b",
@@ -504,7 +585,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_ShengMuXieShan.T_Icon_Weapon_ShengMuXieShan"
     },
     {
       "id": "main_weapon_ab20eb6bcdedb0f9",
@@ -522,7 +606,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_ZiMingJian.T_Icon_Weapon_ZiMingJian"
     },
     {
       "id": "main_weapon_71f9ebd2c38c73f1",
@@ -540,12 +627,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_MoQie.T_Icon_Weapon_MoQie"
     },
     {
       "id": "main_weapon_001cda738f47b28a",
       "kind": "main_weapon",
-      "name": "乱莺",
+      "name": "乱莺剑",
       "native_id": "LuanYing",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -558,7 +648,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_LuanYingJian.T_Icon_Weapon_LuanYingJian"
     },
     {
       "id": "main_weapon_aa54e468b886a906",
@@ -576,12 +669,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiMoShang.T_Icon_Weapon_HeiMoShang"
     },
     {
       "id": "main_weapon_055bd994bb059b4c",
       "kind": "main_weapon",
-      "name": "黑魔伤（序章）",
+      "name": "黑魔伤",
       "native_id": "HeiMoShangPrologue",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_WeaponData",
@@ -594,7 +690,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "序章",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_Weapon_HeiShang.T_Icon_Weapon_HeiShang"
     },
     {
       "id": "shadow_armament_1d74bab7b7aeecfa",
@@ -612,7 +711,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_JuXiongFu.T_Icon_ShaqiWeapon_JuXiongFu"
     },
     {
       "id": "shadow_armament_e663d7415f5406ff",
@@ -630,7 +732,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YuGong.T_Icon_ShaqiWeapon_YuGong"
     },
     {
       "id": "shadow_armament_c0e36b1dcba78251",
@@ -648,7 +753,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ZhuiMingSuoLian.T_Icon_ShaqiWeapon_ZhuiMingSuoLian"
     },
     {
       "id": "shadow_armament_d4d701c29799bb5a",
@@ -666,12 +774,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_MiaoShouFeiDao.T_Icon_ShaqiWeapon_MiaoShouFeiDao"
     },
     {
       "id": "shadow_armament_bfac635898ff5be9",
       "kind": "shadow_armament",
-      "name": "铁狂拳套",
+      "name": "铁拳套",
       "native_id": "TieGongZhuQuanTao",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_ShaqiWeaponData",
@@ -684,7 +795,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_TieQuanTao.T_Icon_ShaqiWeapon_TieQuanTao"
     },
     {
       "id": "shadow_armament_769fe87dbb227ff6",
@@ -702,7 +816,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ZhuoBiDun.T_Icon_ShaqiWeapon_ZhuoBiDun"
     },
     {
       "id": "shadow_armament_9ba8b4321a9befbb",
@@ -720,12 +837,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_Kuyesizhuchuan.T_Icon_ShaqiWeapon_Kuyesizhuchuan"
     },
     {
       "id": "shadow_armament_047d92c4faede2a5",
       "kind": "shadow_armament",
-      "name": "操偶丝线",
+      "name": "操偶铃铛",
       "native_id": "CaoOuSiXian",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_ShaqiWeaponData",
@@ -738,7 +858,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_Caoousixian.T_Icon_ShaqiWeapon_Caoousixian"
     },
     {
       "id": "shadow_armament_7800563db0cc7dab",
@@ -756,7 +879,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_CuiXinPiPa.T_Icon_ShaqiWeapon_CuiXinPiPa"
     },
     {
       "id": "shadow_armament_4e436bd4383181a4",
@@ -774,7 +900,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuoLiuXing.T_Icon_ShaqiWeapon_HuoLiuXing"
     },
     {
       "id": "shadow_armament_2b803b8383b57311",
@@ -792,7 +921,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_LieYanShiTou.T_Icon_ShaqiWeapon_LieYanShiTou"
     },
     {
       "id": "shadow_armament_5d9da84a7147bae6",
@@ -810,7 +942,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_XuKongHuaShan.T_Icon_ShaqiWeapon_XuKongHuaShan"
     },
     {
       "id": "shadow_armament_4458cf38cf52893e",
@@ -828,7 +963,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ChangBingJinGua.T_Icon_ShaqiWeapon_ChangBingJinGua"
     },
     {
       "id": "shadow_armament_e04bb46b553a34ce",
@@ -846,7 +984,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_JianKeZhaoJiLing.T_Icon_ShaqiWeapon_JianKeZhaoJiLing"
     },
     {
       "id": "shadow_armament_bcda50be033b7266",
@@ -864,7 +1005,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_DuYanGong.T_Icon_ShaqiWeapon_DuYanGong"
     },
     {
       "id": "shadow_armament_8f5ff63f9e428bda",
@@ -882,7 +1026,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YouLongCha.T_Icon_ShaqiWeapon_YouLongCha"
     },
     {
       "id": "shadow_armament_b98a5f423e0524be",
@@ -900,7 +1047,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YouLongTou.T_Icon_ShaqiWeapon_YouLongTou"
     },
     {
       "id": "shadow_armament_0c6b97092a3901cd",
@@ -918,7 +1068,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuangJinHuoChong.T_Icon_ShaqiWeapon_HuangJinHuoChong"
     },
     {
       "id": "shadow_armament_2f483fc9624c455d",
@@ -936,7 +1089,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_MoXueWuHen.T_Icon_ShaqiWeapon_MoXueWuHen"
     },
     {
       "id": "shadow_armament_f11fd912387d3476",
@@ -954,7 +1110,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_TanLang.T_Icon_ShaqiWeapon_TanLang"
     },
     {
       "id": "shadow_armament_f719821d6f9820e5",
@@ -972,7 +1131,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_XueDiZi.T_Icon_ShaqiWeapon_XueDiZi"
     },
     {
       "id": "shadow_armament_05b9677619ff3374",
@@ -990,7 +1152,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_LeiTingQiang.T_Icon_ShaqiWeapon_LeiTingQiang"
     },
     {
       "id": "shadow_armament_f05aa15d503989ab",
@@ -1008,7 +1173,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_ShaqiWeapon_XueSeLingDang.T_ShaqiWeapon_XueSeLingDang"
     },
     {
       "id": "shadow_armament_8c2c3702317ab0ce",
@@ -1026,7 +1194,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_ShaqiWeapon_BaWangLianQiu.T_ShaqiWeapon_BaWangLianQiu"
     },
     {
       "id": "shadow_armament_51117a935c691e62",
@@ -1044,7 +1215,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuPao.T_Icon_ShaqiWeapon_HuPao"
     },
     {
       "id": "shadow_armament_e73789874cf06c89",
@@ -1062,7 +1236,10 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_NiTouChe.T_Icon_ShaqiWeapon_NiTouChe"
     },
     {
       "id": "shadow_armament_e86e02ba3c68e424",
@@ -1080,12 +1257,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_MoShou.T_Icon_ShaqiWeapon_MoShou"
     },
     {
       "id": "shadow_armament_39804f0c5ef223cb",
       "kind": "shadow_armament",
-      "name": "火流星_0",
+      "name": "火流星",
       "native_id": "HuoLiuXing",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_ShaqiWeaponData",
@@ -1098,12 +1278,15 @@
       "soul_option": true,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "另一数据变体",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuoLiuXing.T_Icon_ShaqiWeapon_HuoLiuXing"
     },
     {
       "id": "accessory_4395582ca33c27a5",
       "kind": "accessory",
-      "name": "Loot",
+      "name": "聚宝盆",
       "native_id": "AC_Loot",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1116,12 +1299,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "意识尘埃掉落量+10%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Loot_w.T_AC_Loot_w"
     },
     {
       "id": "accessory_ca63bd6970820277",
       "kind": "accessory",
-      "name": "SummonDuration",
+      "name": "人偶木心",
       "native_id": "AC_SummonDuration",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1134,12 +1320,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "召唤物的在场时长+25%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_03_w.T_Accessories_LuJiaCun_03_w"
     },
     {
       "id": "accessory_c06a04e5fd2a0bdf",
       "kind": "accessory",
-      "name": "PerfectFrame",
+      "name": "浑源经脉仪",
       "native_id": "AC_PerfectFrame",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1152,12 +1341,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "完美格挡和完美闪避的时间窗口+15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_07_w.T_Accessories_XiGu_07_w"
     },
     {
       "id": "accessory_ead7eec41d1ce4e4",
       "kind": "accessory",
-      "name": "BreakRegen",
+      "name": "慈母护符",
       "native_id": "AC_BreakRegen",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1170,12 +1362,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "被破防时，回复自身生命值的10%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_05_w.T_Accessories_LuJiaCun_05_w"
     },
     {
       "id": "accessory_7bf2b9c613d81053",
       "kind": "accessory",
-      "name": "Execution",
+      "name": "万杀巧锁",
       "native_id": "AC_Execution",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1188,12 +1383,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "处于破防状态的敌人可被处决的生命值+5%，且处决敌人后，对敌人的伤害+5%，可叠加2层，每层持续10秒。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_04_w.T_Accessories_LuJiaCun_04_w"
     },
     {
       "id": "accessory_30f2c5583ca3719b",
       "kind": "accessory",
-      "name": "Health",
+      "name": "珍玩妖织",
       "native_id": "AC_Health",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1206,12 +1404,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "生命值+15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_01_w.T_Accessories_LuJiaCun_01_w"
     },
     {
       "id": "accessory_08d0236c148f47f0",
       "kind": "accessory",
-      "name": "Shachi",
+      "name": "弦音护符",
       "native_id": "AC_Shachi",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1224,12 +1425,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气值+15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_07_w.T_Accessories_FuJiZhiLin_07_w"
     },
     {
       "id": "accessory_9fe3d996cfb918e7",
       "kind": "accessory",
-      "name": "ShachiRegen",
+      "name": "杀气头巾",
       "native_id": "AC_ShachiRegen",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1242,12 +1446,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气回复速度+15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ShachiRegen_w.T_AC_ShachiRegen_w"
     },
     {
       "id": "accessory_7c9c2ff738fb84ed",
       "kind": "accessory",
-      "name": "ShachiCool",
+      "name": "胭脂盒",
       "native_id": "AC_ShachiCool",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1260,12 +1467,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气消耗后，到杀气开始恢复的等待时间-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ShachiCool_w.T_AC_ShachiCool_w"
     },
     {
       "id": "accessory_c333467c235acea9",
       "kind": "accessory",
-      "name": "BreakRecover",
+      "name": "沉香念珠",
       "native_id": "AC_BreakRecover",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1278,12 +1488,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身破防状态恢复时间-15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_02_w.T_Accessories_LuJiaCun_02_w"
     },
     {
       "id": "accessory_23c4e983d326e01e",
       "kind": "accessory",
-      "name": "UltimateCharge",
+      "name": "无名大师的扳指",
       "native_id": "AC_UltimateCharge",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1296,12 +1509,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "精纯杀气积累速度+5%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_UltimateCharge_w.T_AC_UltimateCharge_w"
     },
     {
       "id": "accessory_f42cf497768191ee",
       "kind": "accessory",
-      "name": "SpiritShadow",
+      "name": "暗源小笼",
       "native_id": "AC_SpiritShadow",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1314,12 +1530,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "触发影之武装的追击招式时，有33%概率回复1暗源。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_08_w.T_Accessories_LuJiaCun_08_w"
     },
     {
       "id": "accessory_a2570960e84352ec",
       "kind": "accessory",
-      "name": "Attack",
+      "name": "筋力绑带",
       "native_id": "AC_Attack",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1332,12 +1551,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人的伤害+5%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_01_w.T_Accessories_XiGu_01_w"
     },
     {
       "id": "accessory_a53878f82e81b71f",
       "kind": "accessory",
-      "name": "ShachiAttack",
+      "name": "白山密令",
       "native_id": "AC_ShachiAttack",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1350,12 +1572,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人的杀气削减+5%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ShachiAttack_w.T_AC_ShachiAttack_w"
     },
     {
       "id": "accessory_684057bc4c12dbf3",
       "kind": "accessory",
-      "name": "Stealth",
+      "name": "屏息绑带",
       "native_id": "AC_Stealth",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1368,12 +1593,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "脚步和暗杀造成的声音-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_06_w.T_Accessories_FuJiZhiLin_06_w"
     },
     {
       "id": "accessory_a07d5162ce240a8b",
       "kind": "accessory",
-      "name": "ExecutionSwitchCool",
+      "name": "刽子手头巾",
       "native_id": "AC_ExecutionSwitchCool",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1386,12 +1614,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "处决敌人后，切换主武器冷却时间-1秒。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ExecutionSwitchCool_w.T_AC_ExecutionSwitchCool_w"
     },
     {
       "id": "accessory_09ecff283f7a8807",
       "kind": "accessory",
-      "name": "Stance",
+      "name": "机簧护心镜",
       "native_id": "AC_Stance",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1404,12 +1635,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "按住保持架势时，杀气的自然流逝速度-30%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_08_w.T_Accessories_FuJiZhiLin_08_w"
     },
     {
       "id": "accessory_2d496ff1bc5ddf5f",
       "kind": "accessory",
-      "name": "Deflect",
+      "name": "神机指环",
       "native_id": "AC_Deflect",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1422,12 +1656,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "按住格挡攻击时，杀气消耗-20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_04_w.T_Accessories_XiGu_04_w"
     },
     {
       "id": "accessory_9cd313fb9d3dc237",
       "kind": "accessory",
-      "name": "HeavyAttackCost",
+      "name": "正气凌然",
       "native_id": "AC_HeavyAttackCost",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1440,12 +1677,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气连招的杀气消耗-15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_05_w.T_Accessories_XiGu_05_w"
     },
     {
       "id": "accessory_8a8c00a3ff291a03",
       "kind": "accessory",
-      "name": "HeavyAttackDamage",
+      "name": "残破容器",
       "native_id": "AC_HeavyAttackDamage",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1458,12 +1698,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气连招触发杀气消耗时，伤害+15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_HeavyAttackDamage_w.T_AC_HeavyAttackDamage_w"
     },
     {
       "id": "accessory_c60b3e3f0b9752f4",
       "kind": "accessory",
-      "name": "HeavyAttackShachi",
+      "name": "独孤绝印",
       "native_id": "AC_HeavyAttackShachi",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1476,12 +1719,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "杀气连招的杀气削减+8%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_04_w.T_Accessories_FuJiZhiLin_04_w"
     },
     {
       "id": "accessory_c5113d29296d49ef",
       "kind": "accessory",
-      "name": "EvadePhantom",
+      "name": "影魅面具",
       "native_id": "AC_EvadePhantom",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1494,12 +1740,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "完美格挡或完美闪避触发“鬼步”后，会生成3个影魅面具，自动攻击周围敌人。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_EvadePhantom_w.T_AC_EvadePhantom_w"
     },
     {
       "id": "accessory_00c6eb138433d2f7",
       "kind": "accessory",
-      "name": "SwitchEndure",
+      "name": "神奇刀鞘",
       "native_id": "AC_SwitchEndure",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1512,12 +1761,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "切换主武器时，获得霸体及25%伤害减免，持续2秒。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_SwitchEndure_w.T_AC_SwitchEndure_w"
     },
     {
       "id": "accessory_efff419b7f4bc697",
       "kind": "accessory",
-      "name": "UltimateBreak",
+      "name": "绝技护符",
       "native_id": "AC_UltimateBreak",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1530,12 +1782,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "绝技对破防敌人的伤害+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_UltimateBreak_w.T_AC_UltimateBreak_w"
     },
     {
       "id": "accessory_c7e73a9dee8c41f5",
       "kind": "accessory",
-      "name": "Double",
+      "name": "妙手连环",
       "native_id": "AC_Double",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1548,12 +1803,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "双持类主武器伤害+10%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiaoZhang_02_w.T_Accessories_XiaoZhang_02_w"
     },
     {
       "id": "accessory_cfb341f8cfb265ff",
       "kind": "accessory",
-      "name": "Long",
+      "name": "妙手千钧",
       "native_id": "AC_Long",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1566,12 +1824,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "双手类主武器伤害+10%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiaoZhang_03_w.T_Accessories_XiaoZhang_03_w"
     },
     {
       "id": "accessory_0038291d0dbb2182",
       "kind": "accessory",
-      "name": "Tang",
+      "name": "妙手在握",
       "native_id": "AC_Tang",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1584,12 +1845,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "单手类主武器伤害+10%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiaoZhang_01_w.T_Accessories_XiaoZhang_01_w"
     },
     {
       "id": "accessory_98cd8e6fde4f02fc",
       "kind": "accessory",
-      "name": "LowShachi",
+      "name": "同心双鱼佩",
       "native_id": "AC_LowShachi",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1602,12 +1866,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身杀气越少，造成的伤害越高，最多+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_LowShachi_w.T_AC_LowShachi_w"
     },
     {
       "id": "accessory_69806edd573e2a07",
       "kind": "accessory",
-      "name": "LowHealth",
+      "name": "绝地求生令",
       "native_id": "AC_LowHealth",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1620,12 +1887,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身生命值越少，造成的伤害越高，最多+25%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_LowHealth_w.T_AC_LowHealth_w"
     },
     {
       "id": "accessory_9ed0328c185a9e56",
       "kind": "accessory",
-      "name": "Combo",
+      "name": "碧血云天",
       "native_id": "AC_Combo",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1638,12 +1908,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "1秒内连续超过两次命中敌人后，在随后2秒内对敌人的伤害+15%。有5秒的冷却时间。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Combo_w.T_AC_Combo_w"
     },
     {
       "id": "accessory_cc167d8467109d68",
       "kind": "accessory",
-      "name": "AnimMovement",
+      "name": "舞扇",
       "native_id": "AC_AnimMovement",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1656,12 +1929,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "根据攻击动作的移动距离，提升本次攻击对敌人的伤害，最多+40%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_AnimMovement_w.T_AC_AnimMovement_w"
     },
     {
       "id": "accessory_6e962faa2053f35f",
       "kind": "accessory",
-      "name": "ActHit",
+      "name": "影动猎杀仪",
       "native_id": "AC_ActHit",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1674,12 +1950,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对攻击动作中的敌人造成的伤害和杀气削减+7%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_08_w.T_Accessories_XiGu_08_w"
     },
     {
       "id": "accessory_202a24ecffdde726",
       "kind": "accessory",
-      "name": "Counter",
+      "name": "反击护腕",
       "native_id": "AC_Counter",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1692,12 +1971,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "在完美格挡之后2秒内，对敌人的伤害+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Counter_w.T_AC_Counter_w"
     },
     {
       "id": "accessory_a913acf5a7c936dd",
       "kind": "accessory",
-      "name": "Ranged",
+      "name": "神射之眼",
       "native_id": "AC_Ranged",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1710,12 +1992,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对一定距离外的敌人造成的伤害+15%，当生效时，锁定敌人的圆点会闪烁红光。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Ranged_w.T_AC_Ranged_w"
     },
     {
       "id": "accessory_3b9bb65d1ac18e0f",
       "kind": "accessory",
-      "name": "Elemental",
+      "name": "羽扇残羽",
       "native_id": "AC_Elemental",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1728,12 +2013,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人造成的寒冰、火焰、雷电伤害+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Elemental_w.T_AC_Elemental_w"
     },
     {
       "id": "accessory_00ac5e05d426f642",
       "kind": "accessory",
-      "name": "Control",
+      "name": "细线球",
       "native_id": "AC_Control",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1746,12 +2034,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "召唤物所造成的伤害及杀气削减+50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_06_w.T_Accessories_LuJiaCun_06_w"
     },
     {
       "id": "accessory_db33f3a511bcd4cb",
       "kind": "accessory",
-      "name": "HealthResistance",
+      "name": "古甲残片",
       "native_id": "AC_HealthResistance",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1764,12 +2055,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "生命值越高，获得的伤害减免越高，生命值全满时伤害减免为20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_09_w.T_Accessories_XiGu_09_w"
     },
     {
       "id": "accessory_4b32c414703a2e8d",
       "kind": "accessory",
-      "name": "TimerEndure",
+      "name": "百战魔躯",
       "native_id": "AC_TimerEndure",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1782,12 +2076,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "若持续10秒未受到伤害，即可免疫下一次受到的伤害。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_TimerEndure_w.T_AC_TimerEndure_w"
     },
     {
       "id": "accessory_c543c5788c77869a",
       "kind": "accessory",
-      "name": "BigHit",
+      "name": "绝望护符",
       "native_id": "AC_BigHit",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1800,12 +2097,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "下次攻击造成的伤害随时间逐渐提升，至多在4秒后提升至25％，攻击敌人后重置该效果。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_BigHit_w.T_AC_BigHit_w"
     },
     {
       "id": "accessory_86b97365dd64ff31",
       "kind": "accessory",
-      "name": "ActHitShachi",
+      "name": "命中回气饰品",
       "native_id": "AC_ActHitShachi",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1818,12 +2118,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "accessory_963f8a4b89252e3d",
       "kind": "accessory",
-      "name": "BreakAttack",
+      "name": "追杀令",
       "native_id": "AC_BreakAttack",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1836,12 +2139,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对处于破防状态的敌人的伤害+7%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_02_w.T_Accessories_XiGu_02_w"
     },
     {
       "id": "accessory_eef0f310209bd988",
       "kind": "accessory",
-      "name": "ResistNonBreak",
+      "name": "坚岩护腕",
       "native_id": "AC_ResistNonBreak",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1854,12 +2160,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身未处于破防状态时受到伤害-15%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_06_w.T_Accessories_XiGu_06_w"
     },
     {
       "id": "accessory_5405884451548af4",
       "kind": "accessory",
-      "name": "Rider",
+      "name": "斩骑符",
       "native_id": "AC_Rider",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1872,12 +2181,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对骑兵类敌人伤害+25%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Rider_w.T_AC_Rider_w"
     },
     {
       "id": "accessory_dd64df06039363b4",
       "kind": "accessory",
-      "name": "BreakShield",
+      "name": "破盾符",
       "native_id": "AC_BreakShield",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1890,12 +2202,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对盾牌耐久条削减量+50%，所受尖刺盾牌伤害-30%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_02_w.T_Accessories_FuJiZhiLin_02_w"
     },
     {
       "id": "accessory_ed5e8fdf2643ec08",
       "kind": "accessory",
-      "name": "ResistRanged",
+      "name": "避箭护符",
       "native_id": "AC_ResistRanged",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1908,12 +2223,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "受到的远程伤害及杀气削减-20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_LuJiaCun_07_w.T_Accessories_LuJiaCun_07_w"
     },
     {
       "id": "accessory_5774c4cef1edfd42",
       "kind": "accessory",
-      "name": "ShachiWeapon",
+      "name": "暗源方块",
       "native_id": "AC_ShachiWeapon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1926,12 +2244,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "所有影之武装造成的伤害+12%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ShachiWeapon_w.T_AC_ShachiWeapon_w"
     },
     {
       "id": "accessory_e27739920fd5405a",
       "kind": "accessory",
-      "name": "MagicWeapon",
+      "name": "百相傩面",
       "native_id": "AC_MagicWeapon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1944,12 +2265,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "“召唤”类影之武装的暗源消耗-1，召唤物拥有狂暴效果，狂暴期间召唤物伤害小幅增强。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_MagicWeapon_w.T_AC_MagicWeapon_w"
     },
     {
       "id": "accessory_cd8c5fc507ecb587",
       "kind": "accessory",
-      "name": "PowerWeapon",
+      "name": "力士神像",
       "native_id": "AC_PowerWeapon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1962,12 +2286,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "“破坏”类影之武装额外消耗1暗源，伤害+75%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_PowerWeapon_w.T_AC_PowerWeapon_w"
     },
     {
       "id": "accessory_1606d46dd3fccf01",
       "kind": "accessory",
-      "name": "RangedWeapon",
+      "name": "无相神镜",
       "native_id": "AC_RangedWeapon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1980,12 +2307,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "任何攻击击中敌人都会积蓄临时暗源，“远程”类影之武装将优先消耗临时暗源。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_RangedWeapon_w.T_AC_RangedWeapon_w"
     },
     {
       "id": "accessory_54fe62256a5b4a66",
       "kind": "accessory",
-      "name": "MartialWeapon",
+      "name": "粗糙煌心",
       "native_id": "AC_MartialWeapon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -1998,12 +2328,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "任何攻击击中敌人都会积蓄临时暗源，“武学”类影之武装将优先消耗临时暗源。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_MartialWeapon_w.T_AC_MartialWeapon_w"
     },
     {
       "id": "accessory_a8973dd38b3336cf",
       "kind": "accessory",
-      "name": "ElementRegen",
+      "name": "灭法拂尘丝",
       "native_id": "AC_ElementRegen",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2016,12 +2349,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人造成火/冰/雷/毒效果时，小幅积攒元素能量，攒满时会回复1暗源。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ElementRegen_w.T_AC_ElementRegen_w"
     },
     {
       "id": "accessory_19cc7e11ddcc620a",
       "kind": "accessory",
-      "name": "Ignite",
+      "name": "瑞狮火球",
       "native_id": "AC_Ignite",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2034,12 +2370,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人造成的火焰伤害+20%，攻击造成的点燃会扩散给一定范围内的其他敌人。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Ignite_w.T_AC_Ignite_w"
     },
     {
       "id": "accessory_9e8697dd66ce357c",
       "kind": "accessory",
-      "name": "Electrified",
+      "name": "月雷华灯",
       "native_id": "AC_Electrified",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2052,12 +2391,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人造成引雷效果时，会自动对周围一定范围内的敌人释放雷击。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Electrified_w.T_AC_Electrified_w"
     },
     {
       "id": "accessory_e0ba1d298a825656",
       "kind": "accessory",
-      "name": "Frost",
+      "name": "灭法冰棱",
       "native_id": "AC_Frost",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2070,12 +2412,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "对敌人造成的冰缓效果和持续时间均+30%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Frost_w.T_AC_Frost_w"
     },
     {
       "id": "accessory_41a71009c75890a5",
       "kind": "accessory",
-      "name": "Bleed",
+      "name": "雪与血",
       "native_id": "AC_Bleed",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2088,12 +2433,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "周围有流血敌人时，对敌人的伤害+10%，且敌人在攻击动作中受到的流血伤害+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Bleed_w.T_AC_Bleed_w"
     },
     {
       "id": "accessory_96934b809daa4cca",
       "kind": "accessory",
-      "name": "Poison",
+      "name": "猛毒袋",
       "native_id": "AC_Poison",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2106,12 +2454,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "所有主武器的攻击都有15%几率使得敌人中毒。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Poison_w.T_AC_Poison_w"
     },
     {
       "id": "accessory_a50339aadfef8ddf",
       "kind": "accessory",
-      "name": "ResistFire",
+      "name": "辟火符",
       "native_id": "AC_ResistFire",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2124,12 +2475,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身受到的火焰伤害-50%，自身燃烧积累速度-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ResistFire_w.T_AC_ResistFire_w"
     },
     {
       "id": "accessory_ae00b52b0d91f8d2",
       "kind": "accessory",
-      "name": "ResistThunder",
+      "name": "避雷符",
       "native_id": "AC_ResistThunder",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2142,12 +2496,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身受到的雷电伤害-50%，自身麻痹积累速度-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ResistThunder_w.T_AC_ResistThunder_w"
     },
     {
       "id": "accessory_cfdb1325526b5af8",
       "kind": "accessory",
-      "name": "ResistIce",
+      "name": "防冰符",
       "native_id": "AC_ResistIce",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2160,12 +2517,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身受到的冰缓效果-50%，自身冰冻的持续时间-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ResistIce_w.T_AC_ResistIce_w"
     },
     {
       "id": "accessory_c08daf373c6e7761",
       "kind": "accessory",
-      "name": "ResistBleed",
+      "name": "凝血符",
       "native_id": "AC_ResistBleed",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2178,12 +2538,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "自身流血概率-50%，自身大出血的积累速度-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ResistBleed_w.T_AC_ResistBleed_w"
     },
     {
       "id": "accessory_bed2791216be6ad6",
       "kind": "accessory",
-      "name": "ResistPoison",
+      "name": "食物防腐罐",
       "native_id": "AC_ResistPoison",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2196,12 +2559,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "所受的中毒伤害-50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_ResistPoison_w.T_AC_ResistPoison_w"
     },
     {
       "id": "accessory_5b7bb50cebe47cd4",
       "kind": "accessory",
-      "name": "Chaos",
+      "name": "混沌狂戒",
       "native_id": "AC_Chaos",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2214,12 +2580,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "混沌火焰对敌人造成杀气灼烧后，会使自身回复敌人杀气损失量的50%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Chaos_w.T_AC_Chaos_w"
     },
     {
       "id": "accessory_0a6921a1809e46b4",
       "kind": "accessory",
-      "name": "Drink",
+      "name": "香薰药盒",
       "native_id": "AC_Drink",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2232,12 +2601,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "药瓶的治疗量+20%。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_XiGu_03_w.T_Accessories_XiGu_03_w"
     },
     {
       "id": "accessory_0037edd6b7d0e019",
       "kind": "accessory",
-      "name": "RandomDrink",
+      "name": "开光玉佩",
       "native_id": "AC_RandomDrink",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2250,12 +2622,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "喝药后随机获得以下一种效果：\n1．使自身与附近敌人陷入燃烧状态。\n2．使自身与附近敌人陷入中毒状态。\n3．凝聚混沌火球，并自动攻击附近的敌人。\n4．即刻回复全部生命值和50%杀气值。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_RandomDrink_w.T_AC_RandomDrink_w"
     },
     {
       "id": "accessory_152569f6836c642e",
       "kind": "accessory",
-      "name": "DrinkCost",
+      "name": "深宅药罐",
       "native_id": "AC_DrinkCost",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2268,12 +2643,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "喝药有8%几率不消耗次数。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_DrinkCost_w.T_AC_DrinkCost_w"
     },
     {
       "id": "accessory_3e3144050e1b6210",
       "kind": "accessory",
-      "name": "BreakDrink",
+      "name": "静心小葫芦",
       "native_id": "AC_BreakDrink",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2286,12 +2664,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "喝药能够解除破防状态，且3秒内不会消耗杀气。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_Accessories_FuJiZhiLin_05_w.T_Accessories_FuJiZhiLin_05_w"
     },
     {
       "id": "accessory_b68c2e4e549f6203",
       "kind": "accessory",
-      "name": "PoisonRegen",
+      "name": "活木符",
       "native_id": "AC_PoisonRegen",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2304,12 +2685,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "",
+      "description": "流血，吸血对人偶、金身能产生50%的效果。",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_PoisonRegen_w.T_AC_PoisonRegen_w"
     },
     {
       "id": "accessory_5929ed47cd9a4726",
       "kind": "accessory",
-      "name": "Summon",
+      "name": "召唤饰品",
       "native_id": "AC_Summon",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2322,12 +2706,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "accessory_9aafe22f1e0bf8e7",
       "kind": "accessory",
-      "name": "Regen",
+      "name": "恢复饰品",
       "native_id": "AC_Regen",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2340,12 +2727,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "accessory_710130b78fcc9ad9",
       "kind": "accessory",
-      "name": "Resistance",
+      "name": "抗性饰品",
       "native_id": "AC_Resistance",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2358,12 +2748,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "accessory_e7123a7e1a6f048a",
       "kind": "accessory",
-      "name": "PhysicalResistance",
+      "name": "物理抗性饰品",
       "native_id": "AC_PhysicalResistance",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2376,12 +2769,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "accessory_c063eca6e8808cae",
       "kind": "accessory",
-      "name": "ElementalResistance",
+      "name": "元素抗性饰品",
       "native_id": "AC_ElementalResistance",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2394,12 +2790,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_AC_Elemental_w.T_AC_Elemental_w"
     },
     {
       "id": "accessory_c4710e96f5d1dfa9",
       "kind": "accessory",
-      "name": "EasyExecution",
+      "name": "处决辅助饰品",
       "native_id": "AC_EasyExecution",
       "source": "item_table",
       "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
@@ -2412,12 +2811,15 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "无正式名称",
+      "description": "",
+      "icon": "/Game/PBZContent/UI/UINew/items/T_A12_W.T_A12_W"
     },
     {
       "id": "resource_armament_75d3919bb80b6e2c",
       "kind": "resource_armament",
-      "name": "Weapon_BrutalAxe_Interact",
+      "name": "巨凶斧",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2430,12 +2832,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_JuXiongFu.T_Icon_ShaqiWeapon_JuXiongFu",
+      "image_note": ""
     },
     {
       "id": "resource_armament_d95589c47bd31342",
       "kind": "resource_armament",
-      "name": "Weapon_HanBingPiPa_Interact",
+      "name": "催心琵琶",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2448,12 +2854,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_CuiXinPiPa.T_Icon_ShaqiWeapon_CuiXinPiPa",
+      "image_note": ""
     },
     {
       "id": "resource_armament_7bfb887618f7bcec",
       "kind": "resource_armament",
-      "name": "Weapon_HuangJinHuoChong_Interact",
+      "name": "黄金火铳",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2466,12 +2876,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuangJinHuoChong.T_Icon_ShaqiWeapon_HuangJinHuoChong",
+      "image_note": ""
     },
     {
       "id": "resource_armament_a6736c735628442a",
       "kind": "resource_armament",
-      "name": "Weapon_JinGua_Interact",
+      "name": "长柄金瓜",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2484,12 +2898,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ChangBingJinGua.T_Icon_ShaqiWeapon_ChangBingJinGua",
+      "image_note": ""
     },
     {
       "id": "resource_armament_9f6bde8e8f2fb631",
       "kind": "resource_armament",
-      "name": "Weapon_LionHead_Interact",
+      "name": "烈焰狮头",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2502,12 +2920,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_LieYanShiTou.T_Icon_ShaqiWeapon_LieYanShiTou",
+      "image_note": ""
     },
     {
       "id": "resource_armament_8b836264d8afcf9c",
       "kind": "resource_armament",
-      "name": "Weapon_MiaoShouFeiDao_Interact",
+      "name": "妙手飞刀",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2520,12 +2942,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_MiaoShouFeiDao.T_Icon_ShaqiWeapon_MiaoShouFeiDao",
+      "image_note": ""
     },
     {
       "id": "resource_armament_ea837e6156365114",
       "kind": "resource_armament",
-      "name": "Weapon_ShachiHook_Interact",
+      "name": "追命锁镰",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2538,12 +2964,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ZhuiMingSuoLian.T_Icon_ShaqiWeapon_ZhuiMingSuoLian",
+      "image_note": ""
     },
     {
       "id": "resource_armament_9265994781055c83",
       "kind": "resource_armament",
-      "name": "Weapon_TigerCannon_Interact",
+      "name": "虎炮",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2556,12 +2986,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_HuPao.T_Icon_ShaqiWeapon_HuPao",
+      "image_note": ""
     },
     {
       "id": "resource_armament_e4f8a0cbf6d4d03d",
       "kind": "resource_armament",
-      "name": "Weapon_UnnamedBow_Interact",
+      "name": "羽弓",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2574,12 +3008,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YuGong.T_Icon_ShaqiWeapon_YuGong",
+      "image_note": ""
     },
     {
       "id": "resource_armament_f689988c3b5cd2a1",
       "kind": "resource_armament",
-      "name": "Weapon_XueDiZi_Interact",
+      "name": "血滴子",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2592,12 +3030,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_XueDiZi.T_Icon_ShaqiWeapon_XueDiZi",
+      "image_note": ""
     },
     {
       "id": "resource_armament_f11a095f71ce8970",
       "kind": "resource_armament",
-      "name": "Weapon_YouLongCha_Interact",
+      "name": "游龙叉",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2610,12 +3052,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YouLongCha.T_Icon_ShaqiWeapon_YouLongCha",
+      "image_note": ""
     },
     {
       "id": "resource_armament_9d356d48e627f956",
       "kind": "resource_armament",
-      "name": "Weapon_YouLongHead_Interact",
+      "name": "游龙头",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2628,12 +3074,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_YouLongTou.T_Icon_ShaqiWeapon_YouLongTou",
+      "image_note": ""
     },
     {
       "id": "resource_armament_74229c813a4521bb",
       "kind": "resource_armament",
-      "name": "Weapon_ZhuoBiDun_Interact",
+      "name": "拙壁盾",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2646,12 +3096,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "交互形态",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/Hud/Art/Temp_Render/T_Icon_ShaqiWeapon_ZhuoBiDun.T_Icon_ShaqiWeapon_ZhuoBiDun",
+      "image_note": ""
     },
     {
       "id": "resource_armament_6349bba1bbee033f",
       "kind": "resource_armament",
-      "name": "Weapon_Hun_Temp_HouHouHouHead",
+      "name": "吼吼吼头颅",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2664,12 +3118,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "临时武装",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/InGame/Literature/Gallery/T_BP_Monster_DaTouWaWa_HouHouHou_w.T_BP_Monster_DaTouWaWa_HouHouHou_w",
+      "image_note": "来源角色图"
     },
     {
       "id": "resource_armament_d536c9ac6690eb8c",
       "kind": "resource_armament",
-      "name": "Weapon_Hun_Temp_MaleDoll_Arm",
+      "name": "阳体人偶断臂",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2682,12 +3140,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "临时武装",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/InGame/Literature/Gallery/T_BP_Monster_MaleDoll_Weaponless_w.T_BP_Monster_MaleDoll_Weaponless_w",
+      "image_note": "来源角色图"
     },
     {
       "id": "resource_armament_0508777b8a895c4d",
       "kind": "resource_armament",
-      "name": "Weapon_Hun_Temp_MaleThugTwinAxe",
+      "name": "暴徒双斧",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2700,12 +3162,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "临时武装",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/InGame/Literature/Gallery/T_BP_Monster_MaleThug_TwinAxe_w.T_BP_Monster_MaleThug_TwinAxe_w",
+      "image_note": "来源角色图"
     },
     {
       "id": "resource_armament_9fd4c22a9199160f",
       "kind": "resource_armament",
-      "name": "Weapon_Hun_Temp_MaleThug_Club",
+      "name": "暴徒木棍",
       "native_id": "",
       "source": "resource_only",
       "table": "",
@@ -2718,7 +3184,16 @@
       "soul_option": false,
       "progression_rank": null,
       "availability": "not_audited",
-      "runtime": "not_validated"
+      "runtime": "not_validated",
+      "variant": "临时武装",
+      "description": "剧情或交互使用的独立配置。与常规武装分开保留，兼容性尚未确认。",
+      "icon": "/Game/PBZContent/UI/InGame/Literature/Gallery/T_BP_Monster_MaleThug_Club_Yellow_w.T_BP_Monster_MaleThug_Club_Yellow_w",
+      "image_note": "来源角色图"
     }
-  ]
+  ],
+  "character": {
+    "name": "魂",
+    "icon": "/Game/PBZContent/UI/InGame/Quest/T_QuestMap_Hun.T_QuestMap_Hun",
+    "image_note": "游戏原生角色图标"
+  }
 }

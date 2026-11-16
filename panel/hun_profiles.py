@@ -30,7 +30,7 @@ def default_profile():
         'resources':{'medicine_count':'native_max','consume_medicine':True,'consume_skill_resources':True,'cooldown_scale':1.0,'rebirth':'native'},
         'survival':{'grab':'native','execution':'native','lethal':'native'},
         'phases':[{'id':'heimoshang_survival','name':'黑魔伤保命','enabled':True,'health_below':0.25,
-                   'weapon_id':next(k for k,r in ITEMS.items()if r['kind']=='main_weapon'and r['name']=='黑魔伤'),
+                   'weapon_id':next(k for k,r in ITEMS.items()if r['kind']=='main_weapon'and r['row']=='黑魔伤'),
                    'action':'native_combat_art','priority':100,'once':True}],
         'mode':'blue','count':1}
 

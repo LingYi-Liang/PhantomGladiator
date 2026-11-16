@@ -1842,6 +1842,7 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot=bridge.hun_profiles.snapshot()if bridge.hun_profiles else {'revision':0,'profile':_hun_module.default_profile(),'error':bridge.hun_profile_error}
                 result={**snapshot,'catalog':_hun_module.CATALOG,'defaults':_hun_module.default_profile(),
                         'attributes':list(STAT_FIELDS),'ai_parameters':AI_PARAMS,'full_ready':False,
+                        'images':{key:value for key,value in bridge.codex_icons()['icons'].items()if key=='HunCharacter'or key in _hun_module.ITEMS},
                         'probe_supported':bridge.game_status().get('values',{}).get('hun_body_probe_supported')=='true'}
             elif path == "/api/stat-settings":
                 result = self.server.bridge.stat_settings()

@@ -367,6 +367,7 @@ const RealRuntime = (() => {
     s.modVersion = v.build || "";
     if (online && s.expectedBuild && s.modVersion && s.modVersion !== s.expectedBuild) game = "mismatch";
     s.game = game;
+    s.hunBodySupported = online && yes('hun_body_probe_supported');
     s.summonQueue = {
       supported: online && typeof v.summon_queue_enabled === "string",
       ready: online && g.ready === true,
@@ -564,6 +565,7 @@ const RealRuntime = (() => {
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
       summonQueue: [s.game, s.summonQueue],
+      hun: [s.game, s.hunBodySupported, s.summonQueue.on],
       poolStatus: [s.poolStatus],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
@@ -650,7 +652,10 @@ const RealRuntime = (() => {
     // Show it in the history right away; the status poll fills in the game's answer.
     // A poll may already have picked the job up (and even its answer); never step it back to pending.
     const job = jobById.get(id) || mapJob({ id, action, payload: body, status: "pending", created: Date.now() / 1000 });
-    if (action === "queue_spawn") { pruneJobs(); return job; } // POST acknowledges transport only, not an actual summon.
+    if (action === "queue_spawn" || action === "hun_body_probe") {
+      emit({ type: "job", job });
+      pruneJobs(); return job; // Submission is not a successful summon; status polling supplies the game result.
+    }
     emit({ type: "job", job });
     const done = await new Promise(resolve => {
       const timer = setTimeout(() => { waiters.delete(id); pruneJobs(); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);

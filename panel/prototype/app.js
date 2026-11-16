@@ -1063,6 +1063,7 @@
     if (!own) return field;
     return head ? t(head) + " · " + t(own) : t(own);
   }
+  window.PGStatLabels = {label: statLabel, groups: STAT_GROUPS, heading: g => t(groupHeading(g))};
   // In its own family's group a row needs only the multiplier's name.
   const rowLabel = (field, g) => { const [head, own] = STAT_META.get(field); return head && head === groupHeading(g) ? t(own) : statLabel(field); };
   // Two sets of spawn stats share this form: the arena's, and the companions' own.

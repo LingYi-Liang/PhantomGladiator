@@ -2051,6 +2051,7 @@ codexArt=Config.EnableCodexArtProbe and CodexArtProbe.new({log=log,path=Config.R
     ready=function()return runtimeSession:status().game_ready==true end}) or nil
 -- The codex busts for the app's unit cards, saved on this PC from the player's own game (codex_icons.lua).
 codexIcons=Config.EnableCodexIcons and CodexIcons.new({log=log,path=Config.RuntimePath,getWorld=GetCurrentWorld,
+    extraTextures=require('hun_icon_catalog'),paused=function()return ArenaStatus().battle_active==true end,
     ready=function()return runtimeSession:status().game_ready==true end}) or nil
 -- Units summoned at a chosen difficulty also get that difficulty when their AI asks for it.
 aiDifficulty=AIDifficulty.new({log=log,getWorld=GetCurrentWorld,

@@ -23,7 +23,8 @@ local function harness(opts)
         {EnemyClass=soft(class('025_FemaleThug','BP_Monster_FemaleThug_TwinHoe')),WhiteIcon=soft(icon('BP_Monster_FemaleThug_TwinHoe'))},
         {EnemyClass=soft(class('999','BP_NoIcon'))},
     }
-    h.codex=object({GetOuter=function()return h.world end,GetAllEnemyCodexEntries=function()return h.entries end})
+    h.collects=0
+    h.codex=object({GetOuter=function()return h.world end,GetAllEnemyCodexEntries=function()h.collects=h.collects+1;return h.entries end})
     h.textures={}
     for _,row in ipairs(h.entries)do
         local path=row.WhiteIcon and row.WhiteIcon.GetObjectID().GetAssetPathName()
@@ -55,6 +56,7 @@ local function harness(opts)
         return {write=function(self,s)text=text..s;return self end,close=function()h.files[path]=text end}
     end}
     local options={log=function(s)h.logs[#h.logs+1]=s end,io=fs,path='rt',clock=function()return h.now end,
+        extraTextures=opts.extraTextures,paused=function()return h.paused end,
         ready=function()return h.ready end,getWorld=function()return h.world end,
         findAll=function(name)assert(name=='PBZCodexSubsystem');return {h.codex} end,
         staticFind=function(path)
@@ -125,5 +127,16 @@ test('a later load takes the index on trust once one listed file checks out; wit
     h:reload();h.exports,h.logs={},{}
     h.now=40;h:run(1);h.now=50;h:run(3)
     assert(h:line('已有 0，待导出 3；其中按索引认定 0') and #h.exports==3)
+end)
+test('extra fixed equipment shares cache and export budget, pauses during combat',function()
+    local path='/Game/UI/T_Equipment.T_Equipment'
+    local h=harness({extraTextures={hun_item=path,hun_variant=path,bad='../no'}})
+    h.textures[path]=object({path=path,Blueprint_GetSizeX=function()return 256 end,Blueprint_GetSizeY=function()return 256 end})
+    h:run(1);h.now=10;h.paused=true;h:run(100);assert(#h.exports==0 and h.collects==0)
+    h.paused=false;h:run(1);assert(#h.exports==2)
+    h:run(2);assert(#h.exports==4)
+    local index=h.files['rt/codex-icons.tsv'];assert(index:find('hun_item\tcodex-icons/T_Equipment.png',1,true))
+    assert(index:find('hun_variant\tcodex-icons/T_Equipment.png',1,true))
+    h:reload();h.exports={};h:run(1);h.now=20;h:run(1);assert(#h.exports==0)
 end)
 print('codex_icons: PASS ('..count..' timing, saving, index, fallback, stop and index-trust regressions)')

@@ -34,5 +34,12 @@ def build(source):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('inventory',type=pathlib.Path);parser.add_argument('--out',type=pathlib.Path,default=pathlib.Path(__file__).resolve().parents[1]/'panel/hun-catalog.json')
     args=parser.parse_args();data=build(json.loads(args.inventory.read_text(encoding='utf-8')))
+    # Keep audited presentation metadata when refreshing native inventory fields.
+    if args.out.is_file():
+        prior=json.loads(args.out.read_text(encoding='utf-8'));previous={r['id']:r for r in prior['items']}
+        for row in data['items']:
+            old=previous.get(row['id'],{})
+            row.update({key:old[key]for key in ('name','variant','description','icon','image_note')if key in old})
+        if 'character'in prior:data['character']=prior['character']
     args.out.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
     print('Hun metadata:',len(data['items']),'variant-preserving entries; runtime compatibility remains unverified')

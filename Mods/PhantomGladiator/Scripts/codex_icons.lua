@@ -112,6 +112,14 @@ function Icons.new(options)
                 end
             end
         end
+        -- Optional fixed references share the same bounded export queue and persistent cache.
+        for unit,path in pairs(options.extraTextures or {})do
+            local name=assetName(path)
+            if type(unit)=='string'and unit:match('^[%w_]+$')and name and name:match('^T_[%w_]+$')then
+                if not textures[name]then textures[name]=path;order[#order+1]=name end
+                if textures[name]==path then units[unit]=name end
+            end
+        end
         return {units=units,textures=textures,order=order}
     end
     local function target(krl,world)
@@ -169,6 +177,7 @@ function Icons.new(options)
     function self:tick()
         if self.state=='done' then return end
         if options.ready and not options.ready() then return end
+        if self.state=='waiting'and options.paused and options.paused()then return end
         local now=clock()
         if self.state=='waiting' then
             self.at=self.at or now+DELAY
@@ -198,6 +207,7 @@ function Icons.new(options)
         end
         local job=self.job
         if not U.valid(job.world) then self.state='done';say('World 已变化，本次停止；下次加载接着导出');return end
+        if options.paused and options.paused()then return end
         for _=1,PER_TICK do
             local name=table.remove(job.queue,1)
             if not name then break end
