@@ -35,6 +35,7 @@ const context = {
   } },
   store: { get: (key, fallback) => values.get(key) ?? fallback, set: (key, value) => values.set(key, value) },
   $: id => id === "#pool-summon" ? button : id === "#manual-beta-code" ? { value: code } : null,
+  $$: () => [],
   cleanupBlocker: () => "", renderPage() {}, toast() {}, summon: async (...args) => calls.push(args),
   dlg: null, openDialog: kind => { context.dlg = { kind }; },
   setDialog: html => { context.dialog = html; }, fromNexus: () => nexus,

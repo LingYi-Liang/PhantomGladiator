@@ -42,6 +42,18 @@ function harness(post, lang = 'zh', values = {}) {
   };
 }
 (async () => {
+  {
+    const values = { battle_music_supported: 'true', battle_music_mode: 'NATIVE', battle_music_track: 'MOYUAN_P1', battle_music_state: 'native' };
+    const h = harness(() => Promise.resolve(response({ id: 62 })), 'zh', values);await flush();
+    assert.equal(h.rt.state.battleMusic.supported, true);
+    const pending = h.rt.command('set_battle_music', { mode: 'TRACK', track: 'LEIDANG_P2' });await flush();
+    assert.deepEqual(JSON.parse(h.requests.find(r => r.options?.method === 'POST').options.body), { action: 'set_battle_music', mode: 'TRACK', track: 'LEIDANG_P2' });
+    h.queue.push({ id: 62, action: 'set_battle_music', status: 'succeeded', payload: { mode: 'TRACK', track: 'LEIDANG_P2' } });
+    await h.advance(500);await pending;
+    assert.equal(h.rt.state.battleMusic.mode, 'NATIVE', 'the receipt must not invent a playing state');
+    Object.assign(values, { battle_music_mode: 'TRACK', battle_music_track: 'LEIDANG_P2', battle_music_state: 'playing', battle_music_playing_id: '123' });
+    await h.advance(500);assert.equal(h.rt.state.battleMusic.mode, 'TRACK');assert.equal(h.rt.state.battleMusic.playing, 123);
+  }
   for (const succeeded of [true, false]) {
     const h = harness(() => Promise.resolve(response({ id: 61 })), 'zh', { menghua_stage_rule_supported: 'true' });
     await flush();assert.equal(h.rt.state.menghuaStageSupported, true);

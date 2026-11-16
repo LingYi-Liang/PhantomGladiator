@@ -83,6 +83,7 @@
     selectedId: store.get("selected", null),
     legacyPool: Array.isArray(savedPool) ? [...new Set(savedPool.filter(id => typeof id === "string"))] : [],
     poolQuery: "", poolId: "", poolDraft: null, poolKeyError: "",
+    poolMemberCounts: new Map(Object.entries(store.get("poolMemberCounts", {}) || {}).filter(([key, n]) => key.length <= 1024 && Number.isInteger(n) && n >= 1 && n <= 100).slice(-6144)),
     poolPick: { type: "all", chapter: "all", query: "", checked: new Set() },   // the "add units" dialog
     // The arena dock shows one group of sections at a time: summon | rules | view.
     dockTab: ["summon", "rules", "view"].includes(store.get("dockTab")) ? store.get("dockTab") : "summon",
@@ -400,6 +401,7 @@
     const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML }[ui.page]();
     content.innerHTML = `<div class="page page-scroll scroll">${html}</div>`;
     if (ui.page === "pool") renderPoolSummon();
+    if (ui.page === "settings") renderBattleMusicState();
   }
 
   // ---------- Arena: catalog ----------
@@ -2028,6 +2030,23 @@
 
   const POOL_TEAM_HINT = { blue: "pool.team.blue", red: "pool.team.red", neutral: "pool.team.neutral", companion: "pool.team.companion" };
   const poolMemberIds = pool => pool.unit_ids.map(RT.poolUnitId);
+  const poolCountScope = () => S.poolStatus?.scope || "local";
+  const poolMemberCountKey = (pool, id) => JSON.stringify([poolCountScope(), pool.id, id]);
+  const poolMemberOverride = (pool, id) => ui.poolMemberCounts?.get(poolMemberCountKey(pool, id));
+  const poolMemberCount = (pool, id) => Math.max(0, Math.min(poolMemberOverride(pool, id) ?? pool.count, poolRoom(id)));
+  function savePoolMemberCount(pool, id, value) {
+    if (!pool || !poolMemberIds(pool).includes(id)) return false;
+    const text = String(value).trim(), n = text === "" ? null : Number(text);
+    if (n !== null && (!/^\d+$/.test(text) || !Number.isInteger(n) || n < 1 || n > 100)) return false;
+    const next = new Map(ui.poolMemberCounts || []), key = poolMemberCountKey(pool, id);
+    if (n === null) next.delete(key); else { next.delete(key); next.set(key, n); }
+    while (next.size > 6144) next.delete(next.keys().next().value);
+    const saved = Object.fromEntries(next);
+    store.set("poolMemberCounts", saved);
+    if (JSON.stringify(store.get("poolMemberCounts", null)) !== JSON.stringify(saved)) return false;
+    ui.poolMemberCounts = next;
+    return true;
+  }
   // Units a pool can hold: the mod must know the unit's path in the game.
   const poolAddable = u => RT.demo || RT.poolUnitPath(u.id) !== u.id;
 
@@ -2049,9 +2068,12 @@
     if (!pool.unit_ids.length) return `<div class="pool-empty">${icon("grid")}<p>${esc(t("pool.empty"))}</p></div>`;
     return `<div class="pool-members">${pool.unit_ids.map(member => {
       const id = RT.poolUnitId(member), u = byId.get(id);
-      return `<span class="pool-member${u?.boss ? " is-boss" : ""}"><span class="avatar sp-${u?.species || "GuaiMian"}${u ? artClass(u) : ""}">${u ? avatarArt(u) : ""}<span class="avatar-initial">${esc(u?.initial || "?")}</span></span>
+      const count = poolMemberCount(pool, id);
+      return `<div class="pool-member${u?.boss ? " is-boss" : ""}"><span class="avatar sp-${u?.species || "GuaiMian"}${u ? artClass(u) : ""}">${u ? avatarArt(u) : ""}<span class="avatar-initial">${esc(u?.initial || "?")}</span></span>
         <span class="pool-member-name" title="${esc(u?.name || id)}">${esc(u?.name || id)}</span>
-        <button class="icon-btn icon-btn-sm" type="button" data-action="pool-remove" data-id="${esc(member)}" aria-label="${esc(t("pool.remove"))} ${esc(u?.name || id)}" title="${esc(t("pool.remove"))}" ${disabled}>${icon("x", "icon-sm")}</button></span>`;
+        <button class="icon-btn icon-btn-sm" type="button" data-action="pool-remove" data-id="${esc(member)}" aria-label="${esc(t("pool.remove"))} ${esc(u?.name || id)}" title="${esc(t("pool.remove"))}" ${disabled}>${icon("x", "icon-sm")}</button>
+        <div class="pool-member-actions"><label class="pool-member-count">数量<input type="number" min="1" max="100" step="1" data-pool-member-count="${esc(id)}" value="${poolMemberOverride(pool, id) ?? ""}" placeholder="随池 ${pool.count}" aria-label="${esc(u?.name || id)} 单独召唤数量，留空随池" ${disabled}></label>
+        <button class="btn btn-secondary btn-sm" type="button" data-action="pool-member-summon" data-id="${esc(id)}" data-pool-id="${esc(pool.id)}" data-pool-scope="${esc(poolCountScope())}" title="只召唤这张卡的单位，沿用本池阵营；数量可单独设置，留空随池，受该怪单次上限约束" disabled>${count ? `召唤 ×${count}` : "单独召唤"}</button></div></div>`;
     }).join("")}</div>`;
   }
 
@@ -2142,6 +2164,10 @@
     return ui.poolDraft ? t("pool.saveFirst") : (!RT.ready() || S.summonQueue?.ready === false) ? t("pool.needMap")
       : cleanupBlocker() || (ui.busy.has("spawn") || ui.busy.has("pool-summon") ? t("pool.working") : !choices.length ? t("pool.noneAllowed") : "");
   }
+  function poolMemberBlocker(pool, id) {
+    if (!pool || !poolMemberIds(pool).includes(id)) return "该单位已不在当前怪物池";
+    return poolSummonBlocker(pool, poolCandidates(pool).filter(member => member === id));
+  }
 
   function renderPoolSummon() {
     const pool = selectedPool(), button = $("#pool-summon");
@@ -2155,6 +2181,13 @@
     if (editNote) editNote.textContent = note;
     if (bar) { bar.hidden = !note; bar.classList.toggle("is-error", !!(S.poolStatus.error || stale)); }
     if ($("#pool-key-status")) $("#pool-key-status").textContent = poolKeyStatus(pool);
+    for (const single of $$("[data-action='pool-member-summon']")) {
+      const id = single.dataset.id, input = single.closest(".pool-member")?.querySelector("[data-pool-member-count]");
+      const count = pool && poolMemberCount(pool, id);
+      single.disabled = !pool || !!poolMemberBlocker(pool, id) || input?.getAttribute("aria-invalid") === "true";
+      single.textContent = count ? `召唤 ×${count}` : "单独召唤";
+      if (input && pool) input.placeholder = `随池 ${pool.count}`;
+    }
     if (!button) return;
     const reason = poolSummonBlocker(pool, poolCandidates(pool));
     button.disabled = !!reason;
@@ -2338,6 +2371,16 @@
     try { for (const [id, count] of poolDraw(pool)) await summon(id, pool.team, count); }
     finally { ui.busy.delete("pool-summon"); renderPoolSummon(); }
   }
+  async function summonPoolMember(id, poolId, scope) {
+    const pool = selectedPool();
+    if (!pool || pool.id !== poolId || poolCountScope() !== scope || poolMemberBlocker(pool, id)) return;
+    const count = poolMemberCount(pool, id);
+    if (!count) return;
+    ui.busy.add("pool-summon");
+    renderPoolSummon();
+    try { await summon(id, pool.team, count); }
+    finally { ui.busy.delete("pool-summon"); renderPoolSummon(); }
+  }
 
   function betaDialogHTML() {
     const v = ui.manualBeta;
@@ -2438,6 +2481,32 @@
       <div class="dialog-body">${languageNoticeBody(notice)}</div><div class="dialog-foot" lang="${notice.html}"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(notice.close)}</button></div>`);
     $("#dialog").lang = notice.html;
   }
+  function battleMusicHTML() {
+    const saved = S.battleMusic || { mode: "NATIVE", track: "MOYUAN_P1" }, draft = ui.musicDraft || saved;
+    const usable = RT.online() && saved.supported && !ui.busy.has("set_battle_music");
+    return `<section class="card"><div class="card-head"><h2 class="card-title">战斗音乐（测试）</h2></div><div class="card-body">
+      <p class="muted">默认保留原版。自动模式只为蓝红对战中有默认配乐的存活单位选择主题；也可指定游戏自带曲目。来源死亡、离场或停止对战后停止对应曲目，并交还原版音乐。阶段曲可手动指定，不叠加多首。</p>
+      <div class="music-controls"><label>播放方式<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE","保留原版"],["AUTO","自动选择参战主题"],["TRACK","手动指定曲目"]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
+      <label>曲目<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${(window.PG_MUSIC_TRACKS || []).map(row => `<option value="${esc(row.id)}" ${draft.track === row.id ? "selected" : ""}>${esc(row.label)}</option>`).join("")}</select></label>
+      <button class="btn btn-secondary" type="button" id="battle-music-save" data-action="battle-music-save" ${usable ? "" : "disabled"}>保存音乐设置</button></div>
+      <p id="battle-music-status" class="muted" aria-live="polite"></p></div></section>`;
+  }
+  function renderBattleMusicState() {
+    const status = $("#battle-music-status"); if (!status) return;
+    const music = S.battleMusic || {}, usable = RT.online() && music.supported && !ui.busy.has("set_battle_music");
+    status.textContent = !RT.online() ? "连接游戏后可设置。" : !music.supported ? "请更新并重载支持战斗音乐的游戏内模组。" : music.message || "设置由游戏读回，尚未开始播放。";
+    for (const id of ["#battle-music-mode", "#battle-music-save"]) if ($(id)) $(id).disabled = !usable;
+    if ($("#battle-music-track")) $("#battle-music-track").disabled = !usable || $("#battle-music-mode").value !== "TRACK";
+  }
+  async function saveBattleMusic() {
+    if (!RT.online() || !S.battleMusic?.supported || ui.busy.has("set_battle_music")) return;
+    const mode = $("#battle-music-mode")?.value, track = $("#battle-music-track")?.value;
+    if (!["NATIVE", "AUTO", "TRACK"].includes(mode) || !(window.PG_MUSIC_TRACKS || []).some(row => row.id === track)) return;
+    ui.musicDraft = { mode, track };
+    const result = run("set_battle_music", { payload: { mode, track }, ok: () => "音乐设置已保存，播放状态以游戏读回为准" });
+    renderBattleMusicState();
+    try { await result; } finally { renderBattleMusicState(); }
+  }
   function settingsHTML() {
     const opt = (action, value, checked, main, sub = "", extra = "") => `<button class="option ${extra}" type="button" role="radio" aria-checked="${checked}" data-action="${action}" data-value="${value}"><span class="radio"></span><span class="option-main"><span>${main}</span>${sub ? `<small>${sub}</small>` : ""}</span></button>`;
     const sw = (key, title, desc) => `<div class="row"><div class="row-main"><div class="row-title">${esc(title)}</div><div class="row-desc">${esc(desc)}</div></div><button class="switch" type="button" role="switch" aria-checked="${ui.settings[key]}" data-action="toggle-setting" data-setting="${key}" aria-label="${esc(title)}"></button></div>`;
@@ -2452,6 +2521,7 @@
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
           ${I18N.ACTIVE_LANGS.map(l => opt("set-lang", l.id, ui.langMode === "manual" && ui.lang === l.id, `<span lang="${l.html}">${esc(l.name)}</span>`)).join("")}
         </div><p class="muted" style="font-size:12.5px;margin-top:10px">${esc(t("settings.language.unitNote"))}</p>${languageSupportHTML()}</div></section>
+      ${battleMusicHTML()}
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.appearance"))}</h2></div>
         <div class="card-body"><div class="theme-tiles" role="radiogroup" aria-label="${esc(t("settings.appearance"))}">
           ${["light", "dark"].map(th => `<button class="theme-tile" type="button" role="radio" aria-checked="${ui.theme === th}" data-action="set-theme" data-value="${th}"><span class="theme-preview ${th}"><i></i><i></i></span><span class="theme-label"><span class="radio"></span>${esc(t("settings.theme." + th))}</span></button>`).join("")}
@@ -2764,6 +2834,7 @@
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_offcombat_regen": return t(p.enabled ? "offcombatRegen.history.on" : "offcombatRegen.history.off");
+      case "set_battle_music": return "设置战斗音乐：" + (p.mode === "NATIVE" ? "原版" : p.mode === "AUTO" ? "自动" : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_camera_track": return t("action.set_camera_track");
@@ -3046,6 +3117,7 @@
   // ---------- Events ----------
   const actions = {
     "offcombat-regen": () => run("set_offcombat_regen", { payload: { enabled: !S.offCombatRegen?.on } }),
+    "battle-music-save": () => saveBattleMusic(),
     "open-manual-beta": () => openManualBeta(),
     "check-manual-beta": () => checkManualBeta(),
     "install-manual-beta": () => installManualBeta(),
@@ -3064,6 +3136,7 @@
     "pool-pick-add": () => addPoolPick(),
     "pool-remove": el => changePool(el.dataset.id, false),
     "pool-summon": () => summonFromPool(),
+    "pool-member-summon": el => summonPoolMember(el.dataset.id, el.dataset.poolId, el.dataset.poolScope),
     "pool-new": () => createPool(),
     "pool-delete": () => deletePool(),
     "pool-save": () => savePoolList(),
@@ -3309,6 +3382,13 @@
     fn(el, e);
   });
   document.addEventListener("input", e => {
+    if (e.target.dataset.poolMemberCount) {
+      const saved = savePoolMemberCount(selectedPool(), e.target.dataset.poolMemberCount, e.target.value);
+      e.target.setAttribute("aria-invalid", String(!saved));
+      e.target.title = saved ? "留空随池；单独召唤受该怪单次上限约束" : "请输入1–100，或留空随池；无法保存时请重试";
+      renderPoolSummon();
+      return;
+    }
     if (e.target.id === "pool-search") {
       ui.poolPick.query = e.target.value;
       refreshPoolPick();
@@ -3364,8 +3444,16 @@
     }
   });
   document.addEventListener("change", e => {
+    if (e.target.id === "battle-music-mode" || e.target.id === "battle-music-track") {
+      ui.musicDraft = { mode: $("#battle-music-mode").value, track: $("#battle-music-track").value };
+      renderBattleMusicState();
+    }
     if (e.target.id === "pool-pick-chapter") { ui.poolPick.chapter = e.target.value; refreshPoolPick(); }
-    if (e.target.id === "pool-count") renderPage();
+    if (e.target.id === "pool-count") {
+      e.target.value = selectedPool()?.count || 1;
+      $$("[data-action='pool-count-set']").forEach(button => button.setAttribute("aria-pressed", String(Number(button.dataset.n) === selectedPool()?.count)));
+      renderPoolSummon();
+    }
     if (e.target.id === "chapter") { ui.chapter = e.target.value; renderToolbar(); renderGrid({ animate: true }); $("#catalog-col").scrollTop = 0; }
     if (e.target.id === "count-input") setCount(Number(e.target.value));
     if (e.target.id === "diff-select") setDifficulty(e.target.value);
@@ -3518,7 +3606,7 @@
           if (p.has("summonQueue")) renderSummonQueueSettings();
           if (p.has("grid") && !ui.capture) renderGrid();
         } else if (ui.page === "hotkeys" && p.has("keys") && !ui.capture && !ui.keysSaving) renderPage();
-        else if (ui.page === "settings" && p.has("settings")) renderPage();
+        else if (ui.page === "settings") { if (p.has("settings")) renderPage(); else if (p.has("battleMusic")) renderBattleMusicState(); }
         else if (ui.page === "pool") {
           if ((p.has("names") || p.has("poolConfig")) && !ui.poolDraft && !ui.capture) renderPage();
           else {

@@ -45,8 +45,8 @@ MANIFESTS = [
     f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
     f"github|https://raw.githubusercontent.com/{REPO}/main/release/safe/latest.json",
 ]
-UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png"]
-BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "unit_validation.json"]
+UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "battle-music.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png"]
+BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "unit_validation.json", "battle-music.json"]
 SEED_FILES = ["catalog.tsv", "codex.tsv", "codex-locations.tsv", "inventory-report.json"]
 CSC = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 FRAMEWORK_REFS = ["System.dll", "System.Core.dll", "System.Drawing.dll", "System.Windows.Forms.dll", "System.Web.Extensions.dll",

@@ -118,6 +118,7 @@ const RealRuntime = (() => {
     // companion_executions*: whether companions may execute bosses (companion_executions.lua).
     companionExec: { supported: false, on: false },
     offCombatRegen: { supported: false, on: false, state: "off", failures: 0 },
+    battleMusic: { supported: false, mode: "NATIVE", track: "MOYUAN_P1", state: "native", message: "", playing: 0 },
     // track_*: 镜头跟踪 (camera_track.lua). targets: { key, cls, team } of the units it can follow, while the free camera runs.
     track: { supported: false, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     // unit_rules: what each unit's card says, BP_X:lock=kill;BP_Y:phantom=keep (unit_rules.lua).
@@ -446,6 +447,8 @@ const RealRuntime = (() => {
       s.combo.on = yes("boss_combos");
       s.offCombatRegen = { supported: yes("offcombat_regen_supported"), on: yes("offcombat_regen_disabled"),
         state: v.offcombat_regen_state || "off", failures: num("offcombat_regen_failures") };
+      s.battleMusic = { supported: yes("battle_music_supported"), mode: v.battle_music_mode || "NATIVE", track: v.battle_music_track || "MOYUAN_P1",
+        state: v.battle_music_state || "native", message: v.battle_music_message || "", playing: num("battle_music_playing_id"), pending: yes("battle_music_pending") };
       f.supported = yes("fun_supported");
       f.shachi = yes("fun_shachi");
       f.deflect = yes("fun_deflect");
@@ -556,6 +559,7 @@ const RealRuntime = (() => {
       keys: [s.game, JSON.stringify(s.keys), s.dismissKeySupported],
       grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, JSON.stringify(s.unitRules)],
       settings: [s.game, JSON.stringify(s.scan)],
+      battleMusic: [s.game, JSON.stringify(s.battleMusic)],
       summonQueue: [s.game, JSON.stringify(s.summonQueue)],
       poolStatus: [JSON.stringify(s.poolStatus)],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
@@ -612,6 +616,7 @@ const RealRuntime = (() => {
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
+    else if (action === "set_battle_music") body = { action, mode: payload.mode, track: payload.track };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };

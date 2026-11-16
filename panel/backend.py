@@ -30,12 +30,13 @@ _taxonomy_module = importlib.util.module_from_spec(_taxonomy_spec)
 _taxonomy_spec.loader.exec_module(_taxonomy_module)
 
 DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platform\steam\ue4ss\Mods\PhantomGladiator\Runtime")
-ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
+ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
+MUSIC_TRACK_IDS = {row["id"] for row in json.loads(Path(__file__).with_name("battle-music.json").read_text(encoding="utf-8"))["tracks"]}
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
 SPAWN_DIFFICULTIES = ("FOLLOW", "EASY", "NORMAL", "HARD", "NIGHTMARE")
 # Where a summon's level comes from (home_levels.lua): its home (default), the map enemies near the player, or one
@@ -1003,6 +1004,14 @@ class Bridge:
             if type(enabled) is not bool:
                 raise ValidationError('enabled must be true or false')
             payload['enabled'] = enabled
+        elif action == "set_battle_music":
+            allowed.update(("mode", "track"))
+            mode, track = request.get("mode"), request.get("track")
+            if not isinstance(mode, str) or not isinstance(track, str) or mode not in ("NATIVE", "AUTO", "TRACK") or track not in MUSIC_TRACK_IDS:
+                raise ValidationError("无效的战斗音乐选项")
+            if self.game_status().get('values', {}).get('battle_music_supported') != 'true':
+                raise ValidationError("请更新并重载支持战斗音乐的游戏内Mod")
+            payload.update(mode=mode, track=track)
         elif action == "configure_keys":
             allowed.add("bindings")
             bindings = request.get("bindings")
@@ -1132,6 +1141,8 @@ class Bridge:
             bindings={'spawn':payload['mode'],'start':str(payload['interval_ms']),'stop':str(payload['blue_slots']),'refresh_catalog':str(payload['red_slots'])}
         elif payload['action']=='queue_spawn':
             bindings={'spawn':payload['queue_epoch']}
+        elif payload['action']=='set_battle_music':
+            bindings={'spawn':payload['mode'],'start':payload['track']}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
         elif payload['action']=='set_camera_track':

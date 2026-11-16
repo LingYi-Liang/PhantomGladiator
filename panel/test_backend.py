@@ -898,6 +898,19 @@ class BridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(backend.ValidationError, '解散全部随从'):
             self.bridge.save_monster_pools({'revision': 0, 'pools': [dict(id='pool-dismiss', name='Conflict', team='companion', count=1, key_code=119, modifiers=1, unit_ids=[UNIT])]})
 
+    def test_battle_music_requires_current_capability_and_a_catalog_track(self):
+        with self.assertRaisesRegex(backend.ValidationError, '支持战斗音乐'):
+            self.bridge.enqueue(dict(action='set_battle_music', mode='AUTO', track='MOYUAN_P1'))
+        status = self.bridge.runtime / 'status.tsv'
+        status.write_text(status.read_text(encoding='utf-8') + 'battle_music_supported\ttrue\n', encoding='utf-8')
+        for mode in ('NATIVE', 'AUTO', 'TRACK'):
+            job = self.bridge.enqueue(dict(action='set_battle_music', mode=mode, track='LEIDANG_P2'))
+            columns = self.bridge._wire({'id': job['id'], 'payload': json.dumps(job['payload'])}).strip().split('\t')
+            self.assertEqual(columns[5:7], [mode, 'LEIDANG_P2'])
+        for mode, track in [('OTHER', 'MOYUAN_P1'), ('TRACK', '../sound'), ('TRACK', {}), ('AUTO', []), (None, 'MOYUAN_P1')]:
+            with self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(dict(action='set_battle_music', mode=mode, track=track))
+
     def test_time_stop_key_and_free_camera_settings_travel_in_the_key_columns(self):
         job=self.bridge.enqueue({'action':'configure_keys','bindings':{**BINDINGS,'toggle_time_stop':'P'}})
         columns=self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')

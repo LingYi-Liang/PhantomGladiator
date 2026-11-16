@@ -856,4 +856,15 @@ test('dismiss shortcut uses the game-thread companion-only handler and rejects s
     assert(count(h,'dismiss_companions')==1,'an old-map press must not dismiss the new roster')
     h.keys['F8:1']();h:drain();assert(count(h,'dismiss_companions')==2)
 end)
+test('battle music commands report native readback and stop cannot hide pending recovery',function()
+    local h=harness();local mode,track,pending='NATIVE','MOYUAN_P1',false
+    local feature={set=function(_,m,t)assert(h.inGame);mode,track=m,t;return {ok=true,message='saved'}end,
+        stop=function()assert(h.inGame);return {ok=not pending,message='music restore pending'}end,
+        status=function()return {supported=true,mode=mode,track=track,state='waiting',message='readback',playing=0,pending=pending}end}
+    h.runtime=h.new({support={discover=function()assert(h.inGame)end,status=function()return {}end,tick=function()assert(h.inGame)end,battleMusic=feature}});h.runtime:start()
+    h.inbox={action='set_battle_music',key_spawn='TRACK',key_start='LEIDANG_P2'};h:tick()
+    assert(h.result.ok and h.reported.battle_music_mode=='TRACK' and h.reported.battle_music_track=='LEIDANG_P2' and h.reported.battle_music_state=='waiting')
+    pending=true;h.inbox={action='stop'};h:tick();assert(not h.result.ok and h.result.message:find('music restore pending',1,true))
+    pending=false;h.inbox={action='stop'};h:tick();assert(h.result.ok)
+end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

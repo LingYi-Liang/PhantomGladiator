@@ -174,6 +174,11 @@ function Runtime.new(options)
             if not feature then return {ok=false,message='脱战回血模块未加载'} end
             return feature:set(command.key_start)
         end,
+        set_battle_music=function(command)
+            local feature=options.support and options.support.battleMusic
+            if not feature then return {ok=false,message='战斗音乐模块未加载'} end
+            return feature:set(command.key_spawn,command.key_start)
+        end,
         -- The difficulty token travels in the key_spawn column (FOLLOW, EASY, NORMAL, HARD, NIGHTMARE).
         set_spawn_difficulty=function(command)
             if not options.spawnDifficulty then return {ok=false,message='召唤难度模块未加载',spawned_count=0} end
@@ -226,7 +231,13 @@ function Runtime.new(options)
             if self.summonQueue.enabled then self.summonQueue:cancel('停止并清理') end
             if #self.poolQueue.jobs>0 then self.poolQueue:cancel('停止并清理') end
             if options.support then options.support:discover() end
-            return options.arena:stop()
+            local result=options.arena:stop()
+            local music=options.support and options.support.battleMusic
+            if music then
+                local stopped=music:stop()
+                if not stopped.ok then result.ok=false;result.message=(result.message or '')..'；'..stopped.message end
+            end
+            return result
         end,
         clear_neutral=function()
             if options.support then options.support:discover() end
@@ -463,6 +474,14 @@ function Runtime.new(options)
         out.offcombat_regen_cleared=regen.cleared or 0
         out.offcombat_regen_failures=regen.failures or 0
         out.offcombat_regen_hooks=regen.hooks or 0
+        local music=options.support and options.support.battleMusic and options.support.battleMusic:status() or {}
+        out.battle_music_supported=music.supported==true
+        out.battle_music_mode=music.mode or 'NATIVE'
+        out.battle_music_track=music.track or 'MOYUAN_P1'
+        out.battle_music_state=music.state or 'native'
+        out.battle_music_message=music.message or ''
+        out.battle_music_playing_id=music.playing or 0
+        out.battle_music_pending=music.pending==true
         out.fun_supported=not not options.funFeatures
         out.fun_shachi=fun.shachi==true
         out.fun_deflect=fun.deflect==true
