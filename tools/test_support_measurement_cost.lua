@@ -1,4 +1,5 @@
-local f=assert(io.open(arg[1]or'Mods/PhantomGladiator/Scripts/main.lua','rb'));local source=f:read('*a');f:close()
+-- The worktree may hold main.lua with Windows line endings; the pattern below is written for LF.
+local f=assert(io.open(arg[1]or'Mods/PhantomGladiator/Scripts/main.lua','rb'));local source=(f:read('*a'):gsub('\r\n','\n'));f:close()
 local code=assert(source:match('local function supportSteps%(self%).-\nend\nfunction arenaSupport:tick')):gsub('\nfunction arenaSupport:tick$','')
 local noop=function()end
 local proxy=setmetatable({},{__index=function()return noop end,__call=noop})
