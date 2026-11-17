@@ -1,14 +1,17 @@
 local Router=require('key_router')
 local Keys={}
 Keys.actions={'spawn','start','stop','refresh_catalog','toggle_camera','exit_camera','cycle_team','toggle_spectator',
-    'recall_companions','toggle_time_stop','toggle_track','track_pick','track_next','dismiss_companions'}
+    'recall_companions','toggle_time_stop','toggle_track','track_pick','track_next','dismiss_companions',
+    'hun_blue','hun_red','hun_companion','hun_neutral'}
 Keys.labels={spawn='召唤所选单位',start='开始交战',stop='停止并清理',refresh_catalog='刷新单位目录',
     toggle_camera='自由观战（无仇恨＋隐身＋无敌锁血）',exit_camera='退出自由观战并恢复',cycle_team='切换召唤队伍',toggle_spectator='单独切换无仇恨',
     recall_companions='召回随从到身边',toggle_time_stop='时停（游戏暂停，自由视角照常移动）',
-    toggle_track='镜头跟踪开关',track_pick='镜头锁定屏幕中央的单位',track_next='镜头跟踪下一个单位',dismiss_companions='解散全部随从'}
+    toggle_track='镜头跟踪开关',track_pick='镜头锁定屏幕中央的单位',track_next='镜头跟踪下一个单位',dismiss_companions='解散全部随从',
+    hun_blue='魂：召唤到蓝方',hun_red='魂：召唤到红方',hun_companion='魂：召为随从',hun_neutral='魂：与我对战'}
 -- Actions added after FunctionKeysV2 files were first written: a save or a proposal without one leaves it unbound
 -- (otherwise a save from before would count as invalid and every key would come up unbound).
-Keys.added={recall_companions=true,toggle_time_stop=true,toggle_track=true,track_pick=true,track_next=true,dismiss_companions=true}
+Keys.added={recall_companions=true,toggle_time_stop=true,toggle_track=true,track_pick=true,track_next=true,dismiss_companions=true,
+    hun_blue=true,hun_red=true,hun_companion=true,hun_neutral=true}
 local function read(fs,path)
     local f=fs.open(path,'rb');if not f then return nil end
     local value=f:read(65537);f:close();return value and #value<=65536 and value or nil

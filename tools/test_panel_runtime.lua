@@ -657,14 +657,14 @@ test("companions are dismissed on their own and reported apart from the arena",f
     assert(h.reported.companion_count==2 and h.reported.companion_owned_records==3 and h.reported.companion_supported)
     assert(h.reported.companion_follow==2 and h.reported.companion_failures==1)
 end)
-test("recall goes to the companions from the app and from its function key; keys report schema 4",function()
+test("recall goes to the companions from the app and from its function key; keys report schema 6",function()
     local h=harness();local recalls=0
     h.runtime=h.new({companions={status=function()return {stuck=1,recalls=recalls}end,
         recall=function()assert(h.inGame);recalls=recalls+1;return {ok=true,message='已召回 2/2 个随从到身边',spawned_count=0}end}})
     h.runtime:start()
     h.inbox={action='recall_companions'};h:tick()
     assert(recalls==1 and h.result.ok and h.result.message=='已召回 2/2 个随从到身边')
-    assert(h.reported.function_keys_schema==5 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
+    assert(h.reported.function_keys_schema==6 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
     h.inbox={action='configure_keys',key_spawn='UNBOUND',key_start='UNBOUND',key_stop='UNBOUND',key_refresh_catalog='UNBOUND',
         key_toggle_camera='UNBOUND',key_exit_camera='UNBOUND',key_cycle_team='UNBOUND',key_toggle_spectator='UNBOUND',key_recall_companions='F5'}
     h:tick();assert(h.result.ok,h.result.message)
@@ -696,8 +696,9 @@ test("不倒下 takes its team from the team column and ON/OFF from key_start; t
     assert(h.reported.immortal_locked==3 and h.reported.immortal_failures==1 and h.reported.immortal_breaches==2)
     assert(h.reported.battle_clock=='' and h.reported.battle_seconds=='0.0','no clock in the arena fixture')
     -- panel_bridge.lua writes at most 256 entries; v0.36.0 lost random ones past the old cap of 100.
+    -- A real session reports about 27 more than this fixture (230 lines against 199 before the Hun keys).
     local entries=0;for _ in pairs(h.reported)do entries=entries+1 end
-    assert(entries<200,'status entries: '..entries)
+    assert(entries<=225,'status entries: '..entries)
     local missing=harness();missing.runtime:start();missing.inbox={action='set_team_immortal',team='red',key_start='ON'};missing:tick()
     assert(not missing.result.ok and missing.reported.immortal_supported==false)
 end)
@@ -866,5 +867,17 @@ test('battle music commands report native readback and stop cannot hide pending 
     assert(h.result.ok and h.reported.battle_music_mode=='TRACK' and h.reported.battle_music_track=='LEIDANG_P2' and h.reported.battle_music_state=='waiting')
     pending=true;h.inbox={action='stop'};h:tick();assert(not h.result.ok and h.result.message:find('music restore pending',1,true))
     pending=false;h.inbox={action='stop'};h:tick();assert(h.result.ok)
+end)
+test('a Hun summon key uses the Hun entry with the saved count and respects the queue',function()
+    local h=harness();local summons={}
+    local body={spawn=function(_,arena,team,count,revision)summons[#summons+1]=team..':'..count..':'..tostring(revision);return {ok=true,message='fixture hun',spawned_count=count}end,
+        status=function()return {probe_supported=true,full_ready=false,prepared=0,message='m'}end}
+    h.runtime=h.new({support={hunBody=body},hunLoadout=function()return {count=3,revision=7}end});h.runtime:start();h:tick()
+    local proposal={};for name,value in pairs(h.runtime.functionKeys.entries)do proposal[name]=value end
+    proposal.hun_blue='VK_119_MOD_0';proposal.hun_neutral='VK_119_MOD_1'
+    h:run(function()assert(h.runtime:configure(proposal).ok)end)
+    h.keys.F8();assert(#summons==0);h:drain();assert(#summons==1 and summons[1]=='blue:3:7',summons[1])
+    h.keys['F8:1']();h:drain();assert(summons[2]=='neutral:3:7')
+    h.runtime.summonQueue.enabled=true;h.keys.F8();h:drain();assert(#summons==2,'no Hun summon while the queue mode is on')
 end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

@@ -5,7 +5,10 @@ MAX_BYTES=262144
 ROOT=pathlib.Path(__file__).resolve().parent
 CATALOG=json.loads((ROOT/'hun-catalog.json').read_text(encoding='utf-8'))
 ITEMS={r['id']:r for r in CATALOG['items']}
+# Accessory row -> its effect class per refine tier (tier 0 is the unrefined item, tier n the nth refinement).
+EFFECTS=json.loads((ROOT/'hun-accessory-effects.json').read_text(encoding='utf-8'))['rows']
 VERSION=1
+LOADOUT_NAME='hun-loadout.tsv'
 
 def integer(value,low,high,label):
     if type(value)is not int or not low<=value<=high:raise ValueError(label+'数值无效')
@@ -32,10 +35,37 @@ def default_profile():
         'phases':[{'id':'heimoshang_survival','name':'黑魔伤保命','enabled':True,'health_below':0.25,
                    'weapon_id':next(k for k,r in ITEMS.items()if r['kind']=='main_weapon'and r['row']=='黑魔伤'),
                    'action':'native_combat_art','priority':100,'once':True}],
-        'mode':'blue','count':1}
+        'mode':'blue','count':1,'experimental':{'accessory_effects':False}}
+
+def upgrade(profile):
+    # Profiles saved before the trial switches existed load with every trial off.
+    if isinstance(profile,dict)and'experimental'not in profile:return {**profile,'experimental':{'accessory_effects':False}}
+    return profile
+
+def loadout_text(revision,profile,positive=(),non_negative=()):
+    """The saved profile in the form the game side reads (hun_loadout.lua): only what it can apply."""
+    lines=['HunLoadoutV1\t%d'%revision,'count\t%d'%profile['count']]
+    for field in sorted(profile['attributes']):
+        value=float(profile['attributes'][field])
+        if (field in positive and value<=0)or(field in non_negative and value<0):continue
+        lines.append('attr\t%s\t%s'%(field,format(value,'.10g')))
+    lines.append('accessories\t'+('on'if profile['experimental']['accessory_effects']else'off'))
+    seen=set()
+    for key,row in ITEMS.items():
+        choice=profile['items'][key]
+        if row['kind']!='accessory'or not choice['enabled']:continue
+        tiers=EFFECTS[row['row']]
+        tier=tiers[-1]if choice['level']=='max'else tiers[min(choice['level'],len(tiers)-1)]
+        if tier['effect']in seen:continue
+        seen.add(tier['effect'])
+        lines.append('ge\t%s\t%d\t%s'%(tier['effect'],tier['level'],re.sub(r'[\x00-\x1f\x7f]',' ',row['name'])[:40]))
+    return '\n'.join(lines)+'\n'
 
 def validate(profile,stat_fields,ai_fields):
+    profile=upgrade(profile)
     expected=default_profile();exact(profile,expected,'角色方案')
+    exact(profile['experimental'],expected['experimental'],'试验功能')
+    if type(profile['experimental']['accessory_effects'])is not bool:raise ValueError('试验开关无效')
     if type(profile['schema'])is not int or profile['schema']!=VERSION:raise ValueError('不支持的方案版本')
     display_name=clean_name(profile['name'])
     if profile['growth']!='native_max':raise ValueError('不支持的基础成长模式')
@@ -100,8 +130,10 @@ def decode(text):
     except RecursionError:raise ValueError('方案嵌套过深')
 
 class Store:
-    def __init__(self,path,stat_fields=(),ai_fields=None):
+    def __init__(self,path,stat_fields=(),ai_fields=None,positive=(),non_negative=()):
         self.path=pathlib.Path(path);self.stat_fields=stat_fields;self.ai_fields=ai_fields or {};self.lock=threading.Lock()
+        self.positive=frozenset(positive);self.non_negative=frozenset(non_negative)
+        self.loadout_path=self.path.with_name(LOADOUT_NAME)
         self.profile=default_profile();self.revision=0;self.error=''
         try:
             if self.path.exists():
@@ -110,6 +142,21 @@ class Store:
                 exact(payload,('revision','profile'),'保存记录');integer(payload['revision'],1,2147483646,'版本')
                 self.profile=validate(payload['profile'],self.stat_fields,self.ai_fields);self.revision=payload['revision']
         except (OSError,UnicodeError,ValueError,TypeError)as err:self.error=str(err)
+        # The game side reads this copy; keep it in step with what was just loaded (or the defaults).
+        try:
+            if not self.error:self._export(self.revision,self.profile)
+        except OSError as err:self.error='魂方案的游戏端副本没写成功：'+str(err)
+
+    def _export(self,revision,profile):
+        content=loadout_text(revision,profile,self.positive,self.non_negative)
+        try:
+            if self.loadout_path.read_text(encoding='utf-8')==content:return
+        except (OSError,UnicodeError):pass
+        tmp=self.loadout_path.with_name(self.loadout_path.name+'.tmp')
+        if self.loadout_path.is_symlink()or tmp.is_symlink():raise OSError('方案路径无效')
+        with tmp.open('w',encoding='utf-8',newline='\n')as f:f.write(content);f.flush();os.fsync(f.fileno())
+        os.replace(tmp,self.loadout_path)
+        if self.loadout_path.read_text(encoding='utf-8')!=content:raise OSError('游戏端副本保存未读回确认')
 
     def snapshot(self):
         with self.lock:return {'revision':self.revision,'profile':copy.deepcopy(self.profile),'error':self.error}
@@ -127,6 +174,7 @@ class Store:
             with tmp.open('w',encoding='utf-8',newline='\n')as f:f.write(content);f.flush();os.fsync(f.fileno())
             os.replace(tmp,self.path)
             if self.path.read_text(encoding='utf-8')!=content:raise OSError('方案保存未读回确认')
+            self._export(revision,profile)
             self.profile,self.revision,self.error=profile,revision,''
         return self.snapshot()
 

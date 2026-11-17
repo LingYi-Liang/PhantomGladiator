@@ -73,7 +73,19 @@ function Runtime.new(options)
         local entered=options.camera:toggle()
         if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开',spawned_count=0} end
     end
+    -- A Hun summon key: the same entry as the app's summon buttons, with the saved count.
+    local function hunKey(team)
+        return function()
+            local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
+            local body=options.support and options.support.hunBody
+            if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0}end
+            if self.summonQueue.enabled then return {ok=false,message='召唤魂需先关闭排队/接力',spawned_count=0}end
+            local loadout=options.hunLoadout and options.hunLoadout()or{}
+            return body:spawn(options.arena,team,loadout.count or 1,tostring(loadout.revision or 0))
+        end
+    end
     self.handlers={
+        hun_blue=hunKey('blue'),hun_red=hunKey('red'),hun_companion=hunKey('companion'),hun_neutral=hunKey('neutral'),
         hun_body_probe=function(command)
             local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
             local body=options.support and options.support.hunBody
@@ -546,8 +558,8 @@ function Runtime.new(options)
         out.spectator_message=spectator.message
         out.spectator_read_failures=spectator.readFailures
         local functions=self.functionKeys:status()
-        -- 5: fourteen function keys; dismiss_companions is appended after the original thirteen.
-        out.function_keys_schema=5;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
+        -- 6: eighteen function keys; the four Hun summon keys follow dismiss_companions.
+        out.function_keys_schema=6;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
         return out
     end})

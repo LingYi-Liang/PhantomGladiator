@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-15"
+local BUILD = "v0.40.16-beta-16"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1562,6 +1562,17 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             log('[Escort] 随行单位不参与数值统一，保持自身数值 unit='..objectName(actor)..' HP='..tostring(hp))
         end
         local stats=team=='companion' and arenaSupport.companionStats or statMatch
+        -- A Hun body summoned with attribute values of its own takes those instead of the arena's or the companions'.
+        local hunValues=arenaSupport.hunBody and arenaSupport.hunStats and arenaSupport.hunBody:attributes(actor)
+        if hunValues then
+            local known,values,dropped=arenaSupport.hunStatFields,{},0
+            for field,value in pairs(hunValues)do if known[field]then values[field]=value else dropped=dropped+1 end end
+            if next(values)~=nil then
+                arenaSupport.hunStats.mode,arenaSupport.hunStats.custom='custom',values
+                stats=arenaSupport.hunStats
+            end
+            if dropped>0 then log('[HunStats] 方案里有 '..dropped..' 项属性游戏端不认识，已跳过')end
+        end
         local combatReady=activationRequested==true and ai~=nil and type(hp)=='number' and hp>0
         if combatReady and escort then
             local wrote,result=pcall(function()return stats:onSummon(actor,unitPath)end)
@@ -2071,7 +2082,13 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
     clock=function()local s=ArenaStatus();return s.battle_clock,s.battle_seconds end})
 -- 不死不休: while a fight runs, blue and red do not leave combat after an action and may hate each
 -- other through the game's own hatred checks (combat_lock.lua).
-arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp})
+-- The Hun body takes the count, attribute values and accessory effects of the profile the panel last saved.
+local hunLoadout=require('hun_loadout').new({path=Config.RuntimePath,log=log})
+arenaSupport.hunLoadout=function()return hunLoadout:read()end
+arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout})
+arenaSupport.hunStats=StatMatch.new({path=Config.RuntimePath,log=log,tag='[HunStats]',customOnly=true,
+    settings='hun-stats-settings.tsv',request='hun-stats-request.tsv'})
+arenaSupport.hunStatFields={};for _,field in ipairs(require('character_stats').allFields)do arenaSupport.hunStatFields[field]=true end
 arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
     context=function()return arena:intentContext()end,
     deferTargetHold=true,
@@ -2333,7 +2350,7 @@ keyPoll.register(Key.F9,{ModifierKey.SHIFT},function()
     end)
 end)
 end
-panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,
+panelRuntime=PanelRuntime.new({arena=arena,exporter=exporter,path=Config.RuntimePath,hunLoadout=arenaSupport.hunLoadout,
     build=BUILD,log=log,unitRules=arenaSupport.unitRules,track=arenaSupport.track,autoScan=true,fullInventory=true,spectator=spectator,statMatch=statMatch,companionStats=arenaSupport.companionStats,aiParams=aiParams,bossCombos=bossCombos,spawnDifficulty=spawnDifficulty,aiDifficulty=aiDifficulty,companions=companions,funFeatures=funFeatures,immortal=immortalTeams,clockHUD=clockHUD,executionCamera=executionCamera,companionExecutions=arenaSupport.companionExecutions,session=runtimeSession,codex=codexExporter,spawnPolicy=SpawnPolicy,support=arenaSupport,unitKeys=unitKeys,
     router=keyRouter,camera={status=function()return {active=freeCamera:isActive(),pending=freeCamera:hasPending(),
             frozen=freeCamera:isFrozen(),settings=freeCamera:settings()}end,

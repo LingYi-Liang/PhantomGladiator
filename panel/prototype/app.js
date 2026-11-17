@@ -49,14 +49,16 @@
     clear() { try { storeKeys().forEach(k => localStorage.removeItem(k)); pushStore(); } catch { /* ignore */ } },
   };
 
+  // The Hun page (hun-page.js) shows its summon keys with this page's key capture.
+  window.PGHunKeys = { html: action => hunKeyHTML(action) };
   const REPO = "https://github.com/LingYi-Liang/PhantomGladiator";
   const BILI = "https://space.bilibili.com/10010098";
   // The Nexus Mods build (S.channel "nexus") checks and downloads no updates: new versions come from this page.
   const NEXUS = "https://www.nexusmods.com/phantombladezero/mods/363";
   const fromNexus = () => S.channel === "nexus";
   // Function keys accepted by backend.py (BINDING_NAMES); all of them start unbound.
-  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
-  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]]];
+  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", hun_blue: "user-plus", hun_red: "user-plus", hun_companion: "shield", hun_neutral: "swords", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
+  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]];
   const NO_KEYS = Object.fromEntries(Object.keys(KEY_ICONS).map(action => [action, null]));
   const VK_CODES = { Space: 32, Pause: 19, CapsLock: 20, NumLock: 144, ScrollLock: 145, Backquote: 192, NumpadEnter: 13, Tab: 9, Enter: 13, Backspace: 8, Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Minus: 189, Equal: 187, BracketLeft: 219, BracketRight: 221, Backslash: 220, Semicolon: 186, Quote: 222, Comma: 188, Period: 190, Slash: 191, NumpadAdd: 107, NumpadSubtract: 109, NumpadMultiply: 106, NumpadDivide: 111, NumpadDecimal: 110 };
   const VK_NAMES = { 8: "Backspace", 9: "Tab", 13: "Enter", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "←", 38: "↑", 39: "→", 40: "↓", 45: "Insert", 46: "Delete", 106: "Num*", 107: "Num+", 109: "Num-", 110: "Num.", 111: "Num/", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 219: "[", 220: "\\", 221: "]", 222: "'" };
@@ -1729,7 +1731,7 @@
 
   // ---------- Hotkey capture ----------
   function startCapture(target) {
-    if (target.kind === "global" && target.action === "dismiss_companions" && !S.dismissKeySupported) return;
+    if (target.kind === "global" && keyNeedsUpdate(target.action)) return;
     ui.capture = target;
     ui.keyNote = null;
     ui.unitKeyError = "";
@@ -1747,7 +1749,14 @@
     if (host.kind === "unit") renderSelection();
     else if (host.kind === "pool" && ui.page === "pool") renderPage();
     else if (host.host === "view") renderView();
+    else if (host.host === "hun") window.PGHun?.keysChanged?.();
     else if (ui.page === "hotkeys") renderPage();
+  }
+  // Redraws where a function key is shown: the 观战 card, the Hun page's summon keys, or the hotkeys page.
+  function redrawKeyHost(host) {
+    if (host === "view") renderView();
+    else if (host === "hun") window.PGHun?.keysChanged?.();
+    else renderPage();
   }
   // configure_keys always carries all the bindings; action names the row that shows the result
   // (none for "clear all", which reports in a toast), host the card it is in.
@@ -1755,7 +1764,7 @@
     ui.capture = null;
     ui.keyNote = action ? { action, host, type: "saving" } : null;
     ui.keysSaving = true;
-    if (host === "view") renderView(); else renderPage();
+    redrawKeyHost(host);
     let ok = false, text;
     try {
       const job = await RT.command("configure_keys", { bindings });
@@ -1772,11 +1781,12 @@
     } else if (action) ui.keyNote = { action, host, type: ok ? "ok" : "err", text };
     else toast({ kind: ok ? "success" : "error", title: ok ? note : t("toast.failed"), body: ok ? "" : text });
     if (host === "view") renderView();
+    else if (host === "hun") window.PGHun?.keysChanged?.();
     else if (ui.page === "hotkeys") renderPage();
   }
   function handleGlobalCapture(e) {
     const { action, host = "" } = ui.capture, got = readCapture(e);
-    const redraw = () => (host === "view" ? renderView() : renderPage());
+    const redraw = () => redrawKeyHost(host);
     // An unusable key keeps the box listening, so the player can just press another one.
     const refuse = text => { ui.keyNote = { action, host, type: "err", text }; redraw(); };
     if (got.error) { refuse(got.error); return; }
@@ -1817,7 +1827,7 @@
 
   // ---------- Hotkeys page ----------
   function keyRowHTML(action) {
-    const usable = RT.online() && (action !== "dismiss_companions" || S.dismissKeySupported);
+    const usable = RT.online() && !keyNeedsUpdate(action);
     const capturing = ui.capture?.kind === "global" && ui.capture.action === action;
     const note = ui.keyNote?.action === action ? ui.keyNote : null;
     let noteHTML = "";
@@ -1834,10 +1844,28 @@
           ${S.keys[action] ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
     return `<div class="row key-row${capturing ? " is-capturing" : ""}${note?.type === "conflict" || (capturing && note?.type === "err") ? " has-error" : ""}">
       <span class="row-icon">${icon(KEY_ICONS[action])}</span>
-      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${action === "dismiss_companions" && RT.online() && !S.dismissKeySupported ? `<div class="key-note err">${esc(t("keys.dismiss.update"))}</div>` : ""}${noteHTML}</div>
+      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${RT.online() && keyNeedsUpdate(action) ? `<div class="key-note err">${esc(t(action === "dismiss_companions" ? "keys.dismiss.update" : "keys.hun.update"))}</div>` : ""}${noteHTML}</div>
       <div class="row-side">${side}</div>
     </div>`;
   }
+  // One function key as a compact control beside a Hun summon button; the capture, clash and save
+  // handling is the same as a row of the hotkeys page (host "hun" redraws only the Hun page's keys).
+  function hunKeyHTML(action) {
+    const needsUpdate = keyNeedsUpdate(action), usable = RT.online() && !needsUpdate && !ui.keysSaving;
+    const capturing = ui.capture?.kind === "global" && ui.capture.action === action && ui.capture.host === "hun";
+    const note = ui.keyNote?.action === action && ui.keyNote.host === "hun" ? ui.keyNote : null;
+    const key = S.keys[action];
+    let control;
+    if (capturing) control = `<span class="capture-box">${icon("keyboard", "icon-sm")}${esc(t("keys.capture"))}</span><button class="btn-link" type="button" data-action="key-cancel">${esc(t("common.cancel"))}</button>`;
+    else if (note?.type === "saving") control = `<span class="spinner"></span>`;
+    else control = `<button class="hun-key${key ? " is-set" : ""}" type="button" data-action="key-capture" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} title="${esc(needsUpdate ? t("keys.hun.update") : t(key ? "keys.change" : "keys.set"))}">${key ? keyCap(key) : `${icon("keyboard", "icon-sm")}<span>快捷键</span>`}</button>${key ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
+    let message = "";
+    if (note?.type === "conflict") message = `<div class="key-note err">${esc(note.text)} <button class="btn-link" type="button" data-action="key-swap">${icon("swap", "icon-sm")} ${esc(t(key ? "keys.swap" : "keys.take"))}</button></div>`;
+    else if (note?.type === "err") message = `<div class="key-note err">${esc(note.text)}</div>`;
+    return { control, message, needsUpdate: RT.online() && needsUpdate };
+  }
+  // A function key the game in use cannot take yet: only a newer mod knows these actions.
+  function keyNeedsUpdate(action) { return (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
   function hotkeysHTML() {
     const unitKeys = Object.entries(S.unitKeys), bound = Object.values(S.keys).filter(Boolean).length;
     return `<div class="stack">
@@ -3315,7 +3343,7 @@
       const n = ui.keyNote, mine = S.keys[n.action], names = { a: t("keys.action." + n.action), b: t("keys.action." + n.other) };
       saveGlobalKeys({ ...S.keys, [n.action]: n.key, [n.other]: mine }, t(mine ? "toast.key.swapped" : "toast.key.moved", names), n.action, n.host);
     },
-    "key-clear": el => { const a = el.dataset.keyAction; saveGlobalKeys({ ...S.keys, [a]: null }, t("toast.key.removed", { action: t("keys.action." + a) }), a); },
+    "key-clear": el => { const a = el.dataset.keyAction; saveGlobalKeys({ ...S.keys, [a]: null }, t("toast.key.removed", { action: t("keys.action." + a) }), a, el.dataset.keyHost || ""); },
     "keys-clear-all": () => openDialog("confirm", `<div class="dialog-head"><h2 id="dlg-title">${esc(t("keys.clearAll.title"))}</h2></div>
       <div class="dialog-body"><p>${esc(t("keys.clearAll.body"))}</p></div>
       <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.cancel"))}</button><button class="btn btn-danger-solid" type="button" data-action="keys-clear-confirm" data-autofocus>${icon("trash", "icon-sm")}${esc(t("keys.clearAll"))}</button></div>`, "dialog-sm"),

@@ -84,13 +84,13 @@ end
 package.loaded.UEHelpers={GetPlayerController=function() return pc end,GetWorld=function() return world end,
     GetGameViewportClient=function()return {IsValid=function()return true end,World=world,
         GameInstance={IsValid=function()return true end,LocalPlayers={keyController.Player}}}end}
-local arenaOptions,statMatchInstance,companionStatsInstance,spectatorOptions,runtimeInstance
+local arenaOptions,statMatchInstance,companionStatsInstance,hunStatsInstance,spectatorOptions,runtimeInstance
 local Arena=require('arena_controller');local realArenaNew=Arena.new
 Arena.new=function(options)arenaOptions=options;return realArenaNew(options)end
 local Match=require('stat_match');local realMatchNew=Match.new
 Match.new=function(options)
     local made=realMatchNew(options)
-    if options.customOnly then companionStatsInstance=made else statMatchInstance=made end
+    if options.tag=='[HunStats]' then hunStatsInstance=made elseif options.customOnly then companionStatsInstance=made else statMatchInstance=made end
     return made
 end
 local Spectator=require('spectator_mode');local realSpectatorNew=Spectator.new
@@ -188,7 +188,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.16-beta-15',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.16-beta-16',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -257,6 +257,7 @@ local npc={IsValid=function()return true end,GetFullName=function()return 'NPC /
     AttributeSetBase={IsValid=function()return true end,Health={CurrentValue=12000}}}
 function npc:IsActorBeingDestroyed()return false end
 local result={ok=false,rollback_verified=true,message='数值统一失败；回滚读回=true'}
+assert(hunStatsInstance and hunStatsInstance~=companionStatsInstance and hunStatsInstance~=statMatchInstance,'the Hun body has a stat writer of its own')
 statMatchInstance.onSpawn=function(_,actor,path)assert(actor==npc and path==known);return result end
 inGame=true
 local activated,_,warning=arenaOptions.activate(npc,known)

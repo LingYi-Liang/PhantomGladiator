@@ -162,4 +162,46 @@ test('idle body support does not scan or read game state',function()
     for _=1,2000 do h.mod:tick({})end
     assert(h.scans==0 and h.reads==0)
 end)
-print('hun body: PASS '..n..' scoped-instance/tag/lifecycle checks; native gameplay remains unverified')
+-- A profile for the next tests: two attribute values and two accessory effects.
+local function loadoutFixture(accessories)
+    local h=fixture();h.effects={};h.applied={}
+    local function effect(label)local c=object('Class /Game/GE.'..label);h.effects['/Game/GE.'..label..'_C']=c;return {path='/Game/GE.'..label..'_C',level=1,label=label}end
+    h.loadout={revision=9,count=2,attributes={Health_Max=5000,Attack=77},accessories=accessories,effects={effect('Loot'),effect('Guard')}}
+    function h.asc:GetGameplayEffectCount(cls)return h.applied[cls]or 0 end
+    function h.asc:BP_ApplyGameplayEffectToSelf(cls,level)assert(level==1);if not h.refuse then h.applied[cls]=(h.applied[cls]or 0)+1 end end
+    h.options.loadout=function()return h.loadout end
+    h.options.loadClass=function(path)return h.effects[path]end
+    h.mod=Body.new(h.options)
+    return h
+end
+test('each body keeps the attribute values of the profile it was summoned with',function()
+    local h=loadoutFixture(false);assert(h:run().ok)
+    local values=h.mod:attributes(h.actor);assert(values.Health_Max==5000 and values.Attack==77)
+    assert(h:logged('方案版本=9（请求=1）')==1)
+    h.loadout={revision=10,count=1,attributes={Attack=1},accessories=false,effects={}}
+    assert(h.mod:attributes(h.actor).Attack==77,'a later save does not reach a body already summoned')
+    assert(h.mod:attributes(h.other)==nil)
+    local plain=fixture();assert(plain:run().ok and plain.mod:attributes(plain.actor)==nil,'no profile file: nothing to write')
+    local empty=loadoutFixture(false);empty.loadout.attributes={};assert(empty:run().ok and empty.mod:attributes(empty.actor)==nil)
+end)
+test('accessory effects stay off unless the profile turns the trial on',function()
+    local h=loadoutFixture(false);assert(h:run().ok);h:tick(3)
+    assert(next(h.applied)==nil and h:logged('饰品效果')==0)
+end)
+test('with the trial on every enabled effect is applied once and read back',function()
+    local h=loadoutFixture(true);assert(h:run().ok);assert(next(h.applied)==nil,'not before the first support cycle')
+    h:tick(5)
+    local total=0;for _,count in pairs(h.applied)do total=total+count end
+    assert(total==2 and h:logged('方案启用2条；读回生效2条')==1)
+end)
+test('an effect the game does not take or a class that does not load is named in the log',function()
+    local h=loadoutFixture(true);h.refuse=true;assert(h:run().ok);h:tick(2)
+    assert(h:logged('读回生效0条')==1 and h:logged('Loot（调用=true 层数0→0）')==1)
+    h=loadoutFixture(true);h.effects['/Game/GE.Guard_C']=nil;assert(h:run().ok);h:tick(2)
+    assert(h:logged('读回生效1条')==1 and h:logged('Guard（效果类没载入）')==1)
+end)
+test('a profile reader that fails does not stop the summon',function()
+    local h=fixture();h.options.loadout=function()error('fixture read failure')end;h.mod=Body.new(h.options)
+    assert(h:run().ok and h.mod:attributes(h.actor)==nil)
+end)
+print('hun body: PASS '..n..' scoped-instance/tag/lifecycle/profile checks; native gameplay remains unverified')

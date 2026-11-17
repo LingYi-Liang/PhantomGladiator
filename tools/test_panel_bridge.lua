@@ -407,6 +407,12 @@ test('v3 key configuration adds recall and time stop as keys nine and ten; both 
     deliver(fs,keys5);bridge:tick()
     assert(#got==3 and got[3].schema_version==5 and got[3].key_dismiss_companions=='VK_119_MOD_1' and got[3].key_track_next=='VK_85_MOD_0')
     deliver(fs,keys5:gsub('keys5','bad5'):gsub('\t5\n','\t4\n'));bridge:tick();assert(#got==3)
+    local keys6=keys5:gsub('keys5','keys6'):gsub('\t5\n','\tVK_116_MOD_0\tVK_117_MOD_0\tUNBOUND\tVK_118_MOD_2\t6\n')
+    deliver(fs,keys6);bridge:tick()
+    assert(#got==4 and got[4].schema_version==6 and got[4].key_dismiss_companions=='VK_119_MOD_1')
+    assert(got[4].key_hun_blue=='VK_116_MOD_0' and got[4].key_hun_red=='VK_117_MOD_0' and got[4].key_hun_companion=='UNBOUND' and got[4].key_hun_neutral=='VK_118_MOD_2')
+    deliver(fs,keys6:gsub('keys6','bad6'):gsub('\t6\n','\t5\n'));bridge:tick();assert(#got==4)
+    got[4]=nil
     deliver(fs,command('c0','set_unit_rule','BP_Monster_MoTian','blue',1,{'LOCK','KILL','',''}));bridge:tick()
     assert(unitRule and unitRule.unit_id=='BP_Monster_MoTian' and unitRule.key_spawn=='LOCK' and unitRule.key_start=='KILL')
     deliver(fs,command('c1','set_free_camera','','blue',1,{'1500','150','25',''}));bridge:tick()

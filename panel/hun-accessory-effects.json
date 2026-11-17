@@ -1,0 +1,958 @@
+{
+ "schema": 1,
+ "build": "26367565",
+ "table": "/Game/PBZContent/DataTable/UI/DT_Accessory",
+ "rows": {
+  "ActHit": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ActHit_Lv1.GE_Accessory_ActHit_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ActHit_Lv2.GE_Accessory_ActHit_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ActHitShachi": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ActHitShachi_Lv1.GE_Accessory_ActHitShachi_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ActHitShachi_Lv2.GE_Accessory_ActHitShachi_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "AnimMovement": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_AnimMovement_Lv1.GE_Accessory_AnimMovement_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_AnimMovement_Lv2.GE_Accessory_AnimMovement_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Attack": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Attack_Lv1.GE_Accessory_Attack_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Attack_Lv2.GE_Accessory_Attack_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "BigHit": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BigHit_Lv1.GE_Accessory_BigHit_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BigHit_Lv2.GE_Accessory_BigHit_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Bleed": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Bleed_Lv1.GE_Accessory_Bleed_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Bleed_Lv2.GE_Accessory_Bleed_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "BreakAttack": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakAttack_Lv1.GE_Accessory_BreakAttack_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakAttack_Lv2.GE_Accessory_BreakAttack_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "BreakDrink": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakDrink_Lv1.GE_Accessory_BreakDrink_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakDrink_Lv2.GE_Accessory_BreakDrink_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "BreakRecover": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakRecover_Lv1.GE_Accessory_BreakRecover_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakRecover_Lv2.GE_Accessory_BreakRecover_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "BreakRegen": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakRegen_Lv1.GE_Accessory_BreakRegen_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakRegen_Lv2.GE_Accessory_BreakRegen_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "BreakShield": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakShield_Lv1.GE_Accessory_BreakShield_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_BreakShield_Lv2.GE_Accessory_BreakShield_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Chaos": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Chaos_Lv1.GE_Accessory_Chaos_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Chaos_Lv2.GE_Accessory_Chaos_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Chaos_Lv3.GE_Accessory_Chaos_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Combo": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Combo_Lv1.GE_Accessory_Combo_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Combo_Lv2.GE_Accessory_Combo_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Combo_Lv3.GE_Accessory_Combo_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Control": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Control_Lv1.GE_Accessory_Control_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Control_Lv2.GE_Accessory_Control_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Counter": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Counter_Lv1.GE_Accessory_Counter_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Counter_Lv2.GE_Accessory_Counter_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Deflect": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Deflect_Lv1.GE_Accessory_Deflect_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Deflect_Lv2.GE_Accessory_Deflect_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Double": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Double_Lv1.GE_Accessory_Double_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Double_Lv2.GE_Accessory_Double_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Drink": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Drink_Lv1.GE_Accessory_Drink_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Drink_Lv2.GE_Accessory_Drink_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "DrinkCost": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_DrinkCost_Lv1.GE_Accessory_DrinkCost_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_DrinkCost_Lv2.GE_Accessory_DrinkCost_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "EasyExecution": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_EasyExecution_Lv1.GE_Accessory_EasyExecution_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_EasyExecution_Lv2.GE_Accessory_EasyExecution_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Electrified": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Electrified_Lv1.GE_Accessory_Electrified_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Electrified_Lv2.GE_Accessory_Electrified_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "ElementRegen": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ElementRegen_Lv1.GE_Accessory_ElementRegen_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ElementRegen_Lv2.GE_Accessory_ElementRegen_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ElementRegen_Lv3.GE_Accessory_ElementRegen_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "Elemental": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Elemental_Lv1.GE_Accessory_Elemental_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Elemental_Lv2.GE_Accessory_Elemental_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ElementalResistance": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ElementalResistance_Lv1.GE_Accessory_ElementalResistance_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ElementalResistance_Lv2.GE_Accessory_ElementalResistance_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "EvadePhantom": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_EvadePhantom_Lv1.GE_Accessory_EvadePhantom_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_EvadePhantom_Lv2.GE_Accessory_EvadePhantom_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Execution": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Execution_Lv1.GE_Accessory_Execution_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Execution_Lv2.GE_Accessory_Execution_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ExecutionSwitchCool": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ExecutionSwitchCool_Lv1.GE_Accessory_ExecutionSwitchCool_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ExecutionSwitchCool_Lv2.GE_Accessory_ExecutionSwitchCool_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Frost": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Frost_Lv1.GE_Accessory_Frost_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Frost_Lv2.GE_Accessory_Frost_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "Health": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Health_Lv1.GE_Accessory_Health_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Health_Lv2.GE_Accessory_Health_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "HealthResistance": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HealthResistance_Lv1.GE_Accessory_HealthResistance_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HealthResistance_Lv2.GE_Accessory_HealthResistance_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HealthResistance_Lv3.GE_Accessory_HealthResistance_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "HeavyAttackCost": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackCost_Lv1.GE_Accessory_HeavyAttackCost_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackCost_Lv2.GE_Accessory_HeavyAttackCost_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "HeavyAttackDamage": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackDamage_Lv1.GE_Accessory_HeavyAttackDamage_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackDamage_Lv2.GE_Accessory_HeavyAttackDamage_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "HeavyAttackShachi": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackShachi_Lv1.GE_Accessory_HeavyAttackShachi_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_HeavyAttackShachi_Lv2.GE_Accessory_HeavyAttackShachi_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Ignite": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Ignite_Lv1.GE_Accessory_Ignite_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Ignite_Lv2.GE_Accessory_Ignite_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Long": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Long_Lv1.GE_Accessory_Long_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Long_Lv2.GE_Accessory_Long_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Loot": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Loot_Lv1.GE_Accessory_Loot_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Loot_Lv2.GE_Accessory_Loot_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "LowHealth": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_LowHealth_Lv1.GE_Accessory_LowHealth_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_LowHealth_Lv2.GE_Accessory_LowHealth_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "LowShachi": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_LowShachi_Lv1.GE_Accessory_LowShachi_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_LowShachi_Lv2.GE_Accessory_LowShachi_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "MagicWeapon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MagicWeapon_Lv1.GE_Accessory_MagicWeapon_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MagicWeapon_Lv2.GE_Accessory_MagicWeapon_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MagicWeapon_Lv3.GE_Accessory_MagicWeapon_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "MartialWeapon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MartialWeapon_Lv1.GE_Accessory_MartialWeapon_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MartialWeapon_Lv2.GE_Accessory_MartialWeapon_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_MartialWeapon_Lv3.GE_Accessory_MartialWeapon_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "PerfectFrame": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PerfectFrame_Lv1.GE_Accessory_PerfectFrame_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PerfectFrame_Lv2.GE_Accessory_PerfectFrame_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PerfectFrame_Lv3.GE_Accessory_PerfectFrame_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "PhysicalResistance": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PhysicalResistance_Lv1.GE_Accessory_PhysicalResistance_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PhysicalResistance_Lv2.GE_Accessory_PhysicalResistance_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Poison": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Poison_Lv1.GE_Accessory_Poison_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Poison_Lv2.GE_Accessory_Poison_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "PoisonRegen": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PoisonRegen_Lv1.GE_Accessory_PoisonRegen_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PoisonRegen_Lv2.GE_Accessory_PoisonRegen_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "PowerWeapon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PowerWeapon_Lv1.GE_Accessory_PowerWeapon_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PowerWeapon_Lv2.GE_Accessory_PowerWeapon_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_PowerWeapon_Lv3.GE_Accessory_PowerWeapon_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "RandomDrink": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RandomDrink_Lv1.GE_Accessory_RandomDrink_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RandomDrink_Lv2.GE_Accessory_RandomDrink_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RandomDrink_Lv3.GE_Accessory_RandomDrink_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Ranged": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Ranged_Lv1.GE_Accessory_Ranged_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Ranged_Lv2.GE_Accessory_Ranged_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "RangedWeapon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RangedWeapon_Lv1.GE_Accessory_RangedWeapon_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RangedWeapon_Lv2.GE_Accessory_RangedWeapon_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_RangedWeapon_Lv3.GE_Accessory_RangedWeapon_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "Regen": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Regen_Lv1.GE_Accessory_Regen_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Regen_Lv2.GE_Accessory_Regen_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ResistBleed": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistBleed_Lv1.GE_Accessory_ResistBleed_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistBleed_Lv2.GE_Accessory_ResistBleed_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "ResistFire": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistFire_Lv1.GE_Accessory_ResistFire_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistFire_Lv2.GE_Accessory_ResistFire_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "ResistIce": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistIce_Lv1.GE_Accessory_ResistIce_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistIce_Lv2.GE_Accessory_ResistIce_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "ResistNonBreak": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistNonBreak_Lv1.GE_Accessory_ResistNonBreak_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistNonBreak_Lv2.GE_Accessory_ResistNonBreak_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ResistPoison": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistPoison_Lv1.GE_Accessory_ResistPoison_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistPoison_Lv2.GE_Accessory_ResistPoison_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ResistRanged": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistRanged_Lv1.GE_Accessory_ResistRanged_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistRanged_Lv2.GE_Accessory_ResistRanged_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ResistThunder": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistThunder_Lv1.GE_Accessory_ResistThunder_Lv1_C",
+    "level": 1,
+    "current_equip_only": true
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ResistThunder_Lv2.GE_Accessory_ResistThunder_Lv2_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ],
+  "Resistance": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Resistance_Lv1.GE_Accessory_Resistance_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Resistance_Lv2.GE_Accessory_Resistance_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Rider": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Rider_Lv1.GE_Accessory_Rider_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Rider_Lv2.GE_Accessory_Rider_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Shachi": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Shachi_Lv1.GE_Accessory_Shachi_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Shachi_Lv2.GE_Accessory_Shachi_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ShachiAttack": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiAttack_Lv1.GE_Accessory_ShachiAttack_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiAttack_Lv2.GE_Accessory_ShachiAttack_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ShachiCool": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiCool_Lv1.GE_Accessory_ShachiCool_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiCool_Lv2.GE_Accessory_ShachiCool_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ShachiRegen": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiRegen_Lv1.GE_Accessory_ShachiRegen_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiRegen_Lv2.GE_Accessory_ShachiRegen_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "ShachiWeapon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiWeapon_Lv1.GE_Accessory_ShachiWeapon_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiWeapon_Lv2.GE_Accessory_ShachiWeapon_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_ShachiWeapon_Lv3.GE_Accessory_ShachiWeapon_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "SpiritShadow": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SpiritShadow_Lv1.GE_Accessory_SpiritShadow_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SpiritShadow_Lv2.GE_Accessory_SpiritShadow_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SpiritShadow_Lv3.GE_Accessory_SpiritShadow_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Stance": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Stance_Lv1.GE_Accessory_Stance_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Stance_Lv2.GE_Accessory_Stance_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Stance_Lv3.GE_Accessory_Stance_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Stealth": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Stealth_Lv1.GE_Accessory_Stealth_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Stealth_Lv2.GE_Accessory_Stealth_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Summon": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Summon_Lv1.GE_Accessory_Summon_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Summon_Lv2.GE_Accessory_Summon_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Summon_Lv3.GE_Accessory_Summon_Lv3_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "SummonDuration": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SummonDuration_Lv1.GE_Accessory_SummonDuration_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SummonDuration_Lv2.GE_Accessory_SummonDuration_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "SwitchEndure": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SwitchEndure_Lv1.GE_Accessory_SwitchEndure_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_SwitchEndure_Lv2.GE_Accessory_SwitchEndure_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "Tang": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Tang_Lv1.GE_Accessory_Tang_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Tang_Lv2.GE_Accessory_Tang_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "TimerEndure": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_TimerEndure_Lv1.GE_Accessory_TimerEndure_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_TimerEndure_Lv2.GE_Accessory_TimerEndure_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "UltimateBreak": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_UltimateBreak_Lv1.GE_Accessory_UltimateBreak_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_UltimateBreak_Lv2.GE_Accessory_UltimateBreak_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   }
+  ],
+  "UltimateCharge": [
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_UltimateCharge_Lv1.GE_Accessory_UltimateCharge_Lv1_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_UltimateCharge_Lv2.GE_Accessory_UltimateCharge_Lv2_C",
+    "level": 1,
+    "current_equip_only": false
+   },
+   {
+    "effect": "/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_UltimateCharge_Lv3.GE_Accessory_UltimateCharge_Lv3_C",
+    "level": 1,
+    "current_equip_only": true
+   }
+  ]
+ }
+}

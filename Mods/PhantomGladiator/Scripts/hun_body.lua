@@ -34,6 +34,7 @@ function Body.new(o)
     local find=o.find or StaticFindObject
     local findAll=o.findAll or FindAllOf
     local fname=o.fname or FName
+    local loadClass=o.loadClass or LoadAsset
     local function say(s)(o.log or function()end)('[HunBody] '..s)end
     local function current(actor,record)
         local world=o.world();local player=o.player()
@@ -98,6 +99,30 @@ function Body.new(o)
         say('网格组件：实例='..r.name..'；共'..total..'个'..(total>#lines and'，只列前'..#lines..'个'or''))
         for _,line in ipairs(lines)do say('  '..line)end
     end
+    -- Trial: the effect classes of the enabled accessories go onto this instance, one by one, each read back.
+    local function equip(r)
+        local effects=r.loadout and r.loadout.accessories and r.loadout.effects or{}
+        if #effects==0 then return end
+        local asc=U.field(r.actor,'AbilitySystemComponent')
+        if not U.valid(asc)then say('饰品效果：实例='..r.name..'；ASC未就绪，没有施加');return end
+        local applied,unconfirmed=0,{}
+        for _,effect in ipairs(effects)do
+            if not current(r.actor,r)then unconfirmed[#unconfirmed+1]='实例已变化，停止';break end
+            local loaded,cls=pcall(loadClass,effect.path)
+            if not loaded or not U.valid(cls)then unconfirmed[#unconfirmed+1]=effect.label..'（效果类没载入）'
+            else
+                local got,before=call(asc,'GetGameplayEffectCount',cls,nil,true)
+                before=got and type(before)=='number'and before or 0
+                local sent=call(asc,'BP_ApplyGameplayEffectToSelf',cls,effect.level,{})
+                local again,after=call(asc,'GetGameplayEffectCount',cls,nil,true)
+                if sent==true and again and type(after)=='number'and after>before then applied=applied+1
+                else unconfirmed[#unconfirmed+1]=effect.label..'（调用='..tostring(sent==true)..' 层数'..tostring(before)..'→'..tostring(again and after)..'）'end
+            end
+        end
+        say('饰品效果：实例='..r.name..'；方案启用'..#effects..'条；读回生效'..applied..'条'
+            ..(#unconfirmed>0 and'；未确认：'..table.concat(unconfirmed,'、',1,math.min(#unconfirmed,12))..(#unconfirmed>12 and' 等'..#unconfirmed..'条'or'')or''))
+        r.equipped=applied
+    end
     local function describe(r)
         local ai=o.aiOf and o.aiOf(r.actor);local controller=U.field(r.actor,'Controller')
         local read,hp=pcall(o.hp,r.actor)
@@ -109,7 +134,8 @@ function Body.new(o)
         if type(count)~='number'or count%1~=0 or count<1 or count>100 then return {ok=false,message='数量须为1～100',spawned_count=0}end
         local world=o.world();if not U.valid(world)then return {ok=false,message='当前世界未就绪',spawned_count=0}end
         batch=batch+1
-        context={world=U.key(world),revision=revision,epoch=epoch,batch=batch}
+        local read,loadout=pcall(o.loadout or function()end)
+        context={world=U.key(world),revision=revision,epoch=epoch,batch=batch,loadout=read and type(loadout)=='table'and loadout or nil}
         local ok,result=pcall(arena.spawn,arena,Body.path,team,count)
         context=nil
         if not ok then return {ok=false,uncertain=true,message='魂本体生成未确认，停止继续尝试并先清理',spawned_count='unknown'}end
@@ -120,7 +146,7 @@ function Body.new(o)
         if not context or path~=Body.path then return end
         local key,n=U.key(actor),name(actor)
         if not key then return end
-        records[key]={actor=actor,name=n,world=context.world,revision=context.revision,epoch=context.epoch,batch=context.batch,phase='captured',
+        records[key]={actor=actor,name=n,world=context.world,revision=context.revision,epoch=context.epoch,batch=context.batch,loadout=context.loadout,phase='captured',
             refused=context.epoch~=epoch or not n or not current(actor)or context.world~=U.key(o.world())}
     end
     -- Before the game initialises the body: identity only. Nothing is written and the template is only read.
@@ -130,7 +156,8 @@ function Body.new(o)
         local source=U.field(actor,'Actor Config');local sourceName=name(source)
         local initial=tags(source)
         say('出生前读回：实例='..r.name..'；配置='..tostring(sourceName and sourceName:match(' (/.+)$'))..'；是预期模板='..tostring(sourceName~=nil and sourceName:match(' (/.+)$')==CONFIG)
-            ..'；模板初始标签='..(initial and table.concat(initial,'|')or'未读回')..'；不复制、不改模板')
+            ..'；模板初始标签='..(initial and table.concat(initial,'|')or'未读回')..'；不复制、不改模板'
+            ..'；方案版本='..tostring(r.loadout and r.loadout.revision)..'（请求='..tostring(r.revision)..'）')
         r.phase='prepared';return true
     end
     function self:finished(actor)
@@ -156,6 +183,8 @@ function Body.new(o)
                 r.streak=zero and(r.streak or 0)+1 or 0
                 if r.phase=='finished'then
                     say('本体初始化读回：实例='..r.name..'；'..describe(r)..'；完整配装已应用=false')
+                    local equipped,why=pcall(equip,r)
+                    if not equipped then say('饰品效果施加中断：'..tostring(why))end
                     if not dumped[r.batch]then
                         dumped[r.batch]=true
                         local listed,why=pcall(meshes,r)
@@ -174,6 +203,12 @@ function Body.new(o)
                 end
             end
         end
+    end
+    -- The attribute values this body was summoned with; nil when its profile sets none.
+    function self:attributes(actor)
+        local r=records[U.key(actor)or'']
+        local values=r and r.loadout and r.loadout.attributes
+        if values and next(values)~=nil then return values end
     end
     function self:status()return {probe_supported=true,full_ready=false,prepared=self.prepared,message=self.message}end
     function self:cancel()epoch=epoch+1 end

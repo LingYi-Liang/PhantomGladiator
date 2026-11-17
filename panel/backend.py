@@ -181,10 +181,12 @@ LEGACY_BINDING_NAMES = ("spawn", "start", "stop", "refresh_catalog")
 # The eight of FunctionKeysV2 (function_keybinds.lua); a save may lack the ones added later, which stay unbound.
 V2_BINDING_NAMES = LEGACY_BINDING_NAMES + ("toggle_camera", "exit_camera", "cycle_team", "toggle_spectator")
 V4_BINDING_NAMES = V2_BINDING_NAMES + ("recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next")
-BINDING_NAMES = V4_BINDING_NAMES + ("dismiss_companions",)
-BINDING_LABELS = dict(zip(BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位", "解散全部随从")))
-# Schemas 2/3/4 carry eight/ten/thirteen keys; 5 appends companion dismissal.
-FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5")
+V5_BINDING_NAMES = V4_BINDING_NAMES + ("dismiss_companions",)
+HUN_BINDING_NAMES = ("hun_blue", "hun_red", "hun_companion", "hun_neutral")
+BINDING_NAMES = V5_BINDING_NAMES + HUN_BINDING_NAMES
+BINDING_LABELS = dict(zip(BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位", "解散全部随从", "魂：召唤到蓝方", "魂：召唤到红方", "魂：召为随从", "魂：与我对战")))
+# Schemas 2/3/4 carry eight/ten/thirteen keys; 5 appends companion dismissal; 6 the four Hun summon keys.
+FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5", "6")
 # 镜头跟踪 (camera_track.lua).
 TRACK_FRAMINGS = ("side", "shoulder", "orbit")
 TRACK_RESUME_MAX = 10
@@ -397,7 +399,7 @@ class Bridge:
         self.summon_queue_scope = None
         self.local_audio = None
         self.hun_profile_error=''
-        try:self.hun_profiles = _hun_module.Store(self._path('hun-profile.json'),STAT_FIELDS,AI_PARAMS)
+        try:self.hun_profiles = _hun_module.Store(self._path('hun-profile.json'),STAT_FIELDS,AI_PARAMS,STAT_POSITIVE,STAT_NON_NEGATIVE)
         except (OSError,ValueError)as error:self.hun_profiles=None;self.hun_profile_error=str(error)
         self._number_after_journal()
 
@@ -1069,17 +1071,20 @@ class Bridge:
         elif action == "configure_keys":
             allowed.add("bindings")
             bindings = request.get("bindings")
-            if not isinstance(bindings, dict) or set(bindings) not in (set(BINDING_NAMES), set(V4_BINDING_NAMES)):
+            if not isinstance(bindings, dict) or set(bindings) not in (set(BINDING_NAMES), set(V5_BINDING_NAMES), set(V4_BINDING_NAMES)):
                 raise ValidationError("快捷键设置必须包含全部功能，请刷新面板")
             parsed,seen = {},{}
             game=self.game_status();values=game.get('values',{})
-            if values.get('function_keys_schema') not in ('4','5'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
+            if values.get('function_keys_schema') not in ('4','5','6'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
             pool_keys=self._pool_owners()
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
-                if name=='dismiss_companions' and values.get('function_keys_schema')!='5':
+                if name=='dismiss_companions' and values.get('function_keys_schema') not in ('5','6'):
                     if vk:raise ValidationError('解散随从快捷键需要更新并重载新版Mod')
+                    continue
+                if name in HUN_BINDING_NAMES and values.get('function_keys_schema')!='6':
+                    if vk:raise ValidationError('魂的召唤快捷键需要更新并重载新版Mod')
                     continue
                 blocked=binding_system_owner(vk,mods)
                 if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
@@ -1213,9 +1218,9 @@ class Bridge:
         fields = [str(row["id"]), payload["action"], payload.get("unit_id", ""),
                   payload.get("team", "blue"), str(payload.get("count", 1))]
         if payload['action']=='configure_keys':
-            names=BINDING_NAMES if 'dismiss_companions' in bindings else V4_BINDING_NAMES
+            names=BINDING_NAMES if 'hun_blue' in bindings else V5_BINDING_NAMES if 'dismiss_companions' in bindings else V4_BINDING_NAMES
             fields.extend(binding_token(bindings.get(name)) for name in names)
-            fields.append('5' if names is BINDING_NAMES else '4')
+            fields.append('6' if names is BINDING_NAMES else '5' if names is V5_BINDING_NAMES else '4')
         else:
             fields.extend(bindings.get(name, "") for name in LEGACY_BINDING_NAMES)
             fields.append("1")
@@ -1482,8 +1487,9 @@ class Bridge:
             if rows and rows[0]==['FunctionKeyStateV2',str(revision),epoch]:
                 for row in rows[1:]:
                     if len(row)==3 and row[0] in bindings and row[2]:bindings[row[0]]['message']=row[2]
-        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5') and epoch),
-                'dismiss_supported':bool(game['online'] and values.get('function_keys_schema')=='5' and epoch),
+        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5','6') and epoch),
+                'dismiss_supported':bool(game['online'] and values.get('function_keys_schema') in ('5','6') and epoch),
+                'hun_supported':bool(game['online'] and values.get('function_keys_schema')=='6' and epoch),
                 'bindings':bindings,'revision':revision,'errors':errors}
 
     # A codex icon's texture name (codex_icons.lua): the only thing an icon URL or index row may carry.

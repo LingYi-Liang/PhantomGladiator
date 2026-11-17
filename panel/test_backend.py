@@ -911,6 +911,29 @@ class BridgeTests(unittest.TestCase):
             with self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(dict(action='set_battle_music', mode=mode, track=track))
 
+    def test_hun_keys_are_additive_capability_gated_and_serialized_at_the_end(self):
+        hun = {name: 'UNBOUND' for name in backend.HUN_BINDING_NAMES}
+        base = {**BINDINGS, 'dismiss_companions': 'UNBOUND'}
+        status = self.bridge.runtime / 'status.tsv'
+        status.write_text(status.read_text(encoding='utf-8').replace('function_keys_schema\t4', 'function_keys_schema\t5'), encoding='utf-8')
+        self.assertFalse(self.bridge.function_keybinds()['hun_supported'])
+        with self.assertRaisesRegex(backend.ValidationError, '魂的召唤快捷键'):
+            self.bridge.enqueue({'action': 'configure_keys', 'bindings': {**base, **hun, 'hun_red': 'VK_120_MOD_0'}})
+        older = self.bridge.enqueue({'action': 'configure_keys', 'bindings': {**base, **hun}})
+        old_wire = self.bridge._wire({'id': older['id'], 'payload': json.dumps(older['payload'])}).strip().split('\t')
+        self.assertEqual((len(old_wire), old_wire[-1]), (20, '5'))
+        status.write_text(status.read_text(encoding='utf-8').replace('function_keys_schema\t5', 'function_keys_schema\t6'), encoding='utf-8')
+        keys = self.bridge.function_keybinds()
+        self.assertTrue(keys['hun_supported'] and keys['dismiss_supported'] and keys['available'])
+        job = self.bridge.enqueue({'action': 'configure_keys', 'bindings': {**base, **hun, 'hun_blue': 'VK_119_MOD_0', 'hun_neutral': 'VK_119_MOD_1'}})
+        columns = self.bridge._wire({'id': job['id'], 'payload': json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual((len(columns), columns[19:23], columns[-1]), (24, ['VK_119_MOD_0', 'UNBOUND', 'UNBOUND', 'VK_119_MOD_1'], '6'))
+        with self.assertRaisesRegex(backend.ValidationError, '同一组合键'):
+            self.bridge.enqueue({'action': 'configure_keys', 'bindings': {**base, **hun, 'hun_blue': 'VK_119_MOD_0', 'hun_red': 'VK_119_MOD_0'}})
+        self.write('function-keybinds.tsv', 'FunctionKeysV2\t1\n' + ''.join(f"{name}\t{119 if name=='hun_blue' else 0}\t0\n" for name in backend.BINDING_NAMES))
+        with self.assertRaisesRegex(backend.ValidationError, '魂：召唤到蓝方'):
+            self.bridge.enqueue({'action': 'configure_unit_key', 'unit_id': UNIT, 'key_code': 119, 'modifiers': 0})
+
     def test_time_stop_key_and_free_camera_settings_travel_in_the_key_columns(self):
         job=self.bridge.enqueue({'action':'configure_keys','bindings':{**BINDINGS,'toggle_time_stop':'P'}})
         columns=self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')

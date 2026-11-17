@@ -71,9 +71,10 @@ local function parseInbox(content)
     local id = validID(fields[1]) and fields[1] or nil
     if #content > MAX_INBOX then return nil, "invalid payload: inbox too long", id end
     -- configure_keys: schema 2 carries eight keys in 14 columns, schema 3 ten in 16 (recall_companions and
-    -- toggle_time_stop, v0.38.2), schema 4 thirteen in 19; schema 5 adds dismiss_companions in 20.
-    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3') or (#fields==19 and fields[19]=='4') or (#fields==20 and fields[20]=='5'))
-    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14, 16, 19 or 20 columns", id end
+    -- toggle_time_stop, v0.38.2), schema 4 thirteen in 19; schema 5 adds dismiss_companions in 20;
+    -- schema 6 adds the four Hun summon keys in 24.
+    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3') or (#fields==19 and fields[19]=='4') or (#fields==20 and fields[20]=='5') or (#fields==24 and fields[24]=='6'))
+    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14, 16, 19, 20 or 24 columns", id end
     if not id then return nil, "invalid payload: command id", nil end
     if not ACTIONS[fields[2]] then return nil, "invalid payload: unknown action", id end
     if #fields[3] > 512 or fields[3]:find("%c") then return nil, "invalid payload: unit_id", id end
@@ -103,7 +104,11 @@ local function parseInbox(content)
         command.key_cycle_team=fields[12];command.key_toggle_spectator=fields[13]
         if #fields>=16 then command.key_recall_companions=fields[14];command.key_toggle_time_stop=fields[15] end
         if #fields>=19 then command.key_toggle_track=fields[16];command.key_track_pick=fields[17];command.key_track_next=fields[18] end
-        if #fields==20 then command.key_dismiss_companions=fields[19] end
+        if #fields>=20 then command.key_dismiss_companions=fields[19] end
+        if #fields==24 then
+            command.key_hun_blue=fields[20];command.key_hun_red=fields[21]
+            command.key_hun_companion=fields[22];command.key_hun_neutral=fields[23]
+        end
     end
     return command,nil,id
 end

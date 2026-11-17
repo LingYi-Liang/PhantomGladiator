@@ -23,8 +23,9 @@ const RealRuntime = (() => {
     return params ? value.replace(/\{(\w+)\}/g, (slot, name) => params[name] ?? slot) : value;
   };
   const webview = window.chrome && window.chrome.webview;
-  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next", "dismiss_companions"];
+  const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next", "dismiss_companions", "hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
+  const HUN_KEYS = ["hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const QUEUE_STUCK_MS = 12000;
   const READ_TIMEOUT_MS = 5000;
   // Reads may be retried; mutation POSTs must not be replayed after an ambiguous network failure.
@@ -503,6 +504,7 @@ const RealRuntime = (() => {
 
     const bindings = data.function_keys?.bindings || {};
     s.dismissKeySupported = online && data.function_keys?.dismiss_supported === true;
+    s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
     for (const k of KEY_NAMES) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
 
     const updates = new Map();
@@ -560,12 +562,12 @@ const RealRuntime = (() => {
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
-      keys: [s.game, s.keys, s.dismissKeySupported],
+      keys: [s.game, s.keys, s.dismissKeySupported, s.hunKeysSupported],
       grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
       summonQueue: [s.game, s.summonQueue],
-      hun: [s.game, s.hunBodySupported, s.summonQueue.on],
+      hun: [s.game, s.hunBodySupported, s.summonQueue.on, s.hunKeysSupported, HUN_KEYS.map(k => s.keys[k])],
       poolStatus: [s.poolStatus],
       queue: [s.queue?.stuck || false, s.queue?.code || "", s.queue?.count || 0, s.queue?.stuck ? Math.floor((Date.now() - s.queue.since) / 5000) : 0],
     };
