@@ -125,6 +125,53 @@ namespace PhantomGladiator
         }
     }
 
+    // The page keeps its small preferences (language, theme, first-run guide, selections) in localStorage,
+    // which belongs to the page's origin. That origin carries the backend port, and the port is a different
+    // one whenever the preferred port is taken, so the values are also kept here and handed back at launch.
+    static class UiState
+    {
+        const int MaxKeys = 256, MaxChars = 1024 * 1024;
+        static string File_ { get { return Paths.In("ui-state.json"); } }
+
+        internal static Dictionary<string, string> Clean(IDictionary<string, object> raw)
+        {
+            if (raw == null) throw new HostError("uiState", "界面设置格式不对，没有保存。");
+            var clean = new Dictionary<string, string>();
+            var total = 0;
+            foreach (var pair in raw)
+            {
+                var value = pair.Value as string;
+                if (value == null || pair.Key.Length == 0 || pair.Key.Length > 64) continue;
+                total += pair.Key.Length + value.Length;
+                if (clean.Count >= MaxKeys || total > MaxChars) throw new HostError("uiState", "界面设置过大，没有保存。");
+                clean[pair.Key] = value;
+            }
+            return clean;
+        }
+
+        // Runs before any page script. null means nothing usable is saved yet; the page then sends what it has.
+        internal static string LoadScript()
+        {
+            var literal = "null";
+            try
+            {
+                var serializer = new JavaScriptSerializer { MaxJsonLength = 8 * MaxChars };
+                literal = serializer.Serialize(Clean(serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(File_, Encoding.UTF8))));
+            }
+            catch (Exception) { }
+            return "window.__pgUiState=" + literal + ";";
+        }
+
+        internal static void Save(IDictionary<string, object> raw)
+        {
+            var clean = Clean(raw);
+            Directory.CreateDirectory(Paths.Data);
+            var tmp = File_ + ".tmp";
+            File.WriteAllText(tmp, new JavaScriptSerializer { MaxJsonLength = 8 * MaxChars }.Serialize(clean), new UTF8Encoding(false));
+            if (File.Exists(File_)) File.Replace(tmp, File_, null); else File.Move(tmp, File_);
+        }
+    }
+
     // ---------- Game folder ----------
     sealed class GameInfo
     {
@@ -1305,6 +1352,7 @@ namespace PhantomGladiator
                 OpenExternal(uri);
             };
             core.WebMessageReceived += OnMessage;
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(UiState.LoadScript());
             gameRunning = GameLocator.Running(game);
             gameTimer.Start();
             await StartBackend();
@@ -1535,6 +1583,9 @@ namespace PhantomGladiator
                     BeginUpdateTransfer();
                     try { return await InstallAndRestart(updates); }
                     finally { updateTransfer=false; }
+                case "saveUiState":
+                    UiState.Save(p.ContainsKey("state") ? p["state"] as Dictionary<string, object> : null);
+                    return null;
                 case "restart":
                     Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--wait-for " + Process.GetCurrentProcess().Id) { UseShellExecute = false });
                     BeginInvoke((Action)Close);

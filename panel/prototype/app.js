@@ -11,10 +11,42 @@
   const kbd = (label, cls = "") => `<kbd class="kbd ${cls}">${esc(label)}</kbd>`;
   // Escapes a translated template and fills {slots} with trusted HTML (keycaps, links).
   const tHtml = (key, slots) => esc(t(key)).replace(/\{(\w+)\}/g, (m, k) => slots[k] ?? m);
+  // localStorage belongs to one origin, and the native window's origin carries the backend port, which is
+  // a different one whenever the preferred port is taken. The native window therefore keeps a copy of these
+  // keys in its own data folder and hands it back as window.__pgUiState before any page script runs.
+  const STORE_PREFIX = "pg-proto.";
+  const storeHost = window.chrome && window.chrome.webview;
+  const storeKeys = () => Object.keys(localStorage).filter(k => k.startsWith(STORE_PREFIX));
+  let storePushQueued = false;
+  function pushStore() {
+    if (!storeHost || storePushQueued) return;
+    storePushQueued = true;
+    queueMicrotask(() => {
+      storePushQueued = false;
+      try {
+        const state = {};
+        for (const k of storeKeys()) state[k.slice(STORE_PREFIX.length)] = localStorage.getItem(k);
+        storeHost.postMessage({ id: "ui-state", method: "saveUiState", params: { state } });
+      } catch { /* the next write sends the whole state again */ }
+    });
+  }
+  function restoreStore() {
+    if (!storeHost) return;
+    try {
+      // A reload inside one run stays on the same origin, whose storage is newer than the copy handed over at launch.
+      if (sessionStorage.getItem("pg-ui-state") === "1") return;
+      sessionStorage.setItem("pg-ui-state", "1");
+      const saved = window.__pgUiState;
+      if (!saved || typeof saved !== "object") { pushStore(); return; }
+      storeKeys().forEach(k => localStorage.removeItem(k));
+      for (const [k, raw] of Object.entries(saved)) if (typeof raw === "string") localStorage.setItem(STORE_PREFIX + k, raw);
+    } catch { /* storage may be unavailable */ }
+  }
+  restoreStore();
   const store = {
-    get(key, fallback) { try { const raw = localStorage.getItem("pg-proto." + key); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; } },
-    set(key, value) { try { localStorage.setItem("pg-proto." + key, JSON.stringify(value)); } catch { /* storage may be unavailable */ } },
-    clear() { try { Object.keys(localStorage).filter(k => k.startsWith("pg-proto.")).forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ } },
+    get(key, fallback) { try { const raw = localStorage.getItem(STORE_PREFIX + key); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(STORE_PREFIX + key, JSON.stringify(value)); pushStore(); } catch { /* storage may be unavailable */ } },
+    clear() { try { storeKeys().forEach(k => localStorage.removeItem(k)); pushStore(); } catch { /* ignore */ } },
   };
 
   const REPO = "https://github.com/LingYi-Liang/PhantomGladiator";
