@@ -12,6 +12,16 @@ local function full(obj)
 end
 local function path(obj)local name=full(obj);return name and name:match('^%S+ (/.+)$')end
 local function family(classPath)return type(classPath)=='string' and classPath:match('^(/PBZCombatAsset/ActorData/Mobs/[^/]+/)')end
+-- Families whose grabs run a QTE through GetPlayerCharacter(0) (the player's execution component and input):
+-- 毕峰 GA_GreatBladeMan_CA_01_Gex, 彭猛, 火流星 (both phases). While one of them faces a Hun body, its shared
+-- events keep NonPlayerGE, so the Hun gets the original small knockback instead of the full grab.
+local QTE_FAMILIES={
+    ['/PBZCombatAsset/ActorData/Mobs/008_GreatBladeMan/']='毕峰',
+    ['/PBZCombatAsset/ActorData/Mobs/044_PengMeng/']='彭猛',
+    ['/PBZCombatAsset/ActorData/Mobs/069_GuiChai_Red/']='火流星',
+    ['/PBZCombatAsset/ActorData/Mobs/075_GuiChai_Red_P2/']='火流星二阶段',
+}
+Grabs.QTE_FAMILIES=QTE_FAMILIES
 local function same(a,b)local key=U.key(a);return key~=nil and key==U.key(b)end
 local function weak(v)
     local kind=U.kind(v)
@@ -34,7 +44,7 @@ local function tags(obj,field)
     return '['..table.concat(names,',')..']'
 end
 function Grabs.new(options)
-    local self={records={},observed={},pairs={},ticks=0,signature=nil,scans=0,recovering=false}
+    local self={records={},observed={},pairs={},ticks=0,signature=nil,scans=0,recovering=false,heldText=''}
     local log=options.log or function()end
     local fs=options.io or io
     local filePath=options.path..'/npc-grab-policy.tsv'
@@ -144,9 +154,11 @@ function Grabs.new(options)
     -- Blue and Red count only while their fight runs with both sides alive, whatever folder their class is in;
     -- companions whenever they are out, so their grabs work on the map's own enemies too. A change of units within
     -- the same folders (summons coming and going) changes nothing here.
+    local steps=options.hunSteps or require('hun_look').STEPS
     local function scope(members,battleActive)
         local families,owners,listed={}, {}, {};local blue,red,liveCompanion=false,false,false
         local arena,companions={},{}
+        local hunTeams={}
         looks=looks+1
         for _,unit in ipairs(members)do
             local team=unit.team
@@ -155,7 +167,11 @@ function Grabs.new(options)
                 local key=U.key(unit.actor)
                 if ok and type(hp)=='number' and hp>0 and key then
                     listed[key]=true
-                    local entry={actor=unit.actor,key=key,roots=rootsOf(unit,key)}
+                    if options.isHun and team~='companion' then
+                        local checked,hun=pcall(options.isHun,unit.actor)
+                        if checked and hun==true then hunTeams[team]=true end
+                    end
+                    local entry={actor=unit.actor,key=key,team=team,roots=rootsOf(unit,key)}
                     if team=='companion' then
                         companions[#companions+1]=entry
                         liveCompanion=liveCompanion or (not unit.stand and not unit.reserve)
@@ -163,15 +179,30 @@ function Grabs.new(options)
                 end
             end
         end
+        local held={}
         local function add(list)
             for _,entry in ipairs(list)do
                 owners[entry.key]=entry.actor
-                for root in pairs(entry.roots)do families[root]=true end
+                local facesHun=steps.qteGate~=false and (entry.team=='blue' and hunTeams.red or entry.team=='red' and hunTeams.blue)
+                for root in pairs(entry.roots)do
+                    families[root]=true
+                    if facesHun and QTE_FAMILIES[root] then held[root]=true end
+                end
             end
         end
         -- A team unit can also hit a companion outside a started fight. Native hostility and target tags still apply.
         if (battleActive and blue and red) or liveCompanion then add(arena) end
         add(companions)
+        -- The events are shared by every unit of a family, so a held family stays out whoever else brought it.
+        local heldNames={}
+        for root in pairs(held)do families[root]=nil;heldNames[#heldNames+1]=QTE_FAMILIES[root]..'('..root..')' end
+        table.sort(heldNames)
+        local heldText=table.concat(heldNames,'、')
+        if heldText~=self.heldText then
+            self.heldText=heldText
+            if heldText~='' then log('[NPCGrab] QTE 族对魂暂不完整抓取：'..heldText..'；这些族的投技事件保持原版 NonPlayerGE（对魂是小击退），不清空')
+            else log('[NPCGrab] QTE 族闸解除：场上没有 QTE 族面对魂') end
+        end
         for key in pairs(roots)do if not listed[key] then roots[key]=nil end end
         local signature={}
         for root in pairs(families)do signature[#signature+1]=root end

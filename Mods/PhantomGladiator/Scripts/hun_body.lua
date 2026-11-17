@@ -1,19 +1,53 @@
 -- Experimental, owned NPC body only. Never possesses a player or edits a shared config.
 -- The body is born through the normal summon chain with its template untouched. The two tags its
 -- template starts with (cannot be hated, forced hide) are then cleared on that one instance and read back.
+-- After that, hun_look.lua swaps the body mesh and main anim class on that instance. Read-only probes of the body
+-- (and of the real player, read only) run before and after those writes, once per summon request.
 local U=require('ue_observe')
+local Look=require('hun_look')
 local Body={path='/PBZCombatAsset/ActorData/Mobs/000_Hun/BP_Monster_Hun.BP_Monster_Hun_C'}
 local CONFIG='/PBZCombatAsset/ActorData/Mobs/000_Hun/ActorConfig/ActorC_Monster_Hun.ActorC_Monster_Hun'
 local ABILITY_UTILS='/Script/SGameUtils.Default__AbilityUtils'
 local CLEAR={'AI.Hatred.CanNotBeHatred','CharacterState.Unselectable.Force.Hide'}
-local MESH_CLASSES={'SkeletalMeshComponent','StaticMeshComponent','GroomComponent','ChildActorComponent'}
-local ASSET_FIELDS={'SkeletalMeshAsset','SkinnedAsset','StaticMesh','GroomAsset','ChildActorClass'}
+local MESH_CLASSES={'SkeletalMeshComponent','StaticMeshComponent','GroomComponent','ChildActorComponent','ChaosClothComponent'}
+local ASSET_FIELDS={'SkeletalMeshAsset','SkinnedAsset','StaticMesh','GroomAsset','ChildActorClass','ClothAsset','Asset'}
 -- Support cycles after birth during which the tags are read again, in case the game adds them late.
 local WATCH=20
 local MAX_COMPONENT_LINES=48
 local MAX_PLAYER_LINES=96
 -- Support cycles after birth at which the body's movement is read again, when it is likely walking or fighting.
 local MOTION_CHECKS={[6]=true,[14]=true}
+-- Probes (all read-only).
+local PROBE_TAGS={'AI','CharacterType.AI.Boss','CharacterState.Stand.SimpleExe','CharacterState.Space.Ground',
+    'CharacterState.CanWeakExecute.Weak','CharacterState.CanWeakExecute.LowHealth','CharacterState.ReadyToDeflect'}
+local PROBE_ATTRIBUTES={'Health','Health_Max','Shachi','Shachi_Max','ShachiRegen','ShachiRegenCooldown','SpiritShadow','SpiritShadow_Max',
+    'Frost_Accumulation','Infliction_Max'}
+local MAX_ABILITY_NAMES=40
+local MAIN_SLOT='Weapon.Slot.Main'
+local SAMPLE_MS=100        -- the deflect-frame sampler's period
+local SAMPLE_SECONDS=90    -- how long it runs after the first support cycle
+local SAMPLE_LINES=30      -- lines it may write in a load
+local SLOT_LINES=2         -- montage-slot lines per summon request
+local COOLDOWN_LINES=4     -- player weapon-switch cooldown lines in a load
+local DEATH_SECONDS=15     -- death readback: one line a second for this long after HP reaches 0
+-- A summoned unit that is a Hun body with no attribute values in its profile keeps the game's numbers.
+Body.KEEP_STATS={
+    onSpawn=function()return {ok=true,message='魂保持游戏原值'}end,
+    onSummon=function()return {ok=true,message='魂保持游戏原值'}end,
+}
+-- The numbers a summoned unit takes. A Hun body never takes the arena's set or the companions': its profile's values
+-- (the fields the game knows) when there are any, the game's own numbers otherwise.
+-- Returns the stats object, how many profile fields were dropped, and where the numbers come from.
+function Body.statsFor(owned,values,known,default,hunStats,keep)
+    if not owned then return default,0,nil end
+    local chosen,dropped={},0
+    for field,value in pairs(values or{})do if known[field]then chosen[field]=value else dropped=dropped+1 end end
+    if next(chosen)~=nil then
+        hunStats.mode,hunStats.custom='custom',chosen
+        return hunStats,dropped,'方案'
+    end
+    return keep or Body.KEEP_STATS,dropped,'游戏原值'
+end
 local function call(o,m,...)
     if not U.valid(o)then return false end
     local a,n={...},select('#',...);local ok,value=pcall(function()return o[m](o,table.unpack(a,1,n))end)
@@ -25,20 +59,39 @@ local function tag(t)
     local v=U.struct(t,'TagName');if type(v)=='string'then return v end
     local ok,s=pcall(function()return v:ToString()end);return ok and s or nil
 end
+local function text(v)
+    v=U.unwrap(v)
+    if type(v)=='string'then return v end
+    local ok,s=pcall(function()return v:ToString()end)
+    return ok and type(s)=='string'and s or nil
+end
+local function num(v)return type(v)=='number'and v==v and string.format('%.3g',v)or tostring(v)end
 local function tags(config)
     local container=U.field(config,'InitialTags');local array=U.struct(container,'GameplayTags');local values=U.array(array)
     if not values then return nil end
     local result={};for _,v in ipairs(values)do local s=tag(v);if not s then return nil end;result[#result+1]=s end
     return result
 end
+local function weak(value)
+    value=U.unwrap(value)
+    if U.valid(value)then return value end
+    local ok,object=pcall(function()return value:Get()end)
+    return ok and U.valid(object)and object or nil
+end
 function Body.new(o)
     local self={alive=true,prepared=0,failed=0,message='完整魂角色尚未接入；可进行独立本体验证'}
-    local context,records,batch,epoch,dumped=nil,{},0,0,{}
+    local context,records,batch,epoch,dumped,probed=nil,{},0,0,{},{}
+    local dying,samplers,sampleLines,slotLines,cooldownLines,lastCooldown={},{},0,{},0,nil
+    local announced={}  -- "即将" lines of read-only native getters with no precedent, once a load
     local find=o.find or StaticFindObject
     local findAll=o.findAll or FindAllOf
     local fname=o.fname or FName
     local loadClass=o.loadClass or LoadAsset
+    local steps=o.steps or Look.STEPS
+    local clock=o.clock or os.clock
+    local stats=o.stats
     local function say(s)(o.log or function()end)('[HunBody] '..s)end
+    local look=o.look or Look.new({log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,steps=steps})
     local function current(actor,record)
         local world=o.world();local player=o.player()
         return self.alive and U.valid(world)and U.inWorld(actor,world)and U.key(actor)~=U.key(player)
@@ -69,7 +122,7 @@ function Body.new(o)
         return zero,table.concat(parts,'；')
     end
     local function hidden(actor)local value=U.field(actor,'bHidden');if type(value)=='boolean'then return value end;return nil end
-    -- Read-only. Every mesh, hair and child-actor component an actor carries: what it shows, what it hangs on,
+    -- Read-only. Every mesh, hair, cloth and child-actor component an actor carries: what it shows, what it hangs on,
     -- and for skinned meshes which animation class drives it. Listed for the body and for the real player,
     -- once per summon request, to compare the two looks.
     local function nameOf(value)
@@ -79,9 +132,7 @@ function Body.new(o)
     local function socketOf(component)
         local got,socket=call(component,'GetAttachSocketName')
         if not got or socket==nil then return'?'end
-        if type(socket)=='string'then return socket end
-        local ok,text=pcall(function()return socket:ToString()end)
-        return ok and type(text)=='string'and text or'?'
+        return text(socket)or'?'
     end
     local function components(actor,label,limit)
         local key,lines,total=U.key(actor),{},0
@@ -123,7 +174,8 @@ function Body.new(o)
         say('外观部件：'..label..'；共'..total..'个'..(total>#lines and'，只列前'..#lines..'个'or''))
         for _,line in ipairs(lines)do say('  '..line)end
     end
-    -- Read-only. The animation layers an actor's config links by default, and how its movement is set up.
+    -- Read-only. The animation layers an actor's config links by default, how its movement is set up, and what its
+    -- anim instance knows of that movement.
     local function motion(actor,label)
         local config=U.field(actor,'Actor Config')
         local layers=U.array(U.field(config,'Default Linked Animation Layers'))
@@ -132,11 +184,14 @@ function Body.new(o)
         local velocity=U.field(movement,'Velocity')
         local x,y=U.struct(velocity,'X'),U.struct(velocity,'Y')
         local speed=type(x)=='number'and type(y)=='number'and string.format('%.0f',math.sqrt(x*x+y*y))or'?'
+        local _,instance=call(U.field(actor,'Mesh'),'GetAnimInstance')
+        local hasVelocity=U.field(instance,'HasVelocity');if hasVelocity==nil then hasVelocity=U.field(instance,'bHasVelocity')end
         say('动画与移动：'..label..'；配置='..nameOf(config)..'；默认动画层='..(layers and(#names>0 and table.concat(names,'|')or'空')or'未读回')
             ..'；移动模式='..tostring(U.field(movement,'MovementMode'))..'；水平速度='..speed..'；最大行走速度='..tostring(U.field(movement,'MaxWalkSpeed'))
-            ..'；朝移动方向转身='..tostring(U.field(movement,'bOrientRotationToMovement'))..'；用控制器朝向='..tostring(U.field(actor,'bUseControllerRotationYaw')))
+            ..'；朝移动方向转身='..tostring(U.field(movement,'bOrientRotationToMovement'))..'；用控制器朝向='..tostring(U.field(actor,'bUseControllerRotationYaw'))
+            ..'；动画实例='..tostring(U.className(instance))..'；HasVelocity='..tostring(hasVelocity)..'；DisplacementSpeed='..num(U.field(instance,'DisplacementSpeed')))
     end
-    local function look(r)
+    local function look_(r)
         components(r.actor,'魂 '..r.name,MAX_COMPONENT_LINES)
         motion(r.actor,'魂')
         local player=o.player()
@@ -145,6 +200,255 @@ function Body.new(o)
             motion(player,'主角')
         else say('外观部件：主角不可读')end
     end
+
+    ---- Read-only probes (plan 0-2 … 0-10). Each kind runs in its own pcall; a failure writes "探查中断".
+    local function stat(actor,field)
+        if not stats then
+            local ok,module=pcall(require,'character_stats')
+            stats=ok and module.new()or false
+        end
+        if not stats then return nil end
+        local ok,value=pcall(stats.read,stats,actor,field)
+        return ok and type(value)=='table'and value.current or nil
+    end
+    local function tagCount(actor,tagName)
+        local got,count=call(U.field(actor,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=fname(tagName)})
+        return got and type(count)=='number'and count or nil
+    end
+    local function skeletonOf(actor)
+        local _,asset=call(U.field(actor,'Mesh'),'GetSkeletalMeshAsset')
+        return U.field(asset,'Skeleton')
+    end
+    -- 0-2 anim instance, linked instances and the movement references the anim graph reads.
+    local function probeAnim(actor,label)
+        local mesh=U.field(actor,'Mesh')
+        local _,instance=call(mesh,'GetAnimInstance')
+        local linked={}
+        for _,item in ipairs(U.array(U.field(mesh,'LinkedInstances'))or{})do linked[#linked+1]=tostring(U.className(item))end
+        local _,graph=call(mesh,'GetLinkedAnimGraphInstanceByTag',fname('MMGraph'))
+        local _,post=call(mesh,'GetPostProcessInstance')
+        local hasVelocity=U.field(instance,'HasVelocity');if hasVelocity==nil then hasVelocity=U.field(instance,'bHasVelocity')end
+        say('动画实例：'..label..'；实例类='..tostring(U.className(instance))..'；AnimClass='..nameOf(U.field(mesh,'AnimClass'))
+            ..'；链接实例=['..table.concat(linked,'|')..']；MMGraph='..(U.valid(graph)and tostring(U.className(graph))or'无')
+            ..'；MMGraph.CharacterMovement有效='..tostring(U.valid(U.field(graph,'CharacterMovement')))
+            ..'；后处理='..(U.valid(post)and tostring(U.className(post))or'无')
+            ..'；RenewalHun有效='..tostring(U.valid(U.field(instance,'RenewalHun')))..'；CharacterMovement有效='..tostring(U.valid(U.field(instance,'CharacterMovement')))
+            ..'；bUseNewLocomotion='..tostring(U.field(instance,'bUseNewLocomotion'))..'；bUseMM='..tostring(U.field(instance,'bUseMM'))
+            ..'；HasVelocity='..tostring(hasVelocity)..'；DisplacementSpeed='..num(U.field(instance,'DisplacementSpeed'))
+            ..'；WeaponType='..tostring(U.field(instance,'WeaponType')))
+    end
+    -- 0-3 which slots the montage playing now uses, and whether the anim graph has them active.
+    local function probeSlots(r,where)
+        if (slotLines[r.batch]or 0)>=SLOT_LINES then return end
+        local _,instance=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
+        local _,montage=call(instance,'GetCurrentActiveMontage')
+        if not U.valid(montage)then return end
+        slotLines[r.batch]=(slotLines[r.batch]or 0)+1
+        local slots={}
+        for _,track in ipairs(U.array(U.field(montage,'SlotAnimTracks'))or{})do slots[#slots+1]=tostring(text(U.struct(track,'SlotName')))end
+        local _,default=call(instance,'IsSlotActive',fname('DefaultSlot'))
+        local _,upper=call(instance,'IsSlotActive',fname('UpperBody'))
+        say('蒙太奇槽：魂 '..r.name..'（'..where..'）；当前蒙太奇='..short(montage)..'；槽=['..table.concat(slots,'|')..']；DefaultSlot活动='..tostring(default)
+            ..'；UpperBody活动='..tostring(upper)..'；动画实例='..tostring(U.className(instance)))
+    end
+    -- 0-4 hat socket, material slots and the hat bone's scale.
+    local function probeHat(actor,label)
+        local mesh=U.field(actor,'Mesh')
+        local _,socket=call(mesh,'DoesSocketExist',fname('hatSocket'))
+        local _,count=call(mesh,'GetNumMaterials')
+        local slots={}
+        for _,slot in ipairs(U.array(select(2,call(mesh,'GetMaterialSlotNames')))or{})do slots[#slots+1]=tostring(text(slot))end
+        local materials={}
+        if type(count)=='number'then for i=0,math.min(count,16)-1 do local _,m=call(mesh,'GetMaterial',i);materials[#materials+1]=nameOf(m)end end
+        local _,transform=call(mesh,'GetSocketTransform',fname('hat'),3)
+        local scale=U.struct(transform,'Scale3D')
+        local _,asset=call(mesh,'GetSkeletalMeshAsset')
+        say('帽子与材质：'..label..'；网格='..nameOf(asset)..'；hatSocket存在='..tostring(socket)..'；材质数='..tostring(count)
+            ..'；材质槽=['..table.concat(slots,'|')..']；材质=['..table.concat(materials,'|')..']；hat骨缩放=('
+            ..num(U.struct(scale,'X'))..','..num(U.struct(scale,'Y'))..','..num(U.struct(scale,'Z'))..')')
+    end
+    -- 0-5 the body's skeleton next to the player's (read only).
+    local function probeSkeleton(r,label)
+        local mine,theirs=skeletonOf(r.actor),skeletonOf(o.player())
+        say('骨架：'..label..'；魂='..nameOf(mine)..'；主角（只读）='..nameOf(theirs)..'；相同='..tostring(U.key(mine)~=nil and U.key(mine)==U.key(theirs)))
+    end
+    -- 0-6 granted abilities and the tags that decide executions, deflects and AI.
+    local function probeAbilities(actor,label)
+        local asc=U.field(actor,'AbilitySystemComponent')
+        local specs=U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
+        local names,double={},0
+        for i,spec in ipairs(specs or{})do
+            if i>512 then break end
+            local ability=U.struct(spec,'Ability')
+            local n=nameOf(ability)
+            if n:find('^GA_Hun_Double_')then double=double+1 end
+            if #names<MAX_ABILITY_NAMES then
+                names[#names+1]=n..'(h='..tostring(U.struct(U.struct(spec,'Handle'),'Handle'))..',active='..tostring(U.struct(spec,'ActiveCount'))..')'
+            end
+        end
+        local counts={}
+        for _,t in ipairs(PROBE_TAGS)do counts[#counts+1]=t..'='..tostring(tagCount(actor,t))end
+        say('技能与标签：'..label..'；技能数='..(specs and #specs or'未读回')..'；GA_Hun_Double_*='..double..'；清单=['..table.concat(names,' ')
+            ..((specs and #specs>#names)and' …'or'')..']；'..table.concat(counts,' '))
+    end
+    -- 0-7 the components that execution, input and weapons go through.
+    local function probeComponents(actor,label)
+        local main={TagName=fname(MAIN_SLOT)}
+        local exec=U.field(actor,'Execution Component')
+        local info=U.field(exec,'CurrentExecutionInfo')
+        say('组件：'..label..'；ExecutionComponent 有效='..tostring(U.valid(exec))..' ActorConfig='..nameOf(U.field(exec,'ActorConfig'))
+            ..' AbilitySystem有效='..tostring(U.valid(U.field(exec,'AbilitySystem')))..' 当前处决 执行方有效='..tostring(weak(U.struct(info,'Executor'))~=nil)
+            ..' 目标有效='..tostring(weak(U.struct(info,'Target'))~=nil))
+        local input=U.field(actor,'Ability Input Component')
+        local bindings=U.array(U.field(input,'InputBindings'))
+        say('组件：'..label..'；AbilityInputComponent 有效='..tostring(U.valid(input))..' AbilitySystem有效='..tostring(U.valid(U.field(input,'AbilitySystem')))
+            ..' Controller有效='..tostring(U.valid(U.field(input,'Controller')))..' SGameInput有效='..tostring(weak(U.field(input,'SGameInput'))~=nil)
+            ..' ActionPhase='..tostring(U.field(input,'ActionPhase'))..' InputBindings数='..(bindings and #bindings or'未读回'))
+        local wc=U.field(actor,'Character Weapons Component')
+        if not announced.weapons then
+            announced.weapons=true
+            say('即将 只读武器组件 GetSlotWeapons/GetCurrentWeaponIndex/GetCurrentChangeWeaponCooldown（本次加载第一次） '..label)
+        end
+        local _,slots=call(wc,'GetSlotWeapons',main)
+        local _,index=call(wc,'GetCurrentWeaponIndex',main,false)
+        local _,cooldown=call(wc,'GetCurrentChangeWeaponCooldown',main)
+        local runtime,keys=U.field(wc,'RuntimeWeaponData'),0
+        pcall(function()runtime:ForEach(function()keys=keys+1 end)end)
+        local unarm=U.array(U.field(wc,'UnarmLayers'))
+        local slotCount=U.array(slots)
+        say('组件：'..label..'；CharacterWeaponsComponent 有效='..tostring(U.valid(wc))..' AbilitySystem有效='..tostring(U.valid(U.field(wc,'AbilitySystem')))
+            ..' AbilityInput有效='..tostring(weak(U.field(wc,'AbilityInput'))~=nil)..' 主槽武器数='..(slotCount and #slotCount or'未读回')
+            ..' 当前主武器序号='..tostring(index)..' 换武器冷却='..num(cooldown)..' RuntimeWeaponData键数='..keys..' UnarmLayers数='..(unarm and #unarm or'未读回'))
+        say('组件：'..label..'；DeflectComponent 存在='..tostring(U.valid(U.field(actor,'Deflect Component'))))
+    end
+    -- 0-8 resource attributes.
+    local function probeAttributes(actor,label)
+        local parts={}
+        for _,field in ipairs(PROBE_ATTRIBUTES)do local v=stat(actor,field);parts[#parts+1]=field..'='..(v and num(v)or'不可读')end
+        say('资源属性：'..label..'；'..table.concat(parts,' '))
+    end
+    local function guarded(kind,fn,...)
+        local ok,why=pcall(fn,...)
+        if not ok then say('探查中断：'..kind..' 原因='..tostring(why))end
+    end
+    -- One full probe of the body at a stage ('改前' before hun_look writes anything, '改后' at the first support
+    -- cycle). Only the first body of a summon request is probed, so each kind writes at most a few lines a request.
+    local function probe(r,stage)
+        if not steps.probe or probed[r.batch]~=r.name then return end
+        local label='魂 '..r.name..' '..stage
+        guarded('动画实例',probeAnim,r.actor,label)
+        guarded('帽子与材质',probeHat,r.actor,label)
+        guarded('骨架',probeSkeleton,r,label)
+        guarded('技能与标签',probeAbilities,r.actor,label)
+        guarded('组件',probeComponents,r.actor,label)
+        guarded('资源属性',probeAttributes,r.actor,label)
+        guarded('蒙太奇槽',probeSlots,r,stage)
+        if stage=='改前'then
+            local player=o.player()
+            if U.valid(player)then guarded('动画实例',probeAnim,player,'主角（只读）')else say('探查中断：主角不可读')end
+        end
+    end
+    -- 0-9 the deflect frames the body receives (ReceiveFrames), every SAMPLE_MS while the sampler runs, and 0-10 the
+    -- player's weapon-switch cooldown (read only). At most one line a second, SAMPLE_LINES in a load.
+    local function sampleFrames(r,s)
+        local deflect=U.field(r.actor,'Deflect Component')
+        local map=U.field(deflect,'ReceiveFrames')
+        local now=o.now and o.now()
+        local entries,count={},0
+        if map~=nil then
+            pcall(function()map:ForEach(function(_,v)
+                count=count+1
+                if #entries<4 then
+                    local frame=U.unwrap(v)
+                    local hit=U.struct(frame,'HitGameTime')
+                    local source=weak(U.struct(frame,'SourceAction'))
+                    local kind=U.field(source,'DeflectBulletType');if kind==nil then kind=U.field(source,'DeflectType')end
+                    entries[#entries+1]=string.format('距命中=%s 闪避=%s 类型=%s 反击=%s',type(hit)=='number'and type(now)=='number'and num(hit-now)or'?',
+                        tostring(U.struct(frame,'IsDodge')),tostring(kind),nameOf(U.struct(frame,'CounterAbility')))
+                end
+            end)end)
+        end
+        s.samples=s.samples+1
+        if count>0 then s.seen=s.seen+1 end
+        local t=clock()
+        if sampleLines<SAMPLE_LINES and(count>0 and t-(s.lastLine or-1)>=1 or t-(s.lastBeat or s.started)>=10)then
+            sampleLines=sampleLines+1;s.lastLine=t
+            if count==0 then s.lastBeat=t end
+            say('预告：魂 '..r.name..'；条数='..count..(map==nil and'（读不到 ReceiveFrames）'or'')..'；已采样'..s.samples..'次 有预告'..s.seen..'次'
+                ..(#entries>0 and'；'..table.concat(entries,'；')or''))
+        end
+        probeSlots(r,'战斗采样')
+        if cooldownLines<COOLDOWN_LINES and t-(s.lastCooldown or-1)>=1 then
+            s.lastCooldown=t
+            local player=o.player()
+            local wc=U.field(player,'Character Weapons Component')
+            if not announced.playerCooldown then
+                announced.playerCooldown=true
+                say('即将 只读玩家 武器组件 GetCurrentChangeWeaponCooldown（本次加载第一次，不写）')
+            end
+            local got,cooldown=call(wc,'GetCurrentChangeWeaponCooldown',{TagName=fname(MAIN_SLOT)})
+            if got and type(cooldown)=='number'and cooldown~=lastCooldown and(lastCooldown~=nil or cooldown>0)then
+                cooldownLines=cooldownLines+1
+                say('只读玩家 换武器冷却='..num(cooldown)..'（上次读到='..tostring(lastCooldown and num(lastCooldown))..'）')
+            end
+            if got and type(cooldown)=='number'then lastCooldown=cooldown end
+        end
+    end
+    local function stopSampler(key,why)
+        local s=samplers[key];if not s then return end
+        samplers[key]=nil
+        if s.handle then pcall(o.cancel or CancelDelayedAction,s.handle)end
+        say('预告采样结束：'..why..'；共采样'..s.samples..'次 有预告'..s.seen..'次')
+    end
+    local function startSampler(key,r)
+        if not steps.probe or probed[r.batch]~=r.name or samplers[key]or sampleLines>=SAMPLE_LINES then return end
+        local loop=o.loop or LoopInGameThreadWithDelay
+        if type(loop)~='function'then return end
+        local s={samples=0,seen=0,started=clock()}
+        samplers[key]=s
+        local ok,handle=pcall(loop,SAMPLE_MS,function()
+            if samplers[key]~=s then return end
+            if records[key]~=r or not current(r.actor,r)then stopSampler(key,'实例离场或已变化');return end
+            if clock()-s.started>=SAMPLE_SECONDS or sampleLines>=SAMPLE_LINES then stopSampler(key,'到时或到行数上限');return end
+            local read,why=pcall(sampleFrames,r,s)
+            if not read then stopSampler(key,'探查中断：'..tostring(why))end
+        end)
+        if not ok or handle==nil or handle==false then samplers[key]=nil;say('探查中断：预告采样没登记 '..tostring(handle));return end
+        s.handle=handle
+    end
+    -- 1-7 read only: once HP reaches 0, one line a second for DEATH_SECONDS: health, the Dead tag, whether the actor
+    -- is being destroyed, whether it is still valid. Nothing is written.
+    local function deathLine(d)
+        local t=clock()
+        if t-(d.last or-1)<1 then return end
+        d.last=t;d.lines=d.lines+1
+        if not U.valid(d.actor)then
+            say('死亡读回：实例='..d.name..' 第'..string.format('%.0f',t-d.at)..'秒 已无效=true，停止读回');d.lines=math.huge;return
+        end
+        local read,hp=pcall(o.hp,d.actor)
+        local _,destroying=call(d.actor,'IsActorBeingDestroyed')
+        say('死亡读回：实例='..d.name..' 第'..string.format('%.0f',t-d.at)..'秒 HP='..tostring(read and hp)..' Dead='..tostring(tagCount(d.actor,'CharacterState.Dead'))
+            ..' 销毁中='..tostring(destroying)..' 有效=true')
+    end
+    local function hpOf(actor)
+        local read,hp=pcall(o.hp,actor)
+        return read and type(hp)=='number'and hp or nil
+    end
+    local function watchDeath(key,r)
+        if not steps.deathWatch or dying[key]then return end
+        dying[key]={actor=r.actor,name=r.name,at=clock(),lines=0}
+        say('死亡读回开始：实例='..r.name..'；HP到0，之后每秒一行，最多'..DEATH_SECONDS..'秒，只读')
+    end
+    local function tickDeaths()
+        for key,d in pairs(dying)do
+            if d.lines>=DEATH_SECONDS or clock()-d.at>DEATH_SECONDS+0.5 then dying[key]=nil
+            else
+                local ok,why=pcall(deathLine,d)
+                if not ok then say('死亡读回中断：'..tostring(why));dying[key]=nil end
+            end
+        end
+    end
+
     -- Trial: the effect classes of the enabled accessories go onto this instance, one by one, each read back.
     local function equip(r)
         local effects=r.loadout and r.loadout.accessories and r.loadout.effects or{}
@@ -206,26 +510,42 @@ function Body.new(o)
             ..'；方案版本='..tostring(r.loadout and r.loadout.revision)..'（请求='..tostring(r.revision)..'）')
         r.phase='prepared';return true
     end
+    -- After FinishSpawn: the two tags are cleared, the body is probed ('改前'), then hun_look swaps its mesh and anim
+    -- class. Whatever those steps read back, the birth stands (false only when the identity changed).
     function self:finished(actor)
         local r=records[U.key(actor)or''];if not r then return true end
         if not current(actor,r)then return false,'魂本体身份或世界已变化'end
-        local zero,text=clear(r)
-        r.phase,r.checks,r.tags,r.zero='finished',0,text,zero
-        say('出生后标签：实例='..r.name..'；'..text..'；两项都为0='..tostring(zero)..'；'..describe(r))
+        local zero,text_=clear(r)
+        r.phase,r.checks,r.tags,r.zero='finished',0,text_,zero
+        say('出生后标签：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
         self.prepared=self.prepared+1
         self.message=zero and'魂已正常出生，隐藏与不可仇恨标签读回为0，等待画面和行为验证'or'魂已正常出生，但隐藏或不可仇恨标签还没读回为0，可能看不见或不被索敌'
+        if not probed[r.batch]then probed[r.batch]=r.name end
+        probe(r,'改前')
+        local applied,why=pcall(look.apply,look,r,function()return current(actor,r)end)
+        if not applied then say('外观与动画中断：实例='..r.name..' 原因='..tostring(why))end
         return true
     end
     function self:tick(members)
-        if not self.alive or not next(records)then return end
+        if not self.alive then return end
+        if next(records)then self:follow(members)end
+        if next(dying)then tickDeaths()end
+    end
+    function self:follow(members)
         local owned={};for _,m in ipairs(members or{})do local key=U.key(m.actor);if key then owned[key]=true end end
         for key,r in pairs(records)do
-            if not owned[key]or not current(r.actor,r)then records[key]=nil
-            elseif(r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
+            if not owned[key]or not current(r.actor,r)then
+                records[key]=nil
+                stopSampler(key,'实例离场')
+                if r.dead or(r.phase=='observed'and U.valid(r.actor)and(hpOf(r.actor)or 1)<=0)then watchDeath(key,r)end
+            elseif r.phase=='observed'and not r.dead and(hpOf(r.actor)or 1)<=0 then
+                r.dead=true;watchDeath(key,r)
+            end
+            if records[key]==r and(r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
                 r.checks=r.checks+1
-                local zero,text=clear(r)
-                if text~=r.tags then say('标签变化（第'..r.checks..'次复查）：实例='..r.name..'；'..text..'；两项都为0='..tostring(zero))end
-                r.tags,r.zero=text,zero
+                local zero,text_=clear(r)
+                if text_~=r.tags then say('标签变化（第'..r.checks..'次复查）：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero))end
+                r.tags,r.zero=text_,zero
                 r.streak=zero and(r.streak or 0)+1 or 0
                 if r.phase=='finished'then
                     say('本体初始化读回：实例='..r.name..'；'..describe(r)..'；完整配装已应用=false')
@@ -233,10 +553,14 @@ function Body.new(o)
                     if not equipped then say('饰品效果施加中断：'..tostring(why))end
                     if not dumped[r.batch]then
                         dumped[r.batch]=true
-                        local listed,why=pcall(look,r)
-                        if not listed then say('外观探查中断：'..tostring(why))end
+                        local listed,why2=pcall(look_,r)
+                        if not listed then say('外观探查中断：'..tostring(why2))end
                         r.lookLogged=true
                     end
+                    local rechecked,why3=pcall(look.recheck,look,r)
+                    if not rechecked then say('外观复读中断：'..tostring(why3))end
+                    probe(r,'改后')
+                    startSampler(key,r)
                     r.phase='observed'
                 elseif r.streak>=2 and hidden(r.actor)==true and not r.shown then
                     -- The tags have read zero for two cycles in a row and the game still keeps the actor hidden.
@@ -249,11 +573,16 @@ function Body.new(o)
                     if not read then say('动画与移动读取中断：'..tostring(why))end
                 end
                 if r.checks==WATCH then
-                    say('复查结束：实例='..r.name..'；'..text..'；两项都为0='..tostring(zero)..'；'..describe(r))
+                    say('复查结束：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
                     self.message=zero and'魂标签持续为0；外观和战斗表现以画面为准'or'魂的隐藏或不可仇恨标签没能保持为0，见日志'
                 end
             end
         end
+    end
+    -- Whether this actor is a Hun body this module summoned and still follows.
+    function self:owns(actor)
+        local key=U.key(actor)
+        return key~=nil and records[key]~=nil
     end
     -- The attribute values this body was summoned with; nil when its profile sets none.
     function self:attributes(actor)
@@ -263,7 +592,11 @@ function Body.new(o)
     end
     function self:status()return {probe_supported=true,full_ready=false,prepared=self.prepared,message=self.message}end
     function self:cancel()epoch=epoch+1 end
-    function self:silence()self.alive=false;epoch=epoch+1;context=nil end
+    function self:silence()
+        self.alive=false;epoch=epoch+1;context=nil
+        for key in pairs(samplers)do stopSampler(key,'Mod 卸载')end
+        dying={}
+    end
     return self
 end
 return Body

@@ -77,6 +77,14 @@ local GUILLOTINE_POSES={
     {from=0.7,rate=1.5,limit=6.233333},
     {from=6.233333,rate=0},
 }
+-- A victim on Hun_Skin_Skeleton (the Hun body) plays the original victim montages on its own anim instance: the start
+-- (0.6x inside the montage) held at the 0.9 s catch point, then the finish (its two rates are in the montage).
+local GUILLOTINE_SELF={start='/PBZCombatAsset/ActorData/Players/Hun/Montage/Execution/Hun_EXD_ByMBoss_Start_Montage.Hun_EXD_ByMBoss_Start_Montage',
+    finish='/PBZCombatAsset/ActorData/Players/Hun/Montage/Execution/Hun_EXD_ByMBoss_Montage.Hun_EXD_ByMBoss_Montage',
+    skeleton='Hun_Skin_Skeleton',catch=0.9,finishLength=3.788884}
+-- An executor whose own mesh is on its clip's skeleton plays the execution on that mesh; when its montage has not
+-- shown up this long after the call, it borrows a body as any other executor does, for the rest of the battle.
+local DIRECT_WAIT=0.3
 local GUILLOTINE_PAUSE='PhantomGladiator guillotine'
 local GUILLOTINE_TIMEOUT=12 -- game seconds, longer than the original victim sequence
 local MOVE_NONE=0
@@ -141,6 +149,11 @@ function Exec.new(options)
         return not ok or value~=false
     end
     local data=options.data or require('execution_data')
+    -- The Hun body's switches (hun_look.lua) and its weapon's generic pairs (hun_execution_pairs.lua).
+    local hunSteps=options.hunSteps or require('hun_look').STEPS
+    local hunPairs=options.hunPairs or require('hun_execution_pairs')
+    local isHun=options.isHun
+    local directFailed={}   -- executor key -> true: its own-mesh execution did not show, it borrows for this battle
     local dataFold={};for key,value in pairs(data)do dataFold[key:lower()]=value end
     local function animationData(key)return data[key] or dataFold[key:lower()]end
     local poseProbe=PoseProbe.new({log=log,now=now,fname=name,staticFind=find})
@@ -323,13 +336,15 @@ function Exec.new(options)
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
     -- team: the target's arena team, or nil for a companion's foe, which only companions go for.
     -- A helper the other side's boss brought out (member.aid, arena_controller.lua) does not finish anyone.
-    local function opponent(target,team,reach,anyone,executionType,isMob)
+    -- only: when given, a member it returns false for is not considered (the Hun weapon pairs take Hun bodies only).
+    local function opponent(target,team,reach,anyone,executionType,isMob,only)
         local best,bestDistance,denied
         for _,member in ipairs(options.members() or {}) do
             local other=member.actor
             local against
             if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
             else against=member.team=='companion' end
+            if against and only and not only(other) then against=false end
             if against and not member.reserve and not member.aid and U.valid(other) and not phaseBusy(other)
                 and not (options.onPole and options.onPole(other)) then
                 local hp=read(other,'Health')
@@ -503,6 +518,59 @@ function Exec.new(options)
         local destroyed=call(body.comp,'K2_DestroyComponent',body.comp)
         local settled=U.valid(body.executor) and settle(partsOf(body.executor)) or '执行方已失效'
         return string.format('还原跟随=%d/%d 补回=%d 移除借来的骨架=%s %s',back,#body.followers,swept,tostring(destroyed),settled)
+    end
+
+    -- The skeleton of an actor's own Mesh asset, or nil.
+    local function meshSkeleton(actor)
+        local ok,asset=call(U.field(actor,'Mesh'),'GetSkeletalMeshAsset')
+        asset=ok and U.unwrap(asset) or nil
+        local skeleton=U.field(asset,'Skeleton')
+        return U.valid(skeleton) and skeleton or nil
+    end
+    -- An executor whose own mesh is on the skeleton of its clip (the Hun body) needs no borrowed body: the native
+    -- ability plays the montage on that mesh. Returns a text for the log when it applies, nil otherwise.
+    local function directBody(executor,timing)
+        if hunSteps.directExecution==false or not timing or not timing.clip then return nil end
+        if directFailed[U.key(executor) or ''] then return nil end
+        local skeleton=meshSkeleton(executor)
+        if not skeleton then return nil end
+        local clip=object(timing.clip)
+        local expected=clip and U.field(clip,'Skeleton')
+        if not U.valid(expected) or U.key(expected)~=U.key(skeleton) then return nil end
+        return string.format('执行方=%s 网格骨架=%s 动画=%s 骨架=%s',className(executor),short(skeleton),short(clip),short(expected))
+    end
+    -- 荒行子's C4 victim montages straight on a Hun body's own anim instance. Returns the hold, or nil and why
+    -- (nil and nil: not a Hun-skeleton victim, the borrowed body is used without a word).
+    local function playGuillotineOnSelf(actor)
+        if hunSteps.guillotineSelf==false then return nil end
+        local skeleton=meshSkeleton(actor)
+        if short(skeleton)~=GUILLOTINE_SELF.skeleton then return nil end
+        local start,finishMontage=object(GUILLOTINE_SELF.start),object(GUILLOTINE_SELF.finish)
+        if not start or not finishMontage then return nil,'受害方蒙太奇没载入' end
+        if U.key(U.field(start,'Skeleton'))~=U.key(skeleton) then return nil,'蒙太奇骨架与受害方网格骨架不同' end
+        local okAnim,anim=call(U.field(actor,'Mesh'),'GetAnimInstance');anim=okAnim and U.unwrap(anim) or nil
+        if not U.valid(anim) then return nil,'受害方没有动画实例' end
+        local played,err=call(anim,'Montage_Play',start,1.0,0,0.0,true)
+        local _,current=call(anim,'GetCurrentActiveMontage');current=U.unwrap(current)
+        local _,playing=call(anim,'Montage_IsPlaying',start)
+        local _,position=call(anim,'Montage_GetPosition',start)
+        position=U.unwrap(position)
+        local detail=string.format('受害方=%s 本体播放=%s 读回蒙太奇=%s 播放中=%s 位置=%s',className(actor),tostring(played),
+            U.valid(current) and short(current) or '无',tostring(U.unwrap(playing)),fmt(position))
+        if played and U.valid(current) and U.key(current)==U.key(start) and U.unwrap(playing)==true then
+            return {anim=anim,start=start,finish=finishMontage},detail
+        end
+        call(anim,'Montage_Stop',0.0,start)
+        return nil,detail..(played and '' or '（'..tostring(err)..'）')
+    end
+    -- Ends the start montage of a hold that never reached its finish (released early); a finish is left to play out.
+    local function stopSelfPlay(pose)
+        local own=pose.self
+        if pose.finishingAt then return '本体收尾蒙太奇保留' end
+        local stopped=call(own.anim,'Montage_Stop',0.2,own.start)
+        local _,playing=call(own.anim,'Montage_IsPlaying',own.start)
+        local _,rate=call(own.anim,'Montage_GetPlayRate',own.start)
+        return string.format('本体起手蒙太奇停止=%s 读回播放中=%s 速率=%s',tostring(stopped),tostring(U.unwrap(playing)),tostring(U.unwrap(rate)))
     end
 
     -- Temporary presentation for the pole controller. Combat, targeting and input remain on the NPC.
@@ -686,7 +754,7 @@ local function closeOneGrab(pose,why,restore)
         grabPoses[pose.targetKey]=nil
         if pose.handle then pcall(pose.cancel,pose.handle) end
         if not restore then return false,'未在游戏线程恢复控制' end
-        local bodyBack=pose.body and returnBody(pose.body) or '沿用原骨架'
+        local bodyBack=pose.body and returnBody(pose.body) or pose.self and stopSelfPlay(pose) or '沿用原骨架'
         local restored,detail=restoreGrabControl(pose.control)
         say(string.format('血滴子控制结束（%s）片段读回=%.3f；%s；%s',tostring(why or '停止'),pose.position,bodyBack,detail))
         return restored and (not pose.body or pendingBodies[pose.body.key]==nil),detail
@@ -727,10 +795,24 @@ local function closeOneGrab(pose,why,restore)
         if not deathVisual and not grabControlHeld(actor,pose.control) then return false,false end
         if pose.body and (not U.valid(pose.body.comp)
             or U.key(weak(U.field(pose.body.main,'LeaderPoseComponent')))~=pose.body.key) then return false,false end
+        if pose.self and not U.valid(pose.self.anim) then return false,false end
         return true,pose.stage==#GUILLOTINE_POSES
     end
     local function advanceGrabPose(pose)
         local stage=GUILLOTINE_POSES[pose.stage+1]
+        if pose.self then
+            -- The finish montage carries both of its segments and rates; play it in place of the start.
+            local own=pose.self
+            local played=call(own.anim,'Montage_Play',own.finish,1.0,0,0.0,true)
+            local _,current=call(own.anim,'GetCurrentActiveMontage');current=U.unwrap(current)
+            local _,position=call(own.anim,'Montage_GetPosition',own.finish)
+            local verified=played and U.valid(current) and U.key(current)==U.key(own.finish)
+            say(string.format('铡刀本体后半段 播放=%s 读回蒙太奇=%s 位置=%s 验证=%s',tostring(played),U.valid(current) and short(current) or '无',
+                fmt(U.unwrap(position)),tostring(verified)))
+            if not verified then return false end
+            pose.stage=pose.stage+1
+            return true
+        end
         if not pose.body then pose.stage=pose.stage+1;return true end
         local comp=pose.body.comp
         local moved=call(comp,'SetPosition',stage.from,false)
@@ -771,15 +853,20 @@ local function closeOneGrab(pose,why,restore)
             restoreGrabControl(control)
             return false,'目标当前招式未确认已中断'
         end
-        local body,bodyWhy=borrowBody(actor,GUILLOTINE_GRAB)
-        if body then
-            local _,playing=call(body.comp,'IsPlaying')
-            if bodyWhy or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key or playing~=true then
-                returnBody(body)
-                body=nil
+        local own,selfWhy=playGuillotineOnSelf(actor)
+        if not own and selfWhy then say('铡刀本体播放没成，退回借身体：'..selfWhy) end
+        local body,bodyWhy
+        if not own then
+            body,bodyWhy=borrowBody(actor,GUILLOTINE_GRAB)
+            if body then
+                local _,playing=call(body.comp,'IsPlaying')
+                if bodyWhy or U.key(weak(U.field(body.main,'LeaderPoseComponent')))~=body.key or playing~=true then
+                    returnBody(body)
+                    body=nil
+                end
             end
         end
-        local pose={actor=actor,body=body,control=control,cancel=cancel,started=started,position=0,stage=1,
+        local pose={actor=actor,body=body,self=own,control=control,cancel=cancel,started=started,position=0,stage=1,
             targetKey=targetKey,stillValid=stillValid}
         grabPoses[targetKey]=pose
         local ok,handle=pcall(loop,16,function()
@@ -788,6 +875,25 @@ local function closeOneGrab(pose,why,restore)
             local time=now()
             if type(time)~='number' or time<pose.started or time-pose.started>=GUILLOTINE_TIMEOUT then
                 closeOneGrab(pose,'抓取更新超时',true);return
+            end
+            if own then
+                if pose.stage==1 then
+                    local read,position=call(own.anim,'Montage_GetPosition',own.start)
+                    position=read and U.unwrap(position)
+                    if type(position)~='number' or position~=position then closeOneGrab(pose,'本体动画位置未读回',true);return end
+                    pose.position=position
+                    -- The original start montage waits for the 0.9 s native commit before its finish montage.
+                    if not pose.waiting and position>=GUILLOTINE_SELF.catch then
+                        call(own.anim,'Montage_SetPlayRate',own.start,0)
+                        local _,rate=call(own.anim,'Montage_GetPlayRate',own.start)
+                        if U.unwrap(rate)~=0 then closeOneGrab(pose,'本体起手等待帧未读回',true);return end
+                        pose.waiting=true
+                        say(string.format('铡刀本体起手停在 位置=%.3f 速率读回=0',position))
+                    end
+                elseif pose.finishingAt and time-pose.finishingAt>=GUILLOTINE_SELF.finishLength then
+                    pose.stage=#GUILLOTINE_POSES
+                end
+                return
             end
             if not body then
                 if pose.finishingAt and time-pose.finishingAt>=3.788884 then pose.stage=#GUILLOTINE_POSES end
@@ -822,7 +928,8 @@ local function closeOneGrab(pose,why,restore)
         end
         if grabPoses[targetKey]~=pose then pcall(cancel,handle);return false,'目标在接管时离场' end
         pose.handle=handle
-        say('血滴子受抓开始 '..className(actor)..' 控制读回=true 原版动画='..tostring(body~=nil)..' '..tostring(bodyWhy or ''))
+        say('血滴子受抓开始 '..className(actor)..' 控制读回=true 原版动画='..tostring(body~=nil or own~=nil)..(own and ' 本体播放' or '')..' '..tostring(bodyWhy or ''))
+        if own then return true,selfWhy end
         return true
     end
 
@@ -1088,9 +1195,12 @@ local function closeOneGrab(pose,why,restore)
         local lionPickup=short(info.pair.execution)=='GA_Hun_BEx_HouHouHou_01_C'
             and options.lionPickup and options.lionPickup(executor,boss)
         local body,why
-        if not wantPlayback then body,why=borrowBody(executor,info.timing) end
+        local direct=not wantPlayback and directBody(executor,info.timing) or nil
+        if direct then say('同骨架，直接用本体（不借身体，不算失败）：'..direct)
+        elseif not wantPlayback then body,why=borrowBody(executor,info.timing) end
         poseProbe:begin(executor,boss,body and body.comp or nil)
         if why then say('借身体没成，执行方原地站着：'..why) end
+        local executorBefore=direct and montageOf(executor) or nil
         local paused,held
         if adopted and adopted.paused then paused,held=true,'沿用上段由Mod持有的AI暂停'
         else
@@ -1130,14 +1240,34 @@ local function closeOneGrab(pose,why,restore)
         active={executor=executor,boss=boss,info=info,body=body,t0=now(),length=length,before=before,mash=mash,yaw=yaw,
             dynamic=wantPlayback,adopted=adopted~=nil,lionPickup=lionPickup,
             own=abilityOn(executor,short(info.pair.execution)),theirs=abilityOn(boss,short(info.pair.executed)),
-            montage=after~=before and after or nil,gone=nil,samples=0,paused=paused,byLock=reason=='卡在锁血线'}
+            montage=after~=before and after or nil,gone=nil,samples=0,paused=paused,byLock=reason=='卡在锁血线',
+            direct=direct~=nil,executorBefore=executorBefore}
         self.message='处决中：'..className(executor)..' → '..className(boss)
         local run=active
+        if run.direct then
+            local expected=info.timing.montage and info.timing.montage:match('%.([^%.]+)$') or nil
+            run.directExpected=expected
+            local seen=montageOf(executor)
+            if seen and (expected and seen==expected or not expected and seen~=executorBefore) then
+                run.directSeen=true
+                say('同骨架直播读回 执行方动作='..seen..' 期望='..tostring(expected)..' 用时=0.0s')
+            end
+        end
         if run.dynamic then
             local variants=info.timing.variants or {[info.timing.montage:match('%.([^%.]+)$')]=info.timing}
             run.playback=Playback.start({actor=executor,variants=variants,now=now,loop=options.loop,cancel=options.cancel,
                 ability=function()run.own=run.own or abilityOn(executor,short(info.pair.execution));return run.own end,
                 onVariant=function(def,key,position)
+                    if not run.body and (run.direct or not run.directChecked) then
+                        run.directChecked=true
+                        local same=directBody(executor,def)
+                        if same then
+                            run.direct,run.directSeen=true,true
+                            say(string.format('同骨架，直接用本体（动态分支，不借身体）：%s 读回原生蒙太奇=%s 原生位置=%.3f',same,key,position))
+                            showCamera(run,def,adopted and adopted.continuing)
+                            return true
+                        end
+                    end
                     if not run.body then
                         local b,problem=borrowBody(executor,def);run.body=b
                         if problem then return false,problem end
@@ -1156,6 +1286,8 @@ local function closeOneGrab(pose,why,restore)
                     return true
                 end,
                 onPosition=function(desired,position,def)
+                    -- On its own mesh the native montage is the animation; there is no borrowed clip to place.
+                    if run.direct and not run.body then return true end
                     local ok=call(run.body and run.body.comp,'SetPosition',desired,false)
                     local got,actual=call(run.body and run.body.comp,'GetPosition');actual=got and U.unwrap(actual)
                     return ok and type(actual)=='number' and math.abs(actual-desired)<0.003,'要求='..desired..' 读回='..tostring(actual)
@@ -1210,7 +1342,8 @@ local function closeOneGrab(pose,why,restore)
         elseif hp and hp>0 and run.info.boss and not run.byLock then
             -- A boss may have another phase: it stays, and may be executed again a little later.
             local unit=units[U.key(boss)]
-            if unit and not run.adopted then unit.state='ready';unit.since=nil;unit.waited=nil;unit.again=now()+AGAIN end
+            -- A Hun weapon pair is not the target's own: it goes back to having none, for the Hun to try again.
+            if unit and not run.adopted then unit.state=run.info.hunPair and 'nopair' or 'ready';unit.since=nil;unit.waited=nil;unit.again=now()+AGAIN end
             if run.adopted then kill='原生BOSS处决结束，保留后续阶段 HP='..fmt(hp)
             else kill=string.format('BOSS（%s）处决完还站着，不强制判死，%d 秒后可再被处决 HP=%s',run.info.rank,AGAIN,fmt(hp)) end
         elseif hp and hp>0 and (run.info.mob or (run.info.boss and run.byLock)) then
@@ -1236,6 +1369,29 @@ local function closeOneGrab(pose,why,restore)
         chain:tick()
         poseProbe:sample('tick')
         if not U.valid(run.executor) then finish('执行方失效');return end
+        if run.direct and not run.directSeen and not run.dynamic then
+            local seen=montageOf(run.executor)
+            local expected=run.directExpected
+            if seen and (expected and seen==expected or not expected and seen~=run.executorBefore) then
+                run.directSeen=true
+                say(string.format('同骨架直播读回 执行方动作=%s 期望=%s 用时=%.1fs',seen,tostring(expected),t))
+            elseif t>=DIRECT_WAIT then
+                -- Its own mesh did not take the clip: this executor borrows a body from now on, this battle included.
+                directFailed[U.key(run.executor) or '']=true
+                run.direct=false
+                local b,problem=borrowBody(run.executor,run.info.timing)
+                run.body=b
+                local placed='未借到'
+                if b then
+                    local at=(run.info.timing.clip_from or 0)+t*(run.info.timing.rate or 1)
+                    local set=call(b.comp,'SetPosition',at,false)
+                    local got,actual=call(b.comp,'GetPosition');actual=got and U.unwrap(actual)
+                    placed=string.format('片段位置 要求=%.2f 读回=%s 调用=%s',at,fmt(actual),tostring(set))
+                end
+                say(string.format('同骨架直播失败，改回借身体：执行方=%s %.1fs 内执行方动作=%s 期望=%s；借身体=%s %s',className(run.executor),t,
+                    tostring(seen),tostring(expected),b and (problem and '有问题：'..problem or '成功') or '失败：'..tostring(problem),placed))
+            end
+        end
         local hp=U.valid(run.boss) and read(run.boss,'Health') or nil
         local montage=U.valid(run.boss) and montageOf(run.boss) or nil
         if not run.montage and montage and montage~=run.before then run.montage=montage end
@@ -1337,6 +1493,45 @@ local function closeOneGrab(pose,why,restore)
         if selected.state~='ready' and not unit.conditionWait then unit.conditionWait=true;say('有处决数据，当前原生标签/骑乘条件未满足：'..className(target)) end
         if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有对手，等对手靠近：'..className(target)) end
         return false
+    end
+    -- 1-4: a target with no pair of its own, and a Hun body the nearest enemy that could execute it. The Hun weapon's
+    -- generic pairs are taken only when the target's mesh skeleton is the skeleton of the pair's executed montage;
+    -- each target is checked once and the result logged.
+    local function hunPairFor(target,unit)
+        if unit.hunChoice~=nil then return unit.hunChoice or nil end
+        unit.hunChoice=false
+        local skeleton=meshSkeleton(target)
+        for _,entry in ipairs(hunPairs)do
+            local victim=object(entry.victim)
+            local wanted=victim and U.field(victim,'Skeleton')
+            local adopt=skeleton~=nil and U.valid(wanted) and U.key(wanted)==U.key(skeleton)
+            local execution,executed
+            if adopt then execution,executed=object(entry.execution),object(entry.executed);adopt=execution~=nil and executed~=nil end
+            say(string.format('魂武器处决对 目标=%s 目标骨架=%s 受害方骨架=%s（%s） 技能对=%s 采用=%s',className(target),skeleton and short(skeleton) or '读不到',
+                U.valid(wanted) and short(wanted) or '读不到',entry.victim_skeleton,entry.execution:match('%.([^%.]+)$'),tostring(adopt)))
+            if adopt then
+                unit.hunChoice={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,
+                    pair={execution=execution,executed=executed,source='魂武器通用处决对（目标没有自己的处决对）',type='Execution.Type.Combat'}}
+                break
+            end
+        end
+        return unit.hunChoice or nil
+    end
+    local function tryHunPair(target,unit,t,team)
+        if phaseBusy(target) or (options.onPole and options.onPole(target)) then return false end
+        local hp=read(target,'Health')
+        if not hp or hp<=0 then return false end
+        local locked=onLock(target,unit,hp)
+        if locked then unit.hunSince=unit.hunSince or t else unit.hunSince=nil end
+        local reason=locked and t-unit.hunSince>=HOLD and '卡在锁血线' or executable(target)
+        if not reason and tagsMatch(target,{'CharacterState.Stand.Break'},true) then reason='CharacterState.Stand.Break' end
+        if not reason then return false end
+        local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,isHun)
+        if not executor then return false end
+        local info=hunPairFor(target,unit)
+        if not info then return false end
+        start(executor,target,info,d,reason..'，魂武器处决对')
+        return true
     end
     -- What the companions are after, while the switch is on: anything on their hatred lists but the player and the arena's
     -- own units. A unit summoned with no team is summoned to be fought, so it counts.
@@ -1451,6 +1646,13 @@ local function closeOneGrab(pose,why,restore)
             for _,unit in pairs(units) do unit.prologueSince=nil end
             considerFoes(foes,t);return
         end
+        -- Whether a Hun body is in the fight; only then are targets with no pair looked at for its weapon pairs.
+        local hunHere=false
+        if isHun and hunSteps.weaponPairs~=false then
+            for _,member in ipairs(members)do
+                if (member.team=='blue' or member.team=='red') and isHun(member.actor) then hunHere=true;break end
+            end
+        end
         for _,member in ipairs(members) do
             local target=member.actor
             local key=U.key(target)
@@ -1494,6 +1696,8 @@ local function closeOneGrab(pose,why,restore)
                     end
                 end
                 if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
+                if hunHere and unit.state=='nopair' and unit.hunChoice~=false and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
+                    and not member.stand and tryHunPair(target,unit,t,member.team) then return end
             end
         end
         considerFoes(foes,t)
@@ -1517,6 +1721,7 @@ local function closeOneGrab(pose,why,restore)
         local retry={};for _,body in pairs(pendingBodies)do retry[#retry+1]=body end
         for _,body in ipairs(retry)do say('重试身体恢复：'..returnBody(body)) end
         units={}
+        directFailed={}
     end
     function self:silence()
         closeGrabPose('Mod 卸载',type(IsInGameThread)=='function' and IsInGameThread())

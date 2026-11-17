@@ -166,4 +166,52 @@ test('units coming and going within the same folders neither restore nor rescan'
     h.grabs:sync(h.members,true);summon.hp=0;h.grabs:sync(h.members,true);h.members[3]=nil;h.grabs:sync(h.members,true)
     assert(h.scans==scans and #h.logs==logs and h.own.NonPlayerGE==h.emptyClass,table.concat(h.logs,'\n',logs+1))
 end)
+-- 1-5: 毕峰, 彭猛 and 火流星 grab through GetPlayerCharacter(0) for their QTE. Facing a Hun body they keep NonPlayerGE.
+local function qteCase(familyFolder)
+    local h=harness()
+    local qte=h:event('Grab',ROOT..familyFolder,h.original)
+    h.hun=h:object('/Game/World:Hun',{hp=100})
+    h.members={{actor=h.hun,team='blue',class_path='/PBZCombatAsset/ActorData/Mobs/000_Hun/BP_Monster_Hun.BP_Monster_Hun_C'},
+        {actor=h.red,team='red',class_path=ROOT..familyFolder..'BP_Boss.BP_Boss_C'},
+        {actor=h.blue,team='blue',class_path=ROOT..'Alpha/BP_Blue.BP_Blue_C'}}
+    h.options.isHun=function(actor)return actor==h.hun end
+    h.grabs=h:new()
+    return h,qte
+end
+test('a QTE family facing a Hun body keeps its NonPlayerGE; other families are still opened',function()
+    for _,folder in ipairs({'008_GreatBladeMan/','044_PengMeng/','069_GuiChai_Red/','075_GuiChai_Red_P2/'})do
+        local h,qte=qteCase(folder)
+        assert(h.grabs:sync(h.members,true,true))
+        assert(qte.NonPlayerGE==h.original,'held: '..folder)
+        assert(h.own.NonPlayerGE==h.emptyClass,'the Hun\'s teammates and their family are opened as before')
+        local logged=0;for _,line in ipairs(h.logs)do if line:find('[NPCGrab] QTE 族对魂暂不完整抓取：',1,true) and line:find(ROOT..folder,1,true)then logged=logged+1 end end
+        assert(logged==1,'logged once: '..table.concat(h.logs,'\n'))
+        h.grabs:sync(h.members,true);h.grabs:sync(h.members,true)
+        logged=0;for _,line in ipairs(h.logs)do if line:find('QTE 族',1,true)then logged=logged+1 end end
+        assert(logged==1,'not logged again while nothing changes')
+    end
+end)
+test('the gate opens when the Hun body is gone, and the family is cleared then; without a Hun nothing changes',function()
+    local h,qte=qteCase('008_GreatBladeMan/')
+    assert(h.grabs:sync(h.members,true,true) and qte.NonPlayerGE==h.original)
+    h.hun.hp=0
+    assert(h.grabs:sync(h.members,true))
+    assert(qte.NonPlayerGE==h.emptyClass,'no Hun left: the 毕峰 events are opened as for any NPC')
+    local opened=false;for _,line in ipairs(h.logs)do if line:find('QTE 族闸解除',1,true)then opened=true end end;assert(opened)
+    h.hun.hp=100
+    assert(h.grabs:sync(h.members,true) and qte.NonPlayerGE==h.original,'a Hun back: the event is restored before the rescan')
+    local plain,qte2=qteCase('044_PengMeng/');plain.options.isHun=nil;plain.grabs=plain:new()
+    assert(plain.grabs:sync(plain.members,true,true) and qte2.NonPlayerGE==plain.emptyClass)
+    for _,line in ipairs(plain.logs)do assert(not line:find('QTE 族',1,true),line)end
+end)
+test('a QTE family on the Hun body\'s own side is not held, and the switch off holds nothing',function()
+    local h,qte=qteCase('044_PengMeng/')
+    h.members[2].class_path=ROOT..'Alpha/BP_Red.BP_Red_C'
+    h.members[3].class_path=ROOT..'044_PengMeng/BP_PengMeng.BP_PengMeng_C'
+    assert(h.grabs:sync(h.members,true,true) and qte.NonPlayerGE==h.emptyClass,'彭猛 with the Hun grabs the other side as before')
+    local steps=require('hun_look').STEPS;steps.qteGate=false
+    local off,qte3=qteCase('008_GreatBladeMan/')
+    local ok=off.grabs:sync(off.members,true,true);steps.qteGate=true
+    assert(ok and qte3.NonPlayerGE==off.emptyClass)
+end)
 print('arena_grabs: PASS ('..count..' scope, native observation and restoration regressions)')

@@ -145,7 +145,7 @@ test('the look probe lists the body and the player once per request and writes n
     h.actor['Actor Config']['Default Linked Animation Layers']={object('Class /Game/Hun.ABP_Item_Hun_Summon_C')}
     h.actor.CharacterMovement=object('Movement',h.actor);h.actor.CharacterMovement.Velocity={X=300,Y=400,Z=0};h.actor.CharacterMovement.MovementMode=1;h.actor.CharacterMovement.MaxWalkSpeed=600
     assert(h:run().ok);h:tick(4)
-    assert(h.scans==8,'four component classes for the body and four for the player: '..h.scans)
+    assert(h.scans==10,'five component classes (cloth included) for the body and five for the player: '..h.scans)
     assert(h:logged('外观部件：魂 NPC Hun 1；共3个')==1 and h:logged('外观部件：主角 Player；共1个')==1)
     assert(h:logged('SkeletalMeshComponent Body 资源=SK_Body')==1 and h:logged('StaticMeshComponent Head 资源=SM_Head')==1)
     assert(h:logged('StaticMeshComponent Mesh（挂件:Hat actor） 资源=SM_Hat')==1 and h:logged('SK_Other')==0)
@@ -154,7 +154,7 @@ test('the look probe lists the body and the player once per request and writes n
     assert(h:logged('动画与移动：主角')==1)
     assert(#h.writes==2,'only the two tag writes of the birth itself')
     h:tick(12);assert(h:logged('动画与移动：魂（第6次复查）')==1 and h:logged('动画与移动：魂（第14次复查）')==1)
-    assert(h.scans==8,'later cycles read the movement only')
+    assert(h.scans==10,'later cycles read the movement only')
 end)
 test('a failing component read cannot interrupt the support cycle',function()
     local h=fixture();h.options.findAll=function()error('native fixture failure')end;h.mod=Body.new(h.options)
@@ -230,5 +230,118 @@ end)
 test('a profile reader that fails does not stop the summon',function()
     local h=fixture();h.options.loadout=function()error('fixture read failure')end;h.mod=Body.new(h.options)
     assert(h:run().ok and h.mod:attributes(h.actor)==nil)
+end)
+-- The probes and the look step, with a look stand-in that records when it runs.
+local function probeFixture(lookApply)
+    local h=fixture();h.t=0;h.hpValue=100;h.order={}
+    h.options.clock=function()return h.t end
+    h.options.hp=function()return h.hpValue end
+    h.options.look={apply=function(_,r,still)h.order[#h.order+1]=#h.logs;h.lookStill=still;if lookApply then return lookApply(r,still)end;return {}end,
+        recheck=function(_,r)h.rechecked=(h.rechecked or 0)+1 end}
+    h.mod=Body.new(h.options)
+    return h
+end
+test('the body is probed before and after the look step, the player once per request, each kind a few lines',function()
+    local h=probeFixture();assert(h:run().ok)
+    local before=h:logged('动画实例：魂 NPC Hun 1 改前')
+    assert(before==1 and h:logged('帽子与材质：魂 NPC Hun 1 改前')==1 and h:logged('骨架：魂 NPC Hun 1 改前')==1)
+    assert(h:logged('技能与标签：魂 NPC Hun 1 改前')==1 and h:logged('资源属性：魂 NPC Hun 1 改前')==1)
+    assert(h:logged('组件：魂 NPC Hun 1 改前；ExecutionComponent')==1 and h:logged('组件：魂 NPC Hun 1 改前；DeflectComponent')==1)
+    assert(h:logged('动画实例：主角（只读）')==1)
+    local lastBefore=0;for i,line in ipairs(h.logs)do if line:find('改前',1,true)then lastBefore=i end end
+    assert(#h.order==1 and h.order[1]>=lastBefore,'the look step runs after every 改前 probe line')
+    assert(h:logged('改后')==0);h:tick(1)
+    assert(h:logged('动画实例：魂 NPC Hun 1 改后')==1 and h.rechecked==1 and h:logged('动画实例：主角（只读）')==1)
+    h:tick(5);assert(h:logged('改后')==h:logged('NPC Hun 1 改后'),'later cycles do not probe again')
+    assert(#h.writes==2,'probes write nothing')
+end)
+test('a second body of the same request is not probed; a new request probes its first body',function()
+    local h=probeFixture()
+    h.mod:spawn({spawn=function()
+        h.mod:capture(h.actor,Body.path);assert(h.mod:prepare(h.actor) and h.mod:finished(h.actor))
+        local other=h.actor;h.actor=object('NPC Hun 2',h.world);h.actor['Actor Config']=h.source;h.actor.AbilitySystemComponent=h.asc
+        function h.actor:GetClass()return h.cls end
+        h.mod:capture(h.actor,Body.path);assert(h.mod:prepare(h.actor) and h.mod:finished(h.actor))
+        h.second=h.actor;h.actor=other
+        return {ok=true}
+    end},'blue',2,'1')
+    assert(h:logged('NPC Hun 1 改前')>0 and h:logged('NPC Hun 2 改前')==0 and #h.order==2,'both bodies get the look step')
+    assert(h:logged('动画实例：主角（只读）')==1)
+    local before=h:logged('NPC Hun 1 改前')
+    assert(h:run().ok and h:logged('NPC Hun 1 改前')>before and h:logged('动画实例：主角（只读）')==2,'a new request probes again')
+end)
+test('a look step that fails or throws does not hold the birth back',function()
+    local h=probeFixture(function()error('native fixture failure')end)
+    local r=h:run();assert(r.ok and h:logged('外观与动画中断：实例=NPC Hun 1')==1)
+    assert(h.lookStill()==true,'the identity check given to the look step is live')
+    h.actor.label='Replacement actor';assert(h.lookStill()==false)
+end)
+test('a probe that throws writes 探查中断 and the rest still runs',function()
+    local h=probeFixture()
+    h.options.fname=function(s)if s=='MMGraph'then error('fname fixture failure')end;return s end
+    h.mod=Body.new(h.options)
+    assert(h:run().ok and #h.order==1)
+    assert(h:logged('探查中断：动画实例 原因=')==2,'the body and the player probe each stop once')
+    assert(h:logged('技能与标签：魂 NPC Hun 1 改前')==1 and h:logged('资源属性：魂 NPC Hun 1 改前')==1)
+end)
+test('switching the probe off leaves only the look step',function()
+    local h=probeFixture();h.options.steps={probe=false,deathWatch=true};h.mod=Body.new(h.options)
+    assert(h:run().ok);h:tick(2)
+    assert(h:logged('改前')==0 and h:logged('改后')==0 and #h.order==1)
+end)
+test('death is read back once a second for at most 15 seconds and only read',function()
+    local h=probeFixture();assert(h:run().ok);h:tick(1)
+    h.counts['CharacterState.Dead']=1
+    function h.actor:IsActorBeingDestroyed()return h.destroying==true end
+    h.hpValue=0;h:tick(1)
+    assert(h:logged('死亡读回开始：实例=NPC Hun 1')==1 and h:logged('第0秒 HP=0 Dead=1 销毁中=false 有效=true')==1)
+    h.t=0.5;h:tick(1);assert(h:logged('死亡读回：')==1,'one line a second')
+    h.t=1;h.destroying=true;h:tick(1);assert(h:logged('第1秒 HP=0 Dead=1 销毁中=true 有效=true')==1)
+    -- It leaves the arena's list while it dissolves: still read back, without the record.
+    h.t=2;h.mod:tick({});assert(h:logged('第2秒')==1)
+    h.actor.valid=false;h.t=3;h.mod:tick({});assert(h:logged('第3秒 已无效=true，停止读回')==1)
+    h.t=4;h.mod:tick({});assert(h:logged('死亡读回：')==4)
+    local writes=#h.writes;assert(writes==2,'nothing written for the death readback')
+    local long=probeFixture();assert(long:run().ok);long:tick(1);long.hpValue=0
+    for i=0,30 do long.t=i;long:tick(1)end
+    assert(long:logged('死亡读回：')==15,'at most 15 lines: '..long:logged('死亡读回：'))
+end)
+test('the deflect-frame sampler reads ReceiveFrames and the player cooldown, then stops when the body leaves',function()
+    local h=probeFixture();local loops,cancelled={},{}
+    h.options.loop=function(ms,fn)assert(ms==100);loops[#loops+1]=fn;return #loops end
+    h.options.cancel=function(handle)cancelled[handle]=true end
+    h.options.now=function()return 10 end
+    h.mod=Body.new(h.options)
+    local frames={}
+    h.actor['Deflect Component']=object('Deflect',h.actor)
+    h.actor['Deflect Component'].ReceiveFrames={ForEach=function(_,fn)for k,v in pairs(frames)do fn(k,v)end end}
+    local cooldown=0
+    local wc=object('PlayerWeapons',h.player);function wc:GetCurrentChangeWeaponCooldown(slot)assert(slot.TagName=='Weapon.Slot.Main');return cooldown end
+    h.player['Character Weapons Component']=wc
+    assert(h:run().ok);assert(#loops==0,'not before the first support cycle');h:tick(1);assert(#loops==1)
+    loops[1]();assert(h:logged('预告：')==0,'no line for an empty sample before the heartbeat')
+    frames[7]={HitGameTime=10.25,IsDodge=false,CounterAbility=object('Class /Game/GA_Counter_C')}
+    h.t=1;loops[1]();assert(h:logged('预告：魂 NPC Hun 1；条数=1；已采样2次 有预告1次；距命中=0.25 闪避=false')==1)
+    h.t=1.5;loops[1]();assert(h:logged('预告：')==1,'one line a second')
+    cooldown=15;h.t=2;loops[1]();assert(h:logged('只读玩家 换武器冷却=15')==1)
+    h.t=3;loops[1]();assert(h:logged('只读玩家 换武器冷却')==1,'the same value is not logged again')
+    h.mod:tick({});assert(cancelled[1] and h:logged('预告采样结束：实例离场')==1)
+end)
+test('statsFor: a Hun body takes its profile or the game numbers, never the arena or companion set',function()
+    local known={Health_Max=true,Attack=true}
+    local arenaSet,hunSet={name='arena'},{name='hun'}
+    local s,dropped,source=Body.statsFor(false,{Attack=5},known,arenaSet,hunSet)
+    assert(s==arenaSet and dropped==0 and source==nil,'other units keep the arena set')
+    s,dropped,source=Body.statsFor(true,nil,known,arenaSet,hunSet)
+    assert(s==Body.KEEP_STATS and source=='游戏原值' and s:onSpawn().ok and s:onSummon().ok,'an empty profile keeps the game numbers')
+    s,dropped,source=Body.statsFor(true,{},known,arenaSet,hunSet);assert(s==Body.KEEP_STATS)
+    s,dropped,source=Body.statsFor(true,{Unknown=3},known,arenaSet,hunSet);assert(s==Body.KEEP_STATS and dropped==1)
+    s,dropped,source=Body.statsFor(true,{Attack=77,Unknown=1},known,arenaSet,hunSet)
+    assert(s==hunSet and hunSet.mode=='custom' and hunSet.custom.Attack==77 and hunSet.custom.Unknown==nil and dropped==1 and source=='方案')
+end)
+test('owns: only bodies this module summoned and still follows',function()
+    local h=fixture();assert(h:run().ok)
+    assert(h.mod:owns(h.actor) and not h.mod:owns(h.other) and not h.mod:owns(nil))
+    h.mod:tick({});assert(not h.mod:owns(h.actor))
 end)
 print('hun body: PASS '..n..' scoped-instance/tag/lifecycle/profile checks; native gameplay remains unverified')

@@ -1179,4 +1179,176 @@ do
     h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1};h.run(e,20)
     assert(e:status().started==1,'do not cache the counter as a health/stagger finisher')
 end
+-- The Hun body (its mesh on Hun_Skin_Skeleton, like the executor clips) as executor and as guillotine victim.
+local HUN_SKELETON_PATH='/HuaShira/Characters/EliteBoss/MBoss/Anim/Hun_EXD_ByMBoss.Hun_EXD_ByMBoss'
+local MOYUAN_MONTAGE=DATA.GA_Hun_BEx_MoYuan_C.montage:match('%.([^%.]+)$')
+local function hunExecutor(h,at,montage)
+    local skeleton=h.found[HUN_SKELETON_PATH].Skeleton
+    h.found[DATA.GA_Hun_BEx_MoYuan_C.clip].Skeleton=skeleton
+    local hun=h.enemy(at,{class='BP_Monster_Hun',executorMontage=montage})
+    hun.Mesh.GetSkeletalMeshAsset=function()return object('Hun_Skin',{Skeleton=skeleton})end
+    return hun,skeleton
+end
+local function lines(h,text)local n=0;for _,line in ipairs(h.lines)do if line:find(text,1,true)then n=n+1 end end;return n end
+-- 1-3: the executor's own mesh is on its clip's skeleton: no borrowed body, and that is no failure.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100.5,100)
+    local hun=hunExecutor(h,{X=300,Y=0,Z=0},MOYUAN_MONTAGE)
+    h.members={{actor=boss,team='red'},{actor=hun,team='blue'}}
+    local exec=h.new()
+    h.run(exec,1.5)
+    assert(exec:status().started==1 and exec:executing(hun),h.all())
+    assert(#h.components==0 and hun.Mesh.LeaderPoseComponent==nil,'no borrowed body')
+    assert(lines(h,'同骨架，直接用本体（不借身体，不算失败）：执行方=BP_Monster_Hun 网格骨架=Hun_Skin_Skeleton 动画=Hun_MoYuan_SpecialExE_01 骨架=Hun_Skin_Skeleton')==1,h.all())
+    assert(lines(h,'同骨架直播读回 执行方动作='..MOYUAN_MONTAGE)==1 and lines(h,'借身体没成')==0 and lines(h,'改回借身体')==0,h.all())
+    h.run(exec,MOYUAN_RUN)
+    assert(not exec:status().active and exec:status().failures==0 and lines(h,'没有借身体')==1 and not hun.brain.paused,h.all())
+    print('PASS a same-skeleton executor plays the execution on its own mesh, without borrowing, and it counts as no failure')
+end
+-- When its own montage does not show within 0.3 s it borrows a body from then on, until the battle is stopped.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100.5,100)
+    local second=h.boss('BP_Monster_MoTian',100.5,100,{at={X=0,Y=100,Z=0}})
+    local hun=hunExecutor(h,{X=300,Y=0,Z=0},'Some_Other_Montage')
+    h.members={{actor=boss,team='red'},{actor=second,team='red'},{actor=hun,team='blue'}}
+    local exec=h.new()
+    h.run(exec,1.5)
+    assert(exec:status().started==1 and #h.components==0 and lines(h,'同骨架，直接用本体')==1,h.all())
+    h.run(exec,0.5)
+    assert(#h.components==1 and hun.Mesh.LeaderPoseComponent==h.components[1],'it borrows after 0.3 s without its own montage')
+    local clip=DATA.GA_Hun_BEx_MoYuan_C
+    assert(h.components[1].playing=='Hun_MoYuan_SpecialExE_01' and math.abs(h.components[1].position-((clip.clip_from or 0)+0.5*(clip.rate or 1)))<1e-6)
+    assert(lines(h,'同骨架直播失败，改回借身体：执行方=BP_Monster_Hun 0.5s 内执行方动作=Some_Other_Montage 期望='..MOYUAN_MONTAGE..'；借身体=成功')==1,h.all())
+    h.run(exec,MOYUAN_RUN)
+    assert(h.components[1].destroyed and exec:status().started==2,'the second boss follows: '..h.all())
+    assert(lines(h,'同骨架，直接用本体')==1 and #h.components==2,'the second execution borrows at once')
+    h.run(exec,MOYUAN_RUN)
+    exec:stop('F4')
+    local third=h.boss('BP_Monster_MoTian',100.5,100,{at={X=0,Y=-100,Z=0}})
+    h.members={{actor=third,team='red'},{actor=hun,team='blue'}}
+    h.run(exec,1.5)
+    assert(exec:status().started==3 and lines(h,'同骨架，直接用本体')==2,'a stop gives the executor its own mesh back')
+    exec:stop('F4')
+    print('PASS an own-mesh execution that does not show borrows a body after 0.3 s, for the rest of the battle')
+end
+-- 1-4: a target with no pair of its own, a Hun body the nearest executor of the Hun bodies: the Hun weapon's pair,
+-- only when the target's skeleton is the executed montage's.
+local HUN_PAIRS=require('hun_execution_pairs')
+local function weaponPairCase(targetSkeleton,isHun)
+    local h=harness()
+    local hun,skeleton=hunExecutor(h,{X=500,Y=0,Z=0},'Hun_JueYing_ExE_F_01_Montage')
+    local thug=object('MaleThug_Skeleton')
+    for _,entry in ipairs(HUN_PAIRS)do
+        h.found[entry.execution]=class(entry.execution:match('%.([^%.]+)$'))
+        h.found[entry.executed]=class(entry.executed:match('%.([^%.]+)$'))
+        h.found[entry.victim]=object(entry.victim:match('%.([^%.]+)$'),{Skeleton=entry.victim_skeleton=='MaleThug_Skeleton' and thug or object(entry.victim_skeleton)})
+        h.found[entry.timing.clip]=object(entry.timing.clip:match('%.([^%.]+)$'),{Skeleton=skeleton})
+    end
+    local target=h.boss('BP_Monster_MaleThug',500,0,{pairs={},locks={},rank='Standard'})
+    target.Mesh.GetSkeletalMeshAsset=function()return object('MaleThug',{Skeleton=targetSkeleton=='thug' and thug or object(targetSkeleton)})end
+    local nearer=h.enemy({X=100,Y=0,Z=0})
+    h.tags[target]={['CharacterState.CanWeakExecute.Weak']=1}
+    h.members={{actor=target,team='red'},{actor=nearer,team='blue'},{actor=hun,team='blue'}}
+    local exec=h.new({isHun=isHun or function(actor)return actor==hun end})
+    return h,exec,target,hun,nearer
+end
+do
+    local h,exec,target,hun,nearer=weaponPairCase('thug')
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun) and not exec:executing(nearer),'the Hun body, not the nearer enemy: '..h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Monster_MaleThug_0 at 0.0'),table.concat(h.calls,' | '))
+    assert(lines(h,'魂武器处决对 目标=BP_Monster_MaleThug 目标骨架=MaleThug_Skeleton 受害方骨架=MaleThug_Skeleton（MaleThug_Skeleton） 技能对=GA_Hun_BEx_JueYing_M_01_C 采用=true')==1,h.all())
+    assert(lines(h,'来源=魂武器通用处决对')==1 and lines(h,'同骨架，直接用本体')==1 and #h.components==0,h.all())
+    h.run(exec,HUN_PAIRS[1].timing.executor+1)
+    assert(not exec:status().active and exec:status().kills==1 and h.has('apply GE_Kill_C level=0.0 context=table'),'a minion still standing is ended: '..h.all())
+    print('PASS a Hun body executes a target with no pair of its own with its weapon pair when the skeletons match')
+end
+do
+    local h,exec=weaponPairCase('GuiChai_Skeleton')
+    h.run(exec,3)
+    assert(exec:status().started==0 and lines(h,'采用=false')==#HUN_PAIRS and lines(h,'采用=true')==0,'each pair checked once and none taken: '..h.all())
+    local h2,exec2=weaponPairCase('thug',function()return false end)
+    h2.run(exec2,2)
+    assert(exec2:status().started==0 and lines(h2,'魂武器处决对')==0,'without a Hun body nothing is looked at')
+    local saved=require('hun_look').STEPS.weaponPairs
+    require('hun_look').STEPS.weaponPairs=false
+    local h3,exec3=weaponPairCase('thug')
+    h3.run(exec3,2);require('hun_look').STEPS.weaponPairs=saved
+    assert(exec3:status().started==0 and lines(h3,'魂武器处决对')==0,'the switch off leaves targets with no pair alone')
+    print('PASS a weapon pair whose executed skeleton differs is not taken, and nothing changes without a Hun body or with the switch off')
+end
+-- 1-6: a guillotine victim on Hun_Skin_Skeleton plays the original montages on its own anim instance.
+local function guillotineHun(h,takes)
+    local skeleton=object('Hun_Skin_Skeleton')
+    h.found[HUN_SKELETON_PATH].Skeleton=skeleton
+    h.player.Mesh.GetSkeletalMeshAsset=function()return object('Hun_Skin',{Skeleton=skeleton})end
+    local start=object('Hun_EXD_ByMBoss_Start_Montage',{Skeleton=skeleton})
+    local finish=object('Hun_EXD_ByMBoss_Montage',{Skeleton=skeleton})
+    h.found['/PBZCombatAsset/ActorData/Players/Hun/Montage/Execution/Hun_EXD_ByMBoss_Start_Montage.Hun_EXD_ByMBoss_Start_Montage']=start
+    h.found['/PBZCombatAsset/ActorData/Players/Hun/Montage/Execution/Hun_EXD_ByMBoss_Montage.Hun_EXD_ByMBoss_Montage']=finish
+    local victim=h.enemy({X=100,Y=0,Z=0},{class='BP_Monster_Hun'})
+    victim.Mesh.GetSkeletalMeshAsset=function()return object('Hun_Skin',{Skeleton=skeleton})end
+    local anim=victim.nativeAnim
+    anim.rates={}
+    function anim:Montage_Play(m,rate,_,at,stopAll)
+        h.calls[#h.calls+1]='montage play '..m:GetFName():ToString()..' stopAll='..tostring(stopAll)
+        if takes==false then return 0 end
+        self.playingM=m;self.pos=at;self.rates[m]=rate;self.stopped=false;return 1
+    end
+    function anim:GetCurrentActiveMontage()return self.playingM end
+    function anim:Montage_IsPlaying(m)return self.playingM==m and not self.stopped end
+    function anim:Montage_GetPosition()return self.pos end
+    function anim:Montage_SetPlayRate(m,r)self.rates[m]=r end
+    function anim:Montage_GetPlayRate(m)return self.rates[m] end
+    function anim:Montage_Stop(_,m)h.calls[#h.calls+1]='montage stop '..m:GetFName():ToString();self.stopped=true;self.playingM=nil end
+    local action=object('ActiveNPCStrike',{bIsActive=true,AbilityTags={GameplayTags={{TagName={ToString=function()return 'Ability.Action' end}}}},
+        GetAvatarActorFromActorInfo=function()return victim end,K2_CancelAbility=function(self)self.bIsActive=false end})
+    victim.AbilitySystemComponent.LocalAnimMontageInfo={AnimatingAbility=action}
+    local currentHit='None'
+    victim['Hitreact Component']=object('Hitreact',{GetCurrentHitState=function()return {TagName={ToString=function()return currentHit end}}end,
+        ChangeHitState=function(_,tag)currentHit=tag.TagName end})
+    return victim,anim,start,finish
+end
+do
+    local h=harness()
+    local victim,anim,start,finish=guillotineHun(h)
+    local timers,cancelled,alive={},{},true
+    local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,cancel=function(id)cancelled[id]=true end})
+    local ok,detail=exec:startGuillotineHold(victim,function()return alive end)
+    assert(ok and tostring(detail):find('受害方=BP_Monster_Hun 本体播放=true 读回蒙太奇=Hun_EXD_ByMBoss_Start_Montage 播放中=true',1,true),tostring(detail))
+    assert(#h.components==0 and victim.Mesh.LeaderPoseComponent==nil and h.has('montage play Hun_EXD_ByMBoss_Start_Montage stopAll=true'))
+    assert(victim.brain:IsPaused(),'the same control hold as the borrowed path')
+    anim.pos=0.5;timers[1]();assert(anim.rates[start]==1.0)
+    anim.pos=0.91;timers[1]();assert(anim.rates[start]==0 and lines(h,'铡刀本体起手停在 位置=0.910 速率读回=0')==1,'held at the 0.9 s catch')
+    h.clock=1;assert(exec:finishGuillotineHold(victim))
+    assert(anim.playingM==finish and lines(h,'铡刀本体后半段 播放=true 读回蒙太奇=Hun_EXD_ByMBoss_Montage')==1 and lines(h,'验证=true')==1)
+    local held,finished=exec:guillotineHeld(victim);assert(held and not finished)
+    h.clock=4.8;timers[1]();held,finished=exec:guillotineHeld(victim);assert(held and finished,'finished once the finish montage has had its length')
+    assert(exec:stopGrabPose('收尾读回',victim) and lines(h,'本体收尾蒙太奇保留')==1 and not h.has('montage stop Hun_EXD_ByMBoss_Montage'))
+    assert(not victim.brain:IsPaused())
+    -- Released before the catch point: the start montage is stopped.
+    assert(exec:startGuillotineHold(victim,function()return alive end))
+    alive=false;timers[2]()
+    assert(cancelled[2] and h.has('montage stop Hun_EXD_ByMBoss_Start_Montage') and lines(h,'本体起手蒙太奇停止=true 读回播放中=false')==1,h.all())
+    print('PASS a Hun-skeleton guillotine victim plays the original start and finish montages on its own body, held at the catch')
+end
+do
+    local h=harness()
+    local victim=guillotineHun(h,false)
+    local timers={}
+    local exec=h.new({loop=function(_,fn)timers[#timers+1]=fn;return #timers end,cancel=function()end})
+    assert(exec:startGuillotineHold(victim,function()return true end))
+    assert(lines(h,'铡刀本体播放没成，退回借身体：受害方=BP_Monster_Hun 本体播放=true 读回蒙太奇=无')==1,h.all())
+    assert(h.has('montage stop Hun_EXD_ByMBoss_Start_Montage') and #h.components==1 and h.components[1].playing=='Hun_EXD_ByMBoss','falls back to the borrowed body')
+    exec:stop('F4')
+    local saved=require('hun_look').STEPS.guillotineSelf
+    require('hun_look').STEPS.guillotineSelf=false
+    local h2=harness();local v2=guillotineHun(h2)
+    local e2=h2.new({loop=function(_,fn)return 1 end,cancel=function()end})
+    assert(e2:startGuillotineHold(v2,function()return true end));require('hun_look').STEPS.guillotineSelf=saved
+    assert(#h2.components==1 and not h2.has('montage play Hun_EXD_ByMBoss_Start_Montage stopAll=true'),'switch off: the borrowed body as before')
+    print('PASS a Hun victim whose own montage does not read back falls back to the borrowed body, as does the switch off')
+end
 print('arena_executions ok')

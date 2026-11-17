@@ -93,6 +93,9 @@ Match.new=function(options)
     if options.tag=='[HunStats]' then hunStatsInstance=made elseif options.customOnly then companionStatsInstance=made else statMatchInstance=made end
     return made
 end
+local HunBody=require('hun_body');local realHunBodyNew=HunBody.new
+local hunBodyInstance
+HunBody.new=function(options)hunBodyInstance=realHunBodyNew(options);return hunBodyInstance end
 local Spectator=require('spectator_mode');local realSpectatorNew=Spectator.new
 Spectator.new=function(options)spectatorOptions=options;return realSpectatorNew(options)end
 local Runtime=require('panel_runtime');local realRuntimeNew=Runtime.new
@@ -188,7 +191,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.16-beta-17',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.16-beta-18',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')
@@ -297,6 +300,26 @@ arenaOptions.summonAdopted(npc,known,'blue')
 arenaOptions.summonAdopted(npc,known,'red')
 arenaOptions.summonAdopted(npc,known,'neutral')
 assert(table.concat(whose,',')=='companion-brought,arena-brought,arena-brought,arena-brought',table.concat(whose,','))
+-- A Hun body takes neither the arena's set nor the companions': an empty profile keeps the game's numbers, a profile
+-- with values writes those through its own writer.
+do
+    assert(hunBodyInstance,'main builds the Hun body through hun_body.new')
+    local owns,attributes=hunBodyInstance.owns,hunBodyInstance.attributes
+    local arenaSpawn,companionSpawn,hunSpawn=statMatchInstance.onSpawn,companionStatsInstance.onSpawn,hunStatsInstance.onSpawn
+    whose={}
+    statMatchInstance.onSpawn=function()whose[#whose+1]='arena';return {ok=true}end
+    companionStatsInstance.onSpawn=function()whose[#whose+1]='companion';return {ok=true}end
+    hunStatsInstance.onSpawn=function(self)whose[#whose+1]='hun:'..tostring(self.custom.Attack);return {ok=true}end
+    hunBodyInstance.owns=function(_,actor)return actor==npc end
+    hunBodyInstance.attributes=function()return nil end
+    assert(arenaOptions.activate(npc,known,'blue')==true and arenaOptions.activate(npc,known,'companion')==true)
+    assert(#whose==0,'a Hun body with no values keeps the game numbers: '..table.concat(whose,','))
+    hunBodyInstance.attributes=function()return {Attack=50,NotAField=1}end
+    assert(arenaOptions.activate(npc,known,'blue')==true)
+    assert(table.concat(whose,',')=='hun:50' and hunStatsInstance.custom.NotAField==nil,table.concat(whose,','))
+    hunBodyInstance.owns,hunBodyInstance.attributes=owns,attributes
+    statMatchInstance.onSpawn,companionStatsInstance.onSpawn,hunStatsInstance.onSpawn=arenaSpawn,companionSpawn,hunSpawn
+end
 -- A companion whose numbers the game refused is treated like an arena unit's: rolled back it stays and fights.
 companionStatsInstance.onSpawn=function()return {ok=false,rollback_verified=true,message='fixture'}end
 local stays,_,why=arenaOptions.activate(npc,known,'companion')
