@@ -126,15 +126,42 @@ test('a body still hidden after the tags read zero is shown once',function()
     h:tick(1);assert(h.shown==1 and h.actor.bHidden==false and h:logged('解除隐藏')==1)
     h.actor.bHidden=true;h:tick(5);assert(h.shown==1,'the game hiding it again is left alone')
 end)
-test('mesh components are listed once per request and only for this body',function()
-    local h=fixture();assert(h:run().ok);h:tick(4)
-    assert(h.scans==3 and h:logged('网格组件：实例=NPC Hun 1；共3个')==1)
-    assert(h:logged('SkeletalMeshComponent Body 资源=SK_Body 可见=true')==1 and h:logged('StaticMeshComponent Head 资源=SM_Head')==1)
-    assert(h:logged('StaticMeshComponent Mesh（挂件） 资源=SM_Hat')==1 and h:logged('SK_Other')==0)
+test('the look probe lists the body and the player once per request and writes nothing',function()
+    local h=fixture()
+    -- The player carries a head with its own animation class, hung on the body mesh at a socket.
+    local body=h.components.SkeletalMeshComponent[1]
+    local head=object('Comp /Game/Map.Player:Hun_pic_head',h.player);head.SkeletalMeshAsset=object('Mesh /Game/Hun.SK_Head');head.bHiddenInGame=false;head.ForcedLodModel=0
+    head.AnimClass=object('Class /Game/Hun.ABP_Head_C')
+    local headClass=object('Class /Script/Engine.SkeletalMeshComponent');function headClass:GetFName()return {ToString=function()return 'SkeletalMeshComponent'end}end
+    local animClass=object('Class /Game/Hun.ABP_Head_C');function animClass:GetFName()return {ToString=function()return 'ABP_Head_C'end}end
+    local instance=object('Anim instance',head);function instance:GetClass()return animClass end
+    function head:GetOwner()return h.player end
+    function head:GetClass()return headClass end
+    function head:IsVisible()return true end
+    function head:GetAttachParent()return body end
+    function head:GetAttachSocketName()return {ToString=function()return 'head'end}end
+    function head:GetAnimInstance()return instance end
+    table.insert(h.components.SkeletalMeshComponent,head)
+    h.actor['Actor Config']['Default Linked Animation Layers']={object('Class /Game/Hun.ABP_Item_Hun_Summon_C')}
+    h.actor.CharacterMovement=object('Movement',h.actor);h.actor.CharacterMovement.Velocity={X=300,Y=400,Z=0};h.actor.CharacterMovement.MovementMode=1;h.actor.CharacterMovement.MaxWalkSpeed=600
+    assert(h:run().ok);h:tick(4)
+    assert(h.scans==8,'four component classes for the body and four for the player: '..h.scans)
+    assert(h:logged('外观部件：魂 NPC Hun 1；共3个')==1 and h:logged('外观部件：主角 Player；共1个')==1)
+    assert(h:logged('SkeletalMeshComponent Body 资源=SK_Body')==1 and h:logged('StaticMeshComponent Head 资源=SM_Head')==1)
+    assert(h:logged('StaticMeshComponent Mesh（挂件:Hat actor） 资源=SM_Hat')==1 and h:logged('SK_Other')==0)
+    assert(h:logged('SkeletalMeshComponent Hun_pic_head 资源=SK_Head 挂在=Body@head 可见=true 游戏内隐藏=false 强制LOD=0 动画实例=ABP_Head_C 动画类=ABP_Head_C')==1)
+    assert(h:logged('动画与移动：魂；配置=ActorC_Monster_Hun；默认动画层=ABP_Item_Hun_Summon_C；移动模式=1；水平速度=500；最大行走速度=600')==1)
+    assert(h:logged('动画与移动：主角')==1)
+    assert(#h.writes==2,'only the two tag writes of the birth itself')
+    h:tick(12);assert(h:logged('动画与移动：魂（第6次复查）')==1 and h:logged('动画与移动：魂（第14次复查）')==1)
+    assert(h.scans==8,'later cycles read the movement only')
 end)
 test('a failing component read cannot interrupt the support cycle',function()
     local h=fixture();h.options.findAll=function()error('native fixture failure')end;h.mod=Body.new(h.options)
-    assert(h:run().ok);h:tick(3);assert(h:logged('本体初始化读回')==1 and h:logged('共0个')==1)
+    assert(h:run().ok);h:tick(3);assert(h:logged('本体初始化读回')==1 and h:logged('共0个')==2)
+    h=fixture();h.options.player=function()error('player lookup failure')end
+    local broken=Body.new(h.options);h.mod=broken
+    assert(not h:run().ok,'an unreadable player fails the identity check closed')
 end)
 test('the watch ends after its fixed number of cycles',function()
     local h=fixture();assert(h:run().ok);h:tick(20);local reads=h.reads

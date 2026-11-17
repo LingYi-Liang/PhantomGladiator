@@ -6,11 +6,14 @@ local Body={path='/PBZCombatAsset/ActorData/Mobs/000_Hun/BP_Monster_Hun.BP_Monst
 local CONFIG='/PBZCombatAsset/ActorData/Mobs/000_Hun/ActorConfig/ActorC_Monster_Hun.ActorC_Monster_Hun'
 local ABILITY_UTILS='/Script/SGameUtils.Default__AbilityUtils'
 local CLEAR={'AI.Hatred.CanNotBeHatred','CharacterState.Unselectable.Force.Hide'}
-local MESH_CLASSES={'SkeletalMeshComponent','StaticMeshComponent','GroomComponent'}
-local ASSET_FIELDS={'SkeletalMeshAsset','SkinnedAsset','StaticMesh','GroomAsset'}
+local MESH_CLASSES={'SkeletalMeshComponent','StaticMeshComponent','GroomComponent','ChildActorComponent'}
+local ASSET_FIELDS={'SkeletalMeshAsset','SkinnedAsset','StaticMesh','GroomAsset','ChildActorClass'}
 -- Support cycles after birth during which the tags are read again, in case the game adds them late.
 local WATCH=20
 local MAX_COMPONENT_LINES=48
+local MAX_PLAYER_LINES=96
+-- Support cycles after birth at which the body's movement is read again, when it is likely walking or fighting.
+local MOTION_CHECKS={[6]=true,[14]=true}
 local function call(o,m,...)
     if not U.valid(o)then return false end
     local a,n={...},select('#',...);local ok,value=pcall(function()return o[m](o,table.unpack(a,1,n))end)
@@ -66,9 +69,23 @@ function Body.new(o)
         return zero,table.concat(parts,'；')
     end
     local function hidden(actor)local value=U.field(actor,'bHidden');if type(value)=='boolean'then return value end;return nil end
-    -- Read-only list of the mesh components this instance owns, once per summon request.
-    local function meshes(r)
-        local key,lines,total=U.key(r.actor),{},0
+    -- Read-only. Every mesh, hair and child-actor component an actor carries: what it shows, what it hangs on,
+    -- and for skinned meshes which animation class drives it. Listed for the body and for the real player,
+    -- once per summon request, to compare the two looks.
+    local function nameOf(value)
+        if not U.valid(value)then return'无'end
+        return short(value)
+    end
+    local function socketOf(component)
+        local got,socket=call(component,'GetAttachSocketName')
+        if not got or socket==nil then return'?'end
+        if type(socket)=='string'then return socket end
+        local ok,text=pcall(function()return socket:ToString()end)
+        return ok and type(text)=='string'and text or'?'
+    end
+    local function components(actor,label,limit)
+        local key,lines,total=U.key(actor),{},0
+        if not key then say('外观部件：'..label..' 不可读');return end
         for _,className in ipairs(MESH_CLASSES)do
             local ok,list=pcall(findAll,className)
             for _,component in ipairs(ok and type(list)=='table'and list or{})do
@@ -81,23 +98,52 @@ function Body.new(o)
                     end
                     if level then
                         total=total+1
-                        if #lines<MAX_COMPONENT_LINES then
+                        if #lines<limit then
                             local asset
                             for _,property in ipairs(ASSET_FIELDS)do
                                 local value=U.field(component,property)
                                 if U.valid(value)then asset=value;break end
                             end
                             local gotVisible,visible=call(component,'IsVisible')
-                            lines[#lines+1]=(U.className(component)or'?')..' '..short(component)..(level==2 and'（挂件）'or'')
-                                ..' 资源='..(asset and short(asset)or'无')..' 可见='..tostring(gotVisible and visible)
-                                ..' 游戏内隐藏='..tostring(U.field(component,'bHiddenInGame'))..' 强制LOD='..tostring(U.field(component,'ForcedLodModel'))
+                            local gotParent,parent=call(component,'GetAttachParent')
+                            local line=(U.className(component)or'?')..' '..short(component)..(level==2 and'（挂件:'..nameOf(owner)..'）'or'')
+                                ..' 资源='..(asset and short(asset)or'无')..' 挂在='..(gotParent and nameOf(parent)or'?')..'@'..socketOf(component)
+                                ..' 可见='..tostring(gotVisible and visible)..' 游戏内隐藏='..tostring(U.field(component,'bHiddenInGame'))
+                                ..' 强制LOD='..tostring(U.field(component,'ForcedLodModel'))
+                            local gotAnim,instance=call(component,'GetAnimInstance')
+                            if gotAnim and U.valid(instance)then line=line..' 动画实例='..tostring(U.className(instance))end
+                            local animClass=U.field(component,'AnimClass')
+                            if U.valid(animClass)then line=line..' 动画类='..short(animClass)end
+                            lines[#lines+1]=line
                         end
                     end
                 end
             end
         end
-        say('网格组件：实例='..r.name..'；共'..total..'个'..(total>#lines and'，只列前'..#lines..'个'or''))
+        say('外观部件：'..label..'；共'..total..'个'..(total>#lines and'，只列前'..#lines..'个'or''))
         for _,line in ipairs(lines)do say('  '..line)end
+    end
+    -- Read-only. The animation layers an actor's config links by default, and how its movement is set up.
+    local function motion(actor,label)
+        local config=U.field(actor,'Actor Config')
+        local layers=U.array(U.field(config,'Default Linked Animation Layers'))
+        local names={};for _,layer in ipairs(layers or{})do names[#names+1]=nameOf(layer)end
+        local movement=U.field(actor,'CharacterMovement')
+        local velocity=U.field(movement,'Velocity')
+        local x,y=U.struct(velocity,'X'),U.struct(velocity,'Y')
+        local speed=type(x)=='number'and type(y)=='number'and string.format('%.0f',math.sqrt(x*x+y*y))or'?'
+        say('动画与移动：'..label..'；配置='..nameOf(config)..'；默认动画层='..(layers and(#names>0 and table.concat(names,'|')or'空')or'未读回')
+            ..'；移动模式='..tostring(U.field(movement,'MovementMode'))..'；水平速度='..speed..'；最大行走速度='..tostring(U.field(movement,'MaxWalkSpeed'))
+            ..'；朝移动方向转身='..tostring(U.field(movement,'bOrientRotationToMovement'))..'；用控制器朝向='..tostring(U.field(actor,'bUseControllerRotationYaw')))
+    end
+    local function look(r)
+        components(r.actor,'魂 '..r.name,MAX_COMPONENT_LINES)
+        motion(r.actor,'魂')
+        local player=o.player()
+        if U.valid(player)then
+            components(player,'主角 '..tostring(name(player)),MAX_PLAYER_LINES)
+            motion(player,'主角')
+        else say('外观部件：主角不可读')end
     end
     -- Trial: the effect classes of the enabled accessories go onto this instance, one by one, each read back.
     local function equip(r)
@@ -187,8 +233,9 @@ function Body.new(o)
                     if not equipped then say('饰品效果施加中断：'..tostring(why))end
                     if not dumped[r.batch]then
                         dumped[r.batch]=true
-                        local listed,why=pcall(meshes,r)
-                        if not listed then say('网格组件读取中断：'..tostring(why))end
+                        local listed,why=pcall(look,r)
+                        if not listed then say('外观探查中断：'..tostring(why))end
+                        r.lookLogged=true
                     end
                     r.phase='observed'
                 elseif r.streak>=2 and hidden(r.actor)==true and not r.shown then
@@ -196,6 +243,10 @@ function Body.new(o)
                     r.shown=true
                     local wrote=call(r.actor,'SetActorHiddenInGame',false)
                     say('解除隐藏：实例='..r.name..'；SetActorHiddenInGame(false)调用='..tostring(wrote==true)..'；隐藏读回='..tostring(hidden(r.actor)))
+                end
+                if r.lookLogged and MOTION_CHECKS[r.checks]then
+                    local read,why=pcall(motion,r.actor,'魂（第'..r.checks..'次复查）')
+                    if not read then say('动画与移动读取中断：'..tostring(why))end
                 end
                 if r.checks==WATCH then
                     say('复查结束：实例='..r.name..'；'..text..'；两项都为0='..tostring(zero)..'；'..describe(r))
