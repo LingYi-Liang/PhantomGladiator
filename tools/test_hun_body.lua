@@ -344,4 +344,62 @@ test('owns: only bodies this module summoned and still follows',function()
     assert(h.mod:owns(h.actor) and not h.mod:owns(h.other) and not h.mod:owns(nil))
     h.mod:tick({});assert(not h.mod:owns(h.actor))
 end)
-print('hun body: PASS '..n..' scoped-instance/tag/lifecycle/profile checks; native gameplay remains unverified')
+-- The look and weapon modules as stand-ins that record what hun_body asks of them.
+local function scheduleFixture()
+    local h=probeFixture()
+    h.asked={}
+    local function note(what)return function(_,r,why)h.asked[#h.asked+1]=what..' '..tostring(r and r.name)..(why and(' '..why)or'')end end
+    h.options.look={apply=function()return {}end,recheck=function()end,cleanup=note('look cleanup'),hideParts=note('hide'),
+        partsText=function()return 'meshhead:true'end}
+    h.options.weapons={equip=note('equip'),stop=note('stop'),cleanup=note('weapons cleanup'),silence=function()h.asked[#h.asked+1]='silence'end}
+    h.mod=Body.new(h.options)
+    function h:has(text)for _,a in ipairs(self.asked)do if a==text then return true end end;return false end
+    return h
+end
+test('weapons are equipped at the second support cycle, once; a body leaving alive has its parts and weapons cleaned at once',function()
+    local h=scheduleFixture();assert(h:run().ok)
+    h:tick(1);assert(not h:has('equip NPC Hun 1'),'not at the first cycle')
+    h:tick(1);assert(h:has('equip NPC Hun 1'))
+    h:tick(5);local equips=0;for _,a in ipairs(h.asked)do if a:find('^equip')then equips=equips+1 end end;assert(equips==1)
+    h.mod:tick({})
+    assert(h:has('stop NPC Hun 1 实例离场') and h:has('look cleanup NPC Hun 1 实例离场') and h:has('weapons cleanup NPC Hun 1 实例离场'))
+end)
+test('a body that died and left is cleaned only when its death readback ends; the readback lists the parts',function()
+    local h=scheduleFixture();assert(h:run().ok);h:tick(2)
+    h.hpValue=0;h:tick(1)
+    h.mod:tick({});assert(h:has('stop NPC Hun 1 实例离场') and not h:has('look cleanup NPC Hun 1 实例离场'),'deferred while it dissolves')
+    assert(h:logged('；新部件可见=[meshhead:true]')>=1)
+    assert(not h:has('hide NPC Hun 1'),'the death hide is off by default')
+    for i=1,16 do h.t=i;h.mod:tick({})end
+    assert(h:has('look cleanup NPC Hun 1 死亡读回结束（到时或已无效）') and h:has('weapons cleanup NPC Hun 1 死亡读回结束（到时或已无效）'))
+    local s=scheduleFixture();s.options.steps={probe=true,deathWatch=true,deathHide=true};s.mod=Body.new(s.options)
+    assert(s:run().ok);s:tick(2);s.hpValue=0;s:tick(1);s.t=1;s:tick(1);assert(s:has('hide NPC Hun 1'),'with the switch on, parts are hidden 1 s after HP 0')
+    local still=scheduleFixture();assert(still:run().ok);still:tick(2);still.hpValue=0;still:tick(1)
+    for i=1,16 do still.t=i;still:tick(1)end
+    assert(not still:has('look cleanup NPC Hun 1 死亡读回结束（到时或已无效）'),'a dead body still in the arena keeps its parts until it leaves')
+    still.mod:tick({});assert(still:has('look cleanup NPC Hun 1 实例离场'))
+end)
+test('unload stops the weapon loops',function()
+    local h=scheduleFixture();assert(h:run().ok);h.mod:silence();assert(h:has('silence'))
+end)
+test('the weapon module gets the battle flag, the opponents without the player or the own team, and a live identity check',function()
+    local Weapons=require('hun_weapons');local real=Weapons.new;local captured
+    Weapons.new=function(opts)captured=opts;return {equip=function()end,stop=function()end,cleanup=function()end,silence=function()end}end
+    local h=probeFixture();h.mod=Body.new(h.options);Weapons.new=real
+    assert(h:run().ok)
+    local mate,enemy=object('NPC mate',h.world),object('NPC enemy',h.world)
+    local members={{actor=h.actor,team='blue'},{actor=mate,team='blue'},{actor=enemy,team='red'},{actor=h.player,team='red'},{actor=object('NPC x',h.world),team='neutral'}}
+    h.mod:tick(members,true);assert(captured.battle()==true)
+    local r={actor=h.actor,name='NPC Hun 1'}
+    local list=captured.opponents(r);assert(#list==1 and list[1]==enemy,'only the other fighting team, never the player')
+    h.mod:tick(members,false);assert(captured.battle()==false)
+    assert(captured.current({actor=h.actor})==false,'a record that is not the followed one is not current')
+    h.mod:tick({},true);assert(captured.battle()==true)
+end)
+test('the ability probe counts the double blades of specs that hold the class default object',function()
+    local h=probeFixture()
+    local cdo=object('GA_Hun_Double_A_C /PBZ/GA_Hun_Double_A.Default__GA_Hun_Double_A_C')
+    h.asc.ActivatableAbilities={Items={{Ability=cdo,Handle={Handle=3},ActiveCount=0}}}
+    assert(h:run().ok and h:logged('GA_Hun_Double_*=1')>=1)
+end)
+print('hun body: PASS '..n..' scoped-instance/tag/lifecycle/profile/schedule checks; native gameplay remains unverified')

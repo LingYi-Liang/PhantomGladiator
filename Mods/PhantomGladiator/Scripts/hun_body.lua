@@ -1,10 +1,14 @@
 -- Experimental, owned NPC body only. Never possesses a player or edits a shared config.
 -- The body is born through the normal summon chain with its template untouched. The two tags its
 -- template starts with (cannot be hated, forced hide) are then cleared on that one instance and read back.
--- After that, hun_look.lua swaps the body mesh and main anim class on that instance. Read-only probes of the body
--- (and of the real player, read only) run before and after those writes, once per summon request.
+-- After that, hun_look.lua swaps the body mesh and main anim class on that instance and adds its look parts. Read-only
+-- probes of the body (and of the real player, read only) run before and after those writes, once per summon request.
+-- At the second support cycle hun_weapons.lua slots a player weapon config and runs the body's fight loop.
+-- Parts and weapon actors these modules registered are destroyed when the body leaves the arena, or, for a body that
+-- died, when its death readback ends.
 local U=require('ue_observe')
 local Look=require('hun_look')
+local Weapons=require('hun_weapons')
 local Body={path='/PBZCombatAsset/ActorData/Mobs/000_Hun/BP_Monster_Hun.BP_Monster_Hun_C'}
 local CONFIG='/PBZCombatAsset/ActorData/Mobs/000_Hun/ActorConfig/ActorC_Monster_Hun.ActorC_Monster_Hun'
 local ABILITY_UTILS='/Script/SGameUtils.Default__AbilityUtils'
@@ -30,6 +34,8 @@ local SAMPLE_LINES=30      -- lines it may write in a load
 local SLOT_LINES=2         -- montage-slot lines per summon request
 local COOLDOWN_LINES=4     -- player weapon-switch cooldown lines in a load
 local DEATH_SECONDS=15     -- death readback: one line a second for this long after HP reaches 0
+local DEATH_HIDE_AFTER=1   -- seconds after HP reaches 0 at which Look.STEPS.deathHide hides the added parts
+local WEAPON_CHECK=2       -- support cycle after birth at which hun_weapons equips the body
 -- A summoned unit that is a Hun body with no attribute values in its profile keeps the game's numbers.
 Body.KEEP_STATS={
     onSpawn=function()return {ok=true,message='魂保持游戏原值'}end,
@@ -96,6 +102,47 @@ function Body.new(o)
         local world=o.world();local player=o.player()
         return self.alive and U.valid(world)and U.inWorld(actor,world)and U.key(actor)~=U.key(player)
             and U.npcPath(actor)==Body.path and(not record or record.epoch==epoch and record.world==U.key(world)and record.name==name(actor))
+    end
+    -- The arena's last member list and battle flag, as tick() received them; every actor is checked again before use.
+    local lastMembers,battle={},false
+    local function getStats()
+        if stats==nil then
+            local ok,module=pcall(require,'character_stats')
+            stats=ok and module.new()or false
+        end
+        return stats or nil
+    end
+    -- The opponents of one body: members of the other fighting team, never the player.
+    local function opponents(r)
+        local key,mine=U.key(r.actor),nil
+        for _,m in ipairs(lastMembers)do if U.key(m.actor)==key then mine=m.team end end
+        if mine~='blue'and mine~='red'then return {}end
+        local player=U.key(o.player())
+        local list={}
+        for _,m in ipairs(lastMembers)do
+            local k=U.key(m.actor)
+            if k and k~=key and k~=player and(m.team=='blue'or m.team=='red')and m.team~=mine then list[#list+1]=m.actor end
+        end
+        return list
+    end
+    local qteFamilies
+    local function qteFamily(actor)
+        if qteFamilies==nil then
+            local ok,module=pcall(require,'arena_grabs')
+            qteFamilies=ok and type(module.QTE_FAMILIES)=='table'and module.QTE_FAMILIES or false
+        end
+        local p=U.npcPath(actor)
+        local root=type(p)=='string'and p:match('^(/PBZCombatAsset/ActorData/Mobs/[^/]+/)')
+        return qteFamilies and root and qteFamilies[root]~=nil or false
+    end
+    local weapons=o.weapons or Weapons.new({log=o.log,find=find,load=loadClass,fname=fname,clock=clock,loop=o.loop,cancel=o.cancel,
+        stats=getStats,hp=o.hp,battle=function()return battle end,opponents=opponents,qteFamily=qteFamily,steps=o.weaponSteps,
+        current=function(r)return records[U.key(r.actor)or'']==r and current(r.actor,r)end})
+    local function optional(module,method,...)
+        local fn=module and module[method]
+        if type(fn)~='function'then return end
+        local ok,why=pcall(fn,module,...)
+        if not ok then say(method..' 中断：'..tostring(why))end
     end
     -- Reads both tags on this instance, sets a non-zero one to zero and reads it again.
     -- Returns whether both read zero afterwards, plus one text with every value read.
@@ -280,7 +327,8 @@ function Body.new(o)
         for i,spec in ipairs(specs or{})do
             if i>512 then break end
             local ability=U.struct(spec,'Ability')
-            local n=nameOf(ability)
+            -- A spec holds the class default object: Default__GA_X_C reads as GA_X_C.
+            local n=(nameOf(ability):gsub('^Default__',''))
             if n:find('^GA_Hun_Double_')then double=double+1 end
             if #names<MAX_ABILITY_NAMES then
                 names[#names+1]=n..'(h='..tostring(U.struct(U.struct(spec,'Handle'),'Handle'))..',active='..tostring(U.struct(spec,'ActiveCount'))..')'
@@ -427,24 +475,38 @@ function Body.new(o)
         end
         local read,hp=pcall(o.hp,d.actor)
         local _,destroying=call(d.actor,'IsActorBeingDestroyed')
+        local parts=d.record and type(look.partsText)=='function'and look:partsText(d.record)or''
         say('死亡读回：实例='..d.name..' 第'..string.format('%.0f',t-d.at)..'秒 HP='..tostring(read and hp)..' Dead='..tostring(tagCount(d.actor,'CharacterState.Dead'))
-            ..' 销毁中='..tostring(destroying)..' 有效=true')
+            ..' 销毁中='..tostring(destroying)..' 有效=true'..(parts~=''and('；新部件可见=['..parts..']')or''))
+        if steps.deathHide and not d.hidden and d.record and t-d.at>=DEATH_HIDE_AFTER then
+            d.hidden=true;optional(look,'hideParts',d.record)
+        end
+    end
+    -- Parts and weapon actors of a body that left the arena: destroyed now, or after its death readback.
+    local function cleanup(r,why)
+        optional(look,'cleanup',r,why)
+        optional(weapons,'cleanup',r,why)
     end
     local function hpOf(actor)
         local read,hp=pcall(o.hp,actor)
         return read and type(hp)=='number'and hp or nil
     end
     local function watchDeath(key,r)
-        if not steps.deathWatch or dying[key]then return end
-        dying[key]={actor=r.actor,name=r.name,at=clock(),lines=0}
+        if not steps.deathWatch or dying[key]or r.deathWatched then return end
+        r.deathWatched=true
+        dying[key]={actor=r.actor,name=r.name,at=clock(),lines=0,record=r}
         say('死亡读回开始：实例='..r.name..'；HP到0，之后每秒一行，最多'..DEATH_SECONDS..'秒，只读')
+    end
+    local function endDeath(key,d,why)
+        dying[key]=nil
+        if d.left then cleanup(d.record,'死亡读回结束（'..why..'）')end
     end
     local function tickDeaths()
         for key,d in pairs(dying)do
-            if d.lines>=DEATH_SECONDS or clock()-d.at>DEATH_SECONDS+0.5 then dying[key]=nil
+            if d.lines>=DEATH_SECONDS or clock()-d.at>DEATH_SECONDS+0.5 then endDeath(key,d,'到时或已无效')
             else
                 local ok,why=pcall(deathLine,d)
-                if not ok then say('死亡读回中断：'..tostring(why));dying[key]=nil end
+                if not ok then say('死亡读回中断：'..tostring(why));endDeath(key,d,'中断')end
             end
         end
     end
@@ -526,9 +588,10 @@ function Body.new(o)
         if not applied then say('外观与动画中断：实例='..r.name..' 原因='..tostring(why))end
         return true
     end
-    function self:tick(members)
+    function self:tick(members,battleActive)
         if not self.alive then return end
-        if next(records)then self:follow(members)end
+        battle=battleActive==true
+        if next(records)then lastMembers=members or{};self:follow(members)else lastMembers={}end
         if next(dying)then tickDeaths()end
     end
     function self:follow(members)
@@ -537,7 +600,9 @@ function Body.new(o)
             if not owned[key]or not current(r.actor,r)then
                 records[key]=nil
                 stopSampler(key,'实例离场')
+                optional(weapons,'stop',r,'实例离场')
                 if r.dead or(r.phase=='observed'and U.valid(r.actor)and(hpOf(r.actor)or 1)<=0)then watchDeath(key,r)end
+                if dying[key]and dying[key].record==r then dying[key].left=true else cleanup(r,'实例离场')end
             elseif r.phase=='observed'and not r.dead and(hpOf(r.actor)or 1)<=0 then
                 r.dead=true;watchDeath(key,r)
             end
@@ -568,6 +633,7 @@ function Body.new(o)
                     local wrote=call(r.actor,'SetActorHiddenInGame',false)
                     say('解除隐藏：实例='..r.name..'；SetActorHiddenInGame(false)调用='..tostring(wrote==true)..'；隐藏读回='..tostring(hidden(r.actor)))
                 end
+                if r.checks==WEAPON_CHECK and records[key]==r then optional(weapons,'equip',r)end
                 if r.lookLogged and MOTION_CHECKS[r.checks]then
                     local read,why=pcall(motion,r.actor,'魂（第'..r.checks..'次复查）')
                     if not read then say('动画与移动读取中断：'..tostring(why))end
@@ -595,6 +661,7 @@ function Body.new(o)
     function self:silence()
         self.alive=false;epoch=epoch+1;context=nil
         for key in pairs(samplers)do stopSampler(key,'Mod 卸载')end
+        optional(weapons,'silence')
         dying={}
     end
     return self

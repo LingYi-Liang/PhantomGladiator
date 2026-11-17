@@ -1,6 +1,7 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Look=require('hun_look')
 local P=Look.PATHS
+local CLONE={look='clone',anim=true}
 local index=0
 local function object(label,fields)
     index=index+1;local id=index;local a=fields or {}
@@ -22,27 +23,38 @@ local function instance(cls,h)
     function i:LinkAnimClassLayers(layer)h.calls[#h.calls+1]='instance link '..layer.label;if not h.linkIgnored then h.layers[layer]=true end end
     return i
 end
+local function vec(x,y,z)return {X=x,Y=y,Z=z}end
 -- A Hun body with its mesh, anim instance, weapons component and two weapon actors on weapon_r / weapon_l.
+-- AddComponentByClass on the body makes skeletal or cloth parts that behave as the engine does, unless h.broken
+-- names a part and a call to break on it.
 local function fixture(opts)
     opts=opts or {}
-    local h={logs={},calls={},layers={},loaded={}}
+    local h={logs={},calls={},layers={},loaded={},broken={}}
     h.skin=object('SkeletalMesh /Game/Hun_Skin.Hun_Skin')
     h.clone=object('SkeletalMesh '..P.clone)
     h.player=class('/HuaShira/Characters/Hero/Hero_Hun/Animation/PBZ_ABP_Hun_Base.PBZ_ABP_Hun_Base_C')
     h.npc=class(P.anim);h.mm=class(P.mm);h.item=class(P.item)
     h.assets={[P.clone]=h.clone,[P.anim]=h.npc,[P.mm]=h.mm,[P.item]=h.item}
-    h.sockets={hatSocket=true,weapon_r=true,weapon_l=true}
+    if opts.full~=false then
+        h.body_=object('SkeletalMesh '..P.body)
+        h.copyPose=class(P.copyPose);h.meshClass=class(P.meshClass);h.clothClass=class(P.clothClass)
+        h.assets[P.body]=h.body_;h.assets[P.copyPose]=h.copyPose;h.assets[P.meshClass]=h.meshClass;h.assets[P.clothClass]=h.clothClass
+        for _,spec in ipairs({Look.HEAD,table.unpack(Look.PARTS)})do h.assets[spec.asset]=object('SkeletalMesh '..spec.asset)end
+        for _,spec in ipairs(Look.CLOTH)do h.assets[spec.asset]=object('ChaosClothAsset '..spec.asset)end
+    end
+    h.sockets={hatSocket=true,weapon_r=true,weapon_l=true,head=true}
     h.materials={'MI_ZeroHun_Head_b','MI_Hun_Haircard_Healthfade'}
+    h.headAt=vec(0,0,170)
     -- A new body (and its weapons) for the same loaded assets and the same look instance.
     function h:body(opts)
     opts=opts or {}
-    h.calls,h.layers,h.logAt,h.linkIgnored={},{},{},opts.linkIgnored
+    h.calls,h.layers,h.logAt,h.linkIgnored,h.parts={},{},{},opts.linkIgnored,{}
     local mesh=object('SkeletalMeshComponent /Game/Map.Hun:CharacterMesh0')
     mesh.asset=h.skin;mesh.AnimClass=h.player;mesh.anim=instance(h.player,h)
     function mesh:GetSkeletalMeshAsset()return self.asset end
     function mesh:SetSkeletalMeshAsset(asset)
         h.calls[#h.calls+1]='mesh '..asset.label;h.logAt=h.logAt or {};h.logAt['mesh '..asset.label]=#h.logs
-        if not opts.meshIgnored then self.asset=asset end
+        if not opts.meshIgnored and not(opts.bodyIgnored and asset==h.body_)then self.asset=asset end
     end
     function mesh:SetAnimInstanceClass(cls)
         h.calls[#h.calls+1]='class '..cls.label;h.logAt=h.logAt or {};h.logAt['class '..cls.label]=#h.logs
@@ -56,8 +68,58 @@ local function fixture(opts)
     function mesh:DoesSocketExist(socket)return h.sockets[socket]==true end
     function mesh:GetNumMaterials()return #h.materials end
     function mesh:GetMaterial(i)return object('MaterialInstanceConstant /Game/M.'..h.materials[i+1])end
+    function mesh:GetSocketLocation(socket)assert(socket=='head');return h.headAt end
     h.mesh=mesh
     h.actor=object('BP_Monster_Hun_C /Game/Map.Hun_1',{Mesh=mesh})
+    function h.actor:AddComponentByClass(cls,manual,transform,deferred)
+        assert(manual==true and deferred==false and transform.Scale3D.X==1)
+        h.calls[#h.calls+1]='add '..cls.label;h.logAt['add '..#h.parts]=#h.logs
+        if h.addFails then return nil end
+        local cloth=cls==h.clothClass
+        local c=object((cloth and'ChaosClothComponent'or'SkeletalMeshComponent')..' /Game/Map.Hun:Part'..#h.parts)
+        c.cloth=cloth;c.visible=true;c.ComponentTags={}
+        if cloth then c.bUseAttachedParentAsPoseComponent=not h.poseOff end
+        local function broken(what)return c.partName and h.broken[c.partName]==what end
+        function c:GetOwner()return h.actor end
+        function c:K2_AttachToComponent(parent,socket,a,b,s,weld)
+            assert(a==2 and b==2 and s==2 and weld==false);self.parent=parent;self.socket=socket
+        end
+        function c:GetAttachParent()return self.parent end
+        function c:GetAttachSocketName()return {ToString=function()return self.socket end}end
+        function c:SetSkeletalMeshAsset(asset)
+            self.asset=asset
+            for _,spec in ipairs({Look.HEAD,table.unpack(Look.PARTS)})do if h.assets[spec.asset]==asset then self.partName=spec.name end end
+            h.calls[#h.calls+1]='part '..tostring(self.partName)
+            if broken('asset')then self.asset=nil end
+        end
+        function c:GetSkeletalMeshAsset()return self.asset end
+        function c:SetAnimInstanceClass(cls2)h.logAt['part class '..tostring(self.partName)]=#h.logs;if not broken('class')then self.anim=instance(cls2,h)end end
+        function c:GetAnimInstance()return self.anim end
+        function c:SetAnimationMode(mode,force)assert(force==false);self.mode=mode end
+        function c:GetAnimationMode()return self.mode end
+        function c:SetEnableAnimation(v)self.animOn=v end
+        function c:IsVisible()return self.visible end
+        function c:SetVisibility(v,children)assert(children==false);self.visible=v end
+        function c:DoesSocketExist(s)return s=='head'end
+        function c:GetSocketLocation(s)assert(s=='head');return h.headGap and vec(0,0,170+h.headGap) or h.headAt end
+        function c:SetClothAsset(asset)
+            for _,spec in ipairs(Look.CLOTH)do if h.assets[spec.asset]==asset then self.partName=spec.name end end
+            h.calls[#h.calls+1]='cloth '..tostring(self.partName);h.logAt['cloth '..tostring(self.partName)]=#h.logs
+            if not broken('clothAsset')and not broken('anyAsset')then self.clothAsset=asset end
+        end
+        function c:GetClothAsset()return self.clothAsset end
+        function c:SetAsset(asset)h.calls[#h.calls+1]='cloth set '..tostring(self.partName);if not broken('anyAsset')then self.clothAsset=asset end end
+        function c:GetAsset()return self.clothAsset end
+        function c:SetEnableSimulation(v)self.sim=v and not broken('sim')end
+        function c:RecreateClothSimulationProxy()end
+        function c:ForceNextUpdateTeleportAndReset()end
+        function c:IsSimulationEnabled()return self.sim==true end
+        function c:IsSimulationSuspended()return false end
+        function c:K2_DestroyComponent(target)assert(target==self);h.calls[#h.calls+1]='destroy '..tostring(self.partName);self.destroying=true end
+        function c:IsBeingDestroyed()return self.destroying==true end
+        h.parts[#h.parts+1]=c
+        return c
+    end
     h.wc=object('CharacterWeaponsComponent')
     function h.wc:LinkDefaultAnimLayers()h.calls[#h.calls+1]='default layers';if not opts.noDefaultLayer then h.layers[h.item]=true end end
     h.actor['Character Weapons Component']=h.wc
@@ -77,18 +139,26 @@ local function fixture(opts)
     end
     h:body(opts)
     h.still=true
-    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,
+    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,steps=opts.steps or CLONE,
         find=function(path)return h.loaded[path]end,
         load=function(path)local a=h.assets[path];h.loaded[path]=a;return a end,
-        findAll=function(kind)assert(kind=='SkeletalMeshComponent');local list={mesh};for _,w in ipairs(h.weapons)do list[#list+1]=w end;return list end})
+        findAll=function(kind)
+            assert(kind=='SkeletalMeshComponent')
+            local list={h.mesh};for _,w in ipairs(h.weapons)do list[#list+1]=w end
+            for _,c in ipairs(h.parts)do if not c.cloth then list[#list+1]=c end end
+            return list
+        end})
     function h:apply(r)return self.look:apply(r or self.r,function()return self.still end)end
     function h:logged(text)local n=0;for _,line in ipairs(self.logs)do if line:find(text,1,true)then n=n+1 end end;return n end
     function h:firstLog(text)for i,line in ipairs(self.logs)do if line:find(text,1,true)then return i end end end
     function h:count(text)local n=0;for _,c in ipairs(self.calls)do if c==text then n=n+1 end end;return n end
+    function h:part(name_)for _,c in ipairs(self.parts)do if c.partName==name_ then return c end end end
+    function h:position(text)for i,c in ipairs(self.calls)do if c==text then return i end end end
     return h
 end
 local n=0;local function test(label,fn)fn();n=n+1;print('PASS '..label)end
 
+---- Stage 1 (Hun_Clone + anim class), with the look switch on 'clone'.
 test('the mesh becomes Hun_Clone and the anim class the NPC Hun class, each announced before and read back after',function()
     local h=fixture();local result=h:apply()
     assert(result.look==true and result.anim==true)
@@ -161,9 +231,105 @@ test('a native error inside a step counts as a failure and is logged',function()
     result=broken:apply();assert(result.look==false and #broken.calls==0 or broken:count('mesh '..broken.clone.label)==0)
 end)
 test('switches off leave the body untouched',function()
-    local saved={look=Look.STEPS.look,anim=Look.STEPS.anim}
-    Look.STEPS.look,Look.STEPS.anim=false,false
-    local h=fixture();local result=h:apply();assert(next(result)==nil and #h.calls==0)
-    Look.STEPS.look,Look.STEPS.anim=saved.look,saved.anim
+    local h=fixture({steps={look=false,anim=false}});local result=h:apply();assert(next(result)==nil and #h.calls==0)
 end)
-print('hun look: PASS '..n..' mesh/anim-class/readback/undo/breaker checks; native gameplay remains unverified')
+
+---- Stage 2 (full look: head, body, parts, cloth).
+local FULL={look='full',cloth=true,anim=true}
+test('full look: the head reads back before the body is swapped, then the parts; the first body gets the hair cloth only',function()
+    local h=fixture({steps=FULL});local result=h:apply()
+    assert(result.full==true and result.look==nil and result.anim==true,'full look stands, no clone fallback')
+    local head=h:part('meshhead')
+    assert(head and head.parent==h.mesh and head.socket=='None' and head.anim and head.anim:GetClass()==h.copyPose)
+    assert(h:position('part meshhead')<h:position('mesh '..h.body_.label),'the head is added before the body is swapped')
+    assert(h.mesh.asset==h.body_ and h.r.undo.mesh==h.skin)
+    assert(h:part('meshBrowLashCard').parent==head,'the brow card hangs on the head')
+    for _,name_ in ipairs({'meshBand','meshScarf'})do assert(h:part(name_).parent==h.mesh)end
+    local hat=h:part('Hun_Hat');assert(hat.parent==h.mesh and hat.socket=='hatSocket' and hat.mode==2 and hat.animOn==false and hat.anim==nil,'the hat is static at hatSocket')
+    assert(#head.ComponentTags==2 and h:part('meshBand').ComponentTags[1]=='PBZ.AllowLegacyClothLeaderPose')
+    local cloth={};for _,c in ipairs(h.parts)do if c.cloth then cloth[#cloth+1]=c end end
+    assert(#cloth==1 and cloth[1].partName=='CA_Hun_Hair' and cloth[1].parent==head and cloth[1].sim==true,'first body: hair only, on the head')
+    assert(h:logged('只加头发 CA_Hun_Hair01（对照用）')==1 and h:logged('布料 读回 实例=Hun_1 CA_Hun_Hair 挂在=Part0')==1)
+    assert(h:logged('布料备选 RefreshClothComponents 本版不做')==1)
+    assert(h:logged('部件 读回 实例=Hun_1 meshhead')==1 and h:logged('头骨距离=0.00cm')==1)
+    assert(h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2,'the added parts are not taken for weapons')
+    assert(h:logged('完整外观 头和身体=true 其余部件：meshBrowLashCard=true meshBand=true meshScarf=true Hun_Hat=true')==1)
+    -- Every native add and the cloth asset are announced first.
+    for i=0,#h.parts-1 do assert(h.logAt['add '..i] and h.logs[h.logAt['add '..i]]:find('即将 新建部件',1,true),'即将 before AddComponentByClass '..i)end
+    assert(h.logs[h.logAt['cloth CA_Hun_Hair']]:find('即将 布料 CA_Hun_Hair',1,true))
+    assert(h.logs[h.logAt['part class meshhead']]:find('即将 部件 meshhead',1,true))
+    h.look:recheck(h.r);assert(h:logged('复读 头部跟随 实例=Hun_1 头骨距离=0.00cm 跟随=true 布料：CA_Hun_Hair 模拟=true')==1)
+    -- The second body of the load gets all four cloth parts.
+    h:body();local second=h:apply()
+    local count=0;for _,c in ipairs(h.parts)do if c.cloth and not c.destroying then count=count+1 end end
+    assert(second.full==true and count==4 and h:logged('四件全加')==1)
+    assert(h:part('CA_Hun_Skirt').ComponentTags[1]=='SlicedLowerBody' and h:part('CA_Hun_Cape').parent==h.mesh)
+end)
+test('a head that does not read back is destroyed and the body keeps Hun_Clone (never headless)',function()
+    local h=fixture({steps=FULL});h.broken.meshhead='class'
+    local result=h:apply()
+    assert(result.full==false and result.look==true and h.mesh.asset==h.clone,'falls back to Hun_Clone')
+    assert(h:count('mesh '..h.body_.label)==0,'the body is never swapped without a head')
+    assert(h:part('meshhead').destroying==true and h:logged('还原完整外观 实例=Hun_1 原因=头没读回 销毁部件：meshhead=调用true/销毁中true/已销毁')==1)
+    h=fixture({steps=FULL});h.addFails=true
+    result=h:apply();assert(result.full==false and result.look==true and h:count('mesh '..h.body_.label)==0)
+end)
+test('a body swap that does not read back destroys the head, restores the mesh and takes Hun_Clone',function()
+    local h=fixture({steps=FULL,bodyIgnored=true});local result=h:apply()
+    assert(result.full==false and result.look==true and h.mesh.asset==h.clone and h:part('meshhead').destroying==true)
+    assert(h:logged('换身体 读回 实例=Hun_1 调用=true 网格=Hun_Skin')==1 and h:logged('原因=身体没读回')==1)
+    h=fixture({steps=FULL});h.sockets.weapon_r=nil
+    result=h:apply();assert(result.full==false and h:logged('插槽都在=false（缺 weapon_r）')>=1 and h:part('meshhead').destroying==true)
+end)
+test('cloth: a part whose asset does not read back is destroyed and read back; SetAsset is the second try',function()
+    local h=fixture({steps=FULL});h:apply()
+    h:body();h.broken.CA_Hun_Skirt='anyAsset';h.broken.CA_Hun_Cape='clothAsset'
+    local result=h:apply()
+    assert(result.full==true,'a body cloth failing leaves the full look')
+    assert(h:part('CA_Hun_Skirt').destroying==true and h:logged('布料销毁 实例=Hun_2 CA_Hun_Skirt=调用true/销毁中true/已销毁')==1)
+    local cape=h:part('CA_Hun_Cape');assert(not cape.destroying and cape.clothAsset and h:count('cloth set CA_Hun_Cape')==1 and h:logged('资源=CA_Hun_Cape（SetAsset）')==1)
+    assert(h.look.streak.cloth==1,'the body counts as a cloth failure')
+end)
+test('cloth: a pose flag that reads off is written on and read back; simulation that does not start fails the part',function()
+    local h=fixture({steps=FULL});h.poseOff=true;h:apply()
+    assert(h:part('CA_Hun_Hair').bUseAttachedParentAsPoseComponent==true and h:logged('抄父姿势=false→true')==1)
+    h=fixture({steps=FULL});h.broken.CA_Hun_Hair='sim'
+    local result=h:apply();assert(result.full==false and result.look==true and h.mesh.asset==h.clone,'no hair: Hun_Clone instead')
+    assert(h:logged('原因=头发布料没读回，没有头发，改用 Hun_Clone')==1 and h.look.streak.cloth==1 and h.look.streak.head==0,'a cloth failure, not a head failure')
+    for _,c in ipairs(h.parts)do assert(c.destroying==true,'every added part is destroyed')end
+end)
+test('the cloth breaker: two bodies in a row without hair switch cloth off and later bodies take Hun_Clone directly',function()
+    local h=fixture({steps=FULL});h.broken.CA_Hun_Hair='anyAsset';h:apply()
+    h:body();h.broken.CA_Hun_Hair='anyAsset';h:apply()
+    assert(h.look.off.cloth==true and h:logged('已停用 布料：连续 2 只魂失败')==1)
+    h:body();local result=h:apply()
+    assert(result.look==true and result.full==nil and #h.parts==0 and h:logged('布料 本次加载已停用，之后的魂都改用 Hun_Clone（实例=Hun_3）')==1)
+end)
+test('the head breaker: two bodies in a row failing the head switch the full look off',function()
+    local h=fixture({steps=FULL});h.broken.meshhead='asset';h:apply()
+    h:body();h.broken.meshhead='asset';h:apply()
+    assert(h.look.off.head==true and h:logged('已停用 完整外观（头和身体）：连续 2 只魂失败')==1)
+    h:body();local result=h:apply();assert(result.look==true and #h.parts==0 and h:count('add '..h.meshClass.label)==0)
+end)
+test('a head that does not follow the body at the second readback undoes the full look to Hun_Clone',function()
+    local h=fixture({steps=FULL});h:apply()
+    h.headGap=5;h.look:recheck(h.r)
+    assert(h:logged('复读 头部跟随 实例=Hun_1 头骨距离=5.00cm 跟随=false')==1 and h.mesh.asset==h.clone)
+    for _,c in ipairs(h.parts)do assert(c.destroying==true)end
+    assert(h.r.lookResult.full==false and h.r.lookResult.look==true and h.look.streak.head==1)
+end)
+test('parts: visibility text, the death hide, and cleanup destroy every registered part and read it back',function()
+    local h=fixture({steps=FULL});h:body();h:apply()
+    assert(h.look:partsText(h.r)=='meshhead:true,meshBrowLashCard:true,meshBand:true,meshScarf:true,Hun_Hat:true,CA_Hun_Hair:true')
+    h.look:hideParts(h.r);assert(h:part('Hun_Hat').visible==false and h:logged('死亡隐藏部件 实例=Hun_2 meshhead=调用true/可见false')==1)
+    h.look:cleanup(h.r,'实例离场')
+    for _,c in ipairs(h.parts)do assert(c.destroying==true)end
+    assert(h:logged('清理部件 实例=Hun_2 原因=实例离场 CA_Hun_Hair=调用true/销毁中true/已销毁')==1 and h:logged('全部确认=true')>=1)
+    local before=#h.logs;h.look:cleanup(h.r,'again');assert(#h.logs==before,'nothing left to destroy is not logged again')
+end)
+test('the clone switch never adds parts, and a missing full-look asset falls back to Hun_Clone',function()
+    local h=fixture();h:apply();assert(#h.parts==0 and h.mesh.asset==h.clone)
+    h=fixture({steps=FULL,full=false});local result=h:apply()
+    assert(result.full==false and result.look==true and #h.parts==0 and h:logged('完整外观 实例=Hun_1；没载入：meshClass、copyPose、body，不做')==1)
+end)
+print('hun look: PASS '..n..' mesh/anim-class/full-look/cloth/readback/undo/breaker checks; native gameplay remains unverified')
