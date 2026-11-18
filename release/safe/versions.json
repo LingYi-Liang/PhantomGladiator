@@ -1,6 +1,339 @@
 {
   "versions": [
     {
+      "version": "0.40.16",
+      "modBuild": "v0.40.16",
+      "date": "2026-11-18T23:27:38+08:00",
+      "size": 108701842,
+      "sha256": "c270b9cdc41c3cad0f9e3400453d178dcebb2283ebc666a1dbf1b3ab66d63008",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.16/PhantomGladiator-0.40.16-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.16/PhantomGladiator-0.40.16-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.16/PhantomGladiator-0.40.16-win64.zip"
+        }
+      ],
+      "notes": {
+        "zh": [
+          "新增可自定义的「魂」。在「粪怪」页保存方案后，可召到蓝方、红方、设为随从，或选「与我对战」。四种召唤方式可以分别绑定快捷键。排队的魂保留入队时的方案，后来修改只影响新请求。",
+          "魂的装备目录包含 33 件主武器、28 件影之武装、17 项特殊装备和 73 件饰品。可配置主武器轮换、武器技能、影武蓄力、血量阶段、精防、闪避、喝药和重生规则。饰品可选未精炼或更高档位。",
+          "红蓝方的魂按擂台对手行动，随从可跟随玩家。调整了魂出生时的装备初始化、血量与杀气显示，以及清场时对武器、外观部件和影武召唤物的归属检查。",
+          "改进多人战斗的索敌和增援。对手处于处决等暂时无敌状态时保留原配对；对手死亡或离场后重新选敌。铁鬼与玉妖作为随从攻击同一目标时可触发连携，玉璧在满足原版招式条件时可对随从或擂台模式中的敌人施放电墙。",
+          "怪物池支持按卡片召唤和记住数量。新增战斗音乐设置，可选原生曲目，也可为指定 Boss 配置本地音频。Boss 卡片可调整自动处决小怪的开关与概率。",
+          "减少助手定期刷新图鉴、选卡及排队时的重复读取。100 份满配魂排队的离线测试中，单次状态刷新中位数从约 11 毫秒降到约 2 毫秒。修复召唤结果被后续操作挤出列表后，按钮一直等待的问题。大批满配魂同场的帧时间和长局稳定性仍待实机验证。"
+        ],
+        "en": [
+          "Create a custom Hun profile, then summon him to Blue or Red, bring him along as a companion, or challenge him yourself. Each action has its own optional hotkey. Queued summons keep the profile they had when queued.",
+          "The profile includes 33 main weapons, 28 shadow armaments, 17 special equipment entries and 73 accessories. Configure weapon rotation and skills, charged armament attacks, health-based phases, parries, dodges, healing and revival. Accessories now support refinement level zero.",
+          "Arena Hun fighters target their opponents, while companion Hun can follow the player. This update improves equipment setup at spawn, health and Sha-Chi displays, and ownership checks when weapons, cosmetic parts or summoned minions are cleaned up.",
+          "Group fights and reinforcements handle target changes more reliably. Fighters retain their matchups while an opponent is temporarily invulnerable during an execution and can pick a new opponent after death or departure. The Iron Ghost and Jade Fiend companions can use their joint attack against a shared target. Yu Bi can cast her electric wall against a companion's or arena fighter's opponent when her native move conditions are met.",
+          "Summon from individual monster-pool cards and remember their counts. Choose native battle tracks or assign local audio to selected bosses. Boss cards also let you adjust how often a boss automatically executes minor enemies.",
+          "The helper does less repeated work when refreshing the catalog, selecting fighters and polling the queue. With 100 fully equipped Hun profiles queued in an offline test, median status polling fell from about 11 ms to about 2 ms. Summon controls now recover their result even after it leaves the recent history. In-game frame times with large groups and long-session stability still need testing."
+        ]
+      },
+      "parts": {
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.16/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.16/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.16/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.16/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.16/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.16/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.16/"
+          }
+        ],
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.000",
+            "size": 2097152,
+            "sha256": "1ccfe0855ef10501c7363a85fa05869574ac33d7d5b8af03bb7580d267eb6af1"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.001",
+            "size": 2097152,
+            "sha256": "c73deec4b4fb45ba6d82365511a58fe6f01b24aaffcc10b118ee20c7ac7cb01d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.002",
+            "size": 2097152,
+            "sha256": "019cf2363bb6cbfb7dd580f867fecd8626961a0e48e0a5c5bfe70c0799d11397"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.003",
+            "size": 2097152,
+            "sha256": "6a965ad3e73d88a600f7b72ee823c7e642710ab62d1daf8c74af91456bd62926"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.004",
+            "size": 2097152,
+            "sha256": "9be51d24081cbd1d922cf2be24360ae85f7b32d060306e36148f6b827dcd8053"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.005",
+            "size": 2097152,
+            "sha256": "f355bcdad63e0f4f9de90dd2798c465cd212dab7b7a0bb92342691b429dd0c71"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.006",
+            "size": 2097152,
+            "sha256": "b974d41a473ad2c0654525216f0e8069508849eff08581eb0af544f80d0e8039"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.007",
+            "size": 2097152,
+            "sha256": "3652f83d5d4a0fa61cd590f5e5df0127e461a3d9d38f4b73ddbd201cd01a5cae"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.008",
+            "size": 2097152,
+            "sha256": "4cbb590fc3c99de44d0eb5f57a821cd01b938b607ffaf638b5ae02bf8e916322"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.009",
+            "size": 2097152,
+            "sha256": "e0d0126edc2eb0c9aca1342207cadb71485dcabbe8a2d51ed55034582e1282a5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.010",
+            "size": 2097152,
+            "sha256": "695ec58b15995d701f801555168708acbde99997d74b559658687564c18763a4"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.011",
+            "size": 2097152,
+            "sha256": "50eb470c5ec7ae273ed1cb0338e3decb1d4b0ca47141766c3f6e9fb093fb5bb5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.012",
+            "size": 2097152,
+            "sha256": "0d8185bca0983cc8bd22201dec42bda10ececfa998500c97c3230870d28d7fbe"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.013",
+            "size": 2097152,
+            "sha256": "e498700578c437b9331e9f454d1563633004aa98cf76cb2ff5438bd3ed0f932f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.014",
+            "size": 2097152,
+            "sha256": "713a264787c3df7212d5cc851cdda2a68c2f3779177d218db7af9b15db8af6f6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.015",
+            "size": 2097152,
+            "sha256": "9358ca8f1818d1b00c92038d11ab6166a54e49608177ffcf89beb351a0ff5d3e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.016",
+            "size": 2097152,
+            "sha256": "210f4c53f5f80064a4450e243cee04464ba15712164b9f76d1b4e61fc3a55781"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.017",
+            "size": 2097152,
+            "sha256": "5ad9021a4272cf5c953216825a82f4e84f39708a6a5a1752a20601c78b68d517"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.018",
+            "size": 2097152,
+            "sha256": "7667f1460a68d4f73485226ebb93beadd61b89229f28ef6f4df4a3e21dd16113"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.019",
+            "size": 2097152,
+            "sha256": "d073c6f145664edc1993861079ca84d972ae57d7f745d8dad738d8e9baf0a041"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.020",
+            "size": 2097152,
+            "sha256": "d7c90fd8b6903b0c3fed2d800dbb918cade2e2cbb25134283c1eaab6670194c9"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.021",
+            "size": 2097152,
+            "sha256": "fe239490a74cd0ec9bac15969e29851cb46701d0a7f397ec353e8c661176645f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.022",
+            "size": 2097152,
+            "sha256": "40dee9e0551e0259e04550eb7156f28ac6bedb80523f23befe9a0134a3643f45"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.023",
+            "size": 2097152,
+            "sha256": "63b2693cf0fb3f18fc9ec1628278c2df5f5b041ec162432306b4854ef2f08150"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.024",
+            "size": 2097152,
+            "sha256": "739c0105fb4d84bde1213d2729d200afaa91f5192cca2cb0ea700c5fe22f56ed"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.025",
+            "size": 2097152,
+            "sha256": "0a9a5116da7500b47d075966d6c90d0b666550de6bb0aa4f1713220fd40ee081"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.026",
+            "size": 2097152,
+            "sha256": "96051b3ec01e4b3e645a4d0f1ddf7c408c2bc389dff9517962ca5627bec22606"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.027",
+            "size": 2097152,
+            "sha256": "a425b132b312fcb6d2f9f7a5703185abdd7dde0c2e0fbace649f9391c031f35e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.028",
+            "size": 2097152,
+            "sha256": "de617153ebffa517a2c841ba2d1921342aa96fec44b3c221c38b0810b2f15fef"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.029",
+            "size": 2097152,
+            "sha256": "bd75e2646f7482026de87288593fd0a5c9ef3bae5a1903a755fa053012410836"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.030",
+            "size": 2097152,
+            "sha256": "5142edc2294dc5cb8fec2cd6c091b53c4b1eac26ac31aa93ab8232f0300e54c6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.031",
+            "size": 2097152,
+            "sha256": "bc902c59e2049bd25102622f335921bc7c872918d9b0ebbab2d5d496cbb71679"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.032",
+            "size": 2097152,
+            "sha256": "5e75a2b1aedac2fdfee9fea63f6b98f2fb12d869c728b913d8f31700c3f8e445"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.033",
+            "size": 2097152,
+            "sha256": "da5fc86c5de80a44c2f02b0d44040f5599e7ab95b796ef9a4a3b50942d2eb47a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.034",
+            "size": 2097152,
+            "sha256": "0c2000654364a6360e4013941deefb88c5fdd456d9b838f206067e8039fc1faa"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.035",
+            "size": 2097152,
+            "sha256": "87d56c7a36e7c6af218b5ac15e646722e467c8017ab25c9a23a64a7f869882cc"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.036",
+            "size": 2097152,
+            "sha256": "cfa00b2b0bf9f96bcde97881bb7d330b660f9ab72c39f14deaefe44fd43bc710"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.037",
+            "size": 2097152,
+            "sha256": "c25f00af5f02d4a7a219d23f076db36c5ac568a61c61b27c0f8809a8c19dbd51"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.038",
+            "size": 2097152,
+            "sha256": "c8dc0a176c54ce49590567600e0afe0f43673b3d7912057d5fcdb649ae995928"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.039",
+            "size": 2097152,
+            "sha256": "af5be499448229bd2b7324006b9e7806f71a0d0c682865aeb1214d6db1179ac1"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.040",
+            "size": 2097152,
+            "sha256": "bfa8b7960976645d4e1440feb5ae05d9a21381ebcd39ccf7f46c2f1f2ca669ab"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.041",
+            "size": 2097152,
+            "sha256": "4f15149afd813d090fd6dbdddf6c4c1b145e1012f528c593c9e642f73b16aa4d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.042",
+            "size": 2097152,
+            "sha256": "0aa2d2c368ecd25e1b1c6065eb28964d43c08aab506084e4a017f8f041cf698b"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.043",
+            "size": 2097152,
+            "sha256": "a1f39b98294d4e8d44685725887f846100c970c9d6542deeb7501e6af5783a5c"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.044",
+            "size": 2097152,
+            "sha256": "562100f30744c9df93e3299bdf21c4b3f0136336fabcf775bfa6a79d4a1afc01"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.045",
+            "size": 2097152,
+            "sha256": "f23272a4e05f16afd4513ab5769a54a276508006aeed97b63b6070c8f976d38c"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.046",
+            "size": 2097152,
+            "sha256": "eacba3e4dbed1e74b08ca799e4e2ea7299d62d0a60efaaa5d5a5eb2b25d787dd"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.047",
+            "size": 2097152,
+            "sha256": "ba7c04e72a3f7f951dbbb3c13bd7cce1249e95271fca1709719050cbf4cd558c"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.048",
+            "size": 2097152,
+            "sha256": "f80d8ec851bcf6b27f532871c933752c1994b23403682a3a21c68403f32331d2"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.049",
+            "size": 2097152,
+            "sha256": "e47436bb9f5215c83826b3657291895c40804d72a203e4c771dda84889a02544"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.050",
+            "size": 2097152,
+            "sha256": "f3d970ea1a863bf8d01a3d4b94827c76decc5e6c57b49f94006fc62258e21730"
+          },
+          {
+            "name": "PhantomGladiator-0.40.16-win64.zip.051",
+            "size": 1747090,
+            "sha256": "1253d9349c59afce01dec803c825acd1dbd67f184cb64b1ad188eb7d05353e32"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.15",
       "modBuild": "v0.40.15",
       "date": "2026-11-16T04:27:11+08:00",
@@ -33,7 +366,7 @@
           "新增可自定义的“解散全部随从”快捷键，位于“快捷键 → 随从”，默认未绑定。支持组合键、保存、解绑及与单位／怪物池按键的冲突检查；只走随从解散流程，蓝方、红方和未配队单位保留。换图后的旧按键请求会取消。",
           "后续界面和更新说明维护中文、英文。原日语、法语、德语、西班牙语用户升级后，会显示各自语言的说明并暂用英文；语言设置旁始终保留四语说明，顶栏语言菜单可直接到达。需要其他语言维护，可提GitHub Issue或邮件联系，哪怕只有一位用户需要也会恢复该语言更新。",
           "本版新增选项、状态提示及已知的相关指令答复已补齐中英。旧语言设置和历史公告保留迁移信息；旧快捷键文件保留原绑定，新增解散键为空。旧版游戏内模组尚未支持解散键时明确提示更新，原有按键仍可设置。",
-          "已通过152组离线回归、108个Lua语法及NPC／Actor双启动检查，并在浏览器原型验证语言弹窗、设置入口和解散键绑定。离线重复查询计数降低不等于实测游戏帧率提升；梦华连携、虚化、长战索敌、帧时间及不同NPC组合仍需实机验证。",
+          "已通过152组离线回归、108个Lua语法及NPC／Actor双启动检查，并在浏览器原型验证语言弹窗、设置入口和解散键绑定。离线重复查询计数降低不等于实测游戏帧率提升；禁止脱战回血、游戏内的解散随从快捷键、梦华连携、虚化、长战索敌、帧时间及不同NPC组合仍需实机验证。",
           "已知风险：旧式生命／杀气下限恢复记录的热重载对象身份风险仍未迁移。重载前先遣散梦华随从，关闭无仇恨、不倒下与无限杀气，停止清理并确认恢复；无法确认时先保留诊断并退出游戏，不用热重载代替清理。菜单滚轮失效反馈仍待复现。"
         ],
         "en": [
@@ -48,7 +381,7 @@
           "Added a configurable Dismiss all companions hotkey under Hotkeys → Companions, unbound by default. Supports modifier chords, saving, unbinding and conflicts with unit or monster-pool keys. Uses companion-only dismissal; blue, red and no-team units stay. Queued presses from an old map are cancelled.",
           "Future interface updates and release notes will be maintained in Chinese and English. Japanese, French, German and Spanish users receive a notice in their language after upgrading, then temporarily use English. All four notices remain beside the language settings and are reachable from the top language menu. Request another language through a GitHub issue or email; even one user is enough to resume support.",
           "New options, status text and known related command replies are available in Chinese and English. Migration information and historical translations are retained. Existing hotkey files keep their bindings and the new dismissal key starts unbound. Older in-game mods show an update requirement for dismissal while their existing hotkeys remain editable.",
-          "Passed 152 offline regression groups, syntax checks for 108 Lua files and both NPC/Actor startup fixtures. Browser prototype checks cover language notices, settings access and dismissal-key binding. Lower query counts are not measured game FPS gains. Native linked phases, phasing, long fights, frame times and individual NPC combinations still need in-game validation.",
+          "Passed 152 offline regression groups, syntax checks for 108 Lua files and both NPC/Actor startup fixtures. Browser prototype checks cover language notices, settings access and dismissal-key binding. Lower query counts are not measured game FPS gains. Blocking out-of-combat regeneration, the in-game companion dismissal key, native linked phases, phasing, long fights, frame times and individual NPC combinations still need in-game validation.",
           "Known risk: the old health/Sha-Chi floor recovery format still has actor-identity risks across hot reloads. Before reloading, dismiss Meng Hua companions, disable No aggro, Undying and Infinite Sha-Chi, then stop and clean up and confirm recovery. If recovery cannot be confirmed, retain diagnostics and exit the game instead of hot reloading. The menu-wheel report still needs reproduction."
         ],
         "ja": [
@@ -1311,6 +1644,56 @@
             "id": "github",
             "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.7/"
           }
+        ]
+      },
+      "notes": {
+        "zh": [
+          "修复召唤的单位把剧情进度写进存档：有些单位自己会写剧情（雷当一族转阶段时、马车战的钩者和几种鬼差、雨夜左殇死亡时、沐小葵二阶段掉到 25% 血时、龙柱一的魔渊、冷荼第五阶段叫来的雷当），魔渊的特殊处决也会把龙柱第五战记成胜利。现在剧情还没打到那里时，不召唤这些单位、也不用这个处决，召唤失败的提示会写原因。冷荼因为第五阶段会叫来雷当，要在剧情里打过戏梦山庄的雷当才能召唤",
+          "设置页新增「修复存档」：检查以前版本造成的问题，能修的用游戏自己的流程补上：龙柱第五战打完什么都不弹、那根龙柱不塌；戏梦山庄雷当两个阶段同时出现；冷荼在剧情里一开打就是后面的阶段。修不了的剧情标记会列出来，说明到那段剧情时会怎样",
+          "冷荼召出的剧情帮手（彭猛、峨眉和华山弟子、风雪刀客、舞狮、雷当）和梦华召出的虚空不再出现在竞技场：它们原本是来帮玩家打召唤者的（0.40.15 起有变：梦华默认“剧情联动：保留”，会按原版召出自己的虚空，阶段结束后收回；卡面选“跳过”才不出现。冷荼的帮手仍不会出现）",
+          "修复冷荼召人、无敌时，对面一直锁着她本体打不动：开战时对面先锁上了她，后来改派去打她的召唤物，锁定却没跟着换。现在锁着她的单位会改锁她的召唤物，她一波波召人，最后亲自下场",
+          "修复在冷荼自己的地图（断魂山）里叫她时，召唤物出在几百米外她的剧情场地，战斗卡在第一波：地图上已有她的召唤点，模组就没放。现在离得远的召唤点会挪到她身边，她离场时放回原处",
+          "修复断魂山的银发左殇放一招时瞬移到世界原点、掉到地下，镜头也跟着跑远：缺了这招要用的两个落点"
+        ],
+        "en": [
+          "Fixed summoned units writing story progress into your save: some units write it themselves (the Lei Dang family when they change phase, the horse cart fight's hook fighter and several Gui Chai, the rainy-night Zuo Shang when he dies, Mu Xiaokui's second phase at 25% health, Mo Yuan of the first dragon pillar, the Lei Dang that Lengtu calls in her fifth phase), and Mo Yuan's special finisher marked the fifth dragon pillar trial as won. Now these units are not summoned and that finisher is not used until the story has reached that point, and a failed summon says why. Since Lengtu calls Lei Dang in her fifth phase, she can only be summoned once Lei Dang in 戏梦山庄 is beaten in the story",
+          "New Repair save button on the Settings page: it checks for problems earlier versions caused and puts right what it can with the game's own steps: the fifth dragon pillar trial ending with nothing happening and that pillar not collapsing; both phases of Lei Dang appearing together in 戏梦山庄; Lengtu starting her story fight at a later phase. Story marks that cannot be undone are listed, with what will happen in that part of the story",
+          "Lengtu's story helpers (Peng Meng, the Emei and Huashan disciples, Fengxue Daoke, the lion dancer, Lei Dang) and the Xu Kong that Meng Hua calls no longer appear in the arena: in the story they come to help the player against their summoner (changed in 0.40.15: by default Meng Hua keeps her story link and calls her own Xu Kong as in the base game, removed when the phase ends; choose Skip on her card to keep it out. Lengtu's helpers still stay out)",
+          "Fixed opponents staying locked on Lengtu while she is summoning and invulnerable: they locked her at the start of the fight, and when they were later sent at her summons the lock did not follow. A unit locked on her now locks her summons instead, so she brings out her rounds one after another and finally steps in herself",
+          "Fixed Lengtu's summons appearing hundreds of metres away in her story arena when she is summoned in her own map (断魂山), so the fight stuck at the first round: her map already had her summon points, so the mod placed none. Now points that are far off are moved beside her and put back when she leaves",
+          "Fixed the silver-haired Zuo Shang of 断魂山 warping to the world origin and falling under the map with one move, taking the camera with him: the two landing points that move uses were missing"
+        ],
+        "ja": [
+          "召喚したユニットがストーリーの進行をセーブに書き込む問題を修正：自分でストーリーを書き込むユニットがあります（段階が変わる時の雷当の一族、馬車戦の鉤使いと何種類かの鬼差、死亡時の雨夜の左殇、体力25%になった沐小葵の第二段階、龍柱一の魔渊、冷荼が第五段階で呼ぶ雷当）。魔渊の特殊処決も龍柱の第五戦を勝利と記録していました。今はストーリーがそこまで進むまで、これらのユニットは召喚せず、この処決も使いません。召喚できない時は理由を表示します。冷荼は第五段階で雷当を呼ぶので、ストーリーで戏梦山庄の雷当を倒すまで召喚できません",
+          "設定ページに「セーブ修復」を追加：以前のバージョンが起こした問題を確認し、直せるものはゲーム自身の手順で直します。龍柱の第五戦が終わっても何も起きず、その龍柱が崩れない。戏梦山庄で雷当の二つの段階が同時に出る。冷荼のストーリー戦が後の段階から始まる。元に戻せないストーリーの印は一覧にし、その場面で何が起きるかを書きます",
+          "冷荼が呼ぶストーリーの助っ人（彭猛、峨眉と華山の弟子、風雪刀客、舞獅、雷当）と梦华が呼ぶ虚空は、アリーナに出なくなりました。ストーリーではプレイヤーを助けて召喚者と戦う役です",
+          "冷荼が召喚中で無敵の間、相手が彼女の本体をロックし続けて攻撃が通らない問題を修正：戦闘開始時に相手が彼女をロックし、その後で召喚物へ向かわせてもロックが付いてきませんでした。今は彼女をロックしているユニットが召喚物へロックを移すので、彼女は一波ずつ召喚し、最後には自ら戦います",
+          "冷荼を彼女自身のマップ（断魂山）で召喚すると、召喚物が数百メートル先のストーリーの戦場に出て、戦闘が第一波で止まる問題を修正：マップに彼女の召喚地点がすでにあったため、Modは置いていませんでした。今は遠くにある地点を彼女のそばへ移し、彼女が去る時に元に戻します",
+          "断魂山の銀髪の左殇がある技でワールド原点へ瞬間移動し、地面の下へ落ちてカメラも遠くへ行く問題を修正：その技が使う二つの着地点が欠けていました"
+        ],
+        "fr": [
+          "Correction des unités invoquées qui écrivaient la progression de l'histoire dans votre sauvegarde : certaines l'écrivent elles-mêmes (la famille de Lei Dang en changeant de phase, le porteur de crochet et plusieurs Gui Chai du combat de la charrette, Zuo Shang de la nuit pluvieuse à sa mort, la seconde phase de Mu Xiaokui à 25 % de vie, Mo Yuan du premier pilier du dragon, le Lei Dang que Lengtu appelle dans sa cinquième phase), et l'exécution spéciale de Mo Yuan marquait la cinquième épreuve des piliers du dragon comme gagnée. Ces unités ne sont plus invoquées et cette exécution n'est plus utilisée tant que l'histoire n'en est pas là, et une invocation refusée dit pourquoi. Comme Lengtu appelle Lei Dang dans sa cinquième phase, elle ne peut être invoquée qu'une fois Lei Dang de 戏梦山庄 vaincu dans l'histoire",
+          "Nouveau bouton Réparer la sauvegarde dans les Paramètres : il cherche les problèmes causés par les versions précédentes et répare ce qu'il peut avec les propres étapes du jeu : la cinquième épreuve des piliers du dragon qui se termine sans rien et ce pilier qui ne s'effondre pas ; les deux phases de Lei Dang qui apparaissent ensemble à 戏梦山庄 ; Lengtu qui commence son combat d'histoire à une phase plus tardive. Les marques d'histoire irréversibles sont listées, avec ce qui se passera dans ce passage de l'histoire",
+          "Les alliés d'histoire de Lengtu (Peng Meng, les disciples d'Emei et de Huashan, Fengxue Daoke, le danseur du lion, Lei Dang) et le Xu Kong qu'appelle Meng Hua n'apparaissent plus dans l'arène : dans l'histoire, ils viennent aider le joueur contre celle ou celui qui les invoque",
+          "Correction des adversaires qui restaient verrouillés sur Lengtu pendant qu'elle invoque et qu'elle est invulnérable : ils la verrouillaient au début du combat, et quand ils étaient ensuite envoyés sur ses invocations, le verrouillage ne suivait pas. Une unité verrouillée sur elle se verrouille désormais sur ses invocations, elle fait venir ses vagues l'une après l'autre et finit par combattre elle-même",
+          "Correction des invocations de Lengtu qui apparaissaient à des centaines de mètres, dans son arène d'histoire, quand elle est invoquée sur sa propre carte (断魂山), ce qui bloquait le combat à la première vague : sa carte avait déjà ses points d'invocation, le mod n'en plaçait donc aucun. Les points éloignés sont maintenant déplacés près d'elle et remis en place quand elle part",
+          "Correction de Zuo Shang aux cheveux argentés de 断魂山 qui, avec une attaque, se téléportait à l'origine du monde et tombait sous la carte en emmenant la caméra : les deux points d'atterrissage de cette attaque manquaient"
+        ],
+        "de": [
+          "Behoben: Beschworene Einheiten schrieben Story-Fortschritt in deinen Spielstand. Manche Einheiten schreiben ihn selbst (die Lei-Dang-Familie beim Phasenwechsel, der Hakenkämpfer und mehrere Gui Chai aus dem Kutschenkampf, Zuo Shang der Regennacht bei seinem Tod, Mu Xiaokuis zweite Phase bei 25 % Leben, Mo Yuan der ersten Drachensäule, der Lei Dang, den Lengtu in ihrer fünften Phase ruft), und Mo Yuans Spezialhinrichtung markierte die fünfte Prüfung der Drachensäulen als gewonnen. Jetzt werden diese Einheiten nicht beschworen und diese Hinrichtung nicht genutzt, bis die Story so weit ist, und eine abgelehnte Beschwörung nennt den Grund. Da Lengtu in ihrer fünften Phase Lei Dang ruft, kann sie erst beschworen werden, wenn Lei Dang in 戏梦山庄 in der Story besiegt ist",
+          "Neu in den Einstellungen: Spielstand reparieren. Es sucht nach Problemen, die frühere Versionen verursacht haben, und behebt, was geht, mit den eigenen Schritten des Spiels: Die fünfte Prüfung der Drachensäulen endet, ohne dass etwas passiert, und die Säule stürzt nicht ein; beide Phasen von Lei Dang tauchen in 戏梦山庄 zusammen auf; Lengtu beginnt ihren Story-Kampf in einer späteren Phase. Story-Marken, die sich nicht rückgängig machen lassen, werden aufgelistet, mit dem, was an dieser Stelle der Story passieren wird",
+          "Lengtus Story-Helfer (Peng Meng, die Schüler von Emei und Huashan, Fengxue Daoke, der Löwentänzer, Lei Dang) und der Xu Kong, den Meng Hua ruft, erscheinen nicht mehr in der Arena: In der Story helfen sie dem Spieler gegen den, der sie ruft",
+          "Behoben: Gegner blieben auf Lengtu gesperrt, während sie beschwört und unverwundbar ist. Sie sperrten sie zu Kampfbeginn, und als sie später auf ihre Beschwörungen geschickt wurden, ging die Sperre nicht mit. Eine Einheit, die sie gesperrt hat, sperrt jetzt ihre Beschwörungen, sodass sie ihre Wellen nacheinander bringt und am Ende selbst kämpft",
+          "Behoben: Wurde Lengtu in ihrer eigenen Karte (断魂山) beschworen, erschienen ihre Beschwörungen Hunderte Meter entfernt in ihrer Story-Arena, und der Kampf blieb bei der ersten Welle hängen: Ihre Karte hatte ihre Beschwörungspunkte schon, also setzte der Mod keine. Weit entfernte Punkte werden jetzt neben sie gerückt und zurückgestellt, wenn sie geht",
+          "Behoben: Der silberhaarige Zuo Shang aus 断魂山 teleportierte sich mit einem Angriff zum Weltursprung und fiel unter die Karte, die Kamera mit ihm: Die zwei Landepunkte dieses Angriffs fehlten"
+        ],
+        "es": [
+          "Corregido: las unidades invocadas escribían progreso de la historia en tu partida. Algunas lo escriben ellas mismas (la familia de Lei Dang al cambiar de fase, el luchador del gancho y varios Gui Chai del combate del carruaje, Zuo Shang de la noche lluviosa al morir, la segunda fase de Mu Xiaokui al 25 % de vida, Mo Yuan del primer pilar del dragón, el Lei Dang que Lengtu llama en su quinta fase), y la ejecución especial de Mo Yuan marcaba como ganada la quinta prueba de los pilares del dragón. Ahora estas unidades no se invocan y esa ejecución no se usa hasta que la historia llega a ese punto, y una invocación rechazada dice por qué. Como Lengtu llama a Lei Dang en su quinta fase, solo se puede invocar después de vencer a Lei Dang de 戏梦山庄 en la historia",
+          "Nuevo botón Reparar la partida en Ajustes: busca problemas causados por versiones anteriores y arregla lo que puede con los propios pasos del juego: la quinta prueba de los pilares del dragón que termina sin que pase nada y ese pilar que no se derrumba; las dos fases de Lei Dang apareciendo juntas en 戏梦山庄; Lengtu empezando su combate de historia en una fase posterior. Las marcas de historia que no se pueden deshacer se listan, con lo que pasará en esa parte de la historia",
+          "Los aliados de historia de Lengtu (Peng Meng, los discípulos de Emei y Huashan, Fengxue Daoke, el bailarín del león, Lei Dang) y el Xu Kong que llama Meng Hua ya no aparecen en la arena: en la historia vienen a ayudar al jugador contra quien los invoca",
+          "Corregido: los rivales se quedaban fijados en Lengtu mientras invoca y es invulnerable. La fijaban al empezar el combate y, cuando después los enviaban contra sus invocaciones, la fijación no cambiaba. Una unidad fijada en ella ahora fija sus invocaciones, así que ella saca sus oleadas una tras otra y al final pelea ella misma",
+          "Corregido: al invocar a Lengtu en su propio mapa (断魂山), sus invocaciones aparecían a cientos de metros, en su arena de historia, y el combate se quedaba en la primera oleada: su mapa ya tenía sus puntos de invocación, así que el mod no colocaba ninguno. Ahora los puntos lejanos se mueven a su lado y vuelven a su sitio cuando ella se va",
+          "Corregido: Zuo Shang de cabello plateado de 断魂山 se teletransportaba al origen del mundo con un ataque y caía bajo el mapa, llevándose la cámara: faltaban los dos puntos de aterrizaje de ese ataque"
         ]
       }
     },
