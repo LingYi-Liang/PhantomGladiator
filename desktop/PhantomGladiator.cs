@@ -1307,6 +1307,7 @@ namespace PhantomGladiator
             web.Dock = DockStyle.Fill;
             web.DefaultBackgroundColor = BackColor;
             Controls.Add(web);
+            Resize += (s, e) => { web.Visible = WindowState != FormWindowState.Minimized; };
             game = GameLocator.FromPath(settings.GamePath);
             if (game == null)
             {
@@ -1315,6 +1316,7 @@ namespace PhantomGladiator
             }
             gameTimer.Tick += (s, e) =>
             {
+                if (WindowState == FormWindowState.Minimized) return;
                 var running = GameLocator.Running(game);
                 if (running == gameRunning) return;
                 gameRunning = running;

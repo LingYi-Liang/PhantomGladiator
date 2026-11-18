@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-27"
+local BUILD = "v0.40.16-beta-28"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1684,6 +1684,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     destroy=function(actor)
         checked(actor)
+        if arenaSupport.yubiArena then arenaSupport.yubiArena:releaseActor(actor) end
         if arenaSupport.menghuaPhase and not arenaSupport.menghuaPhase:releaseActor(actor) then error('梦华阶段帮手回收未确认') end
         if arenaSupport.lionNPC and not arenaSupport.lionNPC:releaseActor(actor) then error('下桩清理未读回') end
         if arenaSupport.lionStage then arenaSupport.lionStage:releaseActor(actor) end
@@ -1706,6 +1707,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return aggroRestored and guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
     end,
     onUnitsChanged=function(units)
+        if arenaSupport.yubiArena then arenaSupport.yubiArena:roster(units) end
         if arenaSupport.menghuaPhase then arenaSupport.menghuaPhase:syncParents(units) end
         if statMatch then statMatch:roster(units) end
         if arenaSupport.standaloneStoryUnits then arenaSupport.standaloneStoryUnits:prune(units) end
@@ -1846,12 +1848,12 @@ mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isD
 -- The first few misses are logged with what the trace returned.
 local groundMisses,groundRead=0,false
 -- up: how far over z the trace starts (a unit's own body would stop one started over it).
-local function GroundZ(world,x,y,z,up)
+local function GroundZ(world,x,y,z,up,ignored)
     local lib=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
     if not safeValid(lib) or not safeValid(world) then return nil end
     local out,none={},{R=0,G=0,B=0,A=0}
     local start,finish=z+(up or 300),z-3000
-    local ok,hit=pcall(function()return lib:LineTraceSingle(world,{X=x,Y=y,Z=start},{X=x,Y=y,Z=finish},0,false,{},0,out,true,none,none,0)end)
+    local ok,hit=pcall(function()return lib:LineTraceSingle(world,{X=x,Y=y,Z=start},{X=x,Y=y,Z=finish},0,false,ignored or {},0,out,true,none,none,0)end)
     -- The table passed as OutHit comes back with the hit's own fields. bStartPenetrating reads true on every hit there
     -- (seen with Distance 183 and PenetrationDepth 0), so a start inside something is told by a Distance of 0. The trace
     -- goes straight down, so its Distance gives the height when the point does not read.
@@ -2265,9 +2267,14 @@ local companionTargets=require('companion_target').new({log=log,world=GetCurrent
     boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end,
     stillOwned=function(actor)return UEObserve.key(arena:actorOf(UEObserve.key(actor)))==UEObserve.key(actor)end})
 arenaSupport.hunCompanionTarget=function(actor)return companionTargets:current(actor)end
+arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,
+    current=function(actor)return companionTargets:current(actor)end,location=GetLocation,ground=GroundZ,
+    statics=GetGameplayStatics,clock=LiveSeconds,inGameThread=IsInGameThread})
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     prepareMembers=function(members)companionTargets:sync(members)end,
     companionTargetOf=function(actor)return companionTargets:current(actor)end,
+    boundaryCharacter=function(context,index)return arenaSupport.yubiArena:character(context,index)end,
+    boundaryPending=function()return arenaSupport.yubiArena:hasPending()end,
     phaseBusyKey=function(key)return arenaSupport.menghuaPhase:busyKey(key)end,
     abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
     player=GetPlayerPawn,
@@ -2283,6 +2290,7 @@ arenaSupport.effectAim=require('effect_instance_aim').new({log=log,clock=LiveSec
 playerAim.effects=arenaSupport.effectAim
 -- AI 行为参数: the panel's values for the AI's named parameters (ai_params.lua).
 bossCombos=require('boss_combos').new({path=Config.RuntimePath,log=log,members=ArenaMembers,
+    companionTarget=function(actor)return companionTargets:current(actor)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=ArenaMembers,aiComp=GetAIComp,
     privateValues=function(actor)
@@ -2423,6 +2431,7 @@ local function supportSteps(self)
     step('grabs',function()arenaGrabs:sync(Config.EnableNPCGrabs and tickMembers or {},tickStatus.battle_active)end)
     step('combatLock',function()combatLock:tick()end)
     step('playerAim',function()playerAim:tick()end)
+    step('yubiArena',function()self.yubiArena:tick()end)
     step('effectAim',function()self.effectAim:tick()end)
     step('aiParams',function()aiParams:tick()end)
     step('bossCombos',function()bossCombos:tick()end)
@@ -2547,12 +2556,13 @@ if ModRef then
         local checkedThread,onGameThread=pcall(IsInGameThread)
         local restoreNative=checkedThread and onGameThread==true
         arenaSupport.aggroGuard:silence(restoreNative)
+        arenaSupport.yubiArena:silence(restoreNative)
         playerAim:silence('Mod卸载',restoreNative)
         arenaSupport.combatContinuity:silence()
         arenaSupport.hunBody:silence(restoreNative)
         arenaSupport.effectAim:silence()
         aiParams:silence()
-        bossCombos:silence()
+        bossCombos:silence(restoreNative)
         if arenaSupport.guillotine then arenaSupport.guillotine:silence() end
         arenaSupport.standaloneStoryUnits:silence()
         if arenaExecutions then arenaExecutions:silence() end

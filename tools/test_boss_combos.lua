@@ -47,7 +47,8 @@ local function harness()
         return actor
     end
     function h.new(enabled)
-        local c=Combos.new({clock=function()return h.now end,log=function(s)h.lines[#h.lines+1]=s end,members=function()return h.members end,fighting=function()return h.fighting end})
+        local c=Combos.new({clock=function()return h.now end,log=function(s)h.lines[#h.lines+1]=s end,members=function()return h.members end,fighting=function()return h.fighting end,
+            companionTarget=function(a)return a.enemy end})
         c.enabled=enabled
         return c
     end
@@ -56,6 +57,23 @@ local function harness()
 end
 local function test(name,fn)fn();print('ok - '..name)end
 local function info(actor)return {AvatarActor={Get=function()return actor end}} end
+
+test('companions link in an ordinary world fight, regroup and hand back only their own partner keys',function()
+    local h=harness();h.fighting=false;local c=h.new(true)
+    local a=h.unit('BP_Monster_TieGui_C','companion');local b=h.unit('BP_Monster_Yuu_C','companion')
+    local red=h.unit('BP_Monster_Yuu_C','red')
+    local enemy,other=object('enemy'),object('different enemy')
+    c:tick();assert(not a.board and not next(h.hooks))
+    a.enemy,b.enemy=enemy,other;c:tick();assert(not next(h.hooks))
+    b.enemy=enemy;c:tick();local key='AI.BlackboardKey.Object.Vehicle'
+    assert(a.board and a.board.keys[key]==b and b.board.keys[key]==a and not red.board,'ordinary companions never paired')
+    local gate=h.hooks[Combos.paths.gateTieGui];local assign=h.hooks[Combos.paths.assign]
+    local task=object('BTTask',{ControlledPawn=a,TreeAsset=object('BT_TieGui_AllOutAttack_01')})
+    assert(gate(object('gate'),info(a))==true);assign(task);assert(#h.events==1 and h.events[1].actor==b)
+    b.enemy=other;assert(gate(object('gate'),info(a))==nil);assign(task);assert(#h.events==1)
+    b.board.keys[key]=other;c:tick()
+    assert(a.board.keys[key]==nil and b.board.keys[key]==other and not next(h.hooks))
+end)
 
 test('a hook whose blueprint is not loaded yet comes in on a later tick, and is named once meanwhile',function()
     local h=harness();local c=h.new(true)

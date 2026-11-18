@@ -19,7 +19,9 @@ function harness(handler, lang = 'zh') {
   let now = 0, serial = 0;
   const i18n = createI18n();i18n.set(lang);
   const timers = new Map(), requests = [];
-  const context = { window: { PG_I18N: i18n }, document: { documentElement: { lang } }, AbortController,
+  const visibility=[];
+  const doc={ documentElement:{lang}, hidden:false, addEventListener(type,fn){if(type==='visibilitychange')visibility.push(fn);} };
+  const context = { window: { PG_I18N: i18n }, document: doc, AbortController,
     Date: { now: () => 1000000 + now },
     setTimeout(fn, ms) { const id = ++serial; timers.set(id, { fn, at: now + ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
@@ -28,6 +30,7 @@ function harness(handler, lang = 'zh') {
   vm.runInNewContext(source, context);
   return {
     rt: context.window.PGRuntime, requests, i18n,
+    hide(value){doc.hidden=value;visibility.forEach(fn=>fn());},
     async advance(ms) {
       const end = now + ms;
       while (true) {
@@ -41,6 +44,25 @@ function harness(handler, lang = 'zh') {
 }
 
 (async () => {
+  if (!only || only==='hidden') {
+    const h=harness(()=>Promise.resolve(response(status())));await flush();
+    const count=()=>h.requests.filter(r=>r.path.startsWith('/api/status')).length;
+    const before=count();h.hide(true);await h.advance(10000);
+    assert.equal(count(),before,'a minimized idle window should not fetch or redraw status');
+    h.hide(false);await h.advance(0);assert.equal(count(),before+1,'restoring should refresh immediately');
+    await h.advance(500);assert.equal(count(),before+2,'one foreground polling chain');
+    let ack=false;
+    const busy=harness((path,opts)=>{
+      if (opts?.method==='POST') return Promise.resolve(response({id:63}));
+      const data=status();
+      if(ack) data.queue=[{id:63,action:'start',status:'succeeded',payload:{}}];
+      return Promise.resolve(response(data));
+    });
+    await flush();const pending=busy.rt.command('start');await flush();busy.hide(true);await busy.advance(500);
+    assert(busy.requests.some(r=>r.path.includes('watch=63')),'pending operations still collect receipts while minimized');
+    ack=true;await busy.advance(500);assert.equal((await pending).status,'succeeded');
+    const settled=busy.requests.length;await busy.advance(3000);assert.equal(busy.requests.length,settled);
+  }
   if (!only || only === 'timeouts') for (const bodyOnly of [false, true]) {
     let polls = 0;
     const delayed = deferred();

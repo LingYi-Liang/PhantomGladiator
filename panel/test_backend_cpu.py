@@ -6,6 +6,13 @@ backend=types.ModuleType('backend_cpu');backend.__file__=str(ROOT/'panel/backend
 exec(compile(source.read_text(encoding='utf-8-sig'),str(source),'exec'),backend.__dict__)
 
 class Tests(unittest.TestCase):
+    def test_idle_dispatcher_keeps_transport_checks_without_parsing_game_status(self):
+        with unittest.mock.patch.object(self.bridge,'game_status',wraps=self.bridge.game_status) as read:
+            for _ in range(40):self.bridge.tick()
+            self.assertEqual(read.call_count,0)
+            self.write('inbox.tsv','987654\tstart\n');self.bridge.tick()
+            self.assertEqual(self.bridge.transport_code,'orphan_inbox')
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
         self.policy=self.root/'policy.json';self.policy.write_text('{"schema_version":1,"units":{}}',encoding='utf-8')

@@ -271,8 +271,13 @@ function Aim.new(options)
         end
     end
     local function callback(name)
-        return function(_,context)
-            if not self.alive or not next(fighters) then return nil end
+        return function(_,context,index)
+            if not self.alive then return nil end
+            if name=='character' and options.boundaryCharacter then
+                local answer=options.boundaryCharacter(context,index)
+                if answer~=nil then return answer end
+            end
+            if not next(fighters) then return nil end
             local object=U.unwrap(context)
             if not U.valid(object) then return nil end
             local cls=className(object)
@@ -814,6 +819,8 @@ function Aim.new(options)
             else
                 for _,name in ipairs(ORDER)do register(name) end
             end
+        elseif options.boundaryPending and options.boundaryPending() then
+            quietSince=nil -- A companion's native field can finish after the roster changes.
         elseif next(hooks) then
             quietSince=quietSince or now
             if now-quietSince>=UNHOOK_SECONDS then uninstall('战斗已结束') end

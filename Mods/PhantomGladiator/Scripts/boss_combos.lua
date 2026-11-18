@@ -61,6 +61,7 @@ function Combos.new(options)
     local self={alive=true,enabled=false,linked=0,gates=0,assigned=0,failures=0}
     local links,members,hooks={},{},{}   -- pair key -> link; unit address -> {link,partner}; path -> hook ids
     local seenGate,lines,dispatched={},0,{}
+    local taskWrites={}
     local function say(text)log('[Combos] '..text)end
     local retry=Retry.new({clock=options.clock,log=say})
     local function find(path)return retry:find(path)end
@@ -104,7 +105,15 @@ function Combos.new(options)
                 if U.valid(task) then
                     if trees[treeOf(task) or ''] then
                         mine=mine+1
-                        if pcall(function()task[field]=value end) and U.field(task,field)==value then set=set+1 end
+                        local before,read=U.field(task,field)
+                        if read and before==value then set=set+1
+                        elseif read then
+                            local key=U.key(task)
+                            if key then
+                                taskWrites[key]=taskWrites[key] or {task=task,field=field,original=before,value=value,tree=treeOf(task)}
+                                if pcall(function()task[field]=value end) and U.field(task,field)==value then set=set+1 end
+                            end
+                        end
                     else others=others+1 end
                 end
             end
@@ -115,6 +124,12 @@ function Combos.new(options)
         return '分派任务 AlwaysSuccess 读回='..writeOnTrees(ASSIGN_CLASS,Combos.TREES,'AlwaysSuccess',true)
             ..'；等搭档超时 读回='..writeOnTrees(WAIT_CLASS,Combos.WAITING,'Timeout',WAIT_SECONDS)
     end
+    local function restoreTrees()
+        for k,w in pairs(taskWrites)do
+            if U.key(w.task)~=k or treeOf(w.task)~=w.tree or U.field(w.task,w.field)~=w.value then taskWrites[k]=nil
+            elseif pcall(function()w.task[w.field]=w.original end) and U.field(w.task,w.field)==w.original then taskWrites[k]=nil end
+        end
+    end
     -- K2_CanActivateAbility runs on the class default object, so the caster comes from its actor info.
     local function avatarOf(context,info)
         local struct=U.unwrap(info)
@@ -124,13 +139,33 @@ function Combos.new(options)
             if ok and U.valid(actor) then return actor end
         end
     end
+    local function companionEnemy(actor)
+        if not options.companionTarget or not alive(actor) then return end
+        local ok,target=pcall(options.companionTarget,actor)
+        if ok then return U.key(target) end
+    end
+    local function boundPartner(actor,partner)
+        local bbLib,aiLib=find(BB_LIB),find(AI_LIB)
+        if not bbLib or not aiLib then return false end
+        local ok,value=pcall(function()
+            local board=U.unwrap(bbLib:GetBlackboard(actor))
+            if U.valid(board) then return U.unwrap(aiLib:GetValueAsObjectByTag(board,{TagName=FName(PARTNER_KEY)})) end
+        end)
+        return ok and U.key(value)~=nil and U.key(value)==U.key(partner)
+    end
+    local function eligible(actor,entry)
+        if not entry or entry.link.retiring or not alive(actor) or not alive(entry.partner) then return false end
+        if entry.link.team~='companion' then return true end
+        local enemy=companionEnemy(actor)
+        return enemy~=nil and enemy==companionEnemy(entry.partner) and boundPartner(actor,entry.partner) and boundPartner(entry.partner,actor)
+    end
     function self.onGate(context,info)
         if not self.alive or not self.enabled or not next(members) then return nil end
         local actor=avatarOf(context,info)
         local entry=actor and members[U.key(actor)]
-        if not entry or not alive(entry.partner) then return nil end
+        if not eligible(actor,entry) then return nil end
         -- Never before the partner key reads back: the picked tree would wait on the empty key for good.
-        if entry.link.partnerSet[U.key(actor)]~=true then return nil end
+        if entry.link.partnerSet[U.key(actor)]~=true or (entry.link.team=='companion' and entry.link.partnerSet[U.key(entry.partner)]~=true) then return nil end
         self.gates=self.gates+1
         local ability=U.unwrap(context)
         local where=U.valid(ability) and className(ability) or '?'
@@ -173,8 +208,12 @@ function Combos.new(options)
             aiLib:SetValueAsVectorByTag(board,tag('AI.BlackboardKey.Vector.AssignBaseLocation'),base)
             aiLib:SetValueAsObjectByTag(board,tag('AI.BlackboardKey.Object.AssignBaseActor'),caster)
         end)
+        if wrote then
+            local read,actual=pcall(function()return U.unwrap(aiLib:GetValueAsObjectByTag(board,tag('AI.BlackboardKey.Object.AssignBaseActor')))end)
+            wrote=read and U.key(actual)~=nil and U.key(actual)==U.key(caster) and eligible(caster,members[U.key(caster)])
+        end
         local event=tag(EVENT)
-        local sent=pcall(function()abilityLib:SendGameplayEventToActor(partner,event,{EventTag=event,Instigator=caster,OptionalObject=tree})end)
+        local sent=wrote and pcall(function()abilityLib:SendGameplayEventToActor(partner,event,{EventTag=event,Instigator=caster,OptionalObject=tree})end)
         if sent then
             self.assigned=self.assigned+1
             dispatched[U.key(partner) or partner]={actor=partner,want=nameOf(tree) or '?'}
@@ -187,24 +226,32 @@ function Combos.new(options)
         if not U.valid(task) then return nil end
         local pawn=U.field(task,'ControlledPawn')
         local entry=U.valid(pawn) and members[U.key(pawn)]
-        if not entry or not alive(entry.partner) then return nil end
+        if not eligible(pawn,entry) or entry.link.partnerSet[U.key(pawn)]~=true or entry.link.partnerSet[U.key(entry.partner)]~=true then return nil end
         local tree=U.field(task,'TreeAsset')
         assign(pawn,entry.partner,U.valid(tree) and nameOf(tree) or nil)
         return nil
     end
 
     -- Writes the partner key of one unit and reads it back; nil partner empties it.
-    local function setPartner(actor,partner)
+    local function setPartner(actor,partner,release)
         local bbLib,aiLib=find(BB_LIB),find(AI_LIB)
         if not bbLib or not aiLib or not U.valid(actor) then return false,'缺函数库' end
         local okBoard,board=pcall(function()return bbLib:GetBlackboard(actor)end)
         board=okBoard and U.unwrap(board) or nil
         if not U.valid(board) then return false,'还没有黑板' end
+        local read,old=pcall(function()return U.unwrap(aiLib:GetValueAsObjectByTag(board,tag(PARTNER_KEY)))end)
+        if not read then return false,'原搭档键不可读' end
+        if release then
+            if U.key(board)~=release.board or U.key(old)~=release.partner then return true,'原搭档键已更换' end
+        elseif U.valid(old) then
+            return U.key(old)==U.key(partner),'保留已有搭档键'
+        end
+        local owned=partner and {board=U.key(board),partner=U.key(partner)} or nil
         local wrote=pcall(function()aiLib:SetValueAsObjectByTag(board,tag(PARTNER_KEY),partner)end)
         local okBack,back=pcall(function()return aiLib:GetValueAsObjectByTag(board,tag(PARTNER_KEY))end)
         back=okBack and U.unwrap(back) or nil
         local same=(partner==nil and not U.valid(back)) or (partner~=nil and U.key(back)==U.key(partner))
-        return wrote and same,'写入='..tostring(wrote)..' 读回='..tostring(same)
+        return wrote and okBack and same,'写入='..tostring(wrote)..' 读回='..tostring(same),owned
     end
     -- What a linked unit is doing: the tree its brain runs, named when it changes, so a stuck tree shows in the log.
     local function runningTree(actor)
@@ -244,13 +291,19 @@ function Combos.new(options)
             if key and U.valid(actor) then
                 local living=alive(partner)
                 local state=record.partnerSet[key]
+                if living and state==true and record.team=='companion' and not boundPartner(actor,partner) then state=false end
                 if living and state~=true then
-                    local ok,note=setPartner(actor,partner)
+                    local ok,note,owned=setPartner(actor,partner)
+                    if owned then record.ownedKeys[key]=owned end
                     if ok then record.partnerSet[key]=true end
                     if ok or state==nil then say('搭档键 单位='..className(actor)..' 搭档='..className(partner)..' '..note) end
                     if not ok then record.partnerSet[key]=false end
                 elseif not living and state==true then
-                    local _,note=setPartner(actor,nil)
+                    local note='无需还原'
+                    if record.ownedKeys[key] then
+                        local ok,detail=setPartner(actor,nil,record.ownedKeys[key]);note=detail
+                        if ok then record.ownedKeys[key]=nil end
+                    end
                     record.partnerSet[key]=nil
                     say('搭档不在了，清空搭档键 单位='..className(actor)..' '..note)
                 end
@@ -283,7 +336,7 @@ function Combos.new(options)
 
     local function link(pair,team,a,b,key)
         retry:reset()
-        links[key]={key=key,pair=pair,a=a,b=b,partnerSet={},trees={}}
+        links[key]={key=key,pair=pair,team=team,a=a,b=b,partnerSet={},ownedKeys={},trees={}}
         seenGate={}
         members[U.key(a)]={link=links[key],partner=b};members[U.key(b)]={link=links[key],partner=a}
         self.linked=self.linked+1
@@ -294,14 +347,18 @@ function Combos.new(options)
     local function unlink(key,reason)
         local record=links[key]
         if not record then return end
+        record.retiring=true
         for address,entry in pairs(members)do if entry.link==record then members[address]=nil end end
+        local done=true
         for _,actor in ipairs({record.a,record.b})do
             local address=U.key(actor)
-            if address and record.partnerSet[address] and U.valid(actor) then
-                local _,note=setPartner(actor,nil)
-                say('解除时清空搭档键 单位='..className(actor)..' '..note)
+            if address and record.ownedKeys[address] and U.valid(actor) then
+                local ok,note=setPartner(actor,nil,record.ownedKeys[address])
+                if ok then record.ownedKeys[address]=nil else done=false end
+                sayOften('解除时核对搭档键 单位='..className(actor)..' '..note)
             end
         end
+        if not done then return end
         links[key]=nil
         say(string.format('解除连携 %s（%s）放行=%d 分派=%d',record.pair.name,reason,self.gates,self.assigned))
     end
@@ -309,14 +366,28 @@ function Combos.new(options)
     function self:tick()
         if not self.alive then return end
         local keep={}
-        if self.enabled and options.fighting() then
+        if self.enabled then
             local byTeam={}
+            local groups={}
+            local fighting=options.fighting()
             for _,member in ipairs(options.members())do
-                if (member.team=='blue' or member.team=='red') and not member.reserve and U.valid(member.actor) then
+                if fighting and (member.team=='blue' or member.team=='red') and not member.reserve and U.valid(member.actor) then
                     local team=byTeam[member.team] or {}
                     byTeam[member.team]=team
                     local name=className(member.actor)
                     if not team[name] or (not alive(team[name]) and alive(member.actor)) then team[name]=member.actor end
+                elseif member.team=='companion' and not member.reserve and not member.stand and not member.aid and U.valid(member.actor) then
+                    local cls=className(member.actor)
+                    for _,pair in ipairs(Combos.PAIRS)do
+                        local side=cls==pair.classes[1] and 1 or cls==pair.classes[2] and 2
+                        local enemy=side and companionEnemy(member.actor)
+                        if enemy then
+                            groups[pair]=groups[pair] or {}
+                            local group=groups[pair][enemy] or {{},{}}
+                            groups[pair][enemy]=group
+                            table.insert(group[side],member.actor)
+                        end
+                    end
                 end
             end
             for teamName,team in pairs(byTeam)do
@@ -324,15 +395,33 @@ function Combos.new(options)
                     local a,b=team[pair.classes[1]],team[pair.classes[2]]
                     if a and b then
                         local key=tostring(U.key(a))..':'..tostring(U.key(b))
-                        keep[key]=true
-                        if not links[key] then link(pair,teamName,a,b,key)
-                        else installHooks();holdPartners(links[key]);checkDispatched();watchTrees(links[key]) end
+                        keep[key]={pair,teamName,a,b}
+                    end
+                end
+            end
+            for pair,enemies in pairs(groups)do
+                for _,group in pairs(enemies)do
+                    for i=1,math.min(#group[1],#group[2])do
+                        local a,b=group[1][i],group[2][i]
+                        keep[U.key(a)..':'..U.key(b)]={pair,'companion',a,b}
                     end
                 end
             end
         end
-        for key in pairs(links)do if not keep[key] then unlink(key,self.enabled and '战斗结束或单位离场' or '开关已关') end end
-        if not next(links) and next(hooks) then removeHooks() end
+        for key,record in pairs(links)do
+            if record.retiring or not keep[key] or record.team~=keep[key][2] then
+                unlink(key,self.enabled and '战斗结束或单位离场' or '开关已关')
+            end
+        end
+        for key,p in pairs(keep)do
+            if not links[key] then link(p[1],p[2],p[3],p[4],key)
+            elseif not links[key].retiring then installHooks();holdPartners(links[key]);watchTrees(links[key]) end
+        end
+        if next(keep) then checkDispatched() end
+        if not next(links) then
+            if next(taskWrites) then restoreTrees() end
+            if next(hooks) then removeHooks() end
+        end
     end
     function self:set(value)
         self.enabled=value==true
@@ -343,7 +432,13 @@ function Combos.new(options)
         return {ok=saved,message=saved and state or state..'，但没保存下来，下次启动会变回去',spawned_count=0}
     end
     function self:status()return {enabled=self.enabled,links=self.linked,gates=self.gates,assigned=self.assigned,failures=self.failures}end
-    function self:silence()removeHooks();self.alive=false end
+    function self:silence(onGameThread)
+        self.alive=false;removeHooks()
+        if onGameThread then
+            for key in pairs(links)do unlink(key,'模组卸载') end
+            restoreTrees()
+        end
+    end
     return self
 end
 return Combos

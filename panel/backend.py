@@ -1361,6 +1361,9 @@ class Bridge:
         with self.lock:
             self.transport_error = self.transport_code = None
             try:
+                if not self.db.execute("SELECT 1 FROM commands WHERE state IN ('pending','inflight') LIMIT 1").fetchone():
+                    self._retire_deliveries()
+                    return
                 game = self.game_status()
                 session = game.get("game_session") if game["online"] else None
                 if session:

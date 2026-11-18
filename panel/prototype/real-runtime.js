@@ -580,7 +580,17 @@ const RealRuntime = (() => {
     if (parts.size) emit({ type: "state", parts });
   }
 
+  let pollTimer = null, polling = false;
+  const needsStatus = () => !document.hidden || waiters.size > 0;
+  function schedulePoll(delay) {
+    if (pollTimer !== null) clearTimeout(pollTimer);
+    pollTimer = null;
+    if (!polling && needsStatus()) pollTimer = setTimeout(poll, delay);
+  }
   async function poll() {
+    pollTimer = null;
+    if (polling || !needsStatus()) return;
+    polling = true;
     try {
       const watched = [...waiters.keys()].slice(0, MAX_COMMANDS);
       const { response: r, data } = await readJSON("/api/status" + (watched.length ? "?watch=" + watched.join(",") : ""));
@@ -590,9 +600,12 @@ const RealRuntime = (() => {
     } catch (error) {
       // The native window restarts the backend when the game folder changes; ride out short gaps.
       if (++failedPolls === 4 || error.code === "readTimeout") apply({ game: {}, queue: [] });
+    } finally {
+      polling = false;
+      schedulePoll(500);
     }
-    setTimeout(poll, 500);
   }
+  document.addEventListener?.("visibilitychange", () => schedulePoll(0));
 
   // ---------- Commands ----------
   const online = () => ["notInMap", "ready", "mismatch"].includes(s.game);
@@ -662,6 +675,7 @@ const RealRuntime = (() => {
     const done = await new Promise(resolve => {
       const timer = setTimeout(() => { waiters.delete(id); pruneJobs(); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);
       waiters.set(id, j => { clearTimeout(timer); waiters.delete(id); pruneJobs(); resolve(j); });
+      if (document.hidden) schedulePoll(0);
       jobById.set(id, job);
       pruneJobs();
       if (job.status !== "pending") waiters.get(job.id)(job);
