@@ -167,4 +167,45 @@ test("per battle log caps do not stop scans or queries", function()
     assert(repeated.suppressed == 52 and repeated.queryCalls == 0)
 end)
 
+test("ordinary arena fights watch health without global attack scans; the dedicated probe can still sample",function()
+    local file=assert(io.open("Mods/PhantomGladiator/Scripts/main.lua","rb"))
+    local source=file:read("*a"):gsub("\r\n","\n");file:close()
+    local watch=assert(source:match("local function StartDuelWatch%(a,b%).-\nend\n"))
+    local function simulate(enabled,deathAt)
+        local h={scans=0,health=0,inspection=0,stops=0,phase=0}
+        local a,b=object("A"),object("B")
+        local env=setmetatable({
+            Config={EnableDuelAttackProbe=enabled},log=function()end,safeValid=valid,
+            battle={begin=function()return 1 end,isCurrent=function()return not h.cancelled end,
+                cancel=function(_,reason)h.cancelled=reason end},
+            AttackProfile={new=function(opts)
+                opts.findAll=function(class)assert(class=="PBZ_SweepTraceBullet");h.scans=h.scans+1;return {} end
+                return Profile.new(opts)
+            end},
+            GetPlayerPawn=function()end,GetHP=function(actor)
+                h.health=h.health+1
+                return actor==b and h.phase==deathAt and 0 or 100
+            end,
+            spawnInspector={combat=function()h.inspection=h.inspection+1 end},
+            ReadRelation=function()end,RelationName=function()return "?" end,
+            LoopInGameThreadWithDelay=function(ms,callback)assert(ms==250);h.tick=callback;return 17 end,
+            CancelDelayedAction=function(id)assert(id==17);h.stops=h.stops+1 end,
+        },{__index=_G})
+        assert(load(watch.."\nreturn StartDuelWatch","arena duel watch","t",env))()(a,b)
+        for tick=1,240 do
+            h.phase=tick;h.tick()
+            if h.stops>0 then break end
+        end
+        return h
+    end
+    local off=simulate(nil)
+    assert(off.scans==0,"normal 240-tick fight performed "..off.scans.." global sweep scans")
+    assert(off.health==60 and off.stops==1 and off.phase==240 and off.inspection==6)
+    local on=simulate(true)
+    assert(on.scans==240 and on.health==60 and on.stops==1)
+    local died=simulate(false,8)
+    assert(died.scans==0 and died.health==2 and died.stops==1 and died.phase==8)
+    print("MEASURE default/diagnostic global scans over 240 ticks: "..off.scans.."/"..on.scans.."; health reads="..off.health)
+end)
+
 print(string.format("%d attack profile tests passed; no UE runtime assertions made.", tests))

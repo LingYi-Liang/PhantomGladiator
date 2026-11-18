@@ -214,7 +214,7 @@ function M.new(o)
         local result=feedback(p,cast,inst,hasTag)
         if result then
             self:finish(r,h)
-            cast.confirmed=true;cast.released=true
+            cast.confirmed=true;cast.released=true;cast.awaitWindow=false
             say(r,'影武释放结果读回 '..cast.choice.meta.label..' '..result)
             return
         end

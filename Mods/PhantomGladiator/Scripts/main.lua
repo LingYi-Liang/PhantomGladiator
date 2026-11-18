@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-23"
+local BUILD = "v0.40.16-beta-24"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -118,7 +118,6 @@ local probeFinished
 local probe = CombatProbe.new({log=log, valid=safeValid, config=Config.Probe,
     onStop=function(state) if probeFinished then probeFinished(state) end end})
 local probeSampleGen = 0
-local attackProfile = AttackProfile.new({log=log,valid=safeValid})
 local arenaActors = {}
 local spawnRoutes={}
 local arena
@@ -456,8 +455,14 @@ local function SetFactionRelation(a, b, relation)
     local beforeA,beforeB = ReadRelation(a,b),ReadRelation(b,a)
     if beforeA == nil or beforeB == nil then return false,beforeA,nil end
     local function rememberOne(source,target,fc,original)
-        battle:remember("relation:" .. source:GetAddress() .. ":" .. target:GetAddress(), function()
-            if not engineValid(source) or not engineValid(target) or not engineValid(fc) then
+        battle:remember("relation:" .. source:GetAddress() .. ":" .. target:GetAddress(), function(gone)
+            local function expired(obj)
+                if gone and gone[obj] then return true end
+                if engineValid(obj) then return false end
+                if gone then gone[obj]=true end
+                return true
+            end
+            if expired(source) or expired(target) or expired(fc) then
                 return true,"参赛对象有效性读回=false，目标已不存在；丢弃过期关系记录"
             end
             checked(source); checked(target); checked(fc)
@@ -719,7 +724,7 @@ end
 
 local function StartDuelWatch(a,b)
     local token=battle:begin("两只NPC对照")
-    attackProfile=AttackProfile.new({log=log,valid=safeValid})
+    local attackProfile=Config.EnableDuelAttackProbe==true and AttackProfile.new({log=log,valid=safeValid})
     local ticks,handle=0,nil
     local function cancel()
         if handle then pcall(CancelDelayedAction,handle); handle=nil end
@@ -731,7 +736,7 @@ local function StartDuelWatch(a,b)
             battle:cancel("对象失效"); cancel(); return
         end
         ticks=ticks+1
-        attackProfile:sample({a,b},"duel_sample_"..ticks,GetPlayerPawn())
+        if attackProfile then attackProfile:sample({a,b},"duel_sample_"..ticks,GetPlayerPawn()) end
         if ticks==1 or ticks==20 or ticks==80 then
             local ok,err=pcall(function()
                 spawnInspector:combat(a,b,'tick'..ticks)
@@ -2108,7 +2113,7 @@ function arenaSupport.hunNativeTarget(actor)
     local ok,target=pcall(function()return UEObserve.unwrap(board:GetValueAsObject(key))end)
     if ok and UEObserve.valid(target) then return target end
 end
-arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
+arenaSupport.hunBody=require('hun_body').new({log=log,probe=Config.EnableHunBodyProbe==true,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
     requireProfile=true,nativeTarget=arenaSupport.hunNativeTarget,
     target=function(actor,team)
         if team=='blue' or team=='red' then return arena:opponentOf(UEObserve.key(actor)) end
@@ -2458,9 +2463,11 @@ if ModRef then
         arenaSupport.offCombatRegen:silence()
         arenaSupport.battleMusic:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
-        playerAim:silence('Mod卸载')
+        local checkedThread,onGameThread=pcall(IsInGameThread)
+        local restoreNative=checkedThread and onGameThread==true
+        playerAim:silence('Mod卸载',restoreNative)
         arenaSupport.combatContinuity:silence()
-        arenaSupport.hunBody:silence()
+        arenaSupport.hunBody:silence(restoreNative)
         arenaSupport.effectAim:silence()
         aiParams:silence()
         bossCombos:silence()

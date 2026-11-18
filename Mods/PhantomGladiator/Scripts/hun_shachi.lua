@@ -65,12 +65,12 @@ local function granted(asc)
     local specs = U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
     if not specs or #specs>1024 then return {} end
     local out = {}
-    for _,spec in ipairs(specs) do
+    for index,spec in ipairs(specs) do
         local path = objectPath(U.struct(spec,'Ability'))
         if path then
             local id=U.struct(U.struct(spec,'Handle'),'Handle')
             if type(id)=='number' and id>0 then
-                out[path:gsub('%.Default__','.')]={id=id, active=U.struct(spec,'ActiveCount'), spec=spec}
+                out[path:gsub('%.Default__','.')]={id=id, active=U.struct(spec,'ActiveCount'), spec=spec,index=index,abilityKey=U.key(U.struct(spec,'Ability'))}
             end
         end
     end
@@ -81,6 +81,28 @@ local function ownedComponent(actor, field)
     local component=U.field(actor,field)
     local ok,owner=call(component,'GetOwner')
     if ok and U.key(owner) and U.key(owner)==U.key(actor) then return component end
+end
+
+-- GAS can move or regrant specs. Cache an array position, never a pointer into that array.
+local function activeSpec(asc,cast)
+    local items=U.struct(U.field(asc,'ActivatableAbilities'),'Items')
+    local function match(row)
+        if U.struct(U.struct(row,'Handle'),'Handle')==cast.handle and U.key(U.struct(row,'Ability'))==cast.abilityKey then
+            return {id=cast.handle,active=U.struct(row,'ActiveCount'),spec=row}
+        end
+    end
+    local ok,row=pcall(function()
+        if cast.index and cast.index<=#items then return U.unwrap(items[cast.index]) end
+    end)
+    local found=ok and match(row)
+    if found then return found,true end
+    local list=U.array(items)
+    if not list or #list>1024 then return nil,false end
+    for i,spec in ipairs(list) do
+        found=match(spec)
+        if found then cast.index=i;return found,true end
+    end
+    return nil,true
 end
 
 local function slotConfig(wc, tag, index)
@@ -553,7 +575,13 @@ function Shachi.new(o)
     local function observe(r,s,asc,now,ctx)
         local cast=s.running
         if not cast then return false end
-        local spec=granted(asc)[cast.move.cls]
+        local spec,readable=activeSpec(asc,cast)
+        if not readable then
+            if now<cast.deadline then return true end
+            charge:finish(r,cast.hold)
+            s.running=nil;s.quarantine=cast
+            return false
+        end
         local after=attr(r,'SpiritShadow')
         local debitObserved=type(after)=='number' and after<cast.lastResource
         if debitObserved then s.lastPaidAt=now end
@@ -562,8 +590,9 @@ function Shachi.new(o)
             if cap then write(r,'SpiritShadow',math.min(cap,cast.lastResource));after=attr(r,'SpiritShadow') end
         end
         if after then cast.lastResource=after end
-        local lost=cast.hold and not cast.released and (cast.target~=U.key(ctx.target)
-            or not matchesTarget(r,ctx.target) or type(ctx.distance)~='number' or not clearSight(r,ctx.target,ctx.distance))
+        local lost=cast.hold and (not cast.released or cast.awaitWindow) and (cast.target~=U.key(ctx.target)
+            or not matchesTarget(r,ctx.target) or type(ctx.distance)~='number' or not (ctx.distance>=0 and ctx.distance<=3000)
+            or not clearSight(r,ctx.target,ctx.distance))
         if cast.pendingUntil then
             if (spec and spec.id==cast.handle and type(spec.active)=='number' and spec.active>0) or debitObserved then
                 cast.pendingUntil=nil
@@ -583,6 +612,12 @@ function Shachi.new(o)
             s.running=nil
             return false
         end
+        if cast.cancelledAt and now>=cast.cancelledAt+.5 then
+            charge:finish(r,cast.hold)
+            s.running=nil;s.quarantine=cast
+            say(r,'原生影武仍活动，暂缓新的影武并交还战斗决策 '..cast.choice.meta.label)
+            return false
+        end
         if cast.hold and not lost and now<cast.deadline and not cast.cancelled then
             local hasTag=readTags(asc)
             ownedInstances(r,spec,function(instance)charge:observe(r,cast,instance,ctx,now,hasTag) end)
@@ -590,13 +625,13 @@ function Shachi.new(o)
             ownedInstances(r,spec,function(instance)charge:tap(r,cast,instance,now) end)
         end
         if (lost or now>=cast.deadline or (cast.hold and not cast.released and now>cast.started+cast.profile.limit+.5)) and not cast.cancelled then
-            cast.cancelled=true
+            cast.cancelled=true;cast.cancelledAt=now
             ownedInstances(r,spec,function(instance)
                 say(r,'即将取消影武 '..cast.choice.meta.label..(lost and ' 目标丢失' or ' 等待超时'))
                 call(instance,'K2_CancelAbility')
             end)
             charge:finish(r,cast.hold)
-            local read=granted(asc)[cast.move.cls]
+            local read=activeSpec(asc,cast)
             say(r,'影武取消读回 活动数='..tostring(read and read.active))
         end
         return true
@@ -636,6 +671,13 @@ function Shachi.new(o)
         if not asc then return false end
         observeResources(r,s,now)
         if observe(r,s,asc,now,ctx) then return true end
+        if s.quarantine then
+            if now<(s.checkQuarantineAt or 0) then return false end
+            s.checkQuarantineAt=now+1
+            local old,readable=activeSpec(asc,s.quarantine)
+            if not readable or (old and old.active~=0) then return false end
+            s.quarantine=nil;s.checkQuarantineAt=nil
+        end
         if now<s.nextAt or ctx.busy or ctx.allowAction==false or ctx.allowShadow==false or not U.valid(ctx.target)
             or U.key(ctx.target)==U.key(r.actor) or type(ctx.distance)~='number'
             or not (ctx.distance>=0 and ctx.distance<=3000) then return false end
@@ -694,11 +736,15 @@ function Shachi.new(o)
         end
         local duration=hold and math.max(move.duration,profile.limit+profile.tail) or move.duration
         s.running={choice=choice,move=move,handle=spec.id,started=now,deadline=now+duration+1,before=available,lastResource=available,
-            target=U.key(ctx.target),profile=profile,hold=hold,priorSuccess=priorSuccess,opening=ctx.opening or ctx.targetBroken}
+            index=spec.index,abilityKey=spec.abilityKey,target=U.key(ctx.target),profile=profile,hold=hold,
+            priorSuccess=priorSuccess,opening=ctx.opening or ctx.targetBroken}
         if not active and not debited then s.running.pendingUntil=now+1 end
         s.last=choice.id;s.nextAt=now+math.max(0.35,(s.resources.cooldown_scale or 1)*2.0)
         observe(r,s,asc,now,ctx)
         return true
+    end
+    function self:silence()
+        summons:silence();assets={}
     end
     function self:cleanup(r)
         local s=r.shadowState

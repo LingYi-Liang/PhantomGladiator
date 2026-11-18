@@ -19,6 +19,8 @@ Config.EnableBattleExperiments = false
 -- 曾两次在同一地址原生崩溃，其中一次紧邻玩家Health Post Func回调。
 -- 关闭诊断挂钩做隔离验证；游戏互斗依靠原生流程，不依赖这些hook。
 Config.Probe = {Enabled=false,DurationMs=60000,MaxEvents=2000,MaxLogs=100,MaxLogsPerHook=12}
+-- 诊断擂台攻击判定时开启。每 250 毫秒扫描子弹并检查目标资格，最长持续一分钟。
+Config.EnableDuelAttackProbe = false
 
 -- 敌人搜索：FindAllOf 会按这些类名找 Pawn。
 -- 使用本地头文件确认的NPC基类；仍不能据此保证都是可用于竞技场的敌人。
@@ -44,6 +46,8 @@ Config.EnableGrabProbe = true
 Config.EnableStatFormulaProbe = false
 -- 召唤的第一只蓝/红方单位把223项属性逐项写入测试值、隔0.5秒读回再恢复，每项一行日志，约15秒；核对自定义数值时再开。
 Config.EnableStatFieldProbe = false
+-- 召唤后详细盘点魂和玩家的外观、动画及来袭帧，仅在排查这些表现时开启。
+Config.EnableHunBodyProbe = false
 -- 随从在场时只读记录它的每种攻击（类型、打谁、能否打同阵营、能否打到玩家）和玩家掉血；查随从范围攻击误伤玩家时再开。
 Config.EnableCompanionHitProbe = false
 -- 每分钟把已加载的全部攻击数据过一遍，列出设成「打友方/都打/能打同阵营」的（只读，明细写入 Runtime/attack-faction-scan.tsv）。

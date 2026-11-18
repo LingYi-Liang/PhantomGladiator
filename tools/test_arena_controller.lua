@@ -125,6 +125,43 @@ do
     end
     assert(targets[newcomer])
 end
+do
+    local group=fixture({maxUnits=0})
+    assert(group.arena:spawn(nil,'blue',1).ok and group.arena:spawn(nil,'red',1).ok and group.arena:start().ok)
+    for i=1,24 do assert(group.arena:spawn(nil,i%2==0 and 'blue' or 'red',1).ok) end
+    local pairsSeen,peak={},0
+    local original=group.options.setRelation
+    group.options.setRelation=function(a,b,r)
+        local key=a.name<b.name and a.name..'/'..b.name or b.name..'/'..a.name
+        assert(not pairsSeen[key],'a confirmed bidirectional peer pair was posted twice')
+        pairsSeen[key]=true
+        return original(a,b,r)
+    end
+    for i=1,30 do
+        local before=stageCount(group,'relation')
+        group.arena:tickReinforcements()
+        peak=math.max(peak,stageCount(group,'relation')-before)
+    end
+    local unique=0;for _ in pairs(pairsSeen)do unique=unique+1 end
+    assert(unique==324 and peak<=32,'all 324 new pairs must settle with bounded per-tick writes')
+end
+do
+    local now,blocked=1,true
+    local f=fixture({now=function()return now end})
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    assert(f.arena:spawn(nil,'red',1).ok and f.arena:spawn(nil,'blue',1).ok)
+    local joining=f.actors[3];local ready=f.actors[4];local refused=0
+    f.options.setRelation=function(a,b)
+        if blocked and ((a==joining and b==f.actors[1]) or (b==joining and a==f.actors[1])) then refused=refused+1;return false end
+        return true
+    end
+    local assigned={}
+    f.options.forceAttack=function(a,b)assigned[a]=b;return true end
+    f.arena:tickReinforcements();f.arena:tickReinforcements()
+    assert(refused==1 and not assigned[joining] and assigned[ready])
+    blocked=false;now=2.1;f.arena:tickReinforcements()
+    assert(assigned[joining],'a previously refused reinforcement recovers after verified relationships')
+end
 -- Reproduce the multi-second spawn hitch: a selected path must never run discovery.
 local directSpawn=fixture()
 function directSpawn.catalog:refresh()error('full class discovery on the spawn path')end
@@ -956,7 +993,10 @@ do
     local rel={}
     for i=before+1,#f.trace do
         local e=f.trace[i]
-        if type(e)=='table' and e[1]=='relation' and e[2]==helper then rel[e[3]]=e[4] end
+        if type(e)=='table' and e[1]=='relation' then
+            -- The adapter sets and verifies both directions for a pair.
+            if e[2]==helper then rel[e[3]]=e[4] elseif e[3]==helper then rel[e[2]]=e[4] end
+        end
     end
     assert(rel[lengtu]==2 and rel[vessel]==2 and rel[enemy]==0,'its attacks land on her side, not on the side it helps')
     for _,e in ipairs(f.trace)do

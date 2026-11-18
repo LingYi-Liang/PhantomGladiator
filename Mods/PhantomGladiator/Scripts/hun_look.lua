@@ -16,7 +16,7 @@ local Look={}
 -- Switches of this build's Hun body steps. hun_body, arena_executions and arena_grabs read the ones that concern them.
 -- The weapon steps have their own table, hun_weapons.lua Weapons.STEPS.
 Look.STEPS={
-    probe=true,           -- read-only probes of the body and the player (hun_body.lua)
+    probe=false,          -- optional, detailed development probes of both the body and the player
     look='full',          -- body look: 'full' = player component tree, 'clone' = Hun_Clone, false leaves Hun_Skin
     cloth=true,           -- Attach the four independent cloth components to each full body.
     anim=true,            -- main anim class PBZ_ABP_Base_MonsterHun_C and default layers
@@ -112,12 +112,51 @@ function Look.new(o)
     end
     -- Every skinned mesh the body or its attached weapon actors own, other than its own Mesh and the parts this module
     -- added, with its socket. One text, so a change after a step shows as a different text.
+    local function localMeshes(actor,mesh)
+        local root=U.field(actor,'RootComponent')
+        local children=U.array(U.field(actor,'Children'))
+        if not U.valid(root) or not children or #children>256 then return end
+        local cls=object(Look.PATHS.meshClass)
+        if not U.valid(cls) then return end
+        local queue,seen,result={},{},{}
+        local function enqueue(comp)
+            local key=U.key(comp)
+            if key and not seen[key] then seen[key]=true;queue[#queue+1]=comp end
+        end
+        enqueue(root);enqueue(mesh)
+        local actorKey=U.key(actor)
+        for _,child in ipairs(children) do
+            local _,owner=call(child,'GetOwner')
+            if U.key(owner)==actorKey then enqueue(U.field(child,'RootComponent')) end
+        end
+        local i=1
+        while i<=#queue do
+            if #queue>1024 then return end
+            local comp=queue[i];i=i+1
+            local _,owner=call(comp,'GetOwner')
+            local mine=U.key(owner)==actorKey
+            if not mine then local _,parent=call(owner,'GetOwner');mine=U.key(parent)==actorKey end
+            if mine then
+                local ok,skinned=call(comp,'IsA',cls)
+                if not ok or type(skinned)~='boolean' then return end
+                if skinned then result[#result+1]=comp end
+                local attached=U.array(U.field(comp,'AttachChildren'))
+                if not attached then return end
+                for _,nextComp in ipairs(attached)do enqueue(nextComp) end
+            end
+        end
+        return result
+    end
     local function weaponSockets(actor,mesh,skip)
-        local key,list=U.key(actor),{}
-        local ok,all=pcall(findAll,'SkeletalMeshComponent')
-        for _,comp in ipairs(ok and type(all)=='table'and all or{})do
+        local key,meshKey,list=U.key(actor),U.key(mesh),{}
+        local all=localMeshes(actor,mesh)
+        if not all then
+            local ok,found=pcall(findAll,'SkeletalMeshComponent')
+            all=ok and type(found)=='table' and found or {}
+        end
+        for _,comp in ipairs(all)do
             local ck=U.key(comp)
-            if ck and ck~=U.key(mesh)and not(skip and skip[ck])then
+            if ck and ck~=meshKey and not(skip and skip[ck])then
                 local gotOwner,owner=call(comp,'GetOwner')
                 local mine=gotOwner and U.key(owner)==key
                 if not mine and gotOwner and U.valid(owner)then
@@ -187,7 +226,7 @@ function Look.new(o)
         say('换网格 读回 实例='..r.name..' 调用='..tostring(called==true)..' 网格='..short(after)..' 材质=['..mats..'] hatSocket='..tostring(hat)
             ..' 武器挂接=['..sockets..']'..(sockets==before and''or'（原=['..before..']）')..' 插槽都在='..tostring(exist)..(missing and'（缺 '..missing..'）'or'')
             ..' verified='..tostring(verified))
-        if verified then r.lookKind='clone';return true end
+        if verified then r.lookKind='clone';r.appliedMesh=target;return true end
         if still()then
             local back=call(mesh,'SetSkeletalMeshAsset',old)
             local _,now=call(mesh,'GetSkeletalMeshAsset')
@@ -199,7 +238,7 @@ function Look.new(o)
     ---- 2-1 / 2-2: parts added to the body. Every one is registered in r.parts the moment it exists.
     local function register(r,comp,spec,kind)
         r.parts=r.parts or{}
-        local part={comp=comp,key=U.key(comp),name=spec.name,kind=kind}
+        local part={comp=comp,key=U.key(comp),owner=r.actor,name=spec.name,kind=kind}
         r.parts[#r.parts+1]=part
         return part
     end
@@ -210,6 +249,10 @@ function Look.new(o)
     local function destroyPart(part)
         if part.gone then return part.name..'=已销毁过'end
         if not U.valid(part.comp)then part.gone=true;return part.name..'=已无效'end
+        local _,owner=call(part.comp,'GetOwner')
+        if U.key(part.comp)~=part.key or not U.key(owner) or U.key(owner)~=U.key(part.owner) then
+            part.gone=true;return part.name..'=不再属于该实例'
+        end
         local _,already=call(part.comp,'IsBeingDestroyed')
         local called=already==true
         if not called then called=call(part.comp,'K2_DestroyComponent',part.comp)==true end
@@ -419,7 +462,7 @@ function Look.new(o)
             ..' 武器挂接=['..sockets..']'..(sockets==before and''or'（原=['..before..']）')..' 插槽都在='..tostring(exist)..(lack and'（缺 '..lack..'）'or'')
             ..' verified='..tostring(verified))
         if not verified then undoFull(r,mesh,still,'身体没读回');return false end
-        r.full=true;r.lookKind='full'
+        r.full=true;r.lookKind='full';r.appliedMesh=assets.body
         local extras={}
         for _,spec in ipairs(Look.PARTS)do
             local ok,result=pcall(meshPart,r,mesh,spec,still,assets)
@@ -476,7 +519,7 @@ function Look.new(o)
         say('换动画类 读回 实例='..r.name..' 调用='..tostring(called==true)..' 动画实例='..current..' ABP_MM_Monster='..tostring(mmOK)..'（'..mmHow..'）'
             ..' ABP_Item_Hun_Summon='..tostring(itemOK)..'（'..itemHow..'） 武器挂接=['..sockets..']'..(sockets==before and''or'（原=['..before..']）')
             ..' verified='..tostring(verified))
-        if verified then return true end
+        if verified then r.appliedAnim=cls;return true end
         if still()then
             say('即将 还原动画类 实例='..r.name..' SetAnimInstanceClass('..short(old)..') + LinkDefaultAnimLayers')
             local back=call(mesh,'SetAnimInstanceClass',old)
@@ -577,6 +620,24 @@ function Look.new(o)
     end
     -- The body left the arena or its death readback ended: every part still registered is destroyed and read back.
     function self:cleanup(r,why)
+        local mesh=U.field(r.actor,'Mesh')
+        if r.undo and r.still and r.still() and U.valid(mesh) then
+            local _,now=call(mesh,'GetSkeletalMeshAsset')
+            if U.valid(r.appliedMesh) and U.key(now)==U.key(r.appliedMesh) and U.valid(r.undo.mesh) and U.key(now)~=U.key(r.undo.mesh) then
+                say('即将还原离场魂的原始身体 '..r.name)
+                call(mesh,'SetSkeletalMeshAsset',r.undo.mesh)
+                local _,back=call(mesh,'GetSkeletalMeshAsset')
+                if U.key(back)~=U.key(r.undo.mesh) then say('原始身体未读回，保留配套头部 '..r.name);return end
+                say('原始身体已读回 '..r.name)
+            end
+            if U.valid(r.appliedAnim) and U.key(U.field(mesh,'AnimClass'))==U.key(r.appliedAnim) and U.valid(r.undo.anim)
+                and U.key(r.appliedAnim)~=U.key(r.undo.anim) then
+                say('即将还原离场魂的动画类 '..r.name)
+                call(mesh,'SetAnimInstanceClass',r.undo.anim)
+                call(U.field(r.actor,'Character Weapons Component'),'LinkDefaultAnimLayers')
+                say('原始动画类读回='..tostring(U.key(U.field(mesh,'AnimClass'))==U.key(r.undo.anim)))
+            end
+        end
         if not r.parts or #r.parts==0 then return end
         local destroyed,all=destroyParts(r)
         if destroyed~=''then say('清理部件 实例='..r.name..' 原因='..tostring(why)..' '..destroyed..' 全部确认='..tostring(all))end

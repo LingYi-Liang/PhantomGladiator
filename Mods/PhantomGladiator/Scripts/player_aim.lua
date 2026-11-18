@@ -540,9 +540,12 @@ function Aim.new(options)
         local ok,name=pcall(function()return object:GetFName():ToString()end)
         return ok and type(name)=='string' and name or '?'
     end
-    local function stopEffectLoop()
-        if not effectLoop or clock()<effectCancelAt then return end
-        effectCancelAt=clock()+1
+    local function stopEffectLoop(force)
+        if not effectLoop then return end
+        if not force then
+            if clock()<effectCancelAt then return end
+            effectCancelAt=clock()+1
+        end
         local ok,result=pcall(CancelDelayedAction,effectLoop)
         if ok and result~=false then effectLoop=nil;effectGeneration=effectGeneration+1;effectCancelAt=0 end
     end
@@ -744,12 +747,17 @@ function Aim.new(options)
             selfCheck()
         else self.state='failed';self.message='取玩家函数挂钩失败' end
     end
-    local function uninstall(reason,force)
-        if not next(hooks) then return end
-        if not force and clock()<uninstallAt then return end
-        uninstallAt=clock()+1
-        stopEffectLoop();effectScans=0
-        for key,item in pairs(effects)do releaseEffect(item);effects[key]=nil end
+    local function uninstall(reason,force,restore)
+        if not next(hooks) and not effectLoop and not next(effects) then return end
+        if not force then
+            if clock()<uninstallAt then return end
+            uninstallAt=clock()+1
+        end
+        stopEffectLoop(force);effectScans=0
+        for key,item in pairs(effects)do
+            if restore~=false then releaseEffect(item) end
+            effects[key]=nil
+        end
         local kept={}
         for name,hook in pairs(hooks)do
             local ok,result=pcall(UnregisterHook,Aim.paths[name],hook.pre,hook.post)
@@ -823,7 +831,7 @@ function Aim.new(options)
         end
     end
     function self:status()return {state=self.state,redirected=self.redirected,passed=self.passed,message=self.message}end
-    function self:silence(reason)self.alive=false;uninstall(reason or 'Mod卸载',true)end
+    function self:silence(reason,onGameThread)self.alive=false;uninstall(reason or 'Mod卸载',true,onGameThread==true)end
     return self
 end
 return Aim

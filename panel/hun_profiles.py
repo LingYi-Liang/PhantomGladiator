@@ -154,57 +154,100 @@ def decode(text):
     try:return json.loads(text,object_pairs_hook=pairs,parse_constant=lambda value:(_ for _ in ()).throw(ValueError('非有限数字')))
     except RecursionError:raise ValueError('方案嵌套过深')
 
+def _stage(path,data):
+    tmp=path.with_name(path.name+'.tmp')
+    if path.is_symlink() or tmp.is_symlink():raise OSError('方案路径无效')
+    with tmp.open('wb') as output:
+        output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
+    return tmp
+
 class Store:
     def __init__(self,path,stat_fields=(),ai_fields=None,positive=(),non_negative=()):
         self.path=pathlib.Path(path);self.stat_fields=stat_fields;self.ai_fields=ai_fields or {};self.lock=threading.Lock()
         self.positive=frozenset(positive);self.non_negative=frozenset(non_negative)
         self.loadout_path=self.path.with_name(LOADOUT_NAME)
         self.profile=default_profile();self.revision=0;self.error=''
+        self.resync=False
+        self._load()
+
+    def _load(self):
         try:
             if self.path.exists():
                 if self.path.is_symlink()or self.path.stat().st_size>MAX_BYTES:raise ValueError('方案文件路径或大小无效')
                 payload=decode(self.path.read_text(encoding='utf-8'))
                 exact(payload,('revision','profile'),'保存记录');integer(payload['revision'],1,2147483646,'版本')
-                self.profile=validate(payload['profile'],self.stat_fields,self.ai_fields);self.revision=payload['revision']
-        except (OSError,UnicodeError,ValueError,TypeError)as err:self.error=str(err)
-        # The game side reads this copy; keep it in step with what was just loaded (or the defaults).
-        try:
-            if not self.error:self._export(self.revision,self.profile)
-        except OSError as err:self.error='魂方案的游戏端副本没写成功：'+str(err)
+                profile=validate(payload['profile'],self.stat_fields,self.ai_fields);revision=payload['revision']
+            else:profile,revision=default_profile(),0
+        except (OSError,UnicodeError,ValueError,TypeError) as err:
+            self.error=str(err)
+            return
+        self.profile,self.revision=profile,revision
+        try:self._export(revision,profile)
+        except OSError as err:
+            self.resync=True
+            self.error='魂方案的游戏端副本没写成功：'+str(err)
+        else:self.resync,self.error=False,''
 
     def _export(self,revision,profile):
-        content=loadout_text(revision,profile,self.positive,self.non_negative)
+        content=loadout_text(revision,profile,self.positive,self.non_negative).encode('utf-8')
         try:
-            if self.loadout_path.read_text(encoding='utf-8')==content:return
-        except (OSError,UnicodeError):pass
-        tmp=self.loadout_path.with_name(self.loadout_path.name+'.tmp')
-        if self.loadout_path.is_symlink()or tmp.is_symlink():raise OSError('方案路径无效')
-        with tmp.open('w',encoding='utf-8',newline='\n')as f:f.write(content);f.flush();os.fsync(f.fileno())
-        os.replace(tmp,self.loadout_path)
-        if self.loadout_path.read_text(encoding='utf-8')!=content:raise OSError('游戏端副本保存未读回确认')
+            if not self.loadout_path.is_symlink() and self.loadout_path.read_bytes()==content:return
+        except OSError:pass
+        os.replace(_stage(self.loadout_path,content),self.loadout_path)
+        if self.loadout_path.read_bytes()!=content:raise OSError('游戏端副本保存未读回确认')
 
     def snapshot(self):
-        with self.lock:return {'revision':self.revision,'profile':copy.deepcopy(self.profile),'error':self.error}
+        with self.lock:
+            if self.resync:self._load()
+            return {'revision':self.revision,'profile':copy.deepcopy(self.profile),'error':self.error}
 
     def save(self,request):
         exact(request,('revision','profile'),'保存请求')
         integer(request['revision'],0,2147483645,'版本')
         profile=validate(request['profile'],self.stat_fields,self.ai_fields)
         with self.lock:
+            if self.resync:
+                self._load()
+                if self.error:raise OSError(self.error)
+                if self.revision==request['revision']+1 and self.profile==profile:
+                    return {'revision':self.revision,'profile':copy.deepcopy(profile),'error':''}
             if request['revision']!=self.revision:raise ValueError('方案已在另一处更新，请重新载入后再保存')
-            revision=self.revision+1;content=json.dumps({'revision':revision,'profile':profile},ensure_ascii=False,allow_nan=False)
-            if len(content.encode('utf-8'))>MAX_BYTES:raise ValueError('方案过大')
-            tmp=self.path.with_name(self.path.name+'.tmp')
-            if self.path.is_symlink()or tmp.is_symlink():raise ValueError('方案路径无效')
-            with tmp.open('w',encoding='utf-8',newline='\n')as f:f.write(content);f.flush();os.fsync(f.fileno())
+            revision=self.revision+1
+            content=json.dumps({'revision':revision,'profile':profile},ensure_ascii=False,allow_nan=False).encode('utf-8')
+            if len(content)>MAX_BYTES:raise ValueError('方案过大')
+            mirror=loadout_text(revision,profile,self.positive,self.non_negative).encode('utf-8')
+            tmp=_stage(self.path,content)
+            game_tmp=_stage(self.loadout_path,mirror)
+            previous=self.path.read_bytes() if self.path.exists() else None
             os.replace(tmp,self.path)
-            if self.path.read_text(encoding='utf-8')!=content:raise OSError('方案保存未读回确认')
-            self._export(revision,profile)
+            exported=False
+            try:
+                if self.path.read_bytes()!=content:raise OSError('方案保存未读回确认')
+                os.replace(game_tmp,self.loadout_path)
+                exported=True
+                if self.loadout_path.read_bytes()!=mirror:raise OSError('游戏端副本保存未读回确认')
+            except OSError as error:
+                # The JSON is authoritative on restart. Restore it before exposing an unconfirmed revision.
+                try:
+                    if previous is None:self.path.unlink()
+                    else:
+                        os.replace(_stage(self.path,previous),self.path)
+                        if self.path.read_bytes()!=previous:raise OSError('上一版方案未读回确认')
+                    if exported:self._export(self.revision,self.profile)
+                except OSError as recovery:
+                    self.resync=True
+                    self.error='方案和游戏副本尚未同步，将在下次读取时重试。'+str(recovery)
+                    raise OSError(self.error) from error
+                raise
             self.profile,self.revision,self.error=profile,revision,''
-        return self.snapshot()
+            return {'revision':revision,'profile':copy.deepcopy(profile),'error':''}
 
     def immutable_snapshot(self,revision):
         with self.lock:
+            if self.resync:self._load()
+            if self.error:raise ValueError('无法确认游戏端方案：'+self.error)
             if revision!=self.revision:raise ValueError('方案已变更，请刷新后重新请求')
             profile=copy.deepcopy(self.profile)
             content=json.dumps(profile,sort_keys=True,ensure_ascii=False,separators=(',',':'))

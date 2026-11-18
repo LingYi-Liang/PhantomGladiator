@@ -424,6 +424,17 @@ test('profile rotations rewrite only the opposite slot, obey intent and scope le
     h:tick(2);assert(h.wc.current==0 and h.r.wep.currentId==b.id and #h.wc.slots==2)
     h.mod:silence();assert(h.powerCallback==nil)
 end)
+test('off-thread unload cancels the weapon timer and retires retained ability delegates without touching the engine',function()
+    local a=item('Tang',1,15)
+    local h=armed({weapons={a},resources={cooldown_scale=1}})
+    h:tick(1);assert(h.r.wep.active);local timer,delegate=h.loops[1],h.powerCallback
+    local checks=0
+    require('ue_observe').setEngineValidator(function()checks=checks+1;return true end)
+    h.mod:silence(false)
+    timer();assert(delegate(h.assets[a.path],h.actor)==nil)
+    require('ue_observe').setEngineValidator(nil)
+    assert(h.cancelled[1] and not h.powerCallback and checks==0)
+end)
 test('phase completion needs the equipped native art spec to activate, matching the exact phase id',function()
     local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
     local h=armed({weapons={a}},{grants={{art,125,{}}}})
@@ -594,6 +605,37 @@ test('free combat art settles only its own charge debit and isolates hand feedba
     -- The free policy restores the exact debit while preserving an already funded charge.
     asc_.TryActivateAbility=original
     h:tick(1.6);assert(h.r.intent.performedPhase=='free2' and h.stats.values.UltimateChargeCount==2)
+end)
+test('a phase that finishes during paid activation is settled once, even when its spec has already left',function()
+    local weapon=item('HeiMoShang');local art=Catalog.configs[weapon.path].art
+    for _,consume in ipairs({false,true}) do
+        for _,removeSpec in ipairs({false,true}) do
+            local h=armed({weapons={weapon},resources={consume_skill_resources=consume}},{grants={{art,126,{}}}})
+            local asc=h.actor.AbilitySystemComponent
+            local activate=asc.TryActivateAbility
+            local requests=0
+            function asc:TryActivateAbility(handle,remote)
+                local accepted=activate(self,handle,remote)
+                if accepted and handle.Handle==126 then
+                    requests=requests+1
+                    for i,row in ipairs(self.specs) do
+                        if row.Handle.Handle==126 then
+                            row.ActiveCount=0
+                            if removeSpec then table.remove(self.specs,i) end
+                            break
+                        end
+                    end
+                end
+                return accepted
+            end
+            h.stats.values.UltimateChargeCount=2
+            h.r.intent={phaseId='instant',weapon_id=weapon.id}
+            h:tick(.6);h:tick(1.6)
+            assert(requests==1 and h.r.intent.performedPhase=='instant','a completed phase must not request the same art again')
+            assert(h.stats.values.UltimateChargeCount==(consume and 1 or 2),'only the confirmed debit may be retained or refunded')
+            assert(h:logged('武器循环中断')==0)
+        end
+    end
 end)
 test('a rotated weapon cannot count its original twin-blade spec as a successful normal attack',function()
     local a=item('YuuBlade')

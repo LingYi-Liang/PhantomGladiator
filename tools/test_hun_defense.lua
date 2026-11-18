@@ -127,10 +127,23 @@ assert(refuse.dodges[1]=='Ability.Action.Hun.PerfectDodge' and refuse.pure==1)
 refuse.module:silence();assert(refuse.stance['Anger Cost Data'][rate]==0)
 local idle=fixture()
 idle.battle=false
+local validations=0
+idle.r.actor.IsValid=function()validations=validations+1;return true end
 for i=0,49 do idle.time=8+i*.02;idle.callback() end
 assert(idle.fightChecks<=4 and #idle.asc.ActivatableAbilities.Items==2)
+assert(validations<=5,'idle native validations in 50 callbacks: '..validations)
 idle.module:silence()
 local wrong=fixture(nil,true)
+local unload=fixture({red_dodge_chance=1,counter_chance=0})
+unload.frames[1]=frame(5.08,true);unload.callback()
+local pendingTick,pendingResult=unload.callback,unload.result
+assert(pendingResult and unload.pureInst)
+local afterUnload=0
+require('ue_observe').setEngineValidator(function()afterUnload=afterUnload+1;return true end)
+unload.module:silence(false)
+pendingTick();pendingResult(unload.pureInst,nil,nil,true)
+require('ue_observe').setEngineValidator(nil)
+assert(unload.cancelled and not unload.result and not unload.callback and afterUnload==0)
 assert(not wrong.callback and wrong.clears==2 and wrong.presses==0)
 assert(select(2,Defense.window{strength='KnockBack'})==0.13)
 assert(Defense.window{kind=3}=='dodge')

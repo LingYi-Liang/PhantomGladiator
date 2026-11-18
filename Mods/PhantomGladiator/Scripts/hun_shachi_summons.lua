@@ -21,10 +21,11 @@ local function inWorld(child,world)
 end
 function M.new(o)
     local self={}
-    local parents,hooks={},{}
+    local parents,hooks,alive={},{},true
     local register=o.register or RegisterHook
     local unregister=o.unregister or UnregisterHook
     local function identity(ability,child)
+        if not alive or not next(parents) then return end
         ability,child=U.unwrap(ability),U.unwrap(child)
         local _,parent=call(ability,'GetAvatarActorFromActorInfo')
         local r=parents[U.key(parent) or '']
@@ -81,6 +82,7 @@ function M.new(o)
         return false
     end
     function self:arm(r,choice,rules)
+        if not alive then return false end
         if not rules then return true end
         if not o.current(r) then return false end
         r.shadowSummons=r.shadowSummons or {byClass={},children={}}
@@ -93,6 +95,13 @@ function M.new(o)
             r.shadowSummons.byClass[cls]={choice=choice,effects=effects}
         end
         return true
+    end
+    local function detach()
+        if type(unregister)~='function' then return end
+        for path,ids in pairs(hooks)do
+            local ok,result=pcall(unregister,path,ids[1],ids[2])
+            if ok and result~=false then hooks[path]=nil end
+        end
     end
     function self:cleanup(r)
         local state=r.shadowSummons
@@ -118,12 +127,10 @@ function M.new(o)
             end
         end
         r.shadowSummons=nil
-        if not next(parents) and type(unregister)=='function' then
-            for path,ids in pairs(hooks) do
-                local ok=pcall(unregister,path,ids[1],ids[2])
-                if ok then hooks[path]=nil end
-            end
-        end
+        if not next(parents) then detach() end
+    end
+    function self:silence()
+        alive=false;parents={};detach()
     end
     return self
 end

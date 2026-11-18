@@ -43,7 +43,15 @@ for _,team in ipairs({'blue','red','companion','neutral'})do
         assert(logs[#logs]:find('杀气=80→44',1,true))
         local written=#logs;module.LastOwnerAvatar=enemy;hit[1](module,actor,0,0,0,0);hit[2](module,actor,0,0,0,0)
         assert(#logs==written,'another NPC hit must not be attributed to the player')
-        role:restore(r);assert(next(hooks)==nil)
+        if team=='blue' then role:restore(r)
+        else
+            local checks=0
+            require('ue_observe').setEngineValidator(function()checks=checks+1;return true end)
+            role:silence();hate(hatred,player);hit[1](module,actor,0,0,0,0)
+            require('ue_observe').setEngineValidator(nil)
+            assert(checks==0)
+        end
+        assert(next(hooks)==nil)
     else assert(faction.relation==2 and #hatred.HatredList==2 and values.FollowTargetActor==player)end
     assert(values.Enemy==enemy and hatred.HatredList[1]==enemy)
 end

@@ -48,7 +48,8 @@ local function fixture()
         SkeletalMeshComponent={component('Comp /Game/Map.Hun:Body',h.actor,skeletal,'SkeletalMeshAsset','SK_Body'),component('Comp /Game/Map.Other:Body',h.other,skeletal,'SkeletalMeshAsset','SK_Other')},
         StaticMeshComponent={component('Comp /Game/Map.Hun:Head',h.actor,static,'StaticMesh','SM_Head'),component('Comp /Game/Map.Hat:Mesh',h.hat,static,'StaticMesh','SM_Hat')},
     }
-    h.options={world=function()return h.world end,player=function()return h.player end,log=function(s)h.logs[#h.logs+1]=s end,
+    h.options={steps=setmetatable({probe=true},{__index=require('hun_look').STEPS}),
+        world=function()return h.world end,player=function()return h.player end,log=function(s)h.logs[#h.logs+1]=s end,
         hp=function()return 100 end,aiOf=function()return object('AI')end,fname=function(s)return s end,
         find=function(path)assert(path=='/Script/SGameUtils.Default__AbilityUtils');return h.lib end,
         findAll=function(className)h.scans=h.scans+1;return h.components[className]end}
@@ -155,6 +156,11 @@ test('the look probe lists the body and the player once per request and writes n
     assert(#h.writes==2,'only the two tag writes of the birth itself')
     h:tick(12);assert(h:logged('动画与移动：魂（第6次复查）')==1 and h:logged('动画与移动：魂（第14次复查）')==1)
     assert(h.scans==10,'later cycles read the movement only')
+end)
+test('a normal summon avoids the global developer inventory and still checks its native birth tags',function()
+    local h=fixture();h.options.steps=nil;h.mod=Body.new(h.options)
+    assert(h:run().ok);h:tick(20)
+    assert(h.scans==0 and h:logged('外观部件：')==0 and h:logged('复查结束')==1)
 end)
 test('a failing component read cannot interrupt the support cycle',function()
     local h=fixture();h.options.findAll=function()error('native fixture failure')end;h.mod=Body.new(h.options)
@@ -358,6 +364,8 @@ local function scheduleFixture()
 end
 test('weapons are equipped at the second support cycle, once; a body leaving alive has its parts and weapons cleaned at once',function()
     local h=scheduleFixture();assert(h:run().ok)
+    local original=h.options.weapons.stop
+    h.options.weapons.stop=function(self,r,why)assert(h.mod:owns(r.actor));return original(self,r,why)end
     h:tick(1);assert(not h:has('equip NPC Hun 1'),'not at the first cycle')
     h:tick(1);assert(h:has('equip NPC Hun 1'))
     h:tick(5);local equips=0;for _,a in ipairs(h.asked)do if a:find('^equip')then equips=equips+1 end end;assert(equips==1)
@@ -381,6 +389,24 @@ test('a body that died and left is cleaned only when its death readback ends; th
 end)
 test('unload stops the weapon loops',function()
     local h=scheduleFixture();assert(h:run().ok);h.mod:silence();assert(h:has('silence'))
+end)
+test('unload only touches live components on a confirmed game thread',function()
+    for _,permitted in ipairs({false,true})do
+        local h=scheduleFixture();assert(h:run().ok);h:tick(2)
+        local lookups=0
+        h.options.world=function()lookups=lookups+1;return h.world end
+        local nativeChecks=0
+        require('ue_observe').setEngineValidator(function()nativeChecks=nativeChecks+1;return true end)
+        h.mod:silence(permitted)
+        require('ue_observe').setEngineValidator(nil)
+        if permitted then
+            assert(lookups>0 and h:has('look cleanup NPC Hun 1 Mod 卸载'))
+        else
+            assert(lookups==0 and nativeChecks==0,'unload outside game thread touched world '..lookups..' or engine '..nativeChecks..' times')
+            assert(not h:has('look cleanup NPC Hun 1 Mod 卸载'))
+        end
+        assert(not h.mod:spawn({},'red',1,'1').ok)
+    end
 end)
 test('the weapon module gets the battle flag, the opponents without the player or the own team, and a live identity check',function()
     local Weapons=require('hun_weapons');local real=Weapons.new;local captured
@@ -438,7 +464,7 @@ do
     h.options.stats={read=function(_,_,field)return {current=field=='Health_Max' and 400 or 100}end}
     h.options.weapons={equip=function(_,rec)r=rec end}
     h.options.defense={start=function(_,rec)defender=rec end}
-    h.options.supply={tick=function()return false end}
+    h.options.supply={tick=function()return false end,holdsDeath=function()return false end}
     h.options.shadows={tick=function(_,rec,ctx)assert(rec==r);shadowTarget=ctx.target end}
     h.options.requireProfile=true
     h.options.loadout=function()error('a queued batch must not reopen the live profile')end
@@ -456,6 +482,11 @@ do
     assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='blue'})=='魂')
     assert(h.mod:teamBarName({actor=h.other,class_path=Body.path,team='red'})==nil)
     assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='companion'})==nil)
+    r.usedPhases.reached=true
+    h.counts['CharacterState.Dead']=1;h.mod:tick(members,true);callback()
+    assert(not callback and r.dead,'the idle brain timer stops when the last body is dead')
+    h.counts['CharacterState.Dead']=0;now=now+2;h.mod:tick(members,true)
+    assert(callback and r.usedPhases.reached and not r.dead);callback()
     h.mod:cancel();assert(callback==nil and not h.mod:owns(h.actor))
     print('PASS a frozen full profile reaches the combat modules and the arena opponent on the scheduled game loop')
 end

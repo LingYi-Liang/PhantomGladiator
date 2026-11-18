@@ -301,6 +301,7 @@ test('a selector not loaded yet is hooked once it is there',function()
     h.now=7;aim:tick();assert(h.hooks[Aim.paths.bullet]~=nil,'hooked on the next try')
 end)
 test('an effect that reads the player position by itself follows the opponent while its bullet runs',function()
+  for _,ending in ipairs({'battle','game-thread unload','off-thread unload'}) do
     local h=harness();h.phaseBusyKey=function(k)return h.phaseOwner==k end;local aim=h.new()
     FName=function(text)return text end
     local blue,red=h.unit('blue'),h.unit('red')
@@ -380,9 +381,21 @@ test('an effect that reads the player position by itself follows the opponent wh
     h.phaseOwner=nil;h.paused=false
     launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return blue end}));loop()
     assert(again.ParticleComponent.sets.UE_UseTestTargetPos==true)
-    h.fighting=false;aim:tick();h.now=h.now+20;aim:tick()
-    assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false and loop==nil and h.hooks[Aim.paths.launch]==nil)
+    if ending=='battle' then
+        h.fighting=false;aim:tick();h.now=h.now+20;aim:tick()
+        assert(again.ParticleComponent.sets.UE_UseTestTargetPos==false)
+    else
+        local checks=0;local onThread=ending=='game-thread unload'
+        local lateTick=loop;local U=require('ue_observe')
+        U.setEngineValidator(function()checks=checks+1;return true end)
+        aim:silence('unload',onThread);lateTick()
+        U.setEngineValidator(nil)
+        assert(again.ParticleComponent.sets.UE_UseTestTargetPos==not onThread)
+        assert(onThread and checks>0 or not onThread and checks==0,'engine checks during '..ending..'='..checks)
+    end
+    assert(loop==nil and h.hooks[Aim.paths.launch]==nil)
     LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
+  end
 end)
 test('effect skills delegate to isolated instances and never write the world player position',function()
     local h=harness();local aim=h.new()

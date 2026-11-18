@@ -77,7 +77,7 @@ function Defense.new(o)
     local clock = o.now or o.clock
     local fname = o.fname or FName
     local timer, resultHook
-    local observing={}
+    local observing,alive={},true
     local function say(r, message) log('[HunDefense] '..tostring(r.name)..' '..message) end
     local function asset(path)
         if U.valid(assets[path]) then return assets[path] end
@@ -96,6 +96,7 @@ function Defense.new(o)
         local register=o.register or RegisterHook
         if type(register)~='function' then return end
         local function result(context,source,_,perfect)
+            if not alive then return end
             local thread=o.inGameThread or IsInGameThread
             if type(thread)=='function' then local ok,yes=pcall(thread);if not ok or yes~=true then return end end
             local instance=U.unwrap(context)
@@ -250,8 +251,8 @@ function Defense.new(o)
     local function activeInstance(actor,suffix)
         local specs=U.array(U.struct(U.field(U.field(actor,'AbilitySystemComponent'),'ActivatableAbilities'),'Items'))
         for _,spec in ipairs(specs or {}) do
-            local name=U.className(U.struct(spec,'Ability'))
-            if name and name:sub(-#suffix)==suffix and (U.struct(spec,'ActiveCount') or 0)>0 then
+            local name=(U.struct(spec,'ActiveCount') or 0)>0 and U.className(U.struct(spec,'Ability'))
+            if name and name:sub(-#suffix)==suffix then
                 for _,key in ipairs({'NonReplicatedInstances','ReplicatedInstances'}) do
                     for _,instance in ipairs(U.array(U.struct(spec,key)) or {}) do
                         if owned(instance,actor) then return instance end
@@ -350,7 +351,7 @@ function Defense.new(o)
     end
     local function update(r,s,now)
         if s.releaseAt and now >= s.releaseAt then release(r,s) end
-        if r.dead or not U.valid(r.actor) then return end
+        if r.dead then s.fighting=false;s.nextCombatCheck=now+.25;return end
         if not s.nextCombatCheck or now>=s.nextCombatCheck then
             s.fighting=o.fighting(r)
             s.nextCombatCheck=now+0.25
@@ -469,20 +470,27 @@ function Defense.new(o)
         if not s.canBlock and not s.canDodge then self:stop(r);return end
         if timer then return end
         local ok,handle=pcall(loop,20,function()
+            if not alive then return end
             local now=clock()
             if type(now)~='number' then return end
             for body,state in pairs(records) do
-                if not U.valid(body.actor) then self:stop(body)
-                else
-                    local worked,why=pcall(update,body,state,now)
-                    if not worked then say(body,'停用防御 '..tostring(why));self:stop(body) end
+                if state.releaseAt or (state.fighting and not body.dead) or not state.nextCombatCheck or now>=state.nextCombatCheck then
+                    if not U.valid(body.actor) then self:stop(body)
+                    else
+                        local worked,why=pcall(update,body,state,now)
+                        if not worked then say(body,'停用防御 '..tostring(why));self:stop(body) end
+                    end
                 end
             end
         end)
         if ok and handle then timer=handle else self:stop(r) end
     end
-    function self:silence()
-        for r in pairs(records) do self:stop(r) end
+    function self:silence(restore)
+        alive=false
+        if restore~=false then for r in pairs(records) do self:stop(r) end end
+        records,observing,assets={},{},{}
+        if timer then pcall(cancel,timer);timer=nil end
+        releaseObserver()
     end
     return self
 end

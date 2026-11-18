@@ -235,6 +235,12 @@ check('summon blueprint corrections apply only to the owned child and deregister
     callbacks[prefix..'OnSpawnFinish'](ab,child)
     assert(h.stacks[asset(low)]==1 and h.stacks[asset(high)]==0)
     mod:cleanup(r);assert(h.destroy and unloaded[prefix..'OnDeferedSpawn'])
+    assert(mod:arm(r,{level=15},rules));local deferred=callbacks[prefix..'OnDeferedSpawn']
+    local before=#lines;unloaded={};local checks=0
+    require('ue_observe').setEngineValidator(function()checks=checks+1;return true end)
+    mod:silence();deferred(ab,child)
+    require('ue_observe').setEngineValidator(nil)
+    assert(unloaded[prefix..'OnSpawnFinish'] and unloaded[prefix..'OnDeferedSpawn'] and checks==0 and #lines==before)
 end)
 
 check('all 28 catalog selections activate an owned granted move in a matching scenario',function()
@@ -447,6 +453,12 @@ check('close pressure uses a tap, an opening ending releases early, a dead or ch
     h.inst['To Release']=function()h.finishedEarly=true end
     h.inst['Min Duration Reached']=true
     assert(h:tick(1.5) and h.finishedEarly)
+    h=inputs(fixture());h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
+    h.ctx.underThreat=true;assert(h:tick(.2) and h.r.shadowState.running.awaitWindow)
+    h.ctx.target=object('replacement');h.targetReadback=h.ctx.target
+    h.inst['Min Duration Reached']=true;h.inst['Is Charging']=function()return true end
+    h.inst['To Release']=function()h.wrongTarget=true end
+    assert(h:tick(1.5) and h.cancels==1 and not h.wrongTarget)
     for _,change in ipairs({'native','scheduled'}) do
         h=inputs(fixture());h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
         if change=='native' then h.targetReadback=object('different enemy') else h.ctx.target=nil end
@@ -481,4 +493,13 @@ check('an existing NPC input retains other bindings and a preexisting hold survi
     h.mod:cleanup(h.r);assert(c.HoldingInputs:Find(other)==195 and not c.gone and h.r.actor.InputComponent==c)
 end)
 
+check('an unacknowledged cancellation releases the brain and quarantines only this NPC shadow channel',function()
+    local h=fixture();assert(h:tick(0))
+    local run=h.r.shadowState.running
+    h.rows[run.handle].NonReplicatedInstances[1].K2_CancelAbility=function()h.cancels=h.cancels+1 end
+    h:tick(80);assert(not h:tick(82) and not h.r.shadowState.running)
+    assert(not h:tick(120) and h.casts==1 and h.cancels==1)
+    h.rows[run.handle].ActiveCount=0
+    assert(h:tick(125) and h.casts==2)
+end)
 print('hun_shachi: '..count..' checks passed')

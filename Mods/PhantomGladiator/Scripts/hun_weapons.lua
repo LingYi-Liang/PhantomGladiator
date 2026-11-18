@@ -128,7 +128,7 @@ function Weapons.new(o)
     local fname=o.fname or FName
     local clock=o.clock or os.clock
     local combos=o.combos or require('hun_weapon_combos')
-    local loops={}
+    local loops,alive={},true
     local function say(s)(o.log or function()end)('[HunWeapon] '..s)end
     local function once(key,line)if not self.announced[key]then self.announced[key]=true;say(line)end end
     local function object(p)
@@ -721,6 +721,7 @@ function Weapons.new(o)
         local register=o.register or RegisterHook
         if type(register)~='function' then return end
         local ok,pre,post=pcall(register,POWER_HOOK,function(config,avatar)
+            if not alive then return end
             local actor=U.unwrap(avatar)
             local key=U.key(actor)
             local rec=key and powerRecords[key]
@@ -873,7 +874,7 @@ function Weapons.new(o)
             local created,empty=pcall(o.createInvalid or CreateInvalidObject)
             if not created or empty==nil or U.valid(empty) or type(register)~='function' then return false end
             local ok,pre,post=pcall(register,CONTROLLER,function(_,context,playerIndex)
-                if not activeArt and not probeActor then return end
+                if not alive or (not activeArt and not probeActor) then return end
                 local ctx=U.unwrap(context)
                 if U.unwrap(playerIndex)~=0 then return end
                 if probeActor and U.key(ctx)==U.key(probeActor) then probeCount=probeCount+1;return empty end
@@ -924,12 +925,15 @@ function Weapons.new(o)
         activeArt={actor=r.actor,class=item.art}
         local called,result=call(U.field(r.actor,'AbilitySystemComponent'),'TryActivateAbility',{Handle=spec.handle},false)
         activeArt=nil
+        if not still(r) then return false end
         local after=specOf(r.actor,item.art)
         local balance=stat(r.actor,'UltimateChargeCount')
-        local started=called and result~=false and after and type(after.active)=='number' and after.active>0
+        local active=after and after.handle==spec.handle and after.active or nil
         local paid=type(balance)=='number' and math.abs(before+borrowed-balance-cost)<0.0001
+        -- An accepted instant ability can finish or lose its spec before TryActivateAbility returns.
+        local confirmed=paid and called and (result==true or (result~=false and type(active)=='number' and active>0))
         if free and stats and type(balance)=='number' then
-            local refund=started and paid and cost or 0
+            local refund=confirmed and cost or 0
             local correction=refund-borrowed
             if correction~=0 then
                 local adjusted=math.max(0,balance+correction)
@@ -938,7 +942,7 @@ function Weapons.new(o)
                 say('本次战技绝技格 读回='..num(stat(r.actor,'UltimateChargeCount')))
             end
         end
-        return started and paid
+        return confirmed,active
     end
     local function phaseArt(r,t,target)
         local w,intent=r.wep,r.intent
@@ -953,11 +957,11 @@ function Weapons.new(o)
         local spec=specOf(r.actor,item.art)
         if not spec or type(spec.handle)~='number' or spec.active~=0 then return false end
         say('即将 阶段战技 实例='..r.name..' 阶段='..intent.phaseId..' '..spec.name)
-        if activateArt(r,item,spec,target) then
-            local after=specOf(r.actor,item.art)
+        local confirmed,active=activateArt(r,item,spec,target)
+        if confirmed then
             intent.performedPhase=intent.phaseId
             intent.busyUntil=math.max(intent.busyUntil or 0,t+0.35)
-            say('阶段战技 读回 实例='..r.name..' 阶段='..intent.phaseId..' ActiveCount='..after.active)
+            say('阶段战技 读回 实例='..r.name..' 阶段='..intent.phaseId..' 已确认扣费 ActiveCount='..tostring(active))
             return true
         end
         return false
@@ -1243,13 +1247,17 @@ function Weapons.new(o)
             combo(r,target)
         end
     end
-    function self:stop(r,why)
+    local function stopLoop(r)
         local entry=loops[r]
         if not entry then return end
         loops[r]=nil
+        if entry.handle then pcall(o.cancel or CancelDelayedAction,entry.handle)end
+        return true
+    end
+    function self:stop(r,why)
+        if not stopLoop(r) then return end
         if r.wep and r.wep.drawTag then releaseDrawTag(r) end
         for k,record in pairs(powerRecords) do if record==r then powerRecords[k]=nil end end
-        if entry.handle then pcall(o.cancel or CancelDelayedAction,entry.handle)end
         local w=r.wep
         if w and w.rotation then
             local s=w.rotation
@@ -1413,8 +1421,12 @@ function Weapons.new(o)
         end
         if #texts>0 then say('清理武器 Actor 实例='..r.name..' 原因='..tostring(why)..' '..table.concat(texts,' '))end
     end
-    function self:silence()
-        for r in pairs(loops) do self:stop(r,'Mod 卸载') end
+    function self:silence(restore)
+        alive=false;activeArt,probeActor=nil,nil
+        for r in pairs(loops) do
+            if restore==false then stopLoop(r) else self:stop(r,'Mod 卸载') end
+        end
+        powerRecords={}
         if self.controllerHook then
             pcall(o.unregister or UnregisterHook,CONTROLLER,self.controllerHook[1],self.controllerHook[2])
             self.controllerHook=nil;self.guardVerified=false

@@ -95,13 +95,16 @@ function Body.new(o)
     local fname=o.fname or FName
     local loadClass=o.loadClass or LoadAsset
     local steps=o.steps or Look.STEPS
+    local probing=o.probe
+    if probing==nil then probing=steps.probe==true end
     local clock=o.clock or os.clock
     local stats=o.stats
     local function say(s)(o.log or function()end)('[HunBody] '..s)end
     local look=o.look or Look.new({log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,steps=steps})
     local function current(actor,record)
+        if not self.alive then return false end
         local world=o.world();local player=o.player()
-        return self.alive and U.valid(world)and U.inWorld(actor,world)and U.key(actor)~=U.key(player)
+        return U.valid(world)and U.inWorld(actor,world)and U.key(actor)~=U.key(player)
             and U.npcPath(actor)==Body.path and(not record or record.epoch==epoch and record.world==U.key(world)and record.name==name(actor))
     end
     -- The arena's last member list and battle flag, as tick() received them; every actor is checked again before use.
@@ -148,7 +151,7 @@ function Body.new(o)
         local root=type(p)=='string'and p:match('^(/PBZCombatAsset/ActorData/Mobs/[^/]+/)')
         return qteFamilies and root and qteFamilies[root]~=nil or false
     end
-    local function owned(r)return records[U.key(r.actor)or'']==r and current(r.actor,r)end
+    local function owned(r)return self.alive and records[U.key(r.actor)or'']==r and current(r.actor,r)end
     local role=require('hun_arena_role').new({current=owned,load=loadClass,find=find,player=o.player,aiOf=o.aiOf,
         stat=function(actor,field)
             local adapter=getStats()
@@ -325,7 +328,7 @@ function Body.new(o)
         if brainHandle then pcall(o.cancel or CancelDelayedAction,brainHandle);brainHandle=nil end
     end
     local function startBrain(r)
-        brain:start(r)
+        if not r.usedPhases then brain:start(r) end
         if brainHandle or not o.loop then return end
         brainHandle=o.loop(100,function()
             local count=0
@@ -464,7 +467,7 @@ function Body.new(o)
     -- One full probe of the body at a stage ('改前' before hun_look writes anything, '改后' at the first support
     -- cycle). Only the first body of a summon request is probed, so each kind writes at most a few lines a request.
     local function probe(r,stage)
-        if not steps.probe or probed[r.batch]~=r.name then return end
+        if not probing or probed[r.batch]~=r.name then return end
         local label='魂 '..r.name..' '..stage
         guarded('动画实例',probeAnim,r.actor,label)
         guarded('帽子与材质',probeHat,r.actor,label)
@@ -531,7 +534,7 @@ function Body.new(o)
         say('预告采样结束：'..why..'；共采样'..s.samples..'次 有预告'..s.seen..'次')
     end
     local function startSampler(key,r)
-        if not steps.probe or probed[r.batch]~=r.name or samplers[key]or sampleLines>=SAMPLE_LINES then return end
+        if not probing or probed[r.batch]~=r.name or samplers[key]or sampleLines>=SAMPLE_LINES then return end
         local loop=o.loop or LoopInGameThreadWithDelay
         if type(loop)~='function'then return end
         local s={samples=0,seen=0,started=clock()}
@@ -732,7 +735,7 @@ function Body.new(o)
         say('出生后标签：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
         self.prepared=self.prepared+1
         self.message=zero and'魂已正常出生，隐藏与不可仇恨标签读回为0，等待画面和行为验证'or'魂已正常出生，但隐藏或不可仇恨标签还没读回为0，可能看不见或不被索敌'
-        if not probed[r.batch]then probed[r.batch]=r.name end
+        if probing and not probed[r.batch]then probed[r.batch]=r.name end
         probe(r,'改前')
         local applied,why=pcall(look.apply,look,r,function()return current(actor,r)end)
         if not applied then say('外观与动画中断：实例='..r.name..' 原因='..tostring(why))end
@@ -783,9 +786,9 @@ function Body.new(o)
                 executionImmunity(r,true)
                 optional(grabGuard,'stop',r)
                 optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)
-                records[key]=nil
                 stopSampler(key,'实例离场')
                 optional(weapons,'stop',r,'实例离场')
+                records[key]=nil
                 if r.dead or(r.phase=='observed'and U.valid(r.actor)and(hpOf(r.actor)or 1)<=0)then watchDeath(key,r)end
                 if dying[key]and dying[key].record==r then dying[key].left=true else cleanup(r,'实例离场')end
             elseif r.phase=='observed' then
@@ -802,6 +805,7 @@ function Body.new(o)
                 elseif r.dead and r.sawDead and dead==0 and hp and hp>0 then
                     r.dead,r.sawDead,r.deathWatched=false,false,false
                     if dying[key] then endDeath(key,dying[key],'死亡标签已解除且生命为正') end
+                    if r.intent then startBrain(r) end
                 end
             end
             if records[key]==r and(r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
@@ -817,7 +821,7 @@ function Body.new(o)
                     end
                     local equipped,why=pcall(equip,r)
                     if not equipped then say('饰品效果施加中断：'..tostring(why))end
-                    if not dumped[r.batch]then
+                    if probing and not dumped[r.batch]then
                         dumped[r.batch]=true
                         local listed,why2=pcall(look_,r)
                         if not listed then say('外观探查中断：'..tostring(why2))end
@@ -910,23 +914,35 @@ function Body.new(o)
             if r.team=='companion' and (r.phase=='finished' or r.phase=='observed') and current(r.actor,r)
                 and (not context or context.batch~=r.batch) then
                 r.epoch=nextEpoch;kept=true
-            else stopKit(r) end
+            else
+                stopKit(r)
+                if current(r.actor,r) then optional(look,'cleanup',r,'停止') end
+            end
         end
         if not kept then stopBrains() end
         epoch=nextEpoch
     end
-    function self:silence()
+    function self:silence(onGameThread)
+        local restore=onGameThread==true and self.alive
+        if not restore then self.alive=false end
         stopBrains()
-        for _,r in pairs(records)do
-            stopKit(r)
-            if current(r.actor,r) then cleanup(r,'Mod 卸载') end
+        if restore then
+            for _,r in pairs(records)do
+                stopKit(r)
+                if current(r.actor,r) then cleanup(r,'Mod 卸载') end
+            end
+        elseif next(records) then
+            say('卸载时仍有魂，已停止回调；存活实例的原生状态须在游戏线程停止时还原')
         end
-        optional(defense,'silence')
-        optional(grabGuard,'silence')
         self.alive=false;epoch=epoch+1;context=nil
         for key in pairs(samplers)do stopSampler(key,'Mod 卸载')end
-        optional(weapons,'silence')
-        dying={}
+        role:silence()
+        optional(grabGuard,'silence')
+        optional(defense,'silence',restore)
+        optional(weapons,'silence',restore)
+        optional(supply,'silence')
+        optional(shadows,'silence')
+        records,dying,lastMembers={},{},{}
     end
     return self
 end

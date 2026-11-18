@@ -98,21 +98,38 @@ end
 function Session:restore()
     if self.active then self:cancel("restore") end
     local restored, failed = 0, 0
+    local sampled, omitted={},0
+    local bulk=#self.records>48
+    local gone={}
     for i = #self.records, 1, -1 do
         local record = self.records[i]
-        local called, verified, detail = pcall(record.restore)
+        local called, verified, detail = pcall(record.restore,gone)
         if not called then detail = verified end
-        if called and verified == true then
-            self.log("恢复 " .. record.key .. "：读回验证成功；" .. tostring(detail or ""))
+        local ok=called and verified==true
+        local kind=record.key:match('^(%w+):')
+        local emit=true
+        if bulk and (kind=='relation' or kind=='hatred' or kind=='blackboard') then
+            local group=kind..tostring(ok)
+            sampled[group]=(sampled[group] or 0)+1
+            if sampled[group]>3 then emit=false;omitted=omitted+1 end
+        end
+        if ok then
+            if emit then self.log("恢复 " .. record.key .. "：读回验证成功；" .. tostring(detail or "")) end
             self.byKey[record.key] = nil
-            table.remove(self.records, i)
+            self.records[i]=false
             restored = restored + 1
         else
-            self.log("恢复 " .. record.key .. "：未验证成功，保留待重试；"
-                .. tostring(detail or "恢复回调未返回 true"))
+            if emit then self.log("恢复 " .. record.key .. "：未验证成功，保留待重试；"
+                .. tostring(detail or "恢复回调未返回 true")) end
             failed = failed + 1
         end
     end
+    local kept=0
+    for i=1,#self.records do
+        if self.records[i] then kept=kept+1;self.records[kept]=self.records[i] end
+    end
+    for i=#self.records,kept+1,-1 do self.records[i]=nil end
+    if omitted>0 then self.log(string.format("批量恢复读回：成功 %d 项，待重试 %d 项，同类明细合并 %d 行",restored,failed,omitted)) end
     return failed == 0, restored, failed
 end
 

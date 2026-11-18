@@ -159,6 +159,34 @@ end
 local n=0;local function test(label,fn)fn();n=n+1;print('PASS '..label)end
 
 ---- Stage 1 (Hun_Clone + anim class), with the look switch on 'clone'.
+test('local attachment traversal reads both weapon sockets without scanning the world',function()
+    local h=fixture()
+    h.actor.RootComponent=h.mesh;h.actor.Children={}
+    h.mesh.AttachChildren=h.weapons
+    function h.mesh:IsA()return true end
+    for _,comp in ipairs(h.weapons) do
+        comp.AttachChildren={};comp.IsA=h.mesh.IsA
+        local weapon=comp:GetOwner();weapon.RootComponent=comp
+        h.actor.Children[#h.actor.Children+1]=weapon
+    end
+    local scans=0
+    h.look=Look.new({steps=CLONE,log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,
+        find=function(path)return h.assets[path]end,findAll=function()scans=scans+1;return {} end})
+    local result=h:apply()
+    assert(result.look and result.anim and scans==0 and h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2)
+end)
+test('unload restores the live body before removing the head and respects a newer external mesh',function()
+    for _,replace in ipairs({false,true}) do
+        local h=fixture({steps={look='full',cloth=true,anim=true}})
+        assert(h:apply().full and h.r.appliedAnim==h.npc)
+        local original=h.mesh.asset
+        if replace then h.mesh.asset=h.clone;h.mesh.AnimClass=h.copyPose end
+        h.look:cleanup(h.r,'Mod 卸载')
+        assert(h.mesh.asset==(replace and h.clone or h.skin) and h.mesh.asset~=original)
+        assert(h.mesh.AnimClass==(replace and h.copyPose or h.player))
+        for _,p in ipairs(h.r.parts)do assert(p.gone)end
+    end
+end)
 test('the mesh becomes Hun_Clone and the anim class the NPC Hun class, each announced before and read back after',function()
     local h=fixture();local result=h:apply()
     assert(result.look==true and result.anim==true)

@@ -27,8 +27,8 @@ function Role.new(o)
     local gameThread=o.gameThread or IsInGameThread
     local effectLib
     local samples={}
-    local pending=0
-    local function onGameThread()return type(gameThread)=='function' and gameThread()==true end
+    local pending,alive=0,true
+    local function onGameThread()return alive and type(gameThread)=='function' and gameThread()==true end
     local function canHate(context,other)
         if not onGameThread() then return end
         local r=managers[U.key(U.unwrap(context)) or '']
@@ -197,14 +197,17 @@ function Role.new(o)
             end
         end
     end
+    local function detach()
+        for key,ids in pairs(hooks)do
+            local ok,result=pcall(unregister,key,ids[1],ids[2])
+            if ok and result~=false then hooks[key]=nil end
+        end
+    end
     function self:restore(r)
         if r.managerKey and managers[r.managerKey]==r then managers[r.managerKey]=nil end
         if r.roleKey and bodies[r.roleKey]==r then bodies[r.roleKey]=nil end
         for key,stack in pairs(samples) do if stack[1] and stack[1].r==r then pending=pending-#stack;samples[key]=nil end end
-        if not next(bodies) then for key,ids in pairs(hooks)do
-            local ok,result=pcall(unregister,key,ids[1],ids[2])
-            if ok and result~=false then hooks[key]=nil end
-        end end
+        if not next(bodies) then detach() end
         if not o.current(r) then return end
         if U.valid(r.roleAI) and U.key(U.field(r.roleAI,'Pawn'))==U.key(r.actor)
             and U.key(U.field(r.roleAI,'OverrideStateTreeConfig'))==U.key(standard) then
@@ -212,6 +215,10 @@ function Role.new(o)
             o.log('[HunRole] 决策树覆盖还原 读回='..tostring(U.key(U.field(r.roleAI,'OverrideStateTreeConfig'))==U.key(r.previousTree)))
         end
         r.roleAI,r.previousTree=nil,nil
+    end
+    function self:silence()
+        alive=false;managers,bodies,samples={},{},{};pending=0
+        detach()
     end
     return self
 end

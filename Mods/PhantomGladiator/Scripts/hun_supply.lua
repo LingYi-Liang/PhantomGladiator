@@ -243,6 +243,7 @@ function Supply.new(o)
         return false
     end
     function self:remaining(r) return state(r).remaining end
+    function self:silence()records,assets={},{} end
     function self:stop(r)
         local s=records[r]
         local d=s and s.drink

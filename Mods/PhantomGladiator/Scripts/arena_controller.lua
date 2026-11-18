@@ -605,22 +605,49 @@ function Arena.new(options)
         if not okNow or not finite(now) then now=os.clock() end
         local scan=not reengage.scanAt or now-reengage.scanAt>=REENGAGE_SECONDS
         if scan then reengage.scanAt=now end
+        local remaining=32
+        local waiting=false
         for _,unit in ipairs(participants) do
             if not battleActive or busy or revision~=rosterRevision then return end
             if unit.needsJoin then
                 local verified=true
+                unit.joinedPeers=unit.joinedPeers or setmetatable({},{__mode='k'})
                 for _,other in ipairs(participants) do
                     if other~=unit then
-                        if live(unit.actor)~=true or live(other.actor)~=true then verified=false;break end
                         local relation=unit.team==other.team and 0 or 2
-                        local ok,readback=invoke('setRelation',unit.actor,other.actor,relation)
-                        if not battleActive or busy or revision~=rosterRevision then return end
-                        verified=verified and ok and readback==true
+                        local receipt=unit.joinedPeers[other]
+                        if receipt~=relation then
+                            if remaining<=0 then verified=false;break end
+                            if type(receipt)=='table' and now<receipt.retry then verified=false
+                            else
+                                if live(unit.actor)~=true or live(other.actor)~=true then verified=false;break end
+                                remaining=remaining-1
+                                local ok,readback=invoke('setRelation',unit.actor,other.actor,relation)
+                                if not battleActive or busy or revision~=rosterRevision then return end
+                                local result=ok and readback==true and relation or {retry=now+1}
+                                unit.joinedPeers[other]=result
+                                if other.needsJoin then
+                                    other.joinedPeers=other.joinedPeers or setmetatable({},{__mode='k'})
+                                    other.joinedPeers[unit]=result
+                                end
+                                if result~=relation then verified=false end
+                            end
+                        end
                     end
                 end
                 unit.needsJoin=not verified
-                log('增援关系读回 team='..unit.team..' actor='..actor_name(unit.actor)..' verified='..tostring(verified))
+                if not verified then waiting=true end
+                if verified then
+                    unit.joinedPeers=nil
+                    log('增援关系读回 team='..unit.team..' actor='..actor_name(unit.actor)..' verified=true')
+                end
             end
+        end
+        -- A reinforcement may act once all of its own relationships have been confirmed.
+        if waiting then
+            local ready={}
+            for _,unit in ipairs(active) do if not unit.needsJoin then ready[#ready+1]=unit end end
+            active=ready
         end
         for _,unit in ipairs(active) do
           if not battleActive or busy or revision~=rosterRevision then return end
