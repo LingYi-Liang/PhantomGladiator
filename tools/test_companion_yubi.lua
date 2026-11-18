@@ -41,14 +41,21 @@ local function fixture()
         return (not h.badCtrl and cb and cb(nil,ctx,index)) or control
     end
     local function current(a)local t=a==source and h.enemy or h.opponents[a];if t and not t.dead then return t end end
-    h.y=Y.new({current=current,player=function()return player end,world=function()return w end,statics=function()return lib end,
+    h.y=Y.new({current=current,arenaOpponent=function(a)return h.arena:aggroOpponent(a)end,
+        player=function()return player end,world=function()return w end,statics=function()return lib end,
         fname=FName,invalid=function()return invalid end,find=StaticFindObject,register=reg,unregister=UnregisterHook,
         clock=function()return h.now end,location=function(a)return a.at end,ground=function(_,_,_,_,_,ignored)
-            assert(ignored[1] and ignored[2]==current(ignored[1]));return h.floor end,
+            local enemy=h.arena and h.arena:aggroOpponent(ignored[1]) or current(ignored[1])
+            assert(ignored[1] and ignored[2]==enemy);return h.floor end,
         log=function(s)h.lines[#h.lines+1]=s end})
     h.floor=140
     h.aim=Aim.new({log=function()end,clock=function()return h.now end,members=function()return h.roster end,
-        fighting=function()return false end,companionTargetOf=current,actorOf=function()return source end,
+        fighting=function()
+            local s=h.arena and h.arena:status()
+            return s and s.battle_active and s.blue_count>0 and s.red_count>0 or false
+        end,companionTargetOf=current,
+        actorOf=function(key)if h.arena then return h.arena:actorOf(key) end;return source end,
+        opponentOf=function(key)return h.arena and h.arena:opponentOf(key)end,
         statics=function()return lib end,player=function()return player end,
         boundaryCharacter=function(...)return h.y:character(...)end})
     function h:tick() self.aim:tick();self.y:tick(self.roster)end
@@ -108,3 +115,51 @@ assert(h.comp.WarpTargets[1].Location.X==300 and c2.WarpTargets[1].Location.X==1
 w1.PlayerCharacter=h.player;h:tick();assert(w1.bRetiring and not w1.PlayerCharacter and not w1.PlayerASC and not w2.bRetiring,'foreign participant readback retires only its own wall')
 h.y:silence(true);assert(w2.bRetiring and #c2.WarpTargets==0)
 print('PASS companion YuBi native CA02, private warp, participant/controller routing, ownership and cleanup')
+
+-- Use the real arena's confirmed opponent assignments, even when both casters have a different companion target.
+do
+    local saved=arg;arg={nil,'fixture'}
+    local makeArena=assert(loadfile('tools/test_arena_controller.lua'))();arg=saved
+    local f=fixture();local blue,spare,blueComp,blueAbility=f:second()
+    local red=f.source
+    local companion,companionFoe,_,companionAbility=f:second()
+    local initial={red,blue,spare,companion}
+    for _,a in ipairs(initial)do a.alive=true;a.name=a:GetFullName();a.hp=100 end
+    f.arena=makeArena({spawnClass=function()return table.remove(initial,1)end,
+        actorKey=function(a)return a:GetAddress()end,activate=function()return true end,
+        onUnitsChanged=function(units)f.roster=units;f.y:roster(units)end,
+        destroy=function(a)f.y:releaseActor(a);a.alive=false;a.dead=true end,
+        forceAttack=function(a,b)a.assigned=b;return true end}).arena
+    assert(f.arena:spawn(Y.actor,'red',1).ok and f.arena:spawn(Y.actor,'blue',1).ok)
+    f:tick()
+    assert(f.hooks[Y.prepare],'red and blue Yu Bi were omitted from the barrier roster')
+    f:prepare();assert(f.calls==0,'no field before battle / no companion target fallback')
+    assert(f.arena:start().ok);f:tick()
+    assert(f.arena:aggroOpponent(red)==blue and f.arena:aggroOpponent(blue)==red)
+    f:prepare();f.hooks[Y.prepare](blueAbility)
+    assert(f.calls==2 and #f.comp.WarpTargets==1 and #blueComp.WarpTargets==1)
+    local rw,bw=f:wall(red),f:wall(blue);f:activate(rw);f:activate(bw)
+    assert(rw.PlayerCharacter==blue and rw.PlayerASC==blue.AbilitySystemComponent)
+    assert(bw.PlayerCharacter==red and bw.PlayerASC==red.AbilitySystemComponent)
+    assert(rw.StormFeedbackController==f.invalid and bw.StormFeedbackController==f.invalid)
+    f.hooks[Y.finish](f.ability);f.hooks[Y.finish](blueAbility)
+    assert(f.arena:spawn('/Game/OtherBoss.OtherBoss_C','blue',1).ok)
+    f.arena:tickReinforcements();blue.hp=0
+    assert(f.lib:GetPlayerCharacter(rw,0)==f.invalid)
+    f.arena:tickReinforcements();f:tick();assert(rw.bRetiring and bw.bRetiring)
+    assert(f.arena:aggroOpponent(red)==spare)
+    f:prepare();local nextWall=f:wall(red);f:activate(nextWall)
+    assert(nextWall.PlayerCharacter==spare and not nextWall.bRetiring)
+    assert(f.lib:GetPlayerCharacter(rw,0)==f.invalid,'a dissolving old wall cannot claim the next opponent')
+    assert(f.arena:spawn(Y.actor,'companion',1).ok);f:tick();f.hooks[Y.prepare](companionAbility)
+    local companionWall=f:wall(companion);f:activate(companionWall)
+    assert(f.arena:stop().ok and nextWall.bRetiring)
+    f:tick();assert(f.lib:GetPlayerCharacter(companionWall,0)==companionFoe and not companionWall.bRetiring)
+    print('PASS red and blue native CA02 with actual arena start, mutual casting, reinforcement, death, reassignment and cleanup')
+end
+for _,case in ipairs({'neutral','reserve','stand','aid','variant'})do
+    local f=fixture();local member=f.roster[1];member.team='red'
+    if case=='neutral' then member.team='neutral' elseif case=='variant' then member.class_path='/Game/Other.Other_C'
+    else member[case]=true end
+    f.y:roster(f.roster);assert(f.hooks[Y.prepare]==nil,case)
+end

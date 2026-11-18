@@ -1,5 +1,5 @@
 -- The native CA02 uses a level marker for its warp and later uses that warp to spawn
--- BP_YuBi_CA02_Arena. Supply only the casting companion's warp; never register a map marker.
+-- BP_YuBi_CA02_Arena. Supply the individual caster's warp for a confirmed opponent.
 local U=require('ue_observe')
 local Retry=require('lookup_retry')
 local M={}
@@ -50,11 +50,17 @@ function M.new(o)
         local ok,yes=pcall(o.inGameThread);return ok and yes==true
     end
     local function say(s)if o.log then o.log('[YuBiArena] '..s) end end
+    local function currentOpponent(actor,team)
+        if team=='companion' then return o.current(actor) end
+        if (team=='red' or team=='blue') and o.arenaOpponent then return o.arenaOpponent(actor) end
+    end
     local function validEnemy(r)
+        local member=owned[U.key(r.actor) or '']
+        if not member or member.team~=r.team or not same(member.actor,r.actor) then return false end
         if not U.valid(r.target) or same(r.target,o.player()) or not U.inWorld(r.target,r.world) or not same(o.world(),r.world) then return false end
         local _,sourceName=call(r.actor,'GetFullName');local _,enemyName=call(r.target,'GetFullName')
         if sourceName~=r.actorName or enemyName~=r.targetName then return false end
-        return same(o.current(r.actor),r.target)
+        return same(currentOpponent(r.actor,r.team),r.target)
     end
     local function answer(context,index,controller,cls)
         if not self.alive or (not probe and not next(pins)) or not gameThread() or U.unwrap(index)~=0 then return end
@@ -67,6 +73,7 @@ function M.new(o)
         local _,actor=call(ctx,'GetOwner')
         local r=pins[U.key(actor) or '']
         if not r or not same(actor,r.actor) or not U.inWorld(ctx,r.world) then return end
+        if U.field(ctx,'bRetiring')==true then return empty end
         r.walls[U.key(ctx)]=ctx
         if controller then return empty end -- NPC walls have no local camera or gamepad recipient.
         local ok,valid=pcall(validEnemy,r)
@@ -98,7 +105,7 @@ function M.new(o)
         local p,read=snap(r.component)
         if not read then return false end
         if p and distance2(p,r.point)<.01 and math.abs(p.Z-r.point.Z)<.1 then
-            say('即将撤下该随从的临时落点')
+            say('即将撤下玉璧的临时落点')
             call(r.component,'RemoveWarpTarget',(o.fname or FName)('SnapPoint'))
             local after,got=snap(r.component)
             if not got or after then return false end
@@ -112,7 +119,7 @@ function M.new(o)
         for key,wall in pairs(r.walls)do
             local _,owner=call(wall,'GetOwner')
             if same(owner,r.actor) and U.field(wall,'bRetiring')~=true then
-                say('即将收回该随从的电围墙')
+                say('即将收回玉璧的电围墙')
                 call(wall,'RetireArena')
             end
             if not same(owner,r.actor) or not U.valid(wall) or U.field(wall,'bRetiring')==true then r.walls[key]=nil else done=false end
@@ -128,14 +135,16 @@ function M.new(o)
         local ability=U.unwrap(context)
         local _,actor=call(ability,'GetAvatarActorFromActorInfo')
         local key=U.key(actor)
-        if not key or not same(owned[key],actor) or U.npcPath(actor)~=M.actor then return end
-        local world=o.world();local target=o.current(actor)
+        local member=key and owned[key]
+        if not member or not same(member.actor,actor) or U.npcPath(actor)~=M.actor then return end
+        local world=o.world();local target=currentOpponent(actor,member.team)
         if not U.valid(target) or same(target,o.player()) or same(target,actor) or not U.inWorld(target,world) or not U.inWorld(actor,world) then return end
         local old=pins[key]
-        if old and not same(old.target,target) and not retire(old)then return end
+        if old and (old.team~=member.team or not same(old.target,target)) and not retire(old)then return end
         local _,sourceName=call(actor,'GetFullName');local _,enemyName=call(target,'GetFullName')
         if type(sourceName)~='string' or type(enemyName)~='string' then return end
-        local r=old and same(old.target,target) and old or {actor=actor,target=target,world=world,walls={},actorName=sourceName,targetName=enemyName}
+        local r=old and old.team==member.team and same(old.target,target) and old or
+            {actor=actor,team=member.team,target=target,world=world,walls={},actorName=sourceName,targetName=enemyName}
         if not verified(actor,target) then say('玩家与敌方取参隔离未确认，保留原生落点');return end
         local cls=retry:find(WARP,o.find)
         if not U.valid(cls)then return end
@@ -160,7 +169,7 @@ function M.new(o)
         local point=vector({X=x,Y=y,Z=z})
         if not point or math.abs(z-a.Z)>1200 or math.abs(z-b.Z)>1200 or not validEnemy(r) then return end
         r.component,r.point=component,point
-        say('即将为随从玉璧本次原生 CA02 设置交战落点')
+        say('即将为玉璧本次原生 CA02 设置交战落点；阵营='..r.team)
         local wrote=call(component,'AddOrUpdateWarpTargetFromLocation',(o.fname or FName)('SnapPoint'),point)
         local after=snap(component)
         local confirmed=wrote and after and distance2(after,point)<.01 and math.abs(after.Z-z)<.1
@@ -191,14 +200,14 @@ function M.new(o)
         -- The native feedback entry skips its three effects when there is no local controller.
         -- Start only the wall's positional audio. Its native retirement stops the same playing ID.
         if U.field(wall,'StormFeedbackActive')==false and not U.valid(U.field(wall,'StormFeedbackController')) then
-            say('即将启动随从电墙的场地音效')
+            say('即将启动玉璧电墙的场地音效')
             pcall(function()wall.StormFeedbackActive=true end)
             if U.field(wall,'StormFeedbackActive')==true then
                 call(wall,'StartStormAudio')
                 say('场地音效播放 ID 读回='..tostring(U.field(wall,'StormSoundPlayingID')))
             end
         end
-        say('电墙本体和双方属性组件已读回；敌人='..tostring(U.key(r.target)))
+        say('电墙本体和双方属性组件已读回；阵营='..r.team..' 施法者='..tostring(U.key(r.actor))..' 敌人='..tostring(U.key(r.target)))
         return true
     end
     local function activated(context)
@@ -240,8 +249,9 @@ function M.new(o)
         if not self.alive then return end
         local here={}
         for _,m in ipairs(roster or {})do
-            if m.team=='companion' and m.class_path==M.actor and not m.reserve and not m.stand then
-                local key=U.key(m.actor);if key then here[key]=m.actor end
+            if (m.team=='companion' or m.team=='red' or m.team=='blue') and m.class_path==M.actor
+                and not m.reserve and not m.stand and not m.aid then
+                local key=U.key(m.actor);if key then here[key]={actor=m.actor,team=m.team} end
             end
         end
         owned=here
@@ -251,8 +261,8 @@ function M.new(o)
         if not self.alive then return end
         if roster then self:roster(roster) end
         for k,r in pairs(pins)do
-            if not same(owned[k],r.actor) or not validEnemy(r) then
-                -- Keep a live companion's empty recipient until its next cast: a late boundary
+            if not validEnemy(r) then
+                -- Keep a live caster's empty recipient until its next cast: a late boundary
                 -- callback from the old cast must still receive null instead of player zero.
                 if retire(r) and (not U.valid(r.actor) or not U.valid(r.ability)) then pins[k]=nil end
             else
