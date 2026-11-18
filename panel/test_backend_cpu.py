@@ -6,12 +6,48 @@ backend=types.ModuleType('backend_cpu');backend.__file__=str(ROOT/'panel/backend
 exec(compile(source.read_text(encoding='utf-8-sig'),str(source),'exec'),backend.__dict__)
 
 class Tests(unittest.TestCase):
+    def test_display_summary_matches_catalog_without_decorating_unit_cards(self):
+        full=self.bridge.catalog()
+        with unittest.mock.patch.object(backend,'decorate_row',wraps=backend.decorate_row) as decorate:
+            summary=self.bridge.status()['catalog']
+            self.assertEqual(summary,{k:full[k] for k in summary})
+            self.assertEqual(decorate.call_count,0)
+
+    def test_single_unit_commands_do_not_format_the_rest_of_the_catalog(self):
+        self.policy.write_text('{"schema_version":1,"units":{},"allow_all_catalog":true}',encoding='utf-8')
+        unit='/Game/BP_Test999.BP_Test999_C'
+        with unittest.mock.patch.object(backend,'decorate_row',wraps=backend.decorate_row) as decorate:
+            for action in ('select_unit','spawn','queue_spawn'):
+                self.assertEqual(self.bridge._validate({'action':action,'unit_id':unit})['unit_id'],unit)
+            self.assertEqual(decorate.call_count,0)
+        self.catalog(3)
+        with self.assertRaises(backend.ValidationError):self.bridge._validate({'action':'spawn','unit_id':unit})
+
     def test_idle_dispatcher_keeps_transport_checks_without_parsing_game_status(self):
         with unittest.mock.patch.object(self.bridge,'game_status',wraps=self.bridge.game_status) as read:
             for _ in range(40):self.bridge.tick()
             self.assertEqual(read.call_count,0)
             self.write('inbox.tsv','987654\tstart\n');self.bridge.tick()
             self.assertEqual(self.bridge.transport_code,'orphan_inbox')
+
+    def test_single_unit_lookup_agrees_with_catalog_on_duplicate_and_invalid_rows(self):
+        self.catalog(1)
+        path=self.bridge.runtime/'catalog.tsv'
+        header,original=path.read_text(encoding='utf-8').splitlines()
+        unit=original.split('\t')[0]
+        duplicate=original.replace('Test 0','Duplicate')
+        non_unit=original.replace(backend.NPC_NATIVE_PARENT,sorted(backend.NON_UNIT_NATIVE_PARENTS)[0])
+        bad_name=original.replace('Test 0','bad\x7fname')
+        for first in (original,bad_name,non_unit):
+            with self.subTest(first=first):
+                self.write('catalog.tsv','\n'.join([header,first,duplicate])+'\n')
+                cards=self.bridge.catalog()['units']
+                found=self.bridge._command_unit(unit)
+                if not cards:
+                    self.assertIsNone(found)
+                else:
+                    self.assertEqual({k:cards[0][k] for k in ('id','name','spawnable','max_count') if k in cards[0]},
+                                     {k:found[k] for k in ('id','name','spawnable','max_count') if k in found})
 
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name)
@@ -65,8 +101,8 @@ class Tests(unittest.TestCase):
     def test_same_size_atomic_replacement_and_malformed_file_are_visible(self):
         self.catalog(1);self.bridge.status();p=self.bridge.runtime/'catalog.tsv';old=p.stat()
         text=p.read_text();tmp=p.with_suffix('.tmp');tmp.write_text(text.replace('Test 0','Test X'));os.utime(tmp,ns=(old.st_atime_ns,old.st_mtime_ns));os.replace(tmp,p)
-        with unittest.mock.patch.object(backend,'decorate_row',wraps=backend.decorate_row)as decorate:
-            self.bridge.status();self.assertEqual(decorate.call_count,1,'atomic replacement with preserved size/time must invalidate summary')
+        with unittest.mock.patch.object(self.bridge,'catalog',wraps=self.bridge.catalog)as catalog:
+            self.bridge.status();self.assertEqual(catalog.call_count,1,'atomic replacement with preserved size/time must invalidate summary')
         self.assertEqual(self.bridge.catalog()['units'][0]['name'],'Test X')
         self.write('catalog.tsv','malformed\n');self.assertFalse(self.bridge.status()['catalog']['available'])
     def test_returned_summary_cannot_mutate_later_responses(self):
@@ -98,8 +134,13 @@ class Tests(unittest.TestCase):
         self.bridge.status()
         self.write('status.tsv','schema_version\t1\nheartbeat_unix\t100\ngame_session\ts2\ngame_ready\ttrue\nkey_spawn\tF8\n')
         result=self.bridge.status();self.assertEqual(result['game']['game_session'],'s2');self.assertEqual(result['keybinds']['spawn'],'F8')
-    def test_cache_is_bounded_by_age_even_when_metadata_is_unchanged(self):
-        with unittest.mock.patch.object(backend.time,'monotonic',return_value=10):self.bridge.status()
-        with unittest.mock.patch.object(backend.time,'monotonic',return_value=16),unittest.mock.patch.object(self.bridge,'catalog',wraps=self.bridge.catalog)as catalog:
-            self.bridge.status();self.assertEqual(catalog.call_count,1)
+    def test_summary_rechecks_contents_after_five_seconds_even_with_identical_metadata(self):
+        metadata=self.bridge._summary_metadata(self.bridge._summary_files())
+        with unittest.mock.patch.object(self.bridge,'_summary_metadata',return_value=metadata):
+            with unittest.mock.patch.object(backend.time,'monotonic',return_value=10):self.bridge.status()
+            with unittest.mock.patch.object(backend.time,'monotonic',return_value=16),unittest.mock.patch.object(self.bridge,'catalog',wraps=self.bridge.catalog)as catalog:
+                self.assertEqual(self.bridge.status()['catalog']['total'],1000);self.assertEqual(catalog.call_count,0)
+            self.catalog(4)
+            with unittest.mock.patch.object(backend.time,'monotonic',return_value=22):
+                self.assertEqual(self.bridge.status()['catalog']['total'],4)
 if __name__=='__main__':unittest.main()

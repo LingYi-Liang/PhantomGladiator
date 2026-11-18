@@ -633,15 +633,25 @@
     }).join("");
   }
   function markSelection() {
-    $$(".unit-card").forEach(card => {
-      const on = card.dataset.id === ui.selectedId, main = card.querySelector(".card-main");
+    const grid = $("#grid"); if (!grid) return;
+    const previous = $(".unit-card.is-selected", grid);
+    const selected = $(`.unit-card[data-id="${CSS.escape(ui.selectedId)}"]`, grid);
+    if (previous !== selected) for (const card of [previous, selected]) {
+      if (!card) continue;
+      const on = card === selected, main = card.querySelector(".card-main");
       card.classList.toggle("is-selected", on);
       main.setAttribute("aria-pressed", on);
-      main.tabIndex = on ? 0 : -1;
+      for (const rule of $$('[role="switch"], [data-action="execution-options"]', card)) rule.tabIndex = on ? 0 : -1;
       const avatar = card.querySelector(".avatar"), check = avatar.querySelector(".avatar-check");
       if (on && !check) avatar.insertAdjacentHTML("beforeend", `<span class="avatar-check">${icon("check")}</span>`);
       if (!on && check) check.remove();
-    });
+    }
+    const focusable = selected?.querySelector(".card-main") || $(".card-main", grid);
+    const current = $('.card-main[tabindex="0"]', grid);
+    if (current !== focusable) {
+      if (current) current.tabIndex = -1;
+      if (focusable) focusable.tabIndex = 0;
+    }
   }
   function selectUnit(id, { scroll = false } = {}) {
     ui.selectedId = id;
@@ -672,7 +682,11 @@
       }
     }
     if (!target) return;
-    cards.forEach(c => { c.tabIndex = c === target ? 0 : -1; });
+    const current = $('.card-main[tabindex="0"]', $("#grid"));
+    if (current !== target) {
+      if (current) current.tabIndex = -1;
+      target.tabIndex = 0;
+    }
     target.focus();
     target.scrollIntoView({ block: "nearest" });
   }

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import copy
 import csv
+import hashlib
 import io
 import importlib.util
 import json
@@ -278,10 +279,13 @@ def binding_system_owner(vk,mods):
     return None
 
 
+CONTROL_CHAR = re.compile(r"[\x00-\x1f\x7f]")
+
+
 def clean_field(value, name, limit=1024):
     if not isinstance(value, str) or not value or len(value) > limit:
         raise ValidationError(f"{name}: expected a nonempty string of at most {limit} characters")
-    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+    if CONTROL_CHAR.search(value):
         raise ValidationError(f"{name}: control characters are forbidden")
     return value
 
@@ -451,20 +455,26 @@ class Bridge:
             raise ValidationError("runtime file resolves outside the configured directory")
         return path
 
-    def _validation(self):
-        text = bounded_read(self.validation_path, 65536)
-        if text is None:
-            raise ValidationError("unit_validation.json missing; no spawn permission")
-        policy = json.loads(text)
-        if not isinstance(policy, dict) or policy.get("schema_version") != 1 or not isinstance(policy.get("units"), dict):
-            raise ValidationError("unit_validation.json schema is invalid")
-        return {path: entry for path, entry in policy["units"].items()
-                if isinstance(entry, dict) and entry.get("allow_spawn") is True
-                and entry.get("class_path") == path
-                and (entry.get("validation_status") == "verified_spawn_observation"
-                     or (entry.get("validation_status") == "controlled_test"
-                         and entry.get("max_count") == 1 and entry.get("max_live") == 2))
-                and isinstance(entry.get("evidence"), list) and entry["evidence"]}
+    def _catalog_policy(self):
+        all_catalog = False
+        try:
+            text = bounded_read(self.validation_path, 65536)
+            if text is None:
+                raise ValidationError("unit_validation.json missing; no spawn permission")
+            policy = json.loads(text)
+            all_catalog = isinstance(policy, dict) and policy.get("allow_all_catalog") is True
+            if not isinstance(policy, dict) or policy.get("schema_version") != 1 or not isinstance(policy.get("units"), dict):
+                raise ValidationError("unit_validation.json schema is invalid")
+            validation = {path: entry for path, entry in policy["units"].items()
+                    if isinstance(entry, dict) and entry.get("allow_spawn") is True
+                    and entry.get("class_path") == path
+                    and (entry.get("validation_status") == "verified_spawn_observation"
+                         or (entry.get("validation_status") == "controlled_test"
+                             and entry.get("max_count") == 1 and entry.get("max_live") == 2))
+                    and isinstance(entry.get("evidence"), list) and entry["evidence"]}
+        except (OSError, UnicodeError, ValueError) as error:
+            return all_catalog, {}, [str(error)]
+        return all_catalog, validation, []
 
     def _codex_evidence(self):
         """Optional exported game evidence; duplicate paths fail closed for labels."""
@@ -634,17 +644,10 @@ class Bridge:
                 'registry_crosscheck':report.get('registry_crosscheck'),
                 'files':[{k:v for k,v in r.items() if k!='search'} for r in selected[offset:offset+limit]]}
 
-    def catalog(self, game=None):
-        all_catalog=False
-        try:
-            policy_settings=json.loads(bounded_read(self.validation_path,65536) or '{}')
-            all_catalog=policy_settings.get('allow_all_catalog') is True
-        except (OSError,UnicodeError,ValueError,TypeError):
-            pass
+    def _catalog_source(self, game=None):
         final_path = self._path("catalog.tsv")
         partial_path = self._path("catalog.tsv.partial")
         values = (self.game_status() if game is None else game).get("values", {})
-        shortcuts,shortcut_errors=self._unit_shortcuts(values.get('unit_keys_epoch',''))
         use_partial = False
         if partial_path.exists() and (values.get("catalog_state") == "scanning" or not final_path.exists()):
             try:
@@ -661,12 +664,85 @@ class Bridge:
             text = bounded_read(final_path, 32 * 1024 * 1024)
             use_partial = False
         if text is None:
-            return {"available": False, "partial": False, "units": [], "errors": [], "total": 0, "excluded_non_units": 0, "codex_errors": []}
+            return None, False
         rows = tsv_rows(text)
         header = next(rows, [])
         if tuple(header) != CATALOG_FIELDS:
             raise ValidationError("catalog.tsv: unsupported header")
-        items, errors, seen = [], [], set()
+        return rows, use_partial
+
+    @staticmethod
+    def _catalog_item(row, seen, validation, all_catalog):
+        if len(row) != len(CATALOG_FIELDS):
+            raise ValidationError("wrong column count")
+        item = dict(zip(CATALOG_FIELDS, row))
+        raw_reason = item["reason"]
+        clean_field(item["id"], "id")
+        clean_field(item["name"], "name", 512)
+        clean_field(item["class_path"], "class_path", 2048)
+        for flag in ("loaded", "spawnable"):
+            if item[flag] not in {"0", "1", "unknown"}:
+                raise ValidationError(f"invalid {flag}")
+            item[flag] = {"0": False, "1": True, "unknown": None}[item[flag]]
+        if item["id"] in seen:
+            raise ValidationError("duplicate unit id")
+        seen.add(item["id"])
+        native_parent = native_parent_from_reason(item["reason"])
+        if native_parent in NON_UNIT_NATIVE_PARENTS:
+            return None
+        item["native_parent"] = native_parent
+        if native_parent != NPC_NATIVE_PARENT:
+            item["spawnable"] = False
+            marker = "native_parent_unknown" if native_parent is None else "npc_identity_unknown"
+            item["reason"] = marker + ";NPC身份未验证；" + item["reason"]
+        if item["class_path"].rsplit(".", 1)[-1].endswith("_Base_C"):
+            item["spawnable"] = False
+            item["reason"] = "基类不可召唤；" + item["reason"]
+        if item["id"] == item["class_path"] and item["class_path"] in validation:
+            policy_entry = validation[item["class_path"]]
+            item["validation_status"] = policy_entry["validation_status"]
+            controlled = item["validation_status"] == "controlled_test"
+            item["max_count"] = 1 if controlled else MAX_SPAWN_COUNT
+            item["validation_scope"] = ("普通暴徒单只测试；生成和互伤尚未验证，每次1只、场上最多2只" if controlled
+                else "仅该具体路径有生成观察；不表示战斗通过或所有场景安全")
+            if policy_entry.get("battle_excluded_reason"):
+                item["validation_scope"] += "；" + policy_entry["battle_excluded_reason"]
+            item["reason"] = item["validation_scope"] + "；" + item["reason"]
+        else:
+            item["spawnable"] = False
+            item["validation_status"] = "unverified"
+            item["validation_scope"] = "未验证，暂不可直接召唤"
+            item["reason"] = item["validation_scope"] + "；" + item["reason"]
+        if all_catalog and re.fullmatch(r'/[A-Za-z0-9_/.-]+\.[A-Za-z0-9_-]+_C',item['class_path']) and '..' not in item['class_path']:
+            item['spawnable']=True
+            item['max_count']=MAX_SPAWN_COUNT
+            item['validation_status']='experimental_spawn'
+            item['validation_scope']='用户开启全部目录尝试召唤；运行时仍核对Actor类和对象，生成及战斗兼容性未保证'
+            item['reason']=item['validation_scope']+'；'+raw_reason
+        return item
+
+    def _command_unit(self, unit_id):
+        rows, _ = self._catalog_source()
+        if rows is None:
+            return None
+        all_catalog, validation, _ = self._catalog_policy()
+        seen = set()
+        for row in rows:
+            if row and row[0] == unit_id:
+                try:
+                    return self._catalog_item(row, seen, validation, all_catalog)
+                except ValidationError:
+                    continue
+        return None
+
+    def catalog(self, game=None, *, summary_only=False):
+        game = self.game_status() if game is None else game
+        rows, use_partial = self._catalog_source(game)
+        if rows is None:
+            return {"available": False, "partial": False, "units": [], "errors": [], "total": 0, "excluded_non_units": 0, "codex_errors": []}
+        shortcuts, shortcut_errors = ({}, []) if summary_only else self._unit_shortcuts(game.get('values', {}).get('unit_keys_epoch',''))
+        items, seen = [], set()
+        all_catalog, validation, errors = self._catalog_policy()
         codex, codex_errors = self._codex_evidence()
         locations, location_errors = self._location_evidence(codex)
         audit, unit_proofs, audit_errors = {}, {}, []
@@ -688,57 +764,32 @@ class Bridge:
         except (OSError,UnicodeError,ValueError,TypeError,KeyError) as error:
             audit,unit_proofs={},{};audit_errors=[str(error)]
         map_names={row['own_map_id']:row['map_name'] for row in locations.values() if row['own_map_id']}
-        try:
-            validation = self._validation()
-        except (OSError, UnicodeError, ValueError) as error:
-            validation = {}
-            errors.append(str(error))
         excluded_non_units = 0
+        total = primary_count = mapped_count = configured_count = 0
         for number, row in enumerate(rows, 2):
             if not row:
                 continue
             try:
-                if len(row) != len(CATALOG_FIELDS):
-                    raise ValidationError("wrong column count")
-                item = dict(zip(CATALOG_FIELDS, row))
-                raw_reason = item["reason"]
-                clean_field(item["id"], "id")
-                clean_field(item["name"], "name", 512)
-                clean_field(item["class_path"], "class_path", 2048)
-                for flag in ("loaded", "spawnable"):
-                    if item[flag] not in {"0", "1", "unknown"}:
-                        raise ValidationError(f"invalid {flag}")
-                    item[flag] = {"0": False, "1": True, "unknown": None}[item[flag]]
-                if item["id"] in seen:
-                    raise ValidationError("duplicate unit id")
-                seen.add(item["id"])
-                native_parent = native_parent_from_reason(item["reason"])
-                if native_parent in NON_UNIT_NATIVE_PARENTS:
+                item = self._catalog_item(row, seen, validation, all_catalog)
+                if item is None:
                     excluded_non_units += 1
                     continue
-                item["native_parent"] = native_parent
-                if native_parent != NPC_NATIVE_PARENT:
-                    item["spawnable"] = False
-                    marker = "native_parent_unknown" if native_parent is None else "npc_identity_unknown"
-                    item["reason"] = marker + ";NPC身份未验证；" + item["reason"]
-                if item["class_path"].rsplit(".", 1)[-1].endswith("_Base_C"):
-                    item["spawnable"] = False
-                    item["reason"] = "基类不可召唤；" + item["reason"]
-                if item["id"] == item["class_path"] and item["class_path"] in validation:
-                    policy_entry = validation[item["class_path"]]
-                    item["validation_status"] = policy_entry["validation_status"]
-                    controlled = item["validation_status"] == "controlled_test"
-                    item["max_count"] = 1 if controlled else MAX_SPAWN_COUNT
-                    item["validation_scope"] = ("普通暴徒单只测试；生成和互伤尚未验证，每次1只、场上最多2只" if controlled
-                        else "仅该具体路径有生成观察；不表示战斗通过或所有场景安全")
-                    if policy_entry.get("battle_excluded_reason"):
-                        item["validation_scope"] += "；" + policy_entry["battle_excluded_reason"]
-                    item["reason"] = item["validation_scope"] + "；" + item["reason"]
-                else:
-                    item["spawnable"] = False
-                    item["validation_status"] = "unverified"
-                    item["validation_scope"] = "未验证，暂不可直接召唤"
-                    item["reason"] = item["validation_scope"] + "；" + item["reason"]
+                path = item['class_path']
+                native_parent = item['native_parent']
+                raw_reason = row[-1]
+                proof = unit_proofs.get(path)
+                if proof and proof.get('native_parent') != native_parent:
+                    proof = None
+                count = proof.get('configured_spawner_count', 0) if proof else 0
+                configured = count if type(count) is int and 0 <= count <= 1000000 else 0
+                total += 1
+                configured_count += configured > 0
+                kind, _ = _taxonomy_module.identity(codex.get(path))
+                if kind == 'primary':
+                    primary_count += 1
+                    mapped_count += bool(locations.get(path, {}).get('own_map_id'))
+                if summary_only:
+                    continue
                 label_input = {**item, "reason": raw_reason, "native_parent": native_parent or "unresolved"}
                 parent_path = _labels_module.parent_class_path(label_input)
                 item["parent_class_path"] = parent_path or None
@@ -754,16 +805,14 @@ class Bridge:
                         item[field] = labels[field]
                 item["is_special"] = item.get("category") == "特殊实体"
                 item.update(_taxonomy_module.decorate(item, codex.get(item['class_path']), locations.get(item['class_path'])))
-                proof=unit_proofs.get(item['class_path'])
-                if proof and proof.get('native_parent')==native_parent:
+                if proof:
                     item['resolved_unit_kind']=proof['unit_kind']
                     item['inheritance_verified']=True
                     mids=proof.get('configured_maps',[])
                     if not isinstance(mids,list) or not all(isinstance(m,str) and len(m)<=256 and not any(ord(c)<32 for c in m) for m in mids):mids=[]
                     item['configured_maps']=mids
                     item['configured_map_names']=[map_names.get(m) or m for m in mids]
-                    count=proof.get('configured_spawner_count',0)
-                    item['configured_spawner_count']=count if type(count) is int and 0<=count<=1000000 else 0
+                    item['configured_spawner_count']=configured
                     item['configuration_basis']='已读取地图刷怪器的Class/随机候选配置；不代表全部地图或已实际刷出'
                     item['purpose_hint']=proof.get('purpose_hint')
                     if item['codex_entry_kind']=='candidate' and item['browse_type'] not in ('模板／测试','召唤／分身'):
@@ -773,57 +822,95 @@ class Bridge:
                             item['browse_type']='演出角色候选';item['browse_type_basis']='ActorForSeqs目录/父类与Character继承；演出用途线索'
                         elif proof['unit_kind'] in ('character','pawn'):
                             item['browse_type']='通用角色候选';item['browse_type_basis']='继承链确认角色/Pawn；具体用途与战斗能力未验证'
-                if all_catalog and re.fullmatch(r'/[A-Za-z0-9_/.-]+\.[A-Za-z0-9_-]+_C',item['class_path']) and '..' not in item['class_path']:
-                    item['spawnable']=True
-                    item['max_count']=MAX_SPAWN_COUNT
-                    item['validation_status']='experimental_spawn'
-                    item['validation_scope']='用户开启全部目录尝试召唤；运行时仍核对Actor类和对象，生成及战斗兼容性未保证'
-                    item['reason']=item['validation_scope']+'；'+raw_reason
                 item['unit_shortcut']=shortcuts.get(item['id'])
                 items.append(item)
             except ValidationError as error:
                 if len(errors) < 20:
                     errors.append(f"line {number}: {error}")
-        primary = [u for u in items if u['codex_entry_kind'] == 'primary']
+        summary = {"available": True, "partial": use_partial, "errors": errors,
+                   "total": total, "excluded_non_units": excluded_non_units, "codex_errors": codex_errors,
+                   "location_errors": location_errors, "primary_count": primary_count, "inventory_audit": audit,
+                   "inventory_errors": audit_errors, "configured_count": configured_count, "mapped_count": mapped_count}
+        if summary_only:
+            return summary
         name_counts = {}
-        for u in primary:
-            name_counts[u.get('display_name')] = name_counts.get(u.get('display_name'), 0) + 1
+        for u in items:
+            if u['codex_entry_kind'] == 'primary':
+                name_counts[u.get('display_name')] = name_counts.get(u.get('display_name'), 0) + 1
         for u in items:
             u['same_name_count'] = name_counts.get(u.get('display_name'), 0)
-        return {"available": True, "partial": use_partial, "units": items, "errors": errors,
-                "total": len(items), "excluded_non_units": excluded_non_units, "codex_errors": codex_errors,
-                'location_errors': location_errors, 'primary_count': len(primary),
-                'inventory_audit':audit,'inventory_errors':audit_errors,
-                'configured_count':sum(u.get('configured_spawner_count',0)>0 for u in items),
-                'mapped_count': sum(bool(u['map_id']) for u in primary),
+        return {**summary, "units": items,
                 'spawn_mode':'all_catalog' if all_catalog else 'validated',
                 'unit_shortcuts_supported':True,'unit_shortcut_errors':shortcut_errors,
                 'location_scope': '图鉴归属，不是全部出现地图或刷怪地点'}
 
+    def _summary_files(self):
+        limits = {'catalog.tsv': 32<<20, 'catalog.tsv.partial': 32<<20, 'codex.tsv': 8<<20,
+                  'codex-locations.tsv': 8<<20, 'inventory-report.json': 4<<20, 'unit-evidence.json': 16<<20}
+        return [(self._path(name), limit) for name, limit in limits.items()] + [(self.validation_path, 65536)]
+
+    @staticmethod
+    def _summary_metadata(files):
+        parts = []
+        for path, _ in files:
+            try:
+                stat = path.stat()
+                parts.append((str(path.resolve()), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
+            except FileNotFoundError:
+                parts.append((str(path), None))
+        return tuple(parts)
+
+    @staticmethod
+    def _summary_contents(files):
+        digests = []
+        for path, limit in files:
+            try:
+                with path.open('rb') as stream:
+                    size = os.fstat(stream.fileno()).st_size
+                    if size > limit:
+                        return None
+                    digest = hashlib.sha256()
+                    remaining = size
+                    while remaining:
+                        block = stream.read(min(remaining, 256 * 1024))
+                        if not block:
+                            return None
+                        digest.update(block)
+                        remaining -= len(block)
+                    if stream.read(1):
+                        return None
+                    digests.append(digest.digest())
+            except FileNotFoundError:
+                digests.append(None)
+            except OSError:
+                return None
+        return tuple(digests)
+
     def _catalog_summary(self, game):
-        # Only the display summary is cached. Spawn validation always reads the current full catalog.
-        names=('catalog.tsv','catalog.tsv.partial','codex.tsv','codex-locations.tsv','inventory-report.json','unit-evidence.json')
-        def fingerprint():
-            paths=[self._path(name)for name in names]+[self.validation_path]
-            parts=[]
-            for path in paths:
-                try:
-                    stat=path.stat()
-                    parts.append((str(path.resolve()),stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns,stat.st_ctime_ns))
-                except FileNotFoundError:parts.append((str(path),None))
-            values=game.get('values',{})
-            return tuple(parts)+(values.get('catalog_state'),values.get('catalog_started_at'))
-        key=fingerprint();now=time.monotonic();cached=self.catalog_summary_cache
-        if cached and cached[0]==key and now-cached[1]<5:
+        # Only display counts are reused. Every five seconds recheck the actual source bytes.
+        files = self._summary_files()
+        values = game.get('values', {})
+        scan = (values.get('catalog_state'), values.get('catalog_started_at'))
+        key = (self._summary_metadata(files), scan)
+        now = time.monotonic()
+        cached = self.catalog_summary_cache
+        if cached and cached[0] == key and now - cached[1] < 5:
             return copy.deepcopy(cached[2])
+        contents = self._summary_contents(files)
+        if cached and cached[0] == key and contents is not None and contents == cached[3]:
+            if self._summary_metadata(self._summary_files()) == key[0]:
+                self.catalog_summary_cache = (key, now, cached[2], contents)
+                return copy.deepcopy(cached[2])
         self.catalog_summary_cache=None
-        catalog=self.catalog(game)
+        catalog=self.catalog(game, summary_only=True)
         summary={key:catalog.get(key,[])if key=='codex_errors'else catalog[key]
                  for key in ('available','partial','total','errors','excluded_non_units','codex_errors')}
         summary.update(primary_count=catalog.get('primary_count',0),mapped_count=catalog.get('mapped_count',0),
                        location_errors=catalog.get('location_errors',[]),inventory_audit=catalog.get('inventory_audit',{}),
                        inventory_errors=catalog.get('inventory_errors',[]),configured_count=catalog.get('configured_count',0))
-        if fingerprint()==key:self.catalog_summary_cache=(key,now,copy.deepcopy(summary))
+        if (self._summary_metadata(self._summary_files()) == key[0]
+                and (contents is None or self._summary_contents(files) == contents)):
+            self.catalog_summary_cache = (key, now, copy.deepcopy(summary), contents)
         return summary
 
     def game_status(self):
@@ -868,7 +955,7 @@ class Bridge:
             unit_id = clean_field(request.get("unit_id"), "unit_id")
             if len(unit_id.encode("utf-8")) > MAX_UNIT_ID_BYTES:
                 raise ValidationError("unit_id: exceeds 512 UTF-8 bytes")
-            unit = next((item for item in self.catalog()["units"] if item["id"] == unit_id), None)
+            unit = self._command_unit(unit_id)
             if unit is None:
                 raise ValidationError("unit_id is not present in the exported catalog")
             if unit["spawnable"] is False:
@@ -905,7 +992,7 @@ class Bridge:
             allowed|={'unit_id','key_code','modifiers','team','count'}
             unit_id=clean_field(request.get('unit_id'),'unit_id',512)
             if len(unit_id.encode('utf-8'))>MAX_UNIT_ID_BYTES:raise ValidationError('unit_id exceeds byte limit')
-            unit=next((u for u in self.catalog()['units'] if u['id']==unit_id),None)
+            unit=self._command_unit(unit_id)
             if unit is None:raise ValidationError('unit is not in the catalogue')
             # Team and count come together: the key then summons this unit there, whatever the panel shows.
             if 'team' in request or 'count' in request:

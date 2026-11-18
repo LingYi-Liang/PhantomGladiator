@@ -18,6 +18,7 @@ window.PGHun = (() => {
   const CATEGORY_WIRING = {main_weapon:'on', shadow_armament:'on', accessory:'on', special:'on'};
   let data, draft, baseline, undo, busy = false, epoch = 0, serial = 0, category = 'main_weapon', query = '', onlyOn = false;
   let notice = '', noticeKind = '', lastJob = null, pendingJob = null, subscribed = false, iconCache = null;
+  let renderedKeys = '';
   const open = new Set(['equipment', 'attributes']);
   const failedImages = new Set();
   const root = () => document.querySelector('#hun-page'), rt = () => window.PGRuntime;
@@ -61,10 +62,11 @@ window.PGHun = (() => {
     }).join('') + (window.PGHunKeys?.html('hun_blue').needsUpdate ? '<p class="hun-hint is-warn">更新并重载游戏内模组后才能设置快捷键。</p>' : '');
   }
   function side() {
+    renderedKeys = summonRows();
     return `<aside class="hun-side card">
       <div class="hun-id"><div class="hun-portrait">${art('HunCharacter', '魂', true)}</div><div><p class="hun-eyebrow">粪怪 · 自定义角色</p><h1>魂</h1><span class="hun-connection" data-hun-connection>${esc(availability())}</span></div></div>
       <label class="hun-count"><span>每次召唤</span><input type="number" min="1" max="100" step="1" data-hun-path="count" value="${draft.count}" aria-label="召唤数量"><span>个</span></label>
-      <div class="hun-summon" data-hun-keys>${summonRows()}</div>
+      <div class="hun-summon" data-hun-keys>${renderedKeys}</div>
       <p class="hun-hint">点按钮会先保存当前方案再召唤。快捷键按最近一次保存的方案和数量召唤。</p>
       <div class="hun-profile">
         <label class="hun-profile-name"><span>方案名称</span><input maxlength="60" data-hun-path="name" aria-label="方案名称" value="${esc(draft.name)}"></label>
@@ -136,14 +138,20 @@ window.PGHun = (() => {
   function render() {
     const el = root(); if (!el || !draft) return;
     el.innerHTML = `${side()}<div class="hun-main">${Object.keys(SECTIONS).map(section).join('')}</div><dialog class="hun-detail-dialog" aria-label="装备设置"></dialog>`;
+    iconCache = rt()?.state?.icons;
     if (busy) for (const field of el.querySelectorAll('input,select,button')) field.disabled = true;
     el.setAttribute('aria-busy', String(busy));
   }
   // The summon keys alone: the app's key capture redraws these without touching the rest of the page.
-  function keysChanged() { const box = root()?.querySelector('[data-hun-keys]'); if (box && draft) box.innerHTML = summonRows(); }
+  function keysChanged() {
+    const box = root()?.querySelector('[data-hun-keys]'); if (!box || !draft || busy) return;
+    const rows = summonRows();
+    if (rows !== renderedKeys) { box.innerHTML = rows; renderedKeys = rows; }
+  }
   function stateChanged() {
     const el = root(); if (!el || !draft) return;
-    const connection = el.querySelector('[data-hun-connection]'); if (connection) connection.textContent = availability();
+    const connection = el.querySelector('[data-hun-connection]'), label = availability();
+    if (connection && connection.textContent !== label) connection.textContent = label;
     keysChanged();
     if (iconCache !== rt()?.state?.icons) {
       iconCache = rt()?.state?.icons;
@@ -168,9 +176,12 @@ window.PGHun = (() => {
   }
   async function mount() {
     if (!subscribed && rt()?.subscribe) { subscribed = true; rt().subscribe(event => {
-      if (event.type === 'job' && event.job.id === lastJob && root()) {
-        const job = event.job; if (job.status !== 'pending') { pendingJob = null; showNotice(receipt(job), job.status === 'succeeded' ? 'ok' : 'error'); stateChanged(); }
-      } else if (root()) stateChanged();
+      if (event.type === 'job') {
+        const job = event.job;
+        if (job.id !== lastJob || job.status === 'pending') return;
+        pendingJob = null; showNotice(receipt(job), job.status === 'succeeded' ? 'ok' : 'error');
+      } else if (event.type === 'state' && event.parts && !event.parts.has('hun') && !event.parts.has('keys') && iconCache === rt()?.state?.icons) return;
+      stateChanged();
     }); }
     if (data) { render(); return; }
     const token = ++epoch; busy = true;
