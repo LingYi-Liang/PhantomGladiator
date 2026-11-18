@@ -27,7 +27,7 @@
 
 ## 下载
 
-到 **[Releases](https://github.com/LingYi-Liang/PhantomGladiator/releases/latest)** 下载 `PhantomGladiator-<版本>-win64.zip`（约 20 MB），旁边的 `.sha256` 文件可用来校验下载是否完整。
+到 **[Releases](https://github.com/LingYi-Liang/PhantomGladiator/releases/latest)** 下载 `PhantomGladiator-<版本>-win64.zip`（约 109 MB），旁边的 `.sha256` 文件可用来校验下载是否完整。
 
 - 国内网络打不开 GitHub 时，可以借助常见的 GitHub 下载加速站下载同一个文件，下载后对照 `.sha256` 校验即可。
 - 装好以后，助手里的「检查更新」会自动挑选国内可用的线路，下载后自动校验 SHA-256，不需要再手动找下载地址。
