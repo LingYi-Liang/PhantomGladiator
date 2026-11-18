@@ -58,7 +58,7 @@ class LoadoutTests(unittest.TestCase):
         key, row = two_tier
         tiers = hun.EFFECTS[row['row']]
         self.assertEqual(len(tiers), 3)
-        for level, expected in (('max', tiers[2]), (1, tiers[1]), (2, tiers[2])):
+        for level, expected in (('max', tiers[2]), (0, tiers[0]), (1, tiers[1]), (2, tiers[2])):
             profile['items'][key] = {**profile['items'][key], 'enabled': True, 'level': level}
             saved = self.store.save({'revision': self.store.snapshot()['revision'], 'profile': copy.deepcopy(profile)})
             effects = [r for r in self.rows() if r[0] == 'ge']

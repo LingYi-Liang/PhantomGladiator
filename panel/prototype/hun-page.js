@@ -202,7 +202,7 @@ window.PGHun = (() => {
       <div class="hun-dialog-top"><div class="hun-dialog-art">${art(id, row.name)}</div><div><h2>${esc(displayName(row))}</h2><p>${esc(row.description || (row.source === 'resource_only' ? '独立保留的剧情或交互配置。' : '当前条目没有正式装备说明。'))}</p></div></div>
       <div class="hun-dialog-controls" data-hun-id="${id}">
         <label class="hun-setting-toggle"><span><strong>启用</strong></span><input type="checkbox" data-hun-item-field="enabled" ${value.enabled ? 'checked' : ''}></label>
-        <label class="hun-field"><span>${accessory ? '精炼' : '等级'}</span><span class="hun-number"><input type="number" data-hun-item-field="level" value="${value.level === 'max' ? '' : value.level}" min="1" max="${row.level_max || 1}" placeholder="${row.level_max ? '最高（' + row.level_max + '）' : '未确认'}" ${row.level_max ? '' : 'disabled'}></span></label>
+        <label class="hun-field"><span>${accessory ? '精炼' : '等级'}</span><span class="hun-number"><input type="number" data-hun-item-field="level" value="${value.level === 'max' ? '' : value.level}" min="${accessory ? 0 : 1}" max="${row.level_max || 1}" placeholder="${row.level_max ? '最高（' + row.level_max + '）' : '未确认'}" ${row.level_max ? '' : 'disabled'}></span></label>
         ${row.soul_option ? `<label class="hun-setting-toggle"><span><strong>铸魂形态</strong></span><input type="checkbox" data-hun-item-field="soul" ${value.soul ? 'checked' : ''}></label>` : ''}
         ${weighted ? `<label class="hun-field"><span>出场权重</span><span class="hun-number"><input type="number" data-hun-item-field="weight" value="${value.weight}" min="0" max="1000" step="0.1"></span><small>越大越常被选用；0 表示不主动选用。</small></label>` : ''}
       </div>

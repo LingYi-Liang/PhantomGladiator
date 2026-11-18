@@ -36,6 +36,13 @@ function M.new(o)
         local rule=path and r.shadowSummons.byClass[path]
         if rule then return r,rule,child end
     end
+    local function remember(r,unit)
+        local key=U.key(unit)
+        local ok,name=call(unit,'GetFullName')
+        if key and ok and type(name)=='string' and r.shadowSummons and o.current(r) then
+            r.shadowSummons.children[key]={actor=unit,name=name}
+        end
+    end
     local function onDeferred(ability,child)
         local r,rule,unit=identity(ability,child)
         if not r then return end
@@ -46,7 +53,7 @@ function M.new(o)
         o.say(r,'即将写影武召唤物等级 '..level)
         if o.current(r) then pcall(function()unit.Level=level end) end
         o.say(r,'召唤物等级读回 '..tostring((U.field(unit,'Level'))))
-        r.shadowSummons.children[U.key(unit)]={actor=unit,rule=rule}
+        remember(r,unit)
     end
     local function onUpgrade(ability,child)
         local r,rule,unit=identity(ability,child)
@@ -72,7 +79,7 @@ function M.new(o)
             end
             ::continue::
         end
-        r.shadowSummons.children[U.key(unit)]={actor=unit,rule=rule}
+        remember(r,unit)
     end
     local function hook(path,cb)
         if hooks[path] then return true end
@@ -107,14 +114,14 @@ function M.new(o)
         local state=r.shadowSummons
         if not state then return end
         local parentKey=U.key(r.actor)
-        if parentKey then parents[parentKey]=nil end
         for key,owner in pairs(parents) do if owner==r then parents[key]=nil end end
-        if o.current(r) then
+        if parentKey and o.current(r) then
             for key,entry in pairs(state.children) do
                 local unit=entry.actor
                 -- The native ability established parentage at birth; recheck the original identity,
                 -- world and a still-live Owner or Instigator so a reused actor cannot be removed.
-                if U.key(unit)==key and inWorld(unit,r.world) and
+                local ok,name=call(unit,'GetFullName')
+                if ok and name==entry.name and U.key(unit)==key and inWorld(unit,r.world) and
                     (U.key(U.field(unit,'Owner'))==parentKey or U.key(U.field(unit,'Instigator'))==parentKey) then
                     local got,gone=call(unit,'IsActorBeingDestroyed')
                     if got and gone==false then

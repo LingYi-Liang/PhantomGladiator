@@ -43,6 +43,33 @@ function harness(post, lang = 'zh', values = {}) {
 }
 (async () => {
   {
+    const h = harness(() => Promise.resolve(response({ id: 7 })));
+    await flush();
+    const events = [];
+    h.rt.subscribe(e => { if (e.type === 'job' && e.job.id === '7') events.push(e.job.status); });
+    const job = await h.rt.command('hun_body_probe', { team:'blue', count:1, profile_revision:0 });
+    assert.equal(job.status,'pending');
+    h.queue.push({id:7,action:'hun_body_probe',status:'succeeded',spawned_count:1});
+    for(let id=8;id<113;id++) h.queue.push({id,action:'select_unit',status:'succeeded'});
+    await h.advance(500);
+    assert(events.includes('succeeded'),'the Hun page must receive its own summon receipt after it leaves the latest 100');
+    await h.advance(500);
+    assert.equal(h.requests.filter(r=>r.path.includes('watch=7')).length,1,'a confirmed receipt stops background watching');
+  }
+  {
+    const h = harness(() => Promise.resolve(response({id:8})));
+    await flush();
+    const outcomes=[];
+    h.rt.subscribe(e => { if (e.type==='job' && e.job.id==='8') outcomes.push(e.job.status); });
+    await h.rt.command('hun_body_probe',{team:'red',count:1,profile_revision:0});
+    await h.advance(91000);
+    assert(outcomes.includes('uncertain'),'a missing receipt must release the summon controls');
+    assert.equal(h.requests.filter(r=>r.options?.method==='POST').length,1);
+    h.queue.push({id:8,action:'hun_body_probe',status:'succeeded',spawned_count:1});
+    await h.advance(500);
+    assert.equal(outcomes.at(-1),'succeeded','a late game receipt wins');
+  }
+  {
     const values = { battle_music_supported: 'true', battle_music_mode: 'NATIVE', battle_music_track: 'MOYUAN_P1', battle_music_state: 'native' };
     const h = harness(() => Promise.resolve(response({ id: 62 })), 'zh', values);await flush();
     assert.equal(h.rt.state.battleMusic.supported, true);

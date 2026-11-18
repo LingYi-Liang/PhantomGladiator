@@ -164,7 +164,7 @@ test('precondition read back, the Tang goes into slot 1 as a direct object, and 
     assert(#h.wc.slots==2 and h.wc.slots[2].config==h.cfg.Tang)
     assert(h:logged('即将 装武器 实例='..h.r.name..' 武器组件:SetSlotWeapon(Main,1,')==1)
     assert(h:logged('直接传对象 调用=true 槽数1→2')==1 and h:logged('verified=true')==1 and h:logged('InputBindings 3→3')==1)
-    assert(h.r.wep.slotted and #h.loops==1 and h.r.wep.spawned[tostring(h.newWeapon:GetAddress())]==h.newWeapon,'the new weapon actor is registered')
+    assert(h.r.wep.slotted and #h.loops==1 and h.r.wep.spawned[tostring(h.newWeapon:GetAddress())].actor==h.newWeapon,'the new weapon actor is registered')
 end)
 test('an empty precondition field gets OnRestarted and a readback; still empty skips every weapon step',function()
     local h=fixture({body={noWeaponASC=true}});h.restartFills=true;h.mod:equip(h.r)
@@ -311,6 +311,16 @@ test('cleanup destroys registered weapon actors that are still the body\'s and l
     assert(h:count('destroy weapon')==0 and h:logged('已归别处（Pool），不动')==1)
     h=fixture();h.mod:equip(h.r);h:tick(10.2);h.mod:cleanup(h.r,'x')
     assert(h:count('destroy weapon')==1,'the body\'s own weapons, slot 0, are never registered')
+end)
+test('cleanup requires the original weapon identity and a readable owner',function()
+    for _,change in ipairs({'replaced','unreadable','orphan'})do
+        local h=fixture();h.mod:equip(h.r)
+        if change=='replaced' then h.newWeapon.label='another weapon'
+        elseif change=='unreadable' then function h.newWeapon:GetOwner()error('unavailable')end
+        else function h.newWeapon:GetOwner()return nil end end
+        h.mod:cleanup(h.r,'实例离场')
+        assert(h:count('destroy weapon')==(change=='orphan' and 1 or 0),'weapon cleanup: '..change)
+    end
 end)
 test('the loop stops on leave, on a changed identity and on unload; the switch off equips nothing',function()
     local h=fixture();h.mod:equip(h.r);h.mod:stop(h.r,'实例离场');assert(h.cancelled[1] and h:logged('武器循环结束 实例='..h.r.name..' 原因=实例离场')==1)

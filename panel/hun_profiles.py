@@ -104,7 +104,7 @@ def validate(profile,stat_fields,ai_fields):
             # Player weapon levels use base level 1, level-2 upgrade indices and a native cap of 60.
             limit=row.get('level_max')
             if limit is None:raise ValueError('该条目的等级边界尚未核验，目前可保存最高有效等级')
-            integer(value['level'],1,limit,'装备等级')
+            integer(value['level'],0 if row['kind']=='accessory' else 1,limit,'装备等级')
         number(value['weight'],0,1000,'装备权重')
     for field,allowed in [('attributes',set(stat_fields)),('ai_parameters',set(ai_fields))]:
         values=profile[field]

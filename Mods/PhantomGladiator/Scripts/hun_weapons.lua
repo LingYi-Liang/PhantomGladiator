@@ -206,11 +206,13 @@ function Weapons.new(o)
     end
     local function owned(actor,list,r)
         local key=U.key(r.actor)
+        if not key then return end
         for _,a in ipairs(list)do
             local _,owner=call(a,'GetOwner')
             if U.key(owner)==key then
                 local k=U.key(a)
-                r.wep.spawned[k]=r.wep.spawned[k]or a
+                local fullName=name(a)
+                if k and fullName then r.wep.spawned[k]={actor=a,name=fullName} end
             end
         end
     end
@@ -1400,21 +1402,25 @@ function Weapons.new(o)
         if not w then return end
         local key=U.key(r.actor)
         local texts={}
-        for k,a in pairs(w.spawned)do
+        for k,entry in pairs(w.spawned)do
+            local a=entry.actor
             if not U.valid(a)then texts[#texts+1]='?=已无效';w.spawned[k]=nil
+            elseif U.key(a)~=k or name(a)~=entry.name then texts[#texts+1]='武器实例已更换，不动';w.spawned[k]=nil
             else
-                local _,owner=call(a,'GetOwner')
-                local mine=U.valid(owner)and U.key(owner)==key
-                local orphan=not U.valid(owner)
+                local read,owner=call(a,'GetOwner')
+                local mine=key~=nil and U.valid(owner)and U.key(owner)==key
+                local orphan=read and not U.valid(owner)
                 local _,destroying=call(a,'IsActorBeingDestroyed')
                 if destroying==true then texts[#texts+1]=short(a)..'=销毁中';w.spawned[k]=nil
-                elseif mine or orphan then
+                elseif read and (mine or orphan) then
                     say('即将 销毁武器 Actor 实例='..r.name..' '..short(a)..'（'..(mine and'仍属魂'or'无主')..'）')
                     local called=call(a,'K2_DestroyActor')
                     local _,after=call(a,'IsActorBeingDestroyed')
                     local gone=not U.valid(a)or after==true
                     texts[#texts+1]=short(a)..'=调用'..tostring(called==true)..'/'..(gone and'已销毁'or'未确认')
                     if gone then w.spawned[k]=nil end
+                elseif not read then
+                    texts[#texts+1]=short(a)..'=归属未读回，不动'
                 else
                     texts[#texts+1]=short(a)..'=已归别处（'..short(owner)..'），不动';w.spawned[k]=nil
                 end

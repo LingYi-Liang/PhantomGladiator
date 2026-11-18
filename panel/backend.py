@@ -402,6 +402,18 @@ class Bridge:
             WHEN NEW.action='hun_body_probe' AND NEW.state NOT IN ('pending','inflight')
                 AND json_type(NEW.payload,'$.frozen_loadout')='text'
             BEGIN UPDATE commands SET payload=json_remove(payload,'$.frozen_loadout') WHERE id=NEW.id; END""")
+        # The dispatcher owns the full snapshot. Polls only need the small public fields.
+        self.db.execute("CREATE TEMP TABLE hun_receipts (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)")
+        self.db.execute("""INSERT INTO hun_receipts SELECT id,json_remove(payload,'$.frozen_loadout') FROM commands
+            WHERE state IN ('pending','inflight') AND action='hun_body_probe'
+            AND CASE WHEN json_valid(payload) THEN json_type(payload,'$.frozen_loadout') END='text'""")
+        self.db.execute("""CREATE TEMP TRIGGER forget_hun_receipt AFTER UPDATE OF state ON main.commands
+            WHEN NEW.action='hun_body_probe' AND NEW.state NOT IN ('pending','inflight')
+            BEGIN DELETE FROM hun_receipts WHERE id=NEW.id; END""")
+        self.db.execute("""CREATE TEMP VIEW public_commands AS
+            SELECT c.id,c.action,coalesce(h.payload,c.payload) AS payload,c.state,c.created,c.sent,
+                   c.completed,c.message,c.spawned_count,c.game_session
+            FROM commands c LEFT JOIN hun_receipts h ON h.id=c.id""")
         self.db.commit()
         self.transport_code = None
         self.summon_queue_scope = None
@@ -1215,7 +1227,7 @@ class Bridge:
         if not epoch:
             return 0
         return self.db.execute(
-            "SELECT COUNT(*) FROM commands WHERE action IN ('queue_spawn','hun_body_probe') AND state IN ('pending','inflight') "
+            "SELECT COUNT(*) FROM public_commands WHERE action IN ('queue_spawn','hun_body_probe') AND state IN ('pending','inflight') "
             "AND game_session=? AND json_extract(payload,'$.queue_epoch')=?",
             (session, epoch),
         ).fetchone()[0]
@@ -1258,13 +1270,16 @@ class Bridge:
                                     (self.clock(),'停止清理已取消待执行的魂本体验证'))
                 cursor = self.db.execute("INSERT INTO commands(action,payload,state,created,game_session) VALUES(?,?,?,?,?)",
                     (payload["action"], json.dumps(payload, ensure_ascii=False), "pending", self.clock(), game["game_session"]))
+                if 'frozen_loadout' in payload:
+                    public = {k:v for k,v in payload.items() if k != 'frozen_loadout'}
+                    self.db.execute("INSERT INTO hun_receipts VALUES(?,?)", (cursor.lastrowid, json.dumps(public, ensure_ascii=False)))
                 if payload["action"] == "configure_keys":
                     self.db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('requested_keys',?)",
                         (json.dumps(payload["bindings"]),))
             return self._command(cursor.lastrowid)
 
     def _command(self, command_id):
-        row = self.db.execute("SELECT * FROM commands WHERE id=?", (command_id,)).fetchone()
+        row = self.db.execute("SELECT * FROM public_commands WHERE id=?", (command_id,)).fetchone()
         return self._command_row(row)
 
     @staticmethod
@@ -1869,8 +1884,8 @@ class Bridge:
             raise ValidationError('invalid watched command ids')
         watch_ids = list(dict.fromkeys(watch_ids))
         with self.lock:
-            rows = self.db.execute("SELECT * FROM commands ORDER BY id DESC LIMIT 100").fetchall()
-            watched = self.db.execute('SELECT * FROM commands WHERE id IN (' + ','.join('?' for _ in watch_ids) + ') ORDER BY id', watch_ids).fetchall() if watch_ids else []
+            rows = self.db.execute("SELECT * FROM public_commands ORDER BY id DESC LIMIT 100").fetchall()
+            watched = self.db.execute('SELECT * FROM public_commands WHERE id IN (' + ','.join('?' for _ in watch_ids) + ') ORDER BY id', watch_ids).fetchall() if watch_ids else []
             game = self.game_status()
             try:
                 catalog_summary = self._catalog_summary(game)

@@ -238,19 +238,26 @@ function Look.new(o)
     ---- 2-1 / 2-2: parts added to the body. Every one is registered in r.parts the moment it exists.
     local function register(r,comp,spec,kind)
         r.parts=r.parts or{}
-        local part={comp=comp,key=U.key(comp),owner=r.actor,name=spec.name,kind=kind}
+        local _,fullName=call(comp,'GetFullName')
+        local part={comp=comp,key=U.key(comp),fullName=fullName,owner=r.actor,name=spec.name,kind=kind}
         r.parts[#r.parts+1]=part
         return part
     end
     local function findPart(r,name)
         for _,part in ipairs(r.parts or{})do if part.name==name and not part.gone then return part end end
     end
+    local function ownsPart(part)
+        if not part.key or U.key(part.comp)~=part.key or type(part.fullName)~='string' then return false end
+        local _,now=call(part.comp,'GetFullName')
+        local _,owner=call(part.comp,'GetOwner')
+        local ownerKey=U.key(owner)
+        return now==part.fullName and ownerKey~=nil and ownerKey==U.key(part.owner)
+    end
     -- K2_DestroyComponent on one registered part, read back with IsBeingDestroyed. Returns a short text.
     local function destroyPart(part)
         if part.gone then return part.name..'=已销毁过'end
         if not U.valid(part.comp)then part.gone=true;return part.name..'=已无效'end
-        local _,owner=call(part.comp,'GetOwner')
-        if U.key(part.comp)~=part.key or not U.key(owner) or U.key(owner)~=U.key(part.owner) then
+        if not ownsPart(part) then
             part.gone=true;return part.name..'=不再属于该实例'
         end
         local _,already=call(part.comp,'IsBeingDestroyed')
@@ -610,7 +617,7 @@ function Look.new(o)
     function self:hideParts(r)
         local list={}
         for _,part in ipairs(r.parts or{})do
-            if not part.gone and U.valid(part.comp)then
+            if not part.gone and ownsPart(part)then
                 local called=call(part.comp,'SetVisibility',false,false)
                 local _,v=call(part.comp,'IsVisible')
                 list[#list+1]=part.name..'=调用'..tostring(called==true)..'/可见'..tostring(v)

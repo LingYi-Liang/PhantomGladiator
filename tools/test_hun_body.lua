@@ -27,6 +27,7 @@ local function fixture()
     function h.actor:SetActorHiddenInGame(value)self.bHidden=value;h.shown=(h.shown or 0)+1 end
     h.counts={[HATE]=1,[HIDE]=1}
     h.asc=object('ASC',h.actor)
+    function h.asc:GetOwner()return h.actor end
     function h.asc:GetGameplayTagCount(tag)h.reads=h.reads+1;if h.onRead then h.onRead()end;return h.counts[tag.TagName]or 0 end
     h.actor.AbilitySystemComponent=h.asc
     h.lib=object('AbilityUtils')
@@ -178,6 +179,15 @@ test('a body that left the arena is forgotten',function()
     local h=fixture();assert(h:run().ok);h.mod:tick({});local reads=h.reads
     h:tick(3);assert(h.reads==reads)
 end)
+test('an overlapping birth retires the previous record at its address',function()
+    local h=fixture();local stopped={}
+    h.options.weapons={stop=function(_,r)stopped[#stopped+1]=r.name end}
+    h.mod=Body.new(h.options);assert(h:run().ok);h:tick(3)
+    h.actor.label='NPC Hun replacement'
+    assert(h:run().ok);h:tick(2)
+    assert(#stopped==1 and stopped[1]=='NPC Hun 1','the first body lost its cleanup')
+    assert(h.mod:owns(h.actor))
+end)
 test('failed spawn does not leak a request context into normal summons',function()
     local h=fixture();local r=h.mod:spawn({spawn=function()error('native fixture failure')end},'blue',1,'1')
     assert(not r.ok and r.uncertain)
@@ -226,6 +236,49 @@ test('with the trial on every enabled effect is applied once and read back',func
     h:tick(5)
     local total=0;for _,count in pairs(h.applied)do total=total+count end
     assert(total==2 and h:logged('方案启用2条；效果层数增加2条')==1)
+end)
+test('late ability component applies the saved accessories once and never to a dead body',function()
+    for _,dead in ipairs({false,true})do
+        local h=loadoutFixture(true)
+        h.actor.AbilitySystemComponent=nil
+        assert(h:run().ok);h:tick()
+        if dead then h.options.hp=function()return 0 end end
+        h.actor.AbilitySystemComponent=h.asc;h:tick(20)
+        local total=0;for _,count in pairs(h.applied)do total=total+count end
+        assert(total==(dead and 0 or 2),'late component applied '..total..' effects; dead='..tostring(dead))
+    end
+end)
+test('ordinary accessory setup and removal batch success logs while retaining every native readback',function()
+    local h=loadoutFixture(true);h.options.probe=false
+    h.loadout.effects={}
+    for i=1,73 do
+        local label='effect'..i;local path='/Game/GE.'..label..'_C'
+        h.effects[path]=object(label);h.loadout.effects[i]={path=path,level=1,label=label}
+    end
+    local reads,removed=0,0
+    function h.asc:GetGameplayEffectCount(cls)reads=reads+1;return h.applied[cls]or 0 end
+    function h.asc:BP_ApplyGameplayEffectToSelf(cls)h.applied[cls]=1;return cls end
+    function h.asc:RemoveActiveGameplayEffect(handle)assert(h.applied[handle]==1);h.applied[handle]=0;removed=removed+1;return true end
+    h.mod=Body.new(h.options);assert(h:run().ok);h:tick();h.mod:tick({})
+    print('MEASURE accessory operations='..reads..' removed='..removed..' individual success logs='..(h:logged('即将施加饰品效果')+h:logged('即将撤下饰品效果')+h:logged('撤下饰品 effect')))
+    assert(reads==219 and removed==73)
+    assert(h:logged('即将施加饰品效果')==0 and h:logged('撤下饰品 effect')==0)
+end)
+test('a late full kit waits for the owned component before starting its shadow and defense',function()
+    local h=loadoutFixture(true)
+    h.loadout.kit=true;h.loadout.revision=1;h.loadout.weapons={};h.loadout.phases={}
+    local guards,shadows,defenses=0,0,0
+    h.options.grabGuard={start=function()guards=guards+1 end}
+    h.options.shadows={equip=function()shadows=shadows+1 end}
+    h.options.defense={start=function()defenses=defenses+1 end}
+    h.mod=Body.new(h.options);h.actor.AbilitySystemComponent=nil
+    assert(h:run().ok);h:tick(3)
+    function h.asc:GetOwner()return h.other end
+    h.actor.AbilitySystemComponent=h.asc;h:tick(2)
+    assert(guards==0 and shadows==0 and defenses==0 and not next(h.applied))
+    function h.asc:GetOwner()return h.actor end
+    h:tick(8);assert(guards==1 and shadows==1 and defenses==1)
+    local total=0;for _,n in pairs(h.applied)do total=total+n end;assert(total==2)
 end)
 test('an effect the game does not take or a class that does not load is named in the log',function()
     local h=loadoutFixture(true);h.refuse=true;assert(h:run().ok);h:tick(2)

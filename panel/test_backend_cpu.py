@@ -30,6 +30,20 @@ class Tests(unittest.TestCase):
             self.write('inbox.tsv','987654\tstart\n');self.bridge.tick()
             self.assertEqual(self.bridge.transport_code,'orphan_inbox')
 
+    def test_queue_and_watched_rows_skip_private_hun_loadouts_after_restart(self):
+        self.write('status.tsv','schema_version\t1\nheartbeat_unix\t100\ngame_session\ts1\ngame_ready\ttrue\nhun_body_probe_supported\ttrue\nsummon_queue_enabled\ttrue\nsummon_queue_epoch\tSQ_7\n')
+        ids=[self.bridge.enqueue({'action':'hun_body_probe','count':1,'team':'red','profile_revision':0})['id'] for _ in range(3)]
+        self.bridge.close()
+        self.bridge=backend.Bridge(self.root/'runtime',clock=lambda:100.,validation_path=self.policy)
+        with unittest.mock.patch.object(backend.json,'loads',wraps=backend.json.loads) as loads:
+            state=self.bridge.status(ids)
+        self.assertEqual(state['summon_queue_transit'],3)
+        for row in state['watched_commands']:
+            self.assertNotIn('frozen_loadout',row['payload'])
+        self.assertFalse(any('frozen_loadout' in c.args[0] for c in loads.call_args_list))
+        self.bridge.tick()
+        self.assertIn('HunLoadoutV1', (self.bridge.runtime/'hun-queued-loadout.tsv').read_text(encoding='utf-8'))
+
     def test_single_unit_lookup_agrees_with_catalog_on_duplicate_and_invalid_rows(self):
         self.catalog(1)
         path=self.bridge.runtime/'catalog.tsv'

@@ -235,6 +235,16 @@ check('summon blueprint corrections apply only to the owned child and deregister
     callbacks[prefix..'OnSpawnFinish'](ab,child)
     assert(h.stacks[asset(low)]==1 and h.stacks[asset(high)]==0)
     mod:cleanup(r);assert(h.destroy and unloaded[prefix..'OnDeferedSpawn'])
+    h.destroy=false
+    assert(mod:arm(r,{level=15},rules));callbacks[prefix..'OnDeferedSpawn'](ab,child)
+    function child:GetFullName()return 'Object replacement_at_the_same_address' end
+    mod:cleanup(r);assert(not h.destroy,'a replacement child with the same owner and address must survive')
+    assert(mod:arm(r,{level=15},rules))
+    local retired=r;r={actor=parent,world=retired.world}
+    assert(mod:arm(r,{level=30},rules));mod:cleanup(retired)
+    callbacks[prefix..'OnDeferedSpawn'](ab,child)
+    assert(child.Level==32,'retiring an old owner must preserve the new registration at its address')
+    mod:cleanup(r)
     assert(mod:arm(r,{level=15},rules));local deferred=callbacks[prefix..'OnDeferedSpawn']
     local before=#lines;unloaded={};local checks=0
     require('ue_observe').setEngineValidator(function()checks=checks+1;return true end)

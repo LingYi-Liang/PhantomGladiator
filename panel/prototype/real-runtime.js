@@ -667,12 +667,9 @@ const RealRuntime = (() => {
     // Show it in the history right away; the status poll fills in the game's answer.
     // A poll may already have picked the job up (and even its answer); never step it back to pending.
     const job = jobById.get(id) || mapJob({ id, action, payload: body, status: "pending", created: Date.now() / 1000 });
-    if (action === "queue_spawn" || action === "hun_body_probe") {
-      emit({ type: "job", job });
-      pruneJobs(); return job; // Submission is not a successful summon; status polling supplies the game result.
-    }
     emit({ type: "job", job });
-    const done = await new Promise(resolve => {
+    if (action === "queue_spawn") { pruneJobs(); return job; }
+    const receipt = new Promise(resolve => {
       const timer = setTimeout(() => { waiters.delete(id); pruneJobs(); resolve(null); }, action === "refresh_catalog" ? 20000 : 90000);
       waiters.set(id, j => { clearTimeout(timer); waiters.delete(id); pruneJobs(); resolve(j); });
       if (document.hidden) schedulePoll(0);
@@ -680,6 +677,16 @@ const RealRuntime = (() => {
       pruneJobs();
       if (job.status !== "pending") waiters.get(job.id)(job);
     });
+    if (action === "hun_body_probe") {
+      // Return the submission immediately but reserve its watch slot until the page gets a result.
+      activeCommands++;
+      receipt.then(result => {
+        activeCommands--;
+        if (!result) emit({ type: "job", job: { ...job, status: "uncertain", code: "noAck" } });
+      });
+      return job;
+    }
+    const done = await receipt;
     if (!done) return { ...job, status: "uncertain", code: "noAck" };
     if (held) done.cleared = Math.max(0, held - owned);
     // arena_controller.lua answers "随从清理：已确认=N"; fall back to the counts before and after.

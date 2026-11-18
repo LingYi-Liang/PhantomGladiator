@@ -555,7 +555,7 @@ function Body.new(o)
         local t=clock()
         if t-(d.last or-1)<1 then return end
         d.last=t;d.lines=d.lines+1
-        if not U.valid(d.actor)then
+        if not current(d.actor,d.record)then
             say('死亡读回：实例='..d.name..' 第'..string.format('%.0f',t-d.at)..'秒 已无效=true，停止读回');d.lines=math.huge;return
         end
         local read,hp=pcall(o.hp,d.actor)
@@ -606,11 +606,22 @@ function Body.new(o)
         if not r.accessoryHandles or not current(r.actor,r) then return end
         local asc=U.field(r.actor,'AbilitySystemComponent')
         if not U.valid(asc) then return end
+        local confirmed,failed=0,{}
         for _,entry in ipairs(r.accessoryHandles)do
-            say('即将撤下饰品效果 '..entry.label)
-            local ok=call(asc,'RemoveActiveGameplayEffect',entry.handle,1)
-            local got,count=call(asc,'GetGameplayEffectCount',entry.cls,nil,true)
-            say('撤下饰品 '..entry.label..' 调用='..tostring(ok)..' 剩余层数='..tostring(got and count))
+            if U.key(entry.asc)~=U.key(asc) then
+                failed[#failed+1]=entry.label..'（能力组件已更换）'
+            else
+                if probing then say('即将撤下饰品效果 '..entry.label) end
+                local ok,result=call(asc,'RemoveActiveGameplayEffect',entry.handle,1)
+                local got,count=call(asc,'GetGameplayEffectCount',entry.cls,nil,true)
+                if ok and result~=false and got and type(count)=='number' then confirmed=confirmed+1
+                else failed[#failed+1]=entry.label..'（撤下调用或层数未确认）' end
+                if probing then say('撤下饰品 '..entry.label..' 调用='..tostring(ok and result~=false)..' 剩余层数='..tostring(got and count)) end
+            end
+        end
+        if #r.accessoryHandles>0 then
+            say('撤下效果：实例='..r.name..'；调用并读回层数 '..confirmed..'/'..#r.accessoryHandles
+                ..(#failed>0 and '；未确认：'..table.concat(failed,'、') or ''))
         end
         r.accessoryHandles=nil
     end
@@ -636,12 +647,12 @@ function Body.new(o)
                 if not got or type(before)~='number' then
                     unconfirmed[#unconfirmed+1]=effect.label..'（原层数未读回）'
                 else
-                    say('即将施加'..category..' '..effect.label..' 实例='..r.name)
+                    if probing then say('即将施加'..category..' '..effect.label..' 实例='..r.name) end
                     local sent,handle=call(asc,'BP_ApplyGameplayEffectToSelf',cls,effect.level,{})
                     local again,after=call(asc,'GetGameplayEffectCount',cls,nil,true)
                     if sent and again and type(after)=='number' and after>before then
                         applied=applied+1
-                        if handle~=nil then r.accessoryHandles[#r.accessoryHandles+1]={handle=handle,cls=cls,label=effect.label}end
+                        if handle~=nil then r.accessoryHandles[#r.accessoryHandles+1]={handle=handle,cls=cls,label=effect.label,asc=asc}end
                     else
                         unconfirmed[#unconfirmed+1]=effect.label..'（调用='..tostring(sent==true)..' 层数'..tostring(before)..'→'..tostring(again and after)..'）'
                         if sent and handle and current(r.actor,r) then
@@ -659,6 +670,28 @@ function Body.new(o)
         return applied
     end
     local function equip(r)
+        local profile=r.loadout
+        r.effectsPending=false
+        if not profile or (not profile.kit and not profile.accessories) then return end
+        local asc=U.field(r.actor,'AbilitySystemComponent')
+        local ready=U.valid(asc)
+        if ready and profile.kit then
+            local got,owner=call(asc,'GetOwner')
+            ready=got and U.key(owner)==U.key(r.actor)
+        end
+        if not ready then
+            r.effectsPending=r.checks<WATCH
+            if r.checks==1 or not r.effectsPending then say('出生效果：能力组件或归属尚未就绪；实例='..r.name..'；继续复查='..tostring(r.effectsPending)) end
+            return
+        end
+        local hp=hpOf(r.actor)
+        if r.dead or (hp and hp<=0) or (tagCount(r.actor,'CharacterState.Dead') or 0)>0 then return end
+        if profile.kit then
+            r.kitReady=true
+            executionImmunity(r,false)
+            optional(grabGuard,'start',r)
+            optional(shadows,'equip',r)
+        end
         local before
         if r.loadout and r.loadout.kit then before=Vitals.read(r.actor,stat) end
         if r.loadout and r.loadout.kit and tagCount(r.actor,'CharacterState.Talent.EnableNotConsumeBullet')==0 then
@@ -706,10 +739,26 @@ function Body.new(o)
         if type(result)=='table'then result.message=(result.message or'')..'；魂按召唤时的方案出战'end
         return result
     end
+    local function stopKit(r,why)
+        role:restore(r)
+        executionImmunity(r,true)
+        optional(grabGuard,'stop',r)
+        optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)
+        optional(weapons,'stop',r,why or '停止');releaseEffects(r)
+    end
     function self:capture(actor,path)
         if not context or path~=Body.path then return end
         local key,n=U.key(actor),name(actor)
         if not key then return end
+        local previous=records[key]
+        if previous and previous.batch==context.batch and previous.name==n and previous.world==context.world then return end
+        if dying[key] then endDeath(key,dying[key],'出生地址已重新使用') end
+        if previous then
+            records[key]=nil
+            stopSampler(key,'出生地址已重新使用')
+            stopKit(previous,'出生地址已重新使用')
+            cleanup(previous,'出生地址已重新使用')
+        end
         records[key]={actor=actor,name=n,team=context.team,world=context.world,revision=context.revision,epoch=context.epoch,batch=context.batch,loadout=context.loadout,phase='captured',
             refused=context.epoch~=epoch or not n or not current(actor)or context.world~=U.key(o.world())}
     end
@@ -781,13 +830,8 @@ function Body.new(o)
         local owned={};for _,m in ipairs(members or{})do local key=U.key(m.actor);if key then owned[key]=true end end
         for key,r in pairs(records)do
             if not owned[key]or not current(r.actor,r)then
-                role:restore(r)
-                releaseEffects(r)
-                executionImmunity(r,true)
-                optional(grabGuard,'stop',r)
-                optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)
                 stopSampler(key,'实例离场')
-                optional(weapons,'stop',r,'实例离场')
+                stopKit(r,'实例离场')
                 records[key]=nil
                 if r.dead or(r.phase=='observed'and U.valid(r.actor)and(hpOf(r.actor)or 1)<=0)then watchDeath(key,r)end
                 if dying[key]and dying[key].record==r then dying[key].left=true else cleanup(r,'实例离场')end
@@ -816,11 +860,12 @@ function Body.new(o)
                 r.streak=zero and(r.streak or 0)+1 or 0
                 if r.phase=='finished'then
                     say('本体初始化读回：实例='..r.name..'；'..describe(r))
-                    if r.loadout and r.loadout.kit then
-                        executionImmunity(r,false);optional(grabGuard,'start',r);optional(shadows,'equip',r)
-                    end
+                end
+                if r.phase=='finished' or r.effectsPending then
                     local equipped,why=pcall(equip,r)
                     if not equipped then say('饰品效果施加中断：'..tostring(why))end
+                end
+                if r.phase=='finished'then
                     if probing and not dumped[r.batch]then
                         dumped[r.batch]=true
                         local listed,why2=pcall(look_,r)
@@ -839,12 +884,15 @@ function Body.new(o)
                     say('解除隐藏：实例='..r.name..'；SetActorHiddenInGame(false)调用='..tostring(wrote==true)..'；隐藏读回='..tostring(hidden(r.actor)))
                 end
                 if r.checks==1 then self:prepareRole(r.actor)end
-                if r.checks==WEAPON_CHECK and records[key]==r then
+                if not r.weaponSetupCheck and r.checks>=WEAPON_CHECK and records[key]==r and not r.dead
+                    and (not (r.loadout and r.loadout.kit) or r.kitReady) then
+                    r.weaponSetupCheck=r.checks
                     optional(weapons,'equip',r)
                     if r.loadout and r.loadout.kit then
                         startBrain(r);optional(defense,'start',r)
                     end
-                elseif r.weaponInitPending and (r.checks==4 or r.checks==8) and records[key]==r then
+                elseif r.weaponInitPending and r.weaponSetupCheck and not r.dead and records[key]==r
+                    and (r.checks==r.weaponSetupCheck+2 or r.checks==r.weaponSetupCheck+6) then
                     r.wep=nil
                     optional(weapons,'equip',r)
                 end
@@ -900,13 +948,6 @@ function Body.new(o)
         if values and next(values)~=nil then return values end
     end
     function self:status()return {probe_supported=true,full_ready=false,prepared=self.prepared,message=self.message}end
-    local function stopKit(r)
-        role:restore(r)
-        executionImmunity(r,true)
-        optional(grabGuard,'stop',r)
-        optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)
-        optional(weapons,'stop',r,'停止');releaseEffects(r)
-    end
     function self:cancel()
         local nextEpoch=epoch+1
         local kept=false

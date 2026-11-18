@@ -346,6 +346,14 @@ test('a head that does not follow the body at the second readback undoes the ful
     for _,c in ipairs(h.parts)do assert(c.destroying==true)end
     assert(h.r.lookResult.full==false and h.r.lookResult.look==true and h.look.streak.head==1)
 end)
+test('parts: death and cleanup leave transferred and replaced parts intact',function()
+    local h=fixture({steps=FULL});h:body();h:apply()
+    local hat,cape=h:part('Hun_Hat'),h:part('CA_Hun_Cape')
+    function hat:GetOwner()return h.player end
+    cape.label='another component at this address'
+    h.look:hideParts(h.r);h.look:cleanup(h.r,'实例离场')
+    assert(hat.visible and cape.visible and not hat.destroying and not cape.destroying)
+end)
 test('parts: visibility text, the death hide, and cleanup destroy every registered part and read it back',function()
     local h=fixture({steps=FULL});h:body();h:apply()
     assert(h.look:partsText(h.r)=='meshhead:true,meshBrowLashCard:true,meshBand:true,meshScarf:true,Hun_Hat:true,CA_Hun_Hair:true,CA_Hun_UpperCloth:true,CA_Hun_Skirt:true,CA_Hun_Cape:true')
