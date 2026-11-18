@@ -1,0 +1,149 @@
+-- The receiver classes named by the game's BP_BulletEvent_Grab exports, indexed by bullet package.
+-- Keep both names exact: an attacker's paired move or a combat execution is not a grab receiver.
+local bullets, receivers = {}, {}
+local function grab(package, receiver)
+    local name = package:match('([^/]+)$')
+    bullets[package..'.'..name] = true
+    receivers[receiver..'.'..receiver:match('([^/]+)$')..'_C'] = true
+end
+grab('/PBZCombatAsset/ActorData/Mobs/003_MaleThug/Ability/Weapon_Sword/BulletData/LevelShow/BulletData_MaleThug_Sword_Gex_ToNpc_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/003_MaleThug/Ability/Weapon_Sword/Abilities/LevelShow/GA_MaleThug_Sword_Ged_ToNpc_01')
+grab('/PBZCombatAsset/ActorData/Mobs/008_GreatBladeMan/Ability/BulletData/BD_GA_GreatBladeMan_CA_01_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/008_GreatBladeMan/Ability/Abilities/GA_GreatBladeMan_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/013_MBossVariants/BulletData/BulletData_MBossVariants_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/013_MBossVariants/Abilities/GA_MBossVariants_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/013_MBossVariants/BulletData/BulletData_MBossVariants_GEx_02_01',
+    '/PBZCombatAsset/ActorData/Mobs/013_MBossVariants/Abilities/GA_MBossVariants_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/015_PowerMan/BulletData/Phase1/B_PowerMan_Phase1_GEx_01_04',
+    '/PBZCombatAsset/ActorData/Mobs/015_PowerMan/Ability/Phase1/Attack/GA_PowerMan_Phase1_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/021_Vessel_Man/Ability/BulletData/CA/BulletData_Vessel_Common_CA_01_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/021_Vessel_Man/Ability/Abilities/CA/GA_Vessel_Common_CA_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/024_Vessel_Giant/Ability/BulletData/Grab/BulletData_Vessel_Giant_GEx_01_03',
+    '/PBZCombatAsset/ActorData/Mobs/024_Vessel_Giant/Ability/Abilities/Grab/GA_Vessel_Giant_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/027_XiaoXue/Ability/Weapon_DingPa/BulletData/BD_GA_XiaoXue_CA_01_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/027_XiaoXue/Ability/Weapon_DingPa/Abilities/Grab/GA_XiaoXue_CA_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/027_XiaoXue/Ability/Weapon_DingPa/BulletData/BD_GA_XiaoXue_CA_02_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/027_XiaoXue/Ability/Weapon_DingPa/Abilities/Grab/GA_XiaoXue_CA_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/035_HuaShan/BulletData/Troop/BD_HuaShan_Troop_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/035_HuaShan/Abilities/Troop/Grab/GA_HuaShan_Troop_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/042_AHua/Ability/GuiTouDao/BulletData/BD_GA_AHua_CA_01_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/042_AHua/Ability/GuiTouDao/Abilities/Grab/GA_AHua_CA_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/043_Scavenger/Ability/BulletData/BD_Scavenger_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/043_Scavenger/Ability/Abilities/P1/GA_Scavenger_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/043_Scavenger/Ability/BulletData/BD_Scavenger_P2_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/043_Scavenger/Ability/Abilities/P2/GA_Scavenger_P2_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/BulletData/BD_GA_PengMeng_CA_01_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/Abilities/CA/GA_PengMeng_CA_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/BulletData/BD_GA_PengMeng_CA_02_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/044_PengMeng/Ability/Axe/Abilities/CA/GA_PengMeng_CA_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/045_JingYe/Ability/BulletData/BD_JingYe_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/045_JingYe/Ability/Abilities/GA_JingYe_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/047_LeiDang/Ability/BulletData/BD_LeiDang_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/047_LeiDang/Ability/Abilities/GA_LeiDang_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/048_HookMan/BulletData/BulletData_HookMan_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/048_HookMan/Abilities/GA_HookMan_Skill_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/048_HookMan/BulletData/BulletData_HookMan_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/048_HookMan/Abilities/GA_HookMan_Skill_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/049_ChangHong/Ability/Spear/BulletData/BD_GA_ChangHong_Grab_01_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/049_ChangHong/Ability/Spear/Abilities/Grab/GA_ChangHong_Grab_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/BulletData/BD_LeiDang_P2_GEx_Close',
+    '/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/Abilities/GA_LeiDang_P2_GEd_Close')
+grab('/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/BulletData/BD_LeiDang_P2_GEx_Far',
+    '/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/Abilities/GA_LeiDang_P2_GEd_Far')
+grab('/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/BulletData/BD_LeiDang_P2_GEx_Mid',
+    '/PBZCombatAsset/ActorData/Mobs/050_LeiDang_P2/Ability/Abilities/GA_LeiDang_P2_GEd_Far')
+grab('/PBZCombatAsset/ActorData/Mobs/053_ChangHong_P2/Ability/Spear/BulletData/Grab/BD_GA_ChangHong_P2_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/053_ChangHong_P2/Ability/Spear/Grab/GA_ChangHong_P2_Grab_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/053_ChangHong_P2/Ability/Spear/BulletData/Grab/BD_GA_ChangHong_P2_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/053_ChangHong_P2/Ability/Spear/Grab/GA_ChangHong_P2_Grab_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/BulletData/BD_ZuoShang_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/BulletData/BD_ZuoShang_Grab_Command',
+    '/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/BulletData/Grab/BD_ZuoShang_CA_03',
+    '/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/055_ZuoShang_Young/Ability/BulletData/BD_ZuoShang_Young_SpecialAttack_05',
+    '/PBZCombatAsset/ActorData/Mobs/055_ZuoShang_Young/Ability/Ability/GA_ZuoShang_Young_GrabKnockback')
+grab('/PBZCombatAsset/ActorData/Mobs/057_WanJun/Ability/JinGua/BulletData/BD_GA_WanJun_CA_01_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/057_WanJun/Ability/JinGua/Abilities/GA_WanJun_CA_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/058_MadDoctor/Ability/BulletData/BD_GA_MadDoctor_CA_01_Gex',
+    '/PBZCombatAsset/ActorData/Mobs/058_MadDoctor/Ability/Abilities/GA_MadDoctor_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/059_DuYan/Ability/Boss/BulletData/BD_GA_DuYan_CA_01_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/059_DuYan/Ability/Boss/Abilities/GA_DuYan_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/060_GuiChai_Yellow/Ability/ShuangGou/BulletData/ShuangGou/BD_GuiChai_Yellow_ShuangGou_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/060_GuiChai_Yellow/Ability/ShuangGou/Abilities/ShuangGou/GA_GuiChai_Yellow_ShuangGou_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_GEx_01_01_Fake',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_GEx_01_01_Fake_P2',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_GEx_01_01_P2',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_GEx_04',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_03')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_Skill_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_CA_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/BulletData/BD_GuWanYue_Skill_08_01_Grab',
+    '/PBZCombatAsset/ActorData/Mobs/061_GuWanYue/Ability/Abilities/GA_GuWanYue_GEd_03')
+grab('/PBZCombatAsset/ActorData/Mobs/062_MuXiaoKui/Ability/BulletData/BD_MuXiaoKui_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/062_MuXiaoKui/Ability/Abilities/GA_MuXiaoKui_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/BulletData/BD_MuXiaoKui_P2_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/Abilities/GA_MuXiaoKui_P2_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/BulletData/BD_MuXiaoKui_P2_GEx_02_01',
+    '/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/Abilities/GA_MuXiaoKui_P2_CA_02_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/BulletData/BD_MuXiaoKui_P2_GEx_03_01',
+    '/PBZCombatAsset/ActorData/Mobs/064_MuXiaoKui_P2/Ability/Abilities/GA_MuXiaoKui_P2_CA_03_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/066_RenTuZi/Ability/Gou/BulletData/BD_RenTuZi_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/066_RenTuZi/Ability/Gou/Abilities/GA_RenTuZi_CA_01_Ged')
+grab('/PBZCombatAsset/ActorData/Mobs/067_MoTian/BulletData/Grab/BD_MoYuan_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/067_MoTian/BulletData/Grab/BD_MoYuan_GEx_02_Short',
+    '/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_GEd_02_Short')
+grab('/PBZCombatAsset/ActorData/Mobs/067_MoTian/BulletData/Grab/BD_MoYuan_GEx_03',
+    '/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_GEd_03')
+grab('/PBZCombatAsset/ActorData/Mobs/067_MoTian/BulletData/Grab/BD_MoYuan_GEx_04',
+    '/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_GEd_04')
+grab('/PBZCombatAsset/ActorData/Mobs/067_MoTian/BulletData/Grab/BD_MoYuan_GEx_05',
+    '/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_GEd_05')
+grab('/PBZCombatAsset/ActorData/Mobs/068_YuZan/Ability/PiPa/BulletData/Summon/BulletData_Vessel_Common_CA_01_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/068_YuZan/Ability/PiPa/Abilities/Summon/GA_Vessel_Common_CA_02_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/069_GuiChai_Red/BulletData/BD_GuiChai_Red_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/069_GuiChai_Red/Ability/GA_GuiChai_Red_P1_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/073_YanQianSui/BulletData/BD_YanQianSui_CA_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/073_YanQianSui/Ability/GA_YanQianSui_CA_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/075_GuiChai_Red_P2/BulletData/BD_GuiChai_Red_P2_GEx_01_02',
+    '/PBZCombatAsset/ActorData/Mobs/075_GuiChai_Red_P2/Ability/GA_GuiChai_Red_P2_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/076_ZuoShang_P2/BulletData/BulletData_ZuoShang_P2_Skill_20_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/076_ZuoShang_P2/BulletData/BulletData_ZuoShang_P2_Skill_20_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/076_ZuoShang_P2/Ability/GA_ZuoShang_P2_Skill_20_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/078_MengHua/BulletData/BD_MengHua_GEx_02',
+    '/PBZCombatAsset/ActorData/Mobs/078_MengHua/Ability/GA_MengHua_GEd_02')
+grab('/PBZCombatAsset/ActorData/Mobs/079_XuKong/BulletData/GA_XuKong_CA_Grab',
+    '/PBZCombatAsset/ActorData/Mobs/079_XuKong/Ability/GA_XuKong_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/FengXueDaoKe/Ability/BulletData/Grab/BulletData_FengXueDaoKe_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/FengXueDaoKe/Ability/Abilities/Grab/GA_FengXueDaoKe_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/HuaQianXiao/Ability/BulletData/Grab/BulletData_HuaQianXiao_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/HuaQianXiao/Ability/Abilities/Grab/GA_HuaQianXiao_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/JiangJun/Ability/WuXuan/BulletData/BD_GA_WuXuan_Grab_01_GEx',
+    '/PBZCombatAsset/ActorData/Mobs/JiangJun/Ability/WuXuan/Abilities/Grab/GA_WuXuan_Grab_01_GEd')
+grab('/PBZCombatAsset/ActorData/Mobs/JiangJun/Ability/ZhuoBi/BulletData/BulletData_ZhuoBi_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/JiangJun/Ability/ZhuoBi/Abilities/GA_ZhuoBi_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/LionDancer/BulletData/Prototype/BulletData_LionDancer_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/LionDancer/Ability/GA_LionDancer_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/BulletData/BulletData_LuanShi_SpecialAttack_07_R_Hu_01',
+    '/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/Abilities/Grab/GA_LuanShi_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/BulletData/Grab/BD_Luanshi_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/Abilities/Grab/GA_LuanShi_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/TieGui/BulletData/Grab/BulletData_tiegui_GEx_01_01',
+    '/PBZCombatAsset/ActorData/Mobs/LuanShi/Ability/TieGui/Abilities/Grab/GA_tiegui_GEd_01')
+grab('/PBZCombatAsset/ActorData/Mobs/YuDing_00/Ability/BulletData/Grab/BD_YuDing_GEx_01',
+    '/PBZCombatAsset/ActorData/Mobs/YuDing_00/Ability/Abilities/Grab/GA_YuDing_GEd_01')
+grab('/PBZCombatAsset/ActorData/Players/Hun/BulletData/DualHook/BD_Hun_DualHook_GEx',
+    '/PBZCombatAsset/ActorData/Players/Hun/Abilities/DualHook/Default/GA_Hun_DualHook_GEd')
+grab('/PBZCombatAsset/ActorData/Players/Hun/BulletData/ZhanMaBlade/BD_Hun_ZhanMa_C_01',
+    '/PBZCombatAsset/ActorData/Players/Hun/Abilities/ZhanMaBlade/GA_Hun_ZhanMa_C_GEd')
+grab('/PBZCombatAsset/ActorData/Players/Hun/BulletData/ZhanMaBlade/BD_Hun_ZhanMa_C_01',
+    '/PBZCombatAsset/ActorData/Players/Hun/Abilities/ZhanMaBlade/GA_Hun_ZhanMa_C_GEd_NonMeat')
+return {bullets=bullets, receivers=receivers}

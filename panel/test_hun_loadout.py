@@ -1,5 +1,5 @@
 """The game-facing copy of the Hun profile: what it carries, when it is rewritten, and old profiles."""
-import copy, importlib.util, json, pathlib, tempfile, unittest
+import copy, importlib.util, json, pathlib, shutil, subprocess, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('hun', ROOT / 'hun_profiles.py')
@@ -27,7 +27,10 @@ class LoadoutTests(unittest.TestCase):
         rows = self.rows()
         self.assertEqual(rows[0], ['HunLoadoutV1', '0'])
         self.assertEqual(rows[1], ['count', '1'])
-        self.assertIn(['accessories', 'off'], rows)
+        self.assertIn(['accessories', 'on'], rows)
+        self.assertEqual(sum(r[0]=='weapon' for r in rows),33)
+        self.assertEqual(sum(r[0]=='shadow' for r in rows),28)
+        self.assertEqual(sum(r[0]=='variant' for r in rows),17)
         self.assertFalse([r for r in rows if r[0] == 'attr'])
         effects = [r for r in rows if r[0] == 'ge']
         self.assertEqual(len(effects), 73, 'every accessory is on by default and each has its own effect class')
@@ -84,6 +87,30 @@ class LoadoutTests(unittest.TestCase):
         store = hun.Store(self.file, FIELDS, {})
         self.assertTrue(store.snapshot()['error'])
         self.assertEqual(self.loadout.read_text(encoding='utf-8'), before)
+
+    @unittest.skipUnless(shutil.which('texlua') or shutil.which('lua'), 'Lua interpreter unavailable')
+    def test_panel_export_reaches_the_game_weapon_pool(self):
+        script=pathlib.Path(self.tmp.name)/'check.lua'
+        script.write_text("""
+package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
+local loadout=require('hun_loadout')
+local rotation=require('hun_weapon_rotation')
+local f=assert(io.open(arg[1],'rb'))
+local p=assert(loadout.parse(f:read('*a')));f:close()
+assert(#p.weapons==tonumber(arg[2]) and #p.shadows==tonumber(arg[3]) and #p.variants==tonumber(arg[4]))
+assert(#rotation.new({loadout=p}).pool==tonumber(arg[5]))
+if arg[6] then assert(p.weapons[1].id==arg[6] and p.weapons[1].level==6 and p.weapons[1].soul==false) end
+""",encoding='utf-8')
+        def check(*args):
+            subprocess.run([shutil.which('texlua') or shutil.which('lua'),str(script),str(self.loadout),
+                            *map(str,args)],check=True,cwd=ROOT.parent,capture_output=True)
+        check(33,28,17,36)
+        p=self.store.snapshot()['profile']
+        key=next(k for k,v in hun.ITEMS.items() if v['kind']=='main_weapon')
+        for item in p['items'].values():item['enabled']=False
+        p['items'][key].update(enabled=True,level=6,soul=False)
+        self.store.save({'revision':0,'profile':p})
+        check(1,0,0,1,key)
 
     def test_effect_table_matches_the_catalog(self):
         rows = {row['row']: row for row in hun.ITEMS.values() if row['kind'] == 'accessory'}

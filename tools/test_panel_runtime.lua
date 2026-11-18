@@ -106,6 +106,8 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
+        if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
+        if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
         assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
@@ -869,15 +871,37 @@ test('battle music commands report native readback and stop cannot hide pending 
     pending=false;h.inbox={action='stop'};h:tick();assert(h.result.ok)
 end)
 test('a Hun summon key uses the Hun entry with the saved count and respects the queue',function()
-    local h=harness();local summons={}
-    local body={spawn=function(_,arena,team,count,revision)summons[#summons+1]=team..':'..count..':'..tostring(revision);return {ok=true,message='fixture hun',spawned_count=count}end,
+    local h=harness();local summons,frozen={},{}
+    local profile={kit=true,count=3,revision=7,resources={medicine_count=2}}
+    local body={spawn=function(_,arena,team,count,revision,snapshot)
+            summons[#summons+1]=team..':'..count..':'..tostring(revision)
+            frozen[#summons]=snapshot
+            return {ok=true,message='fixture hun',spawned_count=count}
+        end,
         status=function()return {probe_supported=true,full_ready=false,prepared=0,message='m'}end}
-    h.runtime=h.new({support={hunBody=body},hunLoadout=function()return {count=3,revision=7}end});h.runtime:start();h:tick()
+    h.runtime=h.new({support={hunBody=body},hunLoadout=function()return profile end});h.runtime:start();h:tick()
     local proposal={};for name,value in pairs(h.runtime.functionKeys.entries)do proposal[name]=value end
     proposal.hun_blue='VK_119_MOD_0';proposal.hun_neutral='VK_119_MOD_1'
     h:run(function()assert(h.runtime:configure(proposal).ok)end)
     h.keys.F8();assert(#summons==0);h:drain();assert(#summons==1 and summons[1]=='blue:3:7',summons[1])
     h.keys['F8:1']();h:drain();assert(summons[2]=='neutral:3:7')
-    h.runtime.summonQueue.enabled=true;h.keys.F8();h:drain();assert(#summons==2,'no Hun summon while the queue mode is on')
+    local queue=h.runtime.summonQueue
+    queue.enabled=true;h.keys.F8();h:drain()
+    assert(#summons==2 and #queue.jobs==1,'queued Hun is not an immediate spawn')
+    profile.revision=8;profile.resources.medicine_count=99
+    h:run(function()queue:tick()end)
+    assert(summons[3]=='blue:3:7' and frozen[3].resources.medicine_count==2)
+    h.files['memory/hun-queued-loadout.tsv']='123\t'..queue:epoch()..'\nHunLoadoutV1\t4\ncount\t2\nkit\t1\n'
+    local packet={id='123',unit_id='',team='red',count=2,key_spawn='4',key_start=queue:epoch(),action='hun_body_probe'}
+    local function submit()return h:run(function()return h.runtime.handlers.hun_body_probe(packet)end) end
+    assert(submit().ok and #queue.jobs==1)
+    h.files['memory/hun-queued-loadout.tsv']='invalid'
+    queue.nextAt=0;h:run(function()queue:tick()end)
+    assert(summons[4]=='red:2:4' and frozen[4].revision==4)
+    assert(not submit().ok and #queue.jobs==0,'unreadable snapshot never runs')
+    h:run(function()queue:cancel('test')end)
+    assert(not submit().ok and #queue.jobs==0,'expired epoch must never run')
+    h.keys.F8();h:run(function()queue:cancel('cancel between keypress and game-thread callback')end)
+    h:drain();assert(#queue.jobs==0 and #summons==4,'stale Hun key must not rejoin after cancellation')
 end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")

@@ -93,6 +93,7 @@ function Guillotine.new(options)
     end
     local function canCatch(actor,member)
         if not options.live(actor) or not U.npcPath(actor) or member.untargetable or options.isImmortal(member.team) then return false end
+        if options.immune and options.immune(actor,'grab') then return false end
         local asc=U.field(actor,'AbilitySystemComponent')
         for _,text in ipairs(PROTECTED)do
             local got,count=call(asc,'GetGameplayTagCount',{TagName=fname(text)})
@@ -144,6 +145,9 @@ function Guillotine.new(options)
         record.visualStarted=confirmed
     end
     local function execute(record,target)
+        if options.immune and (options.immune(target,'execution') or options.immune(target,'lethal')) then
+            release(record,'魂的方案免疫铡刀致死');return
+        end
         preserveFinish(record,target)
         local before=read(target,'Health')
         local floor=read(target,'Health_Min')

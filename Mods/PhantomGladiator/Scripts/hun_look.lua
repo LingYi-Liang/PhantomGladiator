@@ -18,9 +18,9 @@ local Look={}
 Look.STEPS={
     probe=true,           -- read-only probes of the body and the player (hun_body.lua)
     look='full',          -- body look: 'full' = player component tree, 'clone' = Hun_Clone, false leaves Hun_Skin
-    cloth=true,           -- 'full' only: ChaosClothComponents (first body of a load: hair only; later bodies: all four)
+    cloth=true,           -- Attach the four independent cloth components to each full body.
     anim=true,            -- main anim class PBZ_ABP_Base_MonsterHun_C and default layers
-    deathHide=false,      -- hide the added parts 1 s after HP reaches 0 (off: the death readback only reads them)
+    deathHide='follow',   -- match the corpse's visibility; true is the one-second diagnostic
     directExecution=true, -- arena_executions: an executor whose mesh skeleton is its clip's plays on its own mesh
     weaponPairs=true,     -- arena_executions: the Hun weapon's generic pairs for targets with no pair of their own
     guillotineSelf=true,  -- arena_executions: the 荒行子 C4 victim montages on the Hun's own anim instance
@@ -88,7 +88,7 @@ end
 local function truthy(v)return v==true or v==1 end
 
 function Look.new(o)
-    local self={off={},streak={},skipped={},clothBodies=0}
+    local self={off={},streak={},skipped={}}
     local steps=o.steps or Look.STEPS
     local find=o.find or StaticFindObject
     local load=o.load or LoadAsset
@@ -374,25 +374,20 @@ function Look.new(o)
         record(step,passed)
         return passed
     end
-    -- The cloth of one body: the first body of a load gets the hair only, later bodies all four.
+    -- A failed optional cloth part is removed independently.
     local function clothStep(r,mesh,still,assets)
-        self.clothBodies=self.clothBodies+1
-        local all=self.clothBodies>1
         if not self.clothNoted then
             self.clothNoted=true
             say('布料备选 RefreshClothComponents 本版不做：'..Look.CLOTH_ALTERNATIVE_SKIPPED)
         end
-        say('布料 实例='..r.name..' 本次加载第'..self.clothBodies..'只魂：'..(all and'四件全加'or'只加头发 CA_Hun_Hair01（对照用）'))
+        say('布料 实例='..r.name..' 四件全加')
         local passed,hair=true,true
         for _,spec in ipairs(Look.CLOTH)do
-            if spec.hair or all then
-                local ok,result=pcall(clothPart,r,mesh,spec,still,assets)
-                if not ok then say('布料 '..spec.name..' 中断：实例='..r.name..' 原因='..tostring(result))end
-                local verified=ok and result==true
-                if not verified then
-                    passed=false;if spec.hair then hair=false end
-                    local part=findPart(r,spec.name);if part then say('布料销毁 实例='..r.name..' '..destroyPart(part))end
-                end
+            local ok,result=pcall(clothPart,r,mesh,spec,still,assets)
+            if not ok then say('布料 '..spec.name..' 中断：实例='..r.name..' 原因='..tostring(result))end
+            if not ok or result~=true then
+                passed=false;if spec.hair then hair=false end
+                local part=findPart(r,spec.name);if part then say('布料销毁 实例='..r.name..' '..destroyPart(part))end
             end
         end
         return passed,hair

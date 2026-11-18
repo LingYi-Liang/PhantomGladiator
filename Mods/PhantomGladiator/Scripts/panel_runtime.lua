@@ -22,7 +22,14 @@ function Runtime.new(options)
         state=function()return options.arena:status()end,
         begin=function()return options.arena:start()end,
         pending=function(enabled,blue,red,epoch)if options.arena.setRelayPending then options.arena:setRelayPending(enabled,blue,red,epoch)end end,
-        spawn=function(path,team,count)return self:summon(path,team,count)end})
+        spawn=function(path,team,count,profile)
+            if profile then
+                local body=options.support and options.support.hunBody
+                if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0} end
+                return body:spawn(options.arena,team,count,tostring(profile.revision),profile)
+            end
+            return self:summon(path,team,count)
+        end})
     -- Monster pool keys while the summon queue above is off: every press is kept here instead of being dropped as a
     -- held key would be (queueSummon). It is always on, and takes turns with the other summon shortcuts.
     self.poolQueue=SummonQueue.new({log=function(line)self.log((line:gsub('^%[SummonQueue%]','[PoolQueue]')))end,
@@ -73,14 +80,26 @@ function Runtime.new(options)
         local entered=options.camera:toggle()
         if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开',spawned_count=0} end
     end
+    local function queueHun(team,count,epoch,profile)
+        self.summonQueue:sync(options.session and options.session:status())
+        if not profile or not profile.kit then return {ok=false,message='魂方案未读回，请打开本版助手',spawned_count=0} end
+        local queue=self.summonQueue
+        local result=queue:enqueue(require('hun_body').path,team,count,epoch,profile)
+        if result.ok then
+            local role='等待按间隔生成'
+            if queue:isRelay() then role=(team=='blue' or team=='red') and '蓝红接力候补' or '随从及挑战按队列间隔生成，不占接力席位' end
+            result.message='魂已入队 '..count..' 只，方案版本 '..profile.revision..'；'..role
+        end
+        return result
+    end
     -- A Hun summon key: the same entry as the app's summon buttons, with the saved count.
     local function hunKey(team)
         return function()
             local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
             local body=options.support and options.support.hunBody
             if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0}end
-            if self.summonQueue.enabled then return {ok=false,message='召唤魂需先关闭排队/接力',spawned_count=0}end
             local loadout=options.hunLoadout and options.hunLoadout()or{}
+            if self.summonQueue.enabled then return queueHun(team,loadout.count or 1,self.summonQueue:epoch(),loadout) end
             return body:spawn(options.arena,team,loadout.count or 1,tostring(loadout.revision or 0))
         end
     end
@@ -90,8 +109,24 @@ function Runtime.new(options)
             local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
             local body=options.support and options.support.hunBody
             if not body then return {ok=false,message='魂本体验证模块未加载',spawned_count=0}end
-            if self.summonQueue.enabled then return {ok=false,message='本体验证需先关闭排队/接力，完整配置召唤尚未接入',spawned_count=0}end
-            if command.unit_id~=''then return {ok=false,message='本体验证不接受自定义类路径',spawned_count=0}end
+            if command.unit_id~=''then return {ok=false,message='魂召唤不接受自定义类路径',spawned_count=0}end
+            local epoch=command.key_start
+            if epoch and epoch~='' then
+                if not self.summonQueue.enabled or epoch~=self.summonQueue:epoch() then
+                    return {ok=false,message='该请求属于已取消的召唤队列',spawned_count=0}
+                end
+                local f=io.open(options.path..'/hun-queued-loadout.tsv','rb')
+                local text=f and f:read(262145+96)
+                if f then f:close() end
+                local id,savedEpoch,data
+                if type(text)=='string' then id,savedEpoch,data=text:match('^(%d+)\t(SQ_%d+)\n(.*)$') end
+                local profile=id==tostring(command.id) and savedEpoch==epoch and require('hun_loadout').parse(data)
+                if not profile or tostring(profile.revision)~=command.key_spawn then
+                    return {ok=false,message='此批魂的方案快照未读回',spawned_count=0}
+                end
+                return queueHun(command.team,command.count,epoch,profile)
+            end
+            if self.summonQueue.enabled then return {ok=false,message='排队状态已变更，请重新召唤魂',spawned_count=0} end
             return body:spawn(options.arena,command.team,command.count,command.key_spawn)
         end,
         spawn=function(command)
@@ -245,6 +280,7 @@ function Runtime.new(options)
             return options.arena:start()
         end,
         stop=function()
+            self.hunInputGeneration=(self.hunInputGeneration or 0)+1
             if options.support and options.support.hunBody then options.support.hunBody:cancel()end
             local pending=self.summonPending~=nil
             self.summonPending=nil;self.summonSkipped=0
@@ -661,8 +697,12 @@ end
 function Runtime:queueAction(callback,action)
     if not self.alive then return end
     local request=not GLOBAL_KEYS[action] and self:inputContext() or nil
+    local hun=type(action)=='string' and action:match('^hun_')
+    local epoch=hun and self.summonQueue:epoch()
+    local generation=hun and (self.hunInputGeneration or 0)
     local queued,err=pcall(ExecuteInGameThread,function()
         if not self.alive then return end
+        if hun and (epoch~=self.summonQueue:epoch() or generation~=(self.hunInputGeneration or 0)) then return end
         if request and not self:inputCurrent(request) and not self:existingModeInput(action,request) then
             self.log('[InputKey] 取消旧会话或未就绪的待执行操作 action='..tostring(action)
                 ..' 原会话='..tostring(request.session)..' 当前会话='..tostring(self.hotkeySession))

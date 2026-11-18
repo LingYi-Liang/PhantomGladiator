@@ -136,6 +136,10 @@ function Arena.new(options)
         end
         local ok,hp=invoke('hp',unit.actor)
         if not ok or not finite(hp) then return nil,'HP=UNKNOWN' end
+        if hp<=0 and options.holdsDeath then
+            local checked,pending=invoke('holdsDeath',unit.actor)
+            if checked and pending==true then return nil,'HP=0；原生重生判定中' end
+        end
         return hp>0,'HP='..tostring(hp)
     end
 

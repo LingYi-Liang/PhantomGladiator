@@ -22,6 +22,10 @@ local function asc(h,owner)
         for _,spec in ipairs(self.specs)do
             if spec.Handle.Handle==handle.Handle and not h.refuseActivate then
                 spec.ActiveCount=spec.ActiveCount+1
+                local cost=spec.Ability['Ultimate Charge Cost']
+                if cost and h.stats.values.UltimateChargeCount and h.stats.values.UltimateChargeCount>=cost then
+                    h.stats.values.UltimateChargeCount=h.stats.values.UltimateChargeCount-cost
+                end
                 for _,t in ipairs(spec.Ability.AbilityTags.GameplayTags)do self.tags[t.TagName]=(self.tags[t.TagName]or 0)+1 end
                 return true
             end
@@ -34,10 +38,19 @@ local function spec(a,classPath,handle,tags)
     local cdo=object('BlueprintGeneratedClass '..classPath:gsub('%.([^%.]+)$','.Default__%1'))
     local list={};for _,t in ipairs(tags or{})do list[#list+1]={TagName=t}end
     cdo.AbilityTags={GameplayTags=list}
+    if classPath:match('_C1%.') or classPath:match('_C%.') then cdo['Ultimate Charge Cost']=1 end
     a.specs[#a.specs+1]={Ability=cdo,Handle={Handle=handle},ActiveCount=0}
 end
 local function fixture(opts)
     opts=opts or {}
+    if not opts.profile then
+        opts.steps=opts.steps or {}
+        local legacy={}
+        for k,v in pairs(Weapons.STEPS) do legacy[k]=v end
+        legacy.slotWeapons={'Tang','DualHook','ZhanMa'};legacy.forceSwitchAt=10;legacy.victimGrab=false
+        for k,v in pairs(opts.steps) do legacy[k]=v end
+        opts.steps=legacy
+    end
     local h={logs={},calls={},t=0,loops={},cancelled={},hp={},battle=true,loaded={}}
     h.cfg={};for name_,w in pairs(L)do h.cfg[name_]=object('PBZ_MainWeaponConfig_C '..w.config)end
     h.light=object('InputAction '..Weapons.PATHS.light)
@@ -52,9 +65,9 @@ local function fixture(opts)
     h.utils['Change Weapon']=function(self,...)return self:ChangeWeaponImpl(...)end
     h.assets={[Weapons.PATHS.light]=h.light,[Weapons.PATHS.utils]=h.utils}
     for name_,w in pairs(L)do h.assets[w.config]=h.cfg[name_]end
-    h.stats={values={Shachi=100,Shachi_Max=400},refuse=false}
+    h.stats={values={Shachi=100,Shachi_Max=400,UltimateChargeCount=2,UltimateChargeCount_Max=3},refuse=false}
     function h.stats:read(actor,field)local v=self.values[field];return v and {current=v,base=v}end
-    function h.stats:writeBase(actor,field,value)assert(field=='Shachi');if self.refuse then error('refused')end;self.values[field]=value;return true end
+    function h.stats:writeBase(actor,field,value)assert(field=='Shachi' or field=='UltimateChargeCount');if self.refuse then error('refused')end;self.values[field]=value;return true end
     h.enemy=object('BP_Monster_MaleThug_C /Game/Map.Thug_1');h.enemy.at=vec(200,0,0)
     function h.enemy:K2_GetActorLocation()return self.at end
     h.enemy.AbilitySystemComponent=asc(h,'enemy')
@@ -114,6 +127,14 @@ local function fixture(opts)
         loop=function(ms,fn)assert(ms==200);h.loops[#h.loops+1]=fn;return #h.loops end,cancel=function(handle)h.cancelled[handle]=true end,
         stats=function()return h.stats end,hp=function(actor)return h.hp[actor]end,battle=function()return h.battle end,
         opponents=function()return h.opponents or {h.enemy}end,qteFamily=function(actor)return h.qte==actor end,
+        construct=opts.construct,
+        nativeTarget=opts.nativeTarget and function(actor)return opts.nativeTarget(h,actor)end,
+        createInvalid=function()return {IsValid=function()return false end}end,
+        register=function(path,callback)
+            if path:find('GetPlayerController',1,true) then h.controllerCallback=callback else h.powerCallback=callback end
+            return 1,2
+        end,
+        unregister=function()h.powerCallback=nil end,
         current=function(r)return h.gone~=r end,steps=opts.steps})
     function h:tick(seconds,step)
         step=step or 0.2
@@ -123,11 +144,14 @@ local function fixture(opts)
     function h:logged(text)local n=0;for _,line in ipairs(self.logs)do if line:find(text,1,true)then n=n+1 end end;return n end
     function h:count(text)local n=0;for _,c in ipairs(self.calls)do if c==text then n=n+1 end end;return n end
     function h:firstCall(text)for i,c in ipairs(self.calls)do if c==text then return i end end end
+    local statics=object('Statics')
+    function statics:GetPlayerController(ctx,i)return h.controllerCallback(nil,ctx,i) or h.player end
+    h.assets['/Script/Engine.Default__GameplayStatics']=statics
     h:body(opts.body)
     return h
 end
 local function steps(over)
-    local s={};for k,v in pairs(Weapons.STEPS)do s[k]=v end
+    local s={forceSwitchAt=10,victimGrab=false}
     for k,v in pairs(over or{})do s[k]=v end
     return s
 end
@@ -315,9 +339,272 @@ test('switch breaker: two bodies in a row whose switch fails switch it off for t
 end)
 test('the combo data covers every slot weapon with ground actions and combos',function()
     local data=require('hun_weapon_combos')
-    for _,name_ in ipairs(Weapons.STEPS.slotWeapons)do
+    for _,name_ in ipairs({'Tang','DualHook','ZhanMa'})do
         local chain=data[name_];assert(chain and #chain.actions>=2 and #chain.combos>=5,name_)
         for _,e in ipairs(chain.combos)do assert(type(e.tag)=='string' and #e.req>=1)end
     end
+end)
+local Catalog=require('hun_weapon_catalog')
+local Rotation=require('hun_weapon_rotation')
+local function item(native,weight,level)
+    for _,row in ipairs(Catalog.rows) do
+        if row.native_id==native then return {id=row.id,native_id=native,path=row.path,weight=weight or 1,level=level or 1,soul=false} end
+    end
+    error(native)
+end
+local function armed(profile,body,construct,nativeTarget)
+    local h=fixture({profile=true,body=body,construct=construct,nativeTarget=nativeTarget})
+    for p in pairs(Catalog.configs) do
+        if not h.assets[p] then h.assets[p]=object('Weapon '..p) end
+    end
+    h.r.loadout=profile
+    h.mod:equip(h.r)
+    return h
+end
+
+test('the whole catalog has native power tiers, a real input chain and matching weapon execution pairs',function()
+    local pairsFor=require('hun_weapon_execution_data').forConfig
+    local ids,paths={},{}
+    assert(#Catalog.rows==33 and #pairsFor(nil)==0 and #pairsFor('unknown')==0)
+    for _,row in ipairs(Catalog.rows) do
+        assert(not ids[row.id] and #row.multipliers>=1 and row.multipliers[1]==1);ids[row.id]=true
+        for _,p in ipairs({row.path,row.soulPath}) do
+            if p~='' and not paths[p] then
+                paths[p]=true
+                assert(#Rotation.chain(Catalog.configs[p]).actions>0 and #Rotation.chain(Catalog.configs[p],true).actions>0)
+                local pairs=pairsFor(p);assert(#pairs>0,p)
+                for _,pair in ipairs(pairs) do
+                    assert(pair.victim_skeleton and pair.timing.executor>0 and pair.timing.clip_from<pair.timing.clip_to)
+                    assert(pair.timing.executed[pair.executed:match('%.([^%.]+)$')]>0)
+                    assert(type(pair.executor_required)=='table' and type(pair.target_ignored)=='table')
+                end
+            end
+        end
+    end
+    local count,records=0,0;for path in pairs(paths) do count=count+1;records=records+#pairsFor(path) end
+    assert(count==36 and records==82)
+    assert(#Rotation.new({}).pool==33 and #Rotation.new({loadout={weapons={}}}).pool==0)
+end)
+test('weighted rotation avoids repeats, respects zero weight, phase choices and per-body failure limits',function()
+    local a,b,c=item('Tang'),item('DualHook'),item('Jigsaw',0)
+    local s=Rotation.new({loadout={weapons={a,b,c},ai={late_weapon_bias=false,repeat_policy='none'}}})
+    assert(#s.pool==2 and Rotation.pick(s,nil,function()return 0 end).id==a.id)
+    assert(Rotation.pick(s,nil,function()return .55 end).id==b.id)
+    s.ai.late_weapon_bias=true
+    assert(Rotation.pick(s,nil,function()return .45 end).id==b.id)
+    Rotation.chosen(s,s.pool[2])
+    assert(Rotation.pick(s,nil).id==a.id and Rotation.pick(s,b.id).id==b.id)
+    s.failures[a.id]=2;assert(Rotation.pick(s,nil)==nil)
+    assert(Rotation.new({loadout={weapons={a}}}).failures[a.id]==nil)
+end)
+test('profile rotations rewrite only the opposite slot, obey intent and scope level returns to actor and config',function()
+    local a,b=item('Tang',1,15),item('IronBlade',1,2)
+    local h=armed({weapons={a,b},resources={cooldown_scale=1}})
+    local old=h.wc.SetSlotWeapon
+    function h.wc:SetSlotWeapon(tag,i,cfg)assert(i~=self.current,'overwrote an active slot');return old(self,tag,i,cfg) end
+    h.r.intent={weapon_id=a.id,busy=true};h:tick(1);assert(not h.r.wep.active)
+    h.r.intent.busy=false;h:tick(.2)
+    assert(h.r.wep.currentId==a.id and h.wc.current==1 and h.r.wep.active.level==15)
+    assert(h.powerCallback(h.assets[a.path],h.actor)==h.r.wep.active.multipliers[15])
+    assert(h.powerCallback(h.assets[b.path],h.actor)==nil and h.powerCallback(h.assets[a.path],h.player)==nil)
+    h.r.intent.weapon_id=b.id;h:tick(13);assert(h.wc.current==1)
+    h:tick(2);assert(h.wc.current==0 and h.r.wep.currentId==b.id and #h.wc.slots==2)
+    h.mod:silence();assert(h.powerCallback==nil)
+end)
+test('phase completion needs the equipped native art spec to activate, matching the exact phase id',function()
+    local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
+    local h=armed({weapons={a}},{grants={{art,125,{}}}})
+    h.r.intent={weapon_id=a.id,phaseId='low_hp'}
+    h.refuseActivate=true;h:tick(.6);assert(h.r.wep.currentId==a.id and not h.r.intent.performedPhase)
+    h.refuseActivate=false;h:tick(1.2);assert(h.r.intent.performedPhase=='low_hp' and h:count('activate hun 125')>=1)
+end)
+test('level and soul gated effects apply once and remove only the captured equip-only handle',function()
+    local a=item('IronBlade',1,60);a.soul=true
+    local s=Rotation.new({loadout={weapons={a}}})
+    local active=s.pool[1];local counts,handles={},{}
+    local immune='preexisting'
+    local ascObj=object('asc')
+    function ascObj:GetGameplayEffectCount(cls)return counts[cls] or 0 end
+    function ascObj:BP_ApplyGameplayEffectToSelf(cls,level)
+        assert(level>=1);counts[cls]=1;handles[#handles+1]=cls;return {id=#handles}
+    end
+    function ascObj:RemoveActiveGameplayEffect(handle)
+        assert(type(handle.id)=='number' and handles[handle.id]~=immune)
+        counts[handles[handle.id]]=0;return true
+    end
+    local api={object=function(p)return p end,say=function()end,call=function(o,k,...)return true,o[k](o,...)end}
+    active.effects={{immune,1,1,true,false},{'level',5,1,true,false},{'soul',1,1,true,true},{'persistent',1,1,false,false}}
+    counts[immune]=1;active.level=1;active.soul=false
+    Rotation.effects(s,active,ascObj,api);assert(#handles==1 and counts.persistent==1)
+    active.level=5;active.soul=true
+    Rotation.effects(s,active,ascObj,api);Rotation.effects(s,active,ascObj,api)
+    assert(#handles==3 and counts.level==1 and counts.soul==1)
+    Rotation.effects(s,nil,ascObj,api)
+    assert(counts.level==0 and counts.soul==0 and counts.persistent==1 and counts[immune]==1)
+end)
+test('a failed inactive-slot switch retains the active configuration and retries on a bounded timer',function()
+    local a=item('Tang');local h=armed({weapons={a}})
+    local original=h.wc.slots[1].config
+    h.utilsError=true;h.currentIgnored=true
+    h:tick(.3)
+    assert(h.wc.current==0 and h.wc.slots[1].config==original and not h.wc.slots[2] and not h.r.wep.active)
+    assert(h.r.wep.rotation.failures[a.id]==1)
+    h:tick(3);assert(h.r.wep.rotation.failures[a.id]==2)
+    local attempts=h:count('slot direct');h:tick(5);assert(h:count('slot direct')==attempts)
+end)
+test('temp weapons require private storage, and the lion head follows its own pole pickup setting',function()
+    local variants,head={},nil
+    for _,v in pairs(Catalog.variants) do
+        local entry={id=v.id,path=v.path,weight=1,level='max'}
+        if v.poleOnly then head=entry else variants[#variants+1]=entry end
+    end
+    assert(#variants==3 and head and not Rotation.allowsPoleHead({variants=variants}))
+    variants[#variants+1]=head;assert(Rotation.allowsPoleHead({variants=variants}))
+    assert(#Rotation.new({loadout={weapons={},variants=variants}}).pool==3)
+    local sharedClass=object('BlueprintGeneratedClass TempWeaponConfig')
+    local passive=object('Class /Script/PBZCombatAsset.GA_TempWeaponPassive')
+    local alias=false
+    local function construct(cls,outer,label,flags,unused,a,b,original)
+        assert(cls==sharedClass and flags==0x40)
+        local copy=object(label)
+        function copy:GetOuter()return outer end
+        function copy:GetClass()return cls end
+        copy['Equip Passive Abilities']=alias and original['Equip Passive Abilities'] or {passive}
+        return copy
+    end
+    local v=variants[1]
+    local function setup()
+        local h=armed({weapons={},variants={v}},nil,construct)
+        local source=h.assets[v.path]
+        function source:GetClass()return sharedClass end
+        source['Equip Passive Abilities']={passive}
+        h:tick(.3)
+        assert(source['Equip Passive Abilities'][1]==passive)
+        return h,source
+    end
+    local h,source=setup()
+    assert(h.r.wep.currentId==v.id and h.r.wep.currentConfig~=source and #h.r.wep.currentConfig['Equip Passive Abilities']==0)
+    alias=true;h=setup();assert(not h.r.wep.active and #h.wc.slots==1)
+end)
+test('an animation notify commits the prepared weapon exactly once without a direct second switch',function()
+    local a,b=item('Tang'),item('Double')
+    local h=armed({weapons={a,b},resources={cooldown_scale=0}})
+    h.r.intent={weapon_id=a.id};h:tick(.3);assert(h.r.wep.currentId==a.id)
+    local change='/PBZInput/InputActions/IA_ChangeWeapon.IA_ChangeWeapon'
+    h.assets[change]=object('change')
+    local tags=h.actor.AbilitySystemComponent.tags
+    tags['CharacterState.Talent.EnableDrawAttack']=1
+    function h.actor:HasActorBegunPlay()return true end
+    local aic=h.actor['Ability Input Component']
+    function aic:ForceActivateExternalActionAbilityByTag(tag,action)
+        assert(action==h.assets[change])
+        tags[tag.TagName]=1
+        h.wc.current=0
+        return true
+    end
+    h.r.intent.weapon_id=b.id;h:tick(.6)
+    assert(h.r.wep.currentId==b.id and h:count('utils 0')==0 and h.r.wep.switches==2)
+end)
+test('pending native slot never receives a second slot mutation, and phase state commits on the actual index',function()
+    local a=item('Tang');local h=armed({weapons={a}})
+    function h.wc:GetCurrentWeaponIndex(slot,pending)return pending and (self.pending or self.current) or self.current end
+    h.utils['Change Weapon']=function(_,_,slot,i)h.wc.pending=i;return true end
+    h:tick(.6);assert(h.r.wep.pendingSwitch and h.r.wep.currentId==nil and h:count('slot direct')==1)
+    h.wc.current=1;h.wc.pending=nil;h:tick(.3)
+    assert(h.r.wep.currentId==a.id and not h.r.wep.pendingSwitch and h:count('slot direct')==1)
+end)
+test('private motion/weapon hit configuration are checked by owner, and stop restores the original loadout',function()
+    local a,b=item('Tang'),item('Long')
+    local src=object('ActorConfig NPC');local cls=object('ActorConfig class')
+    local originalSet=object('OriginalHitSet');src['Hitreat Anim Set']=originalSet
+    function src:GetClass()return cls end
+    local copied
+    local function construct(class,outer,_,_,_,_,_,template)
+        assert(template==src and class==cls)
+        copied=object('PrivateHit',{['Hitreat Anim Set']=template['Hitreat Anim Set']})
+        function copied:GetClass()return class end
+        function copied:GetOuter()return outer end
+        return copied
+    end
+    local h=armed({weapons={a,b},resources={cooldown_scale=0}},nil,construct)
+    local originalWeapon=h.wc.slots[1].config
+    local hit=object('HitComponent',{ActorConfig=src})
+    function hit:GetOwner()return h.actor end
+    h.actor['Hitreact Component']=hit
+    local combined=object('Combined');h.assets['/PBZCombatAsset/ActorData/Players/Hun/Hit_Hun_Combined.Hit_Hun_Combined']=combined
+    local mesh=object('mesh')
+    local oldClass=object('npcClass');local loco=object('locoClass')
+    h.assets[Weapons.PATHS.locomotion]=loco
+    local old=object('originalGraph');function old:GetClass()return oldClass end
+    local linked=object('linkedGraph',{WeaponType=3});function linked:GetClass()return loco end
+    function linked:TryGetPawnOwner()return h.actor end
+    local move=object('movement')
+    function move:GetOwner()return h.actor end
+    function h.actor:GetMovementComponent()return move end
+    local instance=object('anim',{graph=old})
+    function instance:GetLinkedAnimGraphInstanceByTag()return self.graph end
+    function instance:LinkAnimGraphByTag(tag,class)self.graph=class==loco and linked or old end
+    function mesh:GetAnimInstance()return instance end
+    h.actor.Mesh=mesh
+    h.r.intent={weapon_id=a.id}
+    h:tick(.2);assert(hit.ActorConfig==copied and copied['Hitreat Anim Set']==combined and src['Hitreat Anim Set']==originalSet)
+    assert(instance.graph==linked and linked.CharacterMovement==move and linked.WeaponType==0)
+    h.r.intent.weapon_id=b.id;h:tick(.2);assert(linked.WeaponType==2)
+    h.mod:stop(h.r,'停止')
+    assert(hit.ActorConfig==src and instance.graph==old and h.wc.current==0 and #h.wc.slots==1 and h.wc.slots[1].config==originalWeapon)
+end)
+test('free combat art settles only its own charge debit and isolates hand feedback from the player',function()
+    local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
+    local h=armed({weapons={a},resources={consume_skill_resources=false}},{grants={{art,126,{}}}})
+    h.stats.values.UltimateChargeCount=0
+    local ctx=object('SkillInstance');local cls=object('BlueprintGeneratedClass '..art)
+    function ctx:GetClass()return cls end
+    function ctx:GetAvatarActorFromActorInfo()return h.actor end
+    local other=object('RealPlayerAbility')
+    function other:GetClass()return cls end
+    function other:GetAvatarActorFromActorInfo()return h.player end
+    local asc_=h.actor.AbilitySystemComponent;local original=asc_.TryActivateAbility
+    function asc_:TryActivateAbility(handle,remote)
+        if handle.Handle==126 then
+            local lib=h.assets['/Script/Engine.Default__GameplayStatics']
+            assert(lib:GetPlayerController(ctx,0)~=h.player and lib:GetPlayerController(other,0)==h.player)
+            assert(h.stats.values.UltimateChargeCount==1)
+            h.stats.values.Shachi=h.stats.values.Shachi-30
+        end
+        return original(self,handle,remote)
+    end
+    h.r.intent={phaseId='free',weapon_id=a.id}
+    h:tick(.6);assert(h.r.intent.performedPhase=='free' and h.stats.values.UltimateChargeCount==0)
+    assert(h.stats.values.Shachi==370)
+    h.stats.values.UltimateChargeCount=2
+    h.r.intent.phaseId='free2';asc_.specs[#asc_.specs].ActiveCount=0
+    -- The free policy restores the exact debit while preserving an already funded charge.
+    asc_.TryActivateAbility=original
+    h:tick(1.6);assert(h.r.intent.performedPhase=='free2' and h.stats.values.UltimateChargeCount==2)
+end)
+test('a weapon and its opponent must each target the intended actor before a forced grab',function()
+    local a=item('Tang')
+    local h=armed({weapons={a}},nil,nil,function(f,actor)
+        if actor==f.actor then return f.nativeOpponent end
+        if actor==f.enemy then return f.enemyVictim end
+    end)
+    h.nativeOpponent=h.player;h:tick(.3)
+    assert(not h.r.wep.active and #h.wc.slots==1)
+    h.nativeOpponent=h.enemy;h.enemyVictim=h.player
+    h.actor.AbilitySystemComponent.tags['CharacterState.CanWeakExecute.Weak']=1
+    spec(h.enemy.AbilitySystemComponent,'/Game/GA_Thug_CA_01_GEx.GA_Thug_CA_01_GEx_C',99,{})
+    h:tick(.6);assert(h.r.wep.active and h:count('activate enemy 99')==0)
+    h.enemyVictim=h.actor;h:tick(.2);assert(h:count('activate enemy 99')==1)
+end)
+test('native cooldown is scaled on the owned component and shorter native timers stay usable',function()
+    local a,b=item('Tang'),item('Double')
+    local h=armed({weapons={a,b},resources={cooldown_scale=.25}})
+    local call=h.utils['Change Weapon']
+    h.utils['Change Weapon']=function(self,...)local result=call(self,...);h.wc.cd=8;return result end
+    function h.wc:ReduceChangeWeaponCooldown(seconds)self.reduction=seconds;self.cd=self.cd-seconds end
+    h.r.intent={weapon_id=a.id};h:tick(.2)
+    assert(h.wc.reduction==6 and h.wc.cd==2)
+    h.r.intent.weapon_id=b.id;h:tick(.3);assert(h.r.wep.currentId==a.id)
+    h.wc.cd=0;h:tick(.3);assert(h.r.wep.currentId==b.id)
 end)
 print('hun weapons: PASS '..n..' precondition/slot/switch/combo/grab/victim/cleanup/breaker checks; native gameplay remains unverified')

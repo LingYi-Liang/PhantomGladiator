@@ -1,0 +1,18 @@
+-- BP_RenewalPlayer.GetCombatLevel returns 1 for the original actor config's base values.
+-- CT_Talent_Increase{Health,Shachi,Attack} have their final keys at 30. Accessories are applied after spawn.
+local Growth={}
+local attributes={
+    {'Health_Max',850,510}, {'Shachi_Max',400,240}, {'Attack',100,60},
+    {'ShachiAttack',100,60}, {'Infliction_Max',1000,0},
+}
+function Growth.values(overrides)
+    local out={}
+    for _,row in ipairs(attributes) do
+        local field,base,bonus=table.unpack(row)
+        out[field]=base+bonus
+        out[field..'_Lv1']=base
+    end
+    for field,value in pairs(overrides or {})do out[field]=value end
+    return out
+end
+return Growth

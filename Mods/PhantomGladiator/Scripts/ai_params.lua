@@ -151,10 +151,13 @@ function Params.new(options)
         if bypass or not self.alive or not next(controllers) then return nil end
         local c=U.unwrap(controller)
         local key=addr(c)
-        if not key or not controllers[key] then return nil end
+        local unit=key and controllers[key]
+        if not unit or not U.valid(c) then return nil end
         local ok,text=pcall(function()return U.unwrap(name):ToString()end)
-        local value=ok and self.values[text]
+        local value=ok and unit.values[text]
         if value==nil or value==false then return nil end
+        if unit.private and (options.privateValues(unit.actor)~=unit.values
+            or U.key(U.field(unit.comp,'AIController'))~=key) then return nil end
         return wire(KIND[text],value)
     end
     local function hook()
@@ -230,7 +233,7 @@ function Params.new(options)
     end
     local function apply(unit,library)
         local done,bad=0,0
-        for name,value in pairs(self.values)do
+        for name,value in pairs(unit.values)do
             local good,back,called,err=write(unit,library,name,value)
             if not good and not self.hooked then
                 hook()
@@ -250,7 +253,7 @@ function Params.new(options)
         end
         unit.restorePending=false
         for name,before in pairs(unit.original)do
-            if self.values[name]==nil then
+            if unit.values[name]==nil then
                 -- Restore the map even if a later override had to fall back to the hook.
                 local called=writeEntry(unit,name,before)
                 local back=readEntry(unit,name)
@@ -272,7 +275,7 @@ function Params.new(options)
         unit.generation=self.generation
     end
     local function drifted(unit,library)
-        for name,value in pairs(self.values)do
+        for name,value in pairs(unit.values)do
             if not same(KIND[name],find(library,unit.controller,name),wire(KIND[name],value)) then return true end
         end
         return false
@@ -346,9 +349,13 @@ function Params.new(options)
                     unit={actor=actor,name=className(actor),original={},generation=-1,retries=0}
                     units[key]=unit
                 end
-                local comp=unit.comp
-                if not U.valid(comp) then
-                    comp=options.aiComp(actor)
+                local profileValues=options.privateValues and options.privateValues(actor)
+                local values=profileValues or self.values
+                unit.private=profileValues~=nil
+                if unit.values~=values then unit.values=values;unit.generation=-1 end
+                local comp=options.aiComp(actor)
+                if U.key(comp)~=U.key(unit.comp) then
+                    unit.actor=actor
                     unit.comp=comp
                     unit.original={}
                     unit.generation=-1
@@ -358,12 +365,12 @@ function Params.new(options)
                     if U.valid(controller) then
                         unit.controller=controller
                         local caddr=addr(controller)
-                        if caddr then controllers[caddr]=true end
+                        if caddr then controllers[caddr]=unit end
                         probe(unit,library)
                         if unit.generation~=self.generation then
                             unit.retries=0
                             apply(unit,library)
-                        elseif unit.retries<RETRIES and (unit.restorePending or (next(self.values) and drifted(unit,library))) then
+                        elseif unit.retries<RETRIES and (unit.restorePending or (next(values) and drifted(unit,library))) then
                             unit.retries=unit.retries+1;self.rewritten=self.rewritten+1
                             apply(unit,library)
                         end

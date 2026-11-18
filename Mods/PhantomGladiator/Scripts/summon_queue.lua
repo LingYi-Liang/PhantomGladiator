@@ -69,7 +69,15 @@ function Queue.new(options)
         self.session=session
     end
 
-    function self:enqueue(path,team,count,epoch)
+    -- The parsed profile contains only numbers, strings, booleans and tables. Take a snapshot
+    -- when accepting the request, so editing the panel cannot change the remaining relay wave.
+    local function copyValues(value)
+        if type(value)~='table' then return value end
+        local result={}
+        for k,v in pairs(value) do result[k]=copyValues(v) end
+        return result
+    end
+    function self:enqueue(path,team,count,epoch,hunProfile)
         if not self.enabled then return {ok=false,message='排队召唤未开启',spawned_count=0} end
         if epoch and epoch~=self:epoch() then return {ok=false,message='该请求属于已取消的召唤队列',spawned_count=0} end
         if not self.session then return {ok=false,message='游戏尚未就绪，未入队',spawned_count=0} end
@@ -82,7 +90,7 @@ function Queue.new(options)
             self.message='召唤队列已满（100 条）'
             return {ok=false,message=self.message,spawned_count=0}
         end
-        self.jobs[#self.jobs+1]={path=path,team=team,count=count}
+        self.jobs[#self.jobs+1]={path=path,team=team,count=count,hunProfile=hunProfile and copyValues(hunProfile)}
         pending()
         self.message='已入队，待执行 '..#self.jobs..' 条'
         return {ok=true,message=self.message,spawned_count=0}
@@ -180,7 +188,7 @@ function Queue.new(options)
         local revision=self.revision
         self.running=true
         log('[SummonQueue] 开始一笔 unit='..job.path..' team='..job.team..' count='..take..' request_left='..job.count)
-        local called,result=pcall(options.spawn,job.path,job.team,take)
+        local called,result=pcall(options.spawn,job.path,job.team,take,job.hunProfile)
         self.running=false
         if revision~=self.revision then return end
         self.lastDone=now();self.nextAt=self.lastDone+self.intervalMs/1000

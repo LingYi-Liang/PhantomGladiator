@@ -53,4 +53,18 @@ test('a missing or damaged file gives nothing and is reported once',function()
     d.files['rt/hun-loadout.tsv']=text({'HunLoadoutV1\t6','count\t3','accessories\toff'})
     assert(loadout:read().count==3)
 end)
+test('full profiles retain variant identities, empty pools and zero probabilities',function()
+    local id='main_weapon_0123456789abcdef'
+    local weapon='weapon\t'..id..'\tTang\t/PBZCombatAsset/ActorData/Players/Hun/Weapon/Tang/Weapon_Hun_Tang.Weapon_Hun_Tang\t12\toff\t0.75\t4\t黑伤'
+    local lines={'HunLoadoutV1\t15','kit\t1',weapon,'ai\tred_dodge_chance\t0','resources\tconsume_medicine\toff',
+        'survival\tgrab\timmune','phase\tsurvive\t0.25\t'..id..'\t100\ton','param\t近距离进攻概率\t4.5'}
+    local p=assert(Loadout.parse(text(lines)))
+    assert(p.weapons[1].id==id and p.weapons[1].level==12 and p.weapons[1].soul==false and p.weapons[1].weight==.75)
+    assert(#p.shadows==0 and p.ai.red_dodge_chance==0 and p.resources.consume_medicine==false and p.survival.grab=='immune')
+    assert(p.phases[1].once and p.phases[1].weapon_id==id and p.ai_parameters['近距离进攻概率']==4.5)
+    for _,invalid in ipairs({weapon, 'ai\tred_dodge_chance\t0.5','ai\tunknown\t1','phase\tbad\t2\t'..id..'\t0\toff',
+        'param\tRun\t1','kit\t1'}) do
+        lines[#lines+1]=invalid;assert(not Loadout.parse(text(lines)),invalid);lines[#lines]=nil
+    end
+end)
 print('hun loadout: PASS '..n..' parse/refusal/re-read checks')

@@ -236,7 +236,7 @@ end)
 
 ---- Stage 2 (full look: head, body, parts, cloth).
 local FULL={look='full',cloth=true,anim=true}
-test('full look: the head reads back before the body is swapped, then the parts; the first body gets the hair cloth only',function()
+test('full look: the head reads back before the body is swapped, then the parts; each body gets all four cloth parts',function()
     local h=fixture({steps=FULL});local result=h:apply()
     assert(result.full==true and result.look==nil and result.anim==true,'full look stands, no clone fallback')
     local head=h:part('meshhead')
@@ -248,8 +248,8 @@ test('full look: the head reads back before the body is swapped, then the parts;
     local hat=h:part('Hun_Hat');assert(hat.parent==h.mesh and hat.socket=='hatSocket' and hat.mode==2 and hat.animOn==false and hat.anim==nil,'the hat is static at hatSocket')
     assert(#head.ComponentTags==2 and h:part('meshBand').ComponentTags[1]=='PBZ.AllowLegacyClothLeaderPose')
     local cloth={};for _,c in ipairs(h.parts)do if c.cloth then cloth[#cloth+1]=c end end
-    assert(#cloth==1 and cloth[1].partName=='CA_Hun_Hair' and cloth[1].parent==head and cloth[1].sim==true,'first body: hair only, on the head')
-    assert(h:logged('只加头发 CA_Hun_Hair01（对照用）')==1 and h:logged('布料 读回 实例=Hun_1 CA_Hun_Hair 挂在=Part0')==1)
+    assert(#cloth==4 and cloth[1].partName=='CA_Hun_Hair' and cloth[1].parent==head and cloth[1].sim==true,'hair attaches to the head')
+    assert(h:logged('四件全加')==1 and h:logged('布料 读回 实例=Hun_1 CA_Hun_Hair 挂在=Part0')==1)
     assert(h:logged('布料备选 RefreshClothComponents 本版不做')==1)
     assert(h:logged('部件 读回 实例=Hun_1 meshhead')==1 and h:logged('头骨距离=0.00cm')==1)
     assert(h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2,'the added parts are not taken for weapons')
@@ -262,7 +262,7 @@ test('full look: the head reads back before the body is swapped, then the parts;
     -- The second body of the load gets all four cloth parts.
     h:body();local second=h:apply()
     local count=0;for _,c in ipairs(h.parts)do if c.cloth and not c.destroying then count=count+1 end end
-    assert(second.full==true and count==4 and h:logged('四件全加')==1)
+    assert(second.full==true and count==4 and h:logged('四件全加')==2)
     assert(h:part('CA_Hun_Skirt').ComponentTags[1]=='SlicedLowerBody' and h:part('CA_Hun_Cape').parent==h.mesh)
 end)
 test('a head that does not read back is destroyed and the body keeps Hun_Clone (never headless)',function()
@@ -292,7 +292,7 @@ test('cloth: a part whose asset does not read back is destroyed and read back; S
 end)
 test('cloth: a pose flag that reads off is written on and read back; simulation that does not start fails the part',function()
     local h=fixture({steps=FULL});h.poseOff=true;h:apply()
-    assert(h:part('CA_Hun_Hair').bUseAttachedParentAsPoseComponent==true and h:logged('抄父姿势=false→true')==1)
+    assert(h:part('CA_Hun_Hair').bUseAttachedParentAsPoseComponent==true and h:logged('抄父姿势=false→true')==4)
     h=fixture({steps=FULL});h.broken.CA_Hun_Hair='sim'
     local result=h:apply();assert(result.full==false and result.look==true and h.mesh.asset==h.clone,'no hair: Hun_Clone instead')
     assert(h:logged('原因=头发布料没读回，没有头发，改用 Hun_Clone')==1 and h.look.streak.cloth==1 and h.look.streak.head==0,'a cloth failure, not a head failure')
@@ -320,11 +320,11 @@ test('a head that does not follow the body at the second readback undoes the ful
 end)
 test('parts: visibility text, the death hide, and cleanup destroy every registered part and read it back',function()
     local h=fixture({steps=FULL});h:body();h:apply()
-    assert(h.look:partsText(h.r)=='meshhead:true,meshBrowLashCard:true,meshBand:true,meshScarf:true,Hun_Hat:true,CA_Hun_Hair:true')
+    assert(h.look:partsText(h.r)=='meshhead:true,meshBrowLashCard:true,meshBand:true,meshScarf:true,Hun_Hat:true,CA_Hun_Hair:true,CA_Hun_UpperCloth:true,CA_Hun_Skirt:true,CA_Hun_Cape:true')
     h.look:hideParts(h.r);assert(h:part('Hun_Hat').visible==false and h:logged('死亡隐藏部件 实例=Hun_2 meshhead=调用true/可见false')==1)
     h.look:cleanup(h.r,'实例离场')
     for _,c in ipairs(h.parts)do assert(c.destroying==true)end
-    assert(h:logged('清理部件 实例=Hun_2 原因=实例离场 CA_Hun_Hair=调用true/销毁中true/已销毁')==1 and h:logged('全部确认=true')>=1)
+    assert(h:logged('清理部件 实例=Hun_2 原因=实例离场 CA_Hun_Cape=调用true/销毁中true/已销毁')==1 and h:logged('全部确认=true')>=1)
     local before=#h.logs;h.look:cleanup(h.r,'again');assert(#h.logs==before,'nothing left to destroy is not logged again')
 end)
 test('the clone switch never adds parts, and a missing full-look asset falls back to Hun_Clone',function()

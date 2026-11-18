@@ -66,6 +66,7 @@ local function fixture()
         session=function()return {game_ready=h.world~=nil,game_session=h.world}end,
         live=function(actor)return actor and actor:IsValid() and not actor.destroying end,
         opponentOf=function()return h.opponent end,isImmortal=function(team)return h.protect[team]==true end,
+        immune=function(actor,kind)return actor==h.foe and h.immune==kind end,
         playGrab=function(actor,stillValid)
             assert(stillValid())
             h.grabs[#h.grabs+1]=actor
@@ -119,6 +120,14 @@ local function fixture()
     return h
 end
 local function test(name,fn)fn();print('ok - '..name)end
+
+test('profile immunity distinguishes preventing a grab from surviving its lethal commit',function()
+    local h=fixture();h.immune='grab';h:catch();h:frame(0.91)
+    assert(not h.held[h.foe] and h.writes==0 and h.foe.hp==200)
+    h=fixture();h.immune='lethal';h:catch()
+    assert(h.held[h.foe]);h:frame(0.91)
+    assert(not h.held[h.foe] and h.writes==0 and h.foe.hp==200)
+end)
 
 test('the native commit occurs at catch+0.9 before caster retrieval or visual completion',function()
     local h=fixture();h:catch()

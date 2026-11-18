@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-19"
+local BUILD = "v0.40.16-beta-20"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1443,6 +1443,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     actorKey=function(actor) checked(actor);return actor:GetAddress() end,
     hp=function(actor) if spawnRoutes[actor]=='actor' then return nil end;return GetHP(actor) end,
     hasCombatHealth=function(actor) return spawnRoutes[actor]~='actor' end,
+    holdsDeath=function(actor)return arenaSupport.hunBody and arenaSupport.hunBody:holdsDeath(actor)end,
     canSpawn=SpawnPolicy.check,maxUnits=0,
     escortsFor=function(path)return Config.SummonEscorts and Escorts.of(path) or nil end,
     resolveEscort=function(path)return npcCatalog:resolvePath(path)end,
@@ -2082,7 +2083,41 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
 -- The Hun body takes the count, attribute values and accessory effects of the profile the panel last saved.
 local hunLoadout=require('hun_loadout').new({path=Config.RuntimePath,log=log})
 arenaSupport.hunLoadout=function()return hunLoadout:read()end
+function arenaSupport.hunNativeTarget(actor)
+    local board=UEObserve.field(GetAIComp(actor),'BlackboardComponent')
+    if not UEObserve.valid(board) then return end
+    local handler=arenaSupport:targetHandler(actor,board)
+    local key=UEObserve.field(handler,'Target Key') or FName('TargetActor')
+    local ok,target=pcall(function()return UEObserve.unwrap(board:GetValueAsObject(key))end)
+    if ok and UEObserve.valid(target) then return target end
+end
 arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
+    requireProfile=true,nativeTarget=arenaSupport.hunNativeTarget,
+    target=function(actor,team)
+        if team=='blue' or team=='red' then return arena:opponentOf(UEObserve.key(actor)) end
+        if team=='companion' then return arenaSupport.hunCompanionTarget and arenaSupport.hunCompanionTarget(actor) end
+        if team=='neutral' then
+            local target=arenaSupport.hunNativeTarget(actor)
+            if target and UEObserve.key(target)==UEObserve.key(GetPlayerPawn()) and (GetHP(target) or 0)>0 then return target end
+        end
+    end,
+    challenge=function(actor)
+        if spectator:status().enabled_requested or not arenaSupport.hunBody:owns(actor) then return end
+        local player=GetPlayerPawn()
+        if not UEObserve.valid(player) or (GetHP(player) or 0)<=0 or (GetHP(actor) or 0)<=0 then return end
+        local faction=UEObserve.field(actor,'Faction Component')
+        if not UEObserve.valid(faction) then return end
+        local ok,relation=pcall(function()return UEObserve.unwrap(faction:GetFactionRelation(player))end)
+        if ok and tonumber(relation)==HOSTILE then
+            local sent,state=arenaSupport:engage(actor,player)
+            if sent then HoldSensedTarget(actor,player,'魂挑战') end
+            log('[HunBrain] 挑战目标=玩家 NPC迎敌='..tostring(sent)..' AI状态='..tostring(state))
+        end
+    end,
+    distance=function(actor,target)
+        local a,b=GetLocation(actor),GetLocation(target)
+        if a and b then return math.sqrt(DistSq(a,b)) end
+    end,
     now=GameSeconds,loop=function(ms,fn)return LoopInGameThreadWithDelay(ms,fn)end,cancel=function(handle)return CancelDelayedAction(handle)end})
 arenaSupport.hunStats=StatMatch.new({path=Config.RuntimePath,log=log,tag='[HunStats]',customOnly=true,
     settings='hun-stats-settings.tsv',request='hun-stats-request.tsv'})
@@ -2126,6 +2161,7 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
 local companionTargets=require('companion_target').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,
     boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end,
     stillOwned=function(actor)return UEObserve.key(arena:actorOf(UEObserve.key(actor)))==UEObserve.key(actor)end})
+arenaSupport.hunCompanionTarget=function(actor)return companionTargets:current(actor)end
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     prepareMembers=function(members)companionTargets:sync(members)end,
     companionTargetOf=function(actor)return companionTargets:current(actor)end,
@@ -2146,6 +2182,10 @@ playerAim.effects=arenaSupport.effectAim
 bossCombos=require('boss_combos').new({path=Config.RuntimePath,log=log,members=ArenaMembers,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=ArenaMembers,aiComp=GetAIComp,
+    privateValues=function(actor)
+        local profile=arenaSupport.hunBody:profile(actor)
+        return profile and profile.ai_parameters
+    end,
     tension=function()return StaticFindObject('/Script/TensionMeter.Default__TensionLibrary'),GetCurrentWorld() end})
 -- 怪对怪处决（实验）: a boss stuck on its health lock is executed by the nearest enemy with the game's own pair of
 -- abilities; the enemy borrows the player's skeleton for its half (arena_executions.lua).
@@ -2176,7 +2216,18 @@ arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log
         local player=GetPlayerPawn()
         return safeValid(player) and safeValid(actor) and player:GetAddress()==actor:GetAddress()
     end}) or nil
+function arenaSupport.hunImmune(actor,kind)
+    local profile=arenaSupport.hunBody and arenaSupport.hunBody:profile(actor)
+    return profile and profile.survival and profile.survival[kind]=='immune' or false
+end
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
+    immune=arenaSupport.hunImmune,
+    hunWeapon=function(actor)return arenaSupport.hunBody:weaponConfig(actor)end,
+    hunPoleHead=function(actor)
+        local profile=arenaSupport.hunBody:profile(actor)
+        if not profile or not profile.variants then return nil end
+        return require('hun_weapon_rotation').allowsPoleHead(profile)
+    end,
     executionPolicyConfigured=function()return arenaSupport.unitRules:hasExecutionOverrides()end,
     executionPolicy=function(id)return arenaSupport.unitRules:get(id,'execution_minions')end,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
@@ -2192,6 +2243,7 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     isHun=function(actor)return arenaSupport.hunBody~=nil and arenaSupport.hunBody:owns(actor)end,
     isImmortal=function(team)return immortalTeams.on[team]==true end}) or nil
 arenaSupport.guillotine=Config.EnableNPCGrabs and require('arena_guillotine').new({log=log,live=summonActorLive,
+    immune=arenaSupport.hunImmune,
     opponentOf=function(key)return arena:opponentOf(key)end,
     session=function()return runtimeSession:status()end,now=GameSeconds,
     playGrab=function(actor,stillValid)

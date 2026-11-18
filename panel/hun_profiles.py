@@ -35,7 +35,7 @@ def default_profile():
         'phases':[{'id':'heimoshang_survival','name':'黑魔伤保命','enabled':True,'health_below':0.25,
                    'weapon_id':next(k for k,r in ITEMS.items()if r['kind']=='main_weapon'and r['row']=='黑魔伤'),
                    'action':'native_combat_art','priority':100,'once':True}],
-        'mode':'blue','count':1,'experimental':{'accessory_effects':False}}
+        'mode':'blue','count':1,'experimental':{'accessory_effects':True}}
 
 def upgrade(profile):
     # Profiles saved before the trial switches existed load with every trial off.
@@ -44,7 +44,32 @@ def upgrade(profile):
 
 def loadout_text(revision,profile,positive=(),non_negative=()):
     """The saved profile in the form the game side reads (hun_loadout.lua): only what it can apply."""
-    lines=['HunLoadoutV1\t%d'%revision,'count\t%d'%profile['count']]
+    lines=['HunLoadoutV1\t%d'%revision,'count\t%d'%profile['count'], 'kit\t1']
+    def cell(value):
+        if type(value) is bool:
+            return 'on' if value else 'off'
+        return str(value)
+    def append(kind,*values):
+        lines.append('\t'.join([kind,*(cell(v) for v in values)]))
+    # Keep catalog order stable for variants with the same native id. A missing row is disabled.
+    ranks={}
+    for key,row in ITEMS.items():
+        kind=row['kind']
+        if kind=='accessory':continue
+        ranks[kind]=ranks.get(kind,0)+1
+        choice=profile['items'][key]
+        if choice['enabled']:
+            path=(choice['soul'] and row['soul_config']) or row['normal_config']
+            append({'main_weapon':'weapon','shadow_armament':'shadow','resource_armament':'variant'}[kind],
+                   key,row['native_id'],path,choice['level'],choice['soul'],choice['weight'],ranks[kind],row['name'])
+    for group in ('ai','resources','survival'):
+        for field,value in profile[group].items():
+            append(group,field,value)
+    for field,value in profile['ai_parameters'].items():
+        append('param',field,value)
+    for phase in profile['phases']:
+        if phase['enabled']:
+            append('phase',phase['id'],phase['health_below'],phase['weapon_id'],phase['priority'],phase['once'])
     for field in sorted(profile['attributes']):
         value=float(profile['attributes'][field])
         if (field in positive and value<=0)or(field in non_negative and value<0):continue

@@ -11,11 +11,11 @@ window.PGHun = (() => {
   // What the game side does with each part of the profile in this build (hun_body.lua, hun_loadout.lua).
   const WIRING = {
     on: ['已接入', '会作用到之后召唤的魂。还没在游戏里验证过。'],
-    trial: ['试验', '默认关闭。打开这一类里的试验开关后才会作用到魂身上。'],
+    trial: ['部分接入', '已接入的规则随召唤生效，实际动作和消耗待实机验证。'],
     off: ['还没接上', '可以先配好并保存，现在不会影响召出来的魂。'],
   };
-  const SECTION_WIRING = {attributes:'on', strategy:'off', resources:'off', phases:'off'};
-  const CATEGORY_WIRING = {main_weapon:'off', shadow_armament:'off', accessory:'trial', special:'off'};
+  const SECTION_WIRING = {attributes:'on', strategy:'on', resources:'trial', phases:'on'};
+  const CATEGORY_WIRING = {main_weapon:'on', shadow_armament:'on', accessory:'on', special:'on'};
   let data, draft, baseline, undo, busy = false, epoch = 0, serial = 0, category = 'main_weapon', query = '', onlyOn = false;
   let notice = '', noticeKind = '', lastJob = null, pendingJob = null, subscribed = false, iconCache = null;
   const open = new Set(['equipment', 'attributes']);
@@ -38,12 +38,18 @@ window.PGHun = (() => {
       : `<span class="hun-art-empty" data-hun-image-slot="${id}" aria-label="${esc(label)}图片待载入">${portrait ? '魂' : icon('sword')}</span>`;
   }
   function html() { return '<div id="hun-page" class="hun-page"><div class="hun-loading">正在载入魂的角色方案…</div></div>'; }
-  function canSummon() { return !busy && !pendingJob && !!rt()?.ready?.() && (rt()?.state?.hunBodySupported ?? data?.probe_supported) && !rt()?.state?.summonQueue?.on; }
+  function receipt(job) {
+    if (job.status === 'pending') return '召唤已提交，等待游戏确认。';
+    if (job.message) return job.message;
+    if (job.status === 'succeeded' && job.spawned > 0) return '已召唤 ' + job.spawned + ' 只魂。';
+    return job.status === 'succeeded' ? '游戏已接收指令。' : '召唤未确认，请查看操作记录。';
+  }
+  function canSummon() { return !busy && !pendingJob && !!rt()?.ready?.() && (rt()?.state?.hunBodySupported ?? data?.probe_supported); }
   function availability() {
     if (!rt()?.ready?.()) return '进入游戏地图后即可召唤';
     if (pendingJob) return '正在召唤，等待游戏确认';
-    if (rt()?.state?.summonQueue?.on) return '请先关闭排队召唤或接力模式';
     if (!(rt()?.state?.hunBodySupported ?? data?.probe_supported)) return '游戏中的模组需要更新并重载';
+    if (rt()?.state?.summonQueue?.on) return '已连接 · 将按当前方案加入召唤队列';
     return '已连接 · 可以召唤';
   }
 
@@ -93,9 +99,9 @@ window.PGHun = (() => {
   function equipment() {
     const rows = rowsOf(category), state = CATEGORY_WIRING[category];
     const trial = category === 'accessory'
-      ? `<label class="hun-setting-toggle hun-trial"><span><strong>试验：把启用的饰品效果加到魂身上</strong><small>魂出生后逐条施加并读回，结果写在游戏日志里。这是第一次在 NPC 身上用饰品效果，可能没有作用，也可能让游戏不稳定，先确认魂能正常出战再打开。</small></span><input type="checkbox" data-hun-path="experimental.accessory_effects" ${draft.experimental.accessory_effects ? 'checked' : ''}></label>` : '';
+      ? `<label class="hun-setting-toggle hun-trial"><span><strong>启用所选饰品效果</strong><small>魂出生后逐条施加并读回，结果写在游戏日志里。实际触发效果待实战确认。</small></span><input type="checkbox" data-hun-path="experimental.accessory_effects" ${draft.experimental.accessory_effects ? 'checked' : ''}></label>` : '';
     return `<div class="hun-categories" role="tablist" aria-label="装备种类">${Object.entries(CATEGORIES).map(([key, label]) => `<button role="tab" aria-selected="${key === category}" data-hun-action="category" data-hun-category="${key}" class="${key === category ? 'is-active' : ''}">${label}<span data-hun-count="${key}">${active(rowsOf(key))}/${rowsOf(key).length}</span>${badge(CATEGORY_WIRING[key])}</button>`).join('')}</div>
-      <p class="hun-note">${esc(WIRING[state][1])}${category === 'special' ? '这一类是剧情、交互与表外配置。' : ''}</p>${trial}
+      <p class="hun-note">${esc(WIRING[state][1])}${category === 'special' ? '机关变体使用对应的战斗招式；头颅受拾取和桩位条件限制。' : ''}</p>${trial}
       <div class="hun-filter-row"><label class="hun-search">${icon('search')}<input type="search" data-hun-search value="${esc(query)}" placeholder="搜索名称或效果" aria-label="搜索装备"></label><label class="hun-only-on"><input type="checkbox" data-hun-only-on ${onlyOn ? 'checked' : ''}>只看已启用</label><span class="hun-bulk"><button data-hun-action="all-on">本类全开</button><button data-hun-action="all-off">本类全关</button></span><span class="hun-grid-count"><strong data-hun-category-count>${active(rows)} / ${rows.length}</strong> 已启用</span></div>
       <div class="hun-grid" data-hun-grid>${tiles()}</div>`;
   }
@@ -107,14 +113,14 @@ window.PGHun = (() => {
   function overrideRows(group, fields, labels, placeholder) { return `<div class="hun-parameter-grid">${fields.map(field => number(labels(field), group + '.' + field, draft[group][field], {min: group === 'ai_parameters' && data.ai_parameters[field] !== 'float' ? 0 : -1e9, max: group === 'ai_parameters' && data.ai_parameters[field] === 'bool' ? 1 : 1e9, step: group === 'ai_parameters' && data.ai_parameters[field] !== 'float' ? 1 : 'any', placeholder})).join('')}</div>`; }
   function attributes() {
     const core = ['Health_Max', 'Shachi_Max', 'Attack', 'ShachiAttack'];
-    return `<p class="hun-note">填了的数值会在魂出生后写入并读回，留空保持游戏给这只魂的原值。只影响之后召唤的魂。</p><div class="hun-panel"><h3>基础战力</h3>${overrideRows('attributes', core, statLabel, '游戏原值')}</div>${(window.PGStatLabels?.groups || []).map(g => { const fields = g.fields.filter(f => data.attributes.includes(f) && !core.includes(f)); return fields.length ? `<details class="hun-parameter-group"><summary>${esc(window.PGStatLabels.heading(g))}<span>${fields.filter(f => Object.hasOwn(draft.attributes, f)).length} 项已填</span></summary>${overrideRows('attributes', fields, statLabel, '游戏原值')}</details>` : ''; }).join('')}`;
+    return `<p class="hun-note">填了的数值会在魂出生后写入并读回，未填写的基础战力按主角永久成长计算，再叠加饰品。只影响之后召唤的魂。</p><div class="hun-panel"><h3>基础战力</h3>${overrideRows('attributes', core, statLabel, '游戏原值')}</div>${(window.PGStatLabels?.groups || []).map(g => { const fields = g.fields.filter(f => data.attributes.includes(f) && !core.includes(f)); return fields.length ? `<details class="hun-parameter-group"><summary>${esc(window.PGStatLabels.heading(g))}<span>${fields.filter(f => Object.hasOwn(draft.attributes, f)).length} 项已填</span></summary>${overrideRows('attributes', fields, statLabel, '游戏原值')}</details>` : ''; }).join('')}`;
   }
   function strategy() {
     const params = window.PG_AI_PARAMS || [], labels = f => params.find(p => p.name === f)?.label?.zh || f;
-    return `<p class="hun-note">${esc(WIRING.off[1])}</p><div class="hun-panel"><h3>防御与反击</h3><div class="hun-parameter-grid">${[['精防尝试概率', 'deflect_chance'], ['红光闪避概率', 'red_dodge_chance'], ['闪避后反击倾向', 'counter_chance']].map(([label, key]) => number(label, 'ai.' + key, 100 * draft.ai[key], {max: 100, scale: 100, unit: '%'})).join('')}</div></div><div class="hun-panel"><h3>出招与武器切换</h3>${toggle('优先考虑后期武器', 'ai.late_weapon_bias', draft.ai.late_weapon_bias, '在目标、资源与动作条件合适时，提高后期武器的选择权重。')}<label class="hun-field"><span>重复出招</span><select data-hun-path="ai.repeat_policy"><option value="soft" ${draft.ai.repeat_policy === 'soft' ? 'selected' : ''}>尽量避免重复，紧急情况允许</option><option value="none" ${draft.ai.repeat_policy === 'none' ? 'selected' : ''}>不限制重复</option></select></label>${number('连招长度上限', 'ai.combo_limit', draft.ai.combo_limit, {max: 100, tip: '0 表示交给角色自行判断。'})}</div><details class="hun-parameter-group"><summary>行为参数<span>${Object.keys(draft.ai_parameters).length} 项已填</span></summary>${overrideRows('ai_parameters', Object.keys(data.ai_parameters), labels, '游戏原值')}</details>`;
+    return `<p class="hun-note">${esc(WIRING.on[1])}</p><div class="hun-panel"><h3>防御与反击</h3><div class="hun-parameter-grid">${[['精防尝试概率', 'deflect_chance'], ['红光闪避概率', 'red_dodge_chance'], ['闪避后反击倾向', 'counter_chance']].map(([label, key]) => number(label, 'ai.' + key, 100 * draft.ai[key], {max: 100, scale: 100, unit: '%'})).join('')}</div></div><div class="hun-panel"><h3>出招与武器切换</h3>${toggle('优先考虑后期武器', 'ai.late_weapon_bias', draft.ai.late_weapon_bias, '在目标、资源与动作条件合适时，提高后期武器的选择权重。')}<label class="hun-field"><span>重复出招</span><select data-hun-path="ai.repeat_policy"><option value="soft" ${draft.ai.repeat_policy === 'soft' ? 'selected' : ''}>尽量避免重复，紧急情况允许</option><option value="none" ${draft.ai.repeat_policy === 'none' ? 'selected' : ''}>不限制重复</option></select></label>${number('连招长度上限', 'ai.combo_limit', draft.ai.combo_limit, {max: 100, tip: '0 表示交给角色自行判断。'})}</div><details class="hun-parameter-group"><summary>行为参数<span>${Object.keys(draft.ai_parameters).length} 项已填</span></summary>${overrideRows('ai_parameters', Object.keys(data.ai_parameters), labels, '游戏原值')}</details>`;
   }
-  function resources() { return `<p class="hun-note">${esc(WIRING.off[1])}</p><div class="hun-panel"><h3>血药与技能</h3><div class="hun-parameter-grid">${number('血药携带量', 'resources.medicine_count', draft.resources.medicine_count === 'native_max' ? '' : draft.resources.medicine_count, {max: 10000, placeholder: '原版最高携带量'})}${number('技能冷却倍率', 'resources.cooldown_scale', draft.resources.cooldown_scale, {max: 10, step: .1, unit: '倍', tip: '1 倍为原版冷却。'})}</div>${toggle('血药正常消耗', 'resources.consume_medicine', draft.resources.consume_medicine)}${toggle('技能资源正常消耗', 'resources.consume_skill_resources', draft.resources.consume_skill_resources)}</div><div class="hun-panel"><h3>受击与致死规则</h3><div class="hun-parameter-grid">${[['grab', '能否被抓取'], ['execution', '能否被处决'], ['lethal', '原版致死招式']].map(([key, label]) => `<label class="hun-field"><span>${label}</span><select data-hun-path="survival.${key}"><option value="native" ${draft.survival[key] === 'native' ? 'selected' : ''}>遵循原版</option><option value="immune" ${draft.survival[key] === 'immune' ? 'selected' : ''}>免疫</option></select></label>`).join('')}</div></div>`; }
-  function phases() { return `<p class="hun-note">${esc(WIRING.off[1])}在指定血线优先切换武器并尝试原生技能；条件不满足时跳过。</p><div class="hun-phases">${draft.phases.map((p, i) => `<section class="hun-panel hun-phase" data-hun-phase="${i}"><div class="hun-phase-head"><span class="hun-phase-number">${String(i + 1).padStart(2, '0')}</span><input class="hun-phase-name" data-hun-path="phases.${i}.name" value="${esc(p.name)}" maxlength="60" aria-label="阶段名称"><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.enabled" ${p.enabled ? 'checked' : ''}>启用</label><button class="hun-icon-button" data-hun-action="phase-remove" data-hun-index="${i}" aria-label="删除${esc(p.name)}">${icon('close')}</button></div><div class="hun-parameter-grid">${number('剩余血量不高于', 'phases.' + i + '.health_below', p.health_below * 100, {min: 1, max: 100, scale: 100, unit: '%'})}<label class="hun-field"><span>优先武器</span><select data-hun-path="phases.${i}.weapon_id">${data.catalog.items.filter(r => r.kind === 'main_weapon').map(r => `<option value="${r.id}" ${p.weapon_id === r.id ? 'selected' : ''}>${esc(displayName(r))}</option>`).join('')}</select></label>${number('优先级', 'phases.' + i + '.priority', p.priority, {max: 1000})}</div><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.once" ${p.once ? 'checked' : ''}>每只魂只触发一次</label></section>`).join('')}</div><button class="btn btn-secondary btn-sm" data-hun-action="phase-add" ${draft.phases.length >= 16 ? 'disabled' : ''}>${icon('plus')}添加阶段</button>`; }
+  function resources() { return `<p class="hun-note">血药与影之武装使用各自的资源规则。免疫选项的原生招式覆盖范围仍待实测。</p><div class="hun-panel"><h3>血药与技能</h3><div class="hun-parameter-grid">${number('血药携带量', 'resources.medicine_count', draft.resources.medicine_count === 'native_max' ? '' : draft.resources.medicine_count, {max: 10000, placeholder: '原版最高携带量'})}${number('技能冷却倍率', 'resources.cooldown_scale', draft.resources.cooldown_scale, {max: 10, step: .1, unit: '倍', tip: '1 倍为原版冷却。'})}</div>${toggle('血药正常消耗', 'resources.consume_medicine', draft.resources.consume_medicine)}${toggle('技能资源正常消耗', 'resources.consume_skill_resources', draft.resources.consume_skill_resources)}</div><div class="hun-panel"><h3>受击与致死规则</h3><div class="hun-parameter-grid">${[['grab', '能否被抓取'], ['execution', '能否被处决'], ['lethal', '原版致死招式']].map(([key, label]) => `<label class="hun-field"><span>${label}</span><select data-hun-path="survival.${key}"><option value="native" ${draft.survival[key] === 'native' ? 'selected' : ''}>遵循原版</option><option value="immune" ${draft.survival[key] === 'immune' ? 'selected' : ''}>免疫</option></select></label>`).join('')}</div></div>`; }
+  function phases() { return `<p class="hun-note">${esc(WIRING.on[1])}在指定血线优先切换武器并尝试原生技能；条件不满足时跳过。</p><div class="hun-phases">${draft.phases.map((p, i) => `<section class="hun-panel hun-phase" data-hun-phase="${i}"><div class="hun-phase-head"><span class="hun-phase-number">${String(i + 1).padStart(2, '0')}</span><input class="hun-phase-name" data-hun-path="phases.${i}.name" value="${esc(p.name)}" maxlength="60" aria-label="阶段名称"><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.enabled" ${p.enabled ? 'checked' : ''}>启用</label><button class="hun-icon-button" data-hun-action="phase-remove" data-hun-index="${i}" aria-label="删除${esc(p.name)}">${icon('close')}</button></div><div class="hun-parameter-grid">${number('剩余血量不高于', 'phases.' + i + '.health_below', p.health_below * 100, {min: 1, max: 100, scale: 100, unit: '%'})}<label class="hun-field"><span>优先武器</span><select data-hun-path="phases.${i}.weapon_id">${data.catalog.items.filter(r => r.kind === 'main_weapon').map(r => `<option value="${r.id}" ${p.weapon_id === r.id ? 'selected' : ''}>${esc(displayName(r))}</option>`).join('')}</select></label>${number('优先级', 'phases.' + i + '.priority', p.priority, {max: 1000})}</div><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.once" ${p.once ? 'checked' : ''}>每只魂只触发一次</label></section>`).join('')}</div><button class="btn btn-secondary btn-sm" data-hun-action="phase-add" ${draft.phases.length >= 16 ? 'disabled' : ''}>${icon('plus')}添加阶段</button>`; }
   const BODIES = {equipment, attributes, strategy, resources, phases};
   function summary(key) {
     if (key === 'equipment') return equipmentSummary();
@@ -163,7 +169,7 @@ window.PGHun = (() => {
   async function mount() {
     if (!subscribed && rt()?.subscribe) { subscribed = true; rt().subscribe(event => {
       if (event.type === 'job' && event.job.id === lastJob && root()) {
-        const job = event.job; if (job.status !== 'pending') { pendingJob = null; showNotice(job.status === 'succeeded' ? '召唤已完成。' : (job.message || '召唤未确认，请查看操作记录。'), job.status === 'succeeded' ? 'ok' : 'error'); stateChanged(); }
+        const job = event.job; if (job.status !== 'pending') { pendingJob = null; showNotice(receipt(job), job.status === 'succeeded' ? 'ok' : 'error'); stateChanged(); }
       } else if (root()) stateChanged();
     }); }
     if (data) { render(); return; }
@@ -219,7 +225,7 @@ window.PGHun = (() => {
       else if (name === 'summon') {
         if (changed()) await save();
         const job = await rt().command('hun_body_probe', {team: button.dataset.hunTeam, count: draft.count, profile_revision: data.revision}); lastJob = job.id; pendingJob = job.status === 'pending' ? job.id : null;
-        notice = job.status === 'pending' ? '召唤已提交，等待游戏确认。' : job.status === 'succeeded' ? '召唤已完成。' : job.message || '召唤未确认，请查看操作记录。'; noticeKind = ['pending', 'succeeded'].includes(job.status) ? '' : 'error';
+        notice = receipt(job); noticeKind = ['pending', 'succeeded'].includes(job.status) ? '' : 'error';
       }
     } catch (error) { showNotice(error.message || '操作未完成，请重试。', 'error'); }
     finally { if (busy) { busy = false; render(); } }

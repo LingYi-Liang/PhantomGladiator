@@ -219,13 +219,13 @@ test('with the trial on every enabled effect is applied once and read back',func
     local h=loadoutFixture(true);assert(h:run().ok);assert(next(h.applied)==nil,'not before the first support cycle')
     h:tick(5)
     local total=0;for _,count in pairs(h.applied)do total=total+count end
-    assert(total==2 and h:logged('方案启用2条；读回生效2条')==1)
+    assert(total==2 and h:logged('方案启用2条；效果层数增加2条')==1)
 end)
 test('an effect the game does not take or a class that does not load is named in the log',function()
     local h=loadoutFixture(true);h.refuse=true;assert(h:run().ok);h:tick(2)
-    assert(h:logged('读回生效0条')==1 and h:logged('Loot（调用=true 层数0→0）')==1)
+    assert(h:logged('效果层数增加0条')==1 and h:logged('Loot（调用=true 层数0→0）')==1)
     h=loadoutFixture(true);h.effects['/Game/GE.Guard_C']=nil;assert(h:run().ok);h:tick(2)
-    assert(h:logged('读回生效1条')==1 and h:logged('Guard（效果类没载入）')==1)
+    assert(h:logged('效果层数增加1条')==1 and h:logged('Guard（效果类没载入）')==1)
 end)
 test('a profile reader that fails does not stop the summon',function()
     local h=fixture();h.options.loadout=function()error('fixture read failure')end;h.mod=Body.new(h.options)
@@ -403,3 +403,56 @@ test('the ability probe counts the double blades of specs that hold the class de
     assert(h:run().ok and h:logged('GA_Hun_Double_*=1')>=1)
 end)
 print('hun body: PASS '..n..' scoped-instance/tag/lifecycle/profile/schedule checks; native gameplay remains unverified')
+do
+    local h=fixture()
+    h.options.requireProfile=true
+    h.options.loadout=function()return h.snapshot end
+    h.mod=Body.new(h.options)
+    local arena={spawn=function(_,path)
+        h.mod:capture(h.actor,path)
+        assert(h.mod:prepare(h.actor));assert(h.mod:finished(h.actor))
+        return {ok=true,spawned_count=1}
+    end}
+    assert(not h.mod:spawn(arena,'companion',1,'7').ok)
+    h.snapshot={kit=true,revision=8,ai={},attributes={Attack=30},weapons={},shadows={},phases={},survival={}}
+    assert(not h.mod:spawn(arena,'companion',1,'7').ok)
+    assert(h.mod:spawn(arena,'companion',1,'8').ok)
+    h.mod:cancel()
+    assert(h.mod:owns(h.actor) and h.mod:attributes(h.actor).Attack==30,'F4 retains living companions and their snapshot')
+    h.mod:tick({{actor=h.actor,team='companion'}})
+    assert(h.mod:owns(h.actor))
+    print('PASS exact revision, missing profile refusal, companion survival on arena cleanup')
+end
+do
+    local h=fixture()
+    local now,callback,spawns=0,nil,0
+    local weapon='main_weapon_1111111111111111'
+    local saved={kit=true,revision=8,ai={},attributes={},resources={},survival={},shadows={},
+        weapons={{id=weapon,weight=1}},phases={{id='phase',priority=10,health_below=.5,weapon_id=weapon}}}
+    local r,defender,shadowTarget
+    h.options.now=function()return now end
+    h.options.steps={probe=false,anim=false,look=false}
+    h.options.loop=function(ms,fn)assert(ms==100);callback=fn;return 42 end
+    h.options.cancel=function()callback=nil end
+    h.options.target=function(actor,team)assert(actor==h.actor and team=='blue');return h.other end
+    h.options.stats={read=function(_,_,field)return {current=field=='Health_Max' and 400 or 100}end}
+    h.options.weapons={equip=function(_,rec)r=rec end}
+    h.options.defense={start=function(_,rec)defender=rec end}
+    h.options.supply={tick=function()return false end}
+    h.options.shadows={tick=function(_,rec,ctx)assert(rec==r);shadowTarget=ctx.target end}
+    h.options.requireProfile=true
+    h.options.loadout=function()error('a queued batch must not reopen the live profile')end
+    h.mod=Body.new(h.options)
+    local arena={spawn=function(_,path)
+        spawns=spawns+1;h.mod:capture(h.actor,path)
+        assert(h.mod:prepare(h.actor));assert(h.mod:finished(h.actor));return {ok=true}
+    end}
+    assert(not h.mod:spawn(arena,'blue',1,'9',saved).ok and spawns==0)
+    assert(h.mod:spawn(arena,'blue',1,'8',saved).ok)
+    local members={{actor=h.actor,team='blue'},{actor=h.other,team='red'}}
+    h.mod:tick(members,true);h.mod:tick(members,true);assert(r and defender==r and callback)
+    callback()
+    assert(r.intent.weapon_id==weapon and shadowTarget==h.other and not r.brainFailed)
+    h.mod:cancel();assert(callback==nil and not h.mod:owns(h.actor))
+    print('PASS a frozen full profile reaches the combat modules and the arena opponent on the scheduled game loop')
+end

@@ -41,6 +41,35 @@ class Tests(unittest.TestCase):
         status,_=self.request('POST','/api/command',{'action':'stop'});self.assertEqual(status,202)
         self.assertEqual(self.bridge._command(job['id'])['status'],'failed')
         self.ready(summon_queue_enabled='true');status,_=self.request('POST','/api/command',request);self.assertEqual(status,400)
+    def test_queued_hun_shares_capacity_and_keeps_original_profile_through_delivery(self):
+        self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_4',summon_queue_waiting='99')
+        req={'action':'hun_body_probe','team':'red','count':2,'profile_revision':0}
+        code,job=self.request('POST','/api/command',req)
+        self.assertEqual(code,202);self.assertNotIn('frozen_loadout',self.bridge._command(job['id'])['payload'])
+        self.assertEqual(self.request('POST','/api/command',req)[0],400)
+        self.assertEqual(self.bridge._summon_transit('fixture','SQ_4'),1)
+        saved=b._hun_module.default_profile();saved['resources']['medicine_count']=2
+        self.bridge.hun_profiles.save({'revision':0,'profile':saved})
+        self.bridge.tick()
+        sidecar=self.bridge.runtime/'hun-queued-loadout.tsv'
+        wire=(self.bridge.runtime/'inbox.tsv').read_text(encoding='utf-8')
+        self.assertIn('\thun_body_probe\t\tred\t2\t0\tSQ_4\t',wire)
+        self.assertTrue(sidecar.read_text(encoding='utf-8').startswith(f"{job['id']}\tSQ_4\nHunLoadoutV1\t0\n"))
+        self.assertIn('resources\tmedicine_count\tnative_max\n',sidecar.read_text(encoding='utf-8'))
+        (self.bridge.runtime/'ack.tsv').write_text(f"{job['id']}\tok\taccepted\t0\n",encoding='utf-8')
+        self.bridge.tick();self.assertFalse(sidecar.exists())
+        stored=self.bridge.db.execute("SELECT payload FROM commands WHERE id=?",(job['id'],)).fetchone()[0]
+        self.assertNotIn('frozen_loadout',json.loads(stored))
+
+    def test_queue_epoch_change_discards_hun_snapshot_before_delivery(self):
+        self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_2')
+        code,job=self.request('POST','/api/command',{'action':'hun_body_probe','team':'red','count':1,'profile_revision':0})
+        self.assertEqual(code,202)
+        self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_3')
+        self.bridge.tick();self.assertEqual(self.bridge._command(job['id'])['status'],'failed')
+        self.assertFalse((self.bridge.runtime/'hun-queued-loadout.tsv').exists())
+        self.assertFalse((self.bridge.runtime/'inbox.tsv').exists())
+
     def test_csrf_and_corrupt_profile_do_not_write(self):
         profile=b._hun_module.default_profile()
         status,_=self.request('POST','/api/hun-profile',{},False);self.assertEqual(status,403)

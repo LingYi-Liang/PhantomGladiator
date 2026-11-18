@@ -394,6 +394,10 @@ class Bridge:
             self.db.execute("ALTER TABLE commands ADD COLUMN game_session TEXT")
         self.db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.db.execute("CREATE INDEX IF NOT EXISTS commands_state_id ON commands(state,id)")
+        self.db.execute("""CREATE TRIGGER IF NOT EXISTS retire_queued_hun_snapshot AFTER UPDATE OF state ON commands
+            WHEN NEW.action='hun_body_probe' AND NEW.state NOT IN ('pending','inflight')
+                AND json_type(NEW.payload,'$.frozen_loadout')='text'
+            BEGIN UPDATE commands SET payload=json_remove(payload,'$.frozen_loadout') WHERE id=NEW.id; END""")
         self.db.commit()
         self.transport_code = None
         self.summon_queue_scope = None
@@ -440,7 +444,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"hun-profile.json", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
+        if name not in {"hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -851,7 +855,7 @@ class Bridge:
         except (OSError, UnicodeError, ValueError, KeyError) as error:
             return {"online": False, "ready": False, "game_session": None, "state": "invalid_status", "message": str(error), "age_seconds": None}
 
-    def _validate(self, request):
+    def _validate(self, request, *, frozen_hun=None):
         if not isinstance(request, dict):
             raise ValidationError("command must be an object")
         action = request.get("action")
@@ -886,10 +890,17 @@ class Bridge:
             _hun_module.integer(revision,0,2147483646,'方案版本')
             game=self.game_status()
             if not game['ready']or game.get('values',{}).get('hun_body_probe_supported')!='true':raise ValidationError('请更新并重载本体验证模块后进入地图')
-            if game.get('values',{}).get('summon_queue_enabled')=='true':raise ValidationError('本体验证需先关闭排队/接力')
-            if self.hun_profiles is None:raise ValidationError('魂方案路径不可用，请检查配置：'+self.hun_profile_error)
-            snapshot=self.hun_profiles.immutable_snapshot(revision)
-            payload.update(team=team,count=count,profile_revision=revision,profile_sha256=snapshot['sha256'])
+            queued=game.get('values',{}).get('summon_queue_enabled')=='true'
+            if queued and not self._summon_epoch(game):raise ValidationError('游戏内召唤队列状态未确认')
+            payload.update(team=team,count=count,profile_revision=revision)
+            if frozen_hun is None:
+                if self.hun_profiles is None:raise ValidationError('魂方案路径不可用，请检查配置：'+self.hun_profile_error)
+                snapshot=self.hun_profiles.immutable_snapshot(revision)
+                payload['profile_sha256']=snapshot['sha256']
+                if queued:
+                    payload['frozen_loadout']=_hun_module.loadout_text(revision,snapshot['profile'],STAT_POSITIVE,STAT_NON_NEGATIVE)
+            elif not queued or not isinstance(frozen_hun,str) or not frozen_hun.startswith(f'HunLoadoutV1\t{revision}\n'):
+                raise ValidationError('此批魂的排队状态或方案快照已失效')
         elif action == 'configure_unit_key':
             allowed|={'unit_id','key_code','modifiers','team','count'}
             unit_id=clean_field(request.get('unit_id'),'unit_id',512)
@@ -1117,14 +1128,15 @@ class Bridge:
         if not epoch:
             return 0
         return self.db.execute(
-            "SELECT COUNT(*) FROM commands WHERE action='queue_spawn' AND state IN ('pending','inflight') "
+            "SELECT COUNT(*) FROM commands WHERE action IN ('queue_spawn','hun_body_probe') AND state IN ('pending','inflight') "
             "AND game_session=? AND json_extract(payload,'$.queue_epoch')=?",
             (session, epoch),
         ).fetchone()[0]
 
     def _cancel_waiting_summons(self, session, message, keep_epoch=None):
         query = ("UPDATE commands SET state='failed',completed=?,message=? "
-                 "WHERE action='queue_spawn' AND state='pending' AND game_session=?")
+                 "WHERE (action='queue_spawn' OR (action='hun_body_probe' AND json_type(payload,'$.queue_epoch')='text')) "
+                 "AND state='pending' AND game_session=?")
         args = (self.clock(), message, session)
         if keep_epoch:
             query += " AND json_extract(payload,'$.queue_epoch') IS NOT ?"
@@ -1141,7 +1153,7 @@ class Bridge:
             epoch = self._summon_epoch(game)
             if action == "spawn" and epoch:
                 raise ValidationError("排队召唤已开启，请使用 queue_spawn")
-            if action == "queue_spawn":
+            if action == "queue_spawn" or (action=='hun_body_probe' and 'frozen_loadout' in payload):
                 if not epoch:
                     raise ValidationError("游戏尚未就绪或排队召唤未开启")
                 waiting = game["values"].get("summon_queue_waiting", "0")
@@ -1176,6 +1188,7 @@ class Bridge:
         if result['id'] > MAX_JSON_INTEGER:
             result['id'] = str(result['id'])
         result["payload"] = json.loads(result["payload"])
+        result["payload"].pop("frozen_loadout",None)
         result["status"] = {"pending": "queued", "inflight": "pending"}.get(result["state"], result["state"])
         return result
 
@@ -1210,7 +1223,7 @@ class Bridge:
         elif payload['action']=='set_battle_music':
             bindings={'spawn':payload['mode'],'start':payload['track']}
         elif payload['action']=='hun_body_probe':
-            bindings={'spawn':str(payload['profile_revision'])}
+            bindings={'spawn':str(payload['profile_revision']),'start':payload.get('queue_epoch','')}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
         elif payload['action']=='set_camera_track':
@@ -1235,10 +1248,10 @@ class Bridge:
         # is left for _retire_deliveries() to try again. Before v0.38.1 the error left it behind for good, and every
         # later command waited behind an inbox "without an owner", through app, game and PC restarts.
         cleared = True
-        for name in ("inbox.tsv", "inbox.session.tsv"):
+        for name in ("inbox.tsv", "inbox.session.tsv", "hun-queued-loadout.tsv"):
             path = self._path(name)
             try:
-                content = bounded_read(path, 8192)
+                content = bounded_read(path, 262240 if name=='hun-queued-loadout.tsv' else 8192)
                 if content is not None and content.split("\t", 1)[0] == str(command_id):
                     path.unlink()
             except FileNotFoundError:
@@ -1300,6 +1313,8 @@ class Bridge:
         elif action == "set_ai_params":
             rows = "".join(f"{name}\t{value!r}\n" for name, value in payload["values"].items())
             atomic_text(self._path("ai-params-request.tsv"), f"AIParamsV1\t{payload['revision']}\n{rows}")
+        if action=='hun_body_probe' and 'frozen_loadout' in payload:
+            atomic_text(self._path('hun-queued-loadout.tsv'),f"{row['id']}\t{payload['queue_epoch']}\n"+payload['frozen_loadout'])
         atomic_text(self._path("inbox.session.tsv"), f"{row['id']}\t{session}\n")
         atomic_text(self._path("inbox.tsv"), wire)
 
@@ -1313,7 +1328,7 @@ class Bridge:
                 self.db.execute("UPDATE commands SET state='failed',completed=?,message=? WHERE state='pending'", (now, CLEARED_PENDING))
                 self.db.execute("UPDATE commands SET state='uncertain',completed=?,message=? WHERE state='inflight'", (now, CLEARED_INFLIGHT))
             left = []
-            for name in ("inbox.tsv", "inbox.session.tsv"):
+            for name in ("inbox.tsv", "inbox.session.tsv", "hun-queued-loadout.tsv"):
                 try:
                     self._path(name).unlink()
                 except FileNotFoundError:
@@ -1410,11 +1425,15 @@ class Bridge:
                         return
                     try:
                         payload = json.loads(pending["payload"])
-                        if pending["action"] == "queue_spawn" and payload.pop("queue_epoch", None) != self._summon_epoch(game):
-                            raise ValidationError("该请求属于已取消的召唤队列")
+                        if pending["action"] in ("queue_spawn","hun_body_probe") and payload.pop("queue_epoch", None) != self._summon_epoch(game):
+                            raise ValidationError("排队状态已变更，该请求未执行")
+                        frozen=profile_sha=None
                         if pending['action']=='hun_body_probe':
-                            payload.pop('profile_sha256',None)
-                        self._validate(payload)
+                            profile_sha=payload.pop('profile_sha256',None)
+                            frozen=payload.pop('frozen_loadout',None)
+                        checked=self._validate(payload,frozen_hun=frozen)
+                        if profile_sha and frozen is None and checked.get('profile_sha256')!=profile_sha:
+                            raise ValidationError('方案内容已变更，请重新召唤')
                     except ValueError as error:
                         with self.db:
                             self.db.execute("UPDATE commands SET state='failed',completed=?,message=? WHERE id=?", (self.clock(), "投递前资格检查失败，未执行：" + str(error), pending["id"]))

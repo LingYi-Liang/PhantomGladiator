@@ -6,20 +6,21 @@
 -- ModifyCharacterAttributeValue(Shachi, Override, Shachi_Max) (weapon-switch/BPL_PBZCombatUtils, Change Weapon [180-614]).
 -- The light-attack chains come from hun_weapon_combos.lua (exported from the decoded input maps).
 local U=require('ue_observe')
+local Rotation=require('hun_weapon_rotation')
 local Weapons={}
 -- Switches of the weapon steps (this file is the only place they live).
 Weapons.STEPS={
     enabled=true,          -- the whole weapon step (3-1 … 3-8)
     restart=true,          -- precondition: CharacterWeaponsComponent:OnRestarted(body) when its fields read empty
     slot=true,             -- 3-1 SetSlotWeapon into Weapon.Slot.Main index 1
-    slotWeapons={'Tang','DualHook','ZhanMa'}, -- the weapon for slot 1, by body of the load in turn
+    -- slotWeapons optionally selects the fixed three-weapon diagnostic used by beta-19.
     switch=true,           -- 3-2 switch on break or Shachi < 20 % with the cooldown done
-    forceSwitchAt=10,      -- 3-2 seconds after the battle starts for one forced switch; false = off
+    forceSwitchAt=false,      -- 3-2 seconds after the battle starts for one forced switch; false = off
     utilsFirst=true,       -- 3-2 the game's Change Weapon first, the four steps in Lua when it does not read back
     combo=true,            -- 3-3 Lua pushes the light-attack chain while a slot-1 weapon is current
     probe=true,            -- 3-4 / 3-5 read-only: locomotion layers, hit-react config, weapon tags
     grab=true,             -- 3-6 the slot-1 weapon's grab (DualHook GEx / ZhanMa C) by spec handle
-    victimGrab=false,      -- 3-8 a broken body asks its opponent for a grab
+    victimGrab=true,      -- 3-8 a broken body asks its opponent for a grab
 }
 local PLAYER='/PBZCombatAsset/ActorData/Players/Hun/'
 Weapons.LIST={
@@ -36,6 +37,7 @@ Weapons.PATHS={
     utils='/PBZCombatAsset/Prototypes/BPL_PBZCombatUtils.Default__BPL_PBZCombatUtils_C',
     utilsClass='/PBZCombatAsset/Prototypes/BPL_PBZCombatUtils.BPL_PBZCombatUtils_C',
     light='/PBZInput/InputActions/IA_AttackL_Press.IA_AttackL_Press',
+    heavy='/PBZInput/InputActions/IA_AttackH_Press.IA_AttackH_Press',
     locomotion=PLAYER..'Animation/ABP_Hun_Locomotion.ABP_Hun_Locomotion_C',
 }
 local MAIN='Weapon.Slot.Main'
@@ -86,6 +88,7 @@ local function iface(value)
     local ok,object=pcall(function()return value:GetObject()end)
     return ok and U.valid(object)and object or nil
 end
+local function currentWeapon(w)return w.selected or w.active or Weapons.LIST[w.weapon] end
 local function num(v)return type(v)=='number'and v==v and string.format('%.3g',v)or tostring(v)end
 local function text(v)
     v=U.unwrap(v)
@@ -175,7 +178,7 @@ function Weapons.new(o)
                 local p=path(ability)
                 if p==classPath or(p and p:gsub('%.Default__','.')==classPath)then
                     local handle=U.struct(U.struct(spec,'Handle'),'Handle')
-                    return {handle=handle,active=U.struct(spec,'ActiveCount'),name=abilityName(ability)}
+                    return {handle=handle,active=U.struct(spec,'ActiveCount'),name=abilityName(ability),ability=ability}
                 end
             end
         end
@@ -307,7 +310,7 @@ function Weapons.new(o)
             ..' MMGraph.CharacterMovement有效='..tostring(U.valid(U.field(graph,'CharacterMovement')))..' 链接实例=['..table.concat(linked,'|')..']'
             ..' ABP_Hun_Locomotion已链接='..tostring(U.valid(locoLayer)))
         local hit=U.field(actor,'Hitreact Component')
-        local weapon=Weapons.LIST[r.wep.weapon]
+        local weapon=currentWeapon(r.wep)
         local counts={}
         for _,t in ipairs({'CharacterState.Armed','Weapon.Type.Global.DualHanded'})do counts[#counts+1]=t..'='..tostring(tagCount(actor,t))end
         for _,t in ipairs(weapon and weapon.tags or{})do counts[#counts+1]=t..'='..tostring(tagCount(actor,t))end
@@ -333,7 +336,7 @@ function Weapons.new(o)
     end
     local function switchTo(r,target,why)
         local w=r.wep;local actor=r.actor;local wc=w.wc
-        local weapon=Weapons.LIST[w.weapon]
+        local weapon=currentWeapon(w)
         local from=index(wc,false)
         local shachi,max=stat(actor,'Shachi'),stat(actor,'Shachi_Max')
         local specBefore=specSummary(actor,weapon.prefix)
@@ -385,7 +388,7 @@ function Weapons.new(o)
             steps4=table.concat(parts,'；')
             if not ok then
                 say('换武器 四步 读回 实例='..r.name..' '..steps4..' verified=false')
-                if target~=OWN then back(r,wc,'四步没读回')end
+                if not w.rotation and target~=OWN then back(r,wc,'四步没读回')end
                 return false
             end
             via='Lua 四步'
@@ -393,7 +396,7 @@ function Weapons.new(o)
         w.idx=target;w.lastSwitch=clock();w.switches=(w.switches or 0)+1;w.recheckAt=clock()+RECHECK_AFTER
         w.tagMap=nil;w.comboFails=0
         local actors=slotActors(wc,target)
-        if target==NEW then owned(actor,actors,r)end
+        if w.rotation or target==NEW then owned(actor,actors,r)end
         local oldActors=slotActors(wc,from or OWN)
         local after=stat(actor,'Shachi')
         local specAfter=specSummary(actor,weapon.prefix)
@@ -411,7 +414,7 @@ function Weapons.new(o)
         -- Several specs can carry one tag (the body's own GA_Hun_Double_* and the slotted weapon's); the current
         -- weapon's prefix wins.
         local map={}
-        local prefix=Weapons.LIST[r.wep.weapon].prefix
+        local prefix=currentWeapon(r.wep).prefix
         for _,spec in ipairs(specs(r.actor)or{})do
             local ability=U.struct(spec,'Ability')
             local n_=abilityName(ability)
@@ -456,22 +459,25 @@ function Weapons.new(o)
     end
     local function combo(r,target)
         local w=r.wep;local actor=r.actor
-        local weapon=Weapons.LIST[w.weapon]
-        local chain=combos[w.weapon]
+        local weapon=currentWeapon(w)
+        local heavy=w.rotation and (tagCount(target,'CharacterState.Stand.Break') or 0)>0
+        local chain=w.rotation and Rotation.chain(weapon,heavy) or combos[w.weapon]
         if not chain then once('nochain'..w.weapon,'出招 '..weapon.label..' 没有连段表，不推招');return end
         local aic=U.field(actor,'Ability Input Component')
         once('canActivate','即将 只读 AbilityInputComponent:CanActivateExternalActionAbility(1)（本次加载第一次）')
-        local gotGate,gate=call(aic,'CanActivateExternalActionAbility',1)
+        local priority=heavy and 2 or 1
+        local gotGate,gate=call(aic,'CanActivateExternalActionAbility',priority)
         if gotGate and gate==false then return end
         local tag,kind=nextTag(r,chain)
         if not tag then return end
-        local ia=object(Weapons.PATHS.light)
+        local ia=object(heavy and Weapons.PATHS.heavy or Weapons.PATHS.light)
+        if not ia then return end
         w.stats[w.weapon]=w.stats[w.weapon]or{tries=0,ok=0,byTag=0,byHandle=0,hits=0}
         local s=w.stats[w.weapon]
         s.tries=s.tries+1;s.lastTag=tag
-        once('byTag','即将 AbilityInputComponent:TryActivateExternalActionAbilityByTag(标签,IA_AttackL_Press,1)（本次加载第一次，之后不再逐次写）')
+        once(heavy and 'heavyByTag' or 'byTag','即将 AbilityInputComponent:TryActivateExternalActionAbilityByTag(标签,'..(heavy and 'IA_AttackH_Press' or 'IA_AttackL_Press')..','..priority..')（本次加载第一次，之后不再逐次写）')
         local before=tagCount(actor,tag)or 0
-        local called,result=call(aic,'TryActivateExternalActionAbilityByTag',{TagName=fname(tag)},ia,1)
+        local called,result=call(aic,'TryActivateExternalActionAbilityByTag',{TagName=fname(tag)},ia,priority)
         local after=tagCount(actor,tag)or 0
         local started=after>before or(result==true and after>0)
         local how='标签'
@@ -487,9 +493,10 @@ function Weapons.new(o)
             end
         end
         if started then
+            w.chainCount=(w.chainCount or 0)+1
             s.ok=s.ok+1;if how=='标签'then s.byTag=s.byTag+1 else s.byHandle=s.byHandle+1 end
             s.lastMontage=montage(actor);w.comboFails=0;w.skipTag=nil
-            if target and #w.pending<4 then w.pending[#w.pending+1]={target=target,hp=o.hp and select(2,pcall(o.hp,target)),at=clock()}end
+            if target and #w.pending<4 then w.pending[#w.pending+1]={weapon=w.weapon,target=target,hp=o.hp and select(2,pcall(o.hp,target)),at=clock()}end
         else
             w.comboFails=(w.comboFails or 0)+1;w.skipTag=kind=='连段'and tag or nil
         end
@@ -503,9 +510,16 @@ function Weapons.new(o)
         if w.comboFails>=COMBO_GIVE_UP then
             say('新武器出招不通 实例='..r.name..' '..weapon.label..' 连续 '..w.comboFails..' 次没启动，切回绝影（原生招式池恢复有效）')
             comboStats(r,weapon,s,true)
-            if not w.comboRecorded then w.comboRecorded=true;record('combo',false)end
-            w.comboOff=true
-            back(r,w.wc,'新武器出招不通')
+            if not w.comboRecorded then w.comboRecorded=true;if not w.rotation then record('combo',false) end end
+            if w.rotation then
+                w.rotation.failures[w.currentId]=2
+                w.retrySwitch=true
+                w.comboOff=true
+                say('本局剔除武器 '..weapon.label..'；下一次换武器重新选取')
+            else
+                w.comboOff=true
+                back(r,w.wc,'新武器出招不通')
+            end
         end
     end
     local function settleHits(r)
@@ -514,7 +528,7 @@ function Weapons.new(o)
             if t-p.at>=0.8 then
                 if U.valid(p.target)and type(p.hp)=='number'and o.hp then
                     local ok,hp=pcall(o.hp,p.target)
-                    if ok and type(hp)=='number'and hp<p.hp then local s=w.stats[w.weapon];if s then s.hits=s.hits+1 end end
+                    if ok and type(hp)=='number'and hp<p.hp then local s=w.stats[p.weapon];if s then s.hits=s.hits+1 end end
                 end
             else keep[#keep+1]=p end
         end
@@ -526,27 +540,31 @@ function Weapons.new(o)
         return 'Ability.Executed='..tostring(tagCount(actor,'Ability.Executed'))..' Executing='..tostring(tagCount(actor,'CharacterState.HitReact.State.Executing'))
             ..' 蒙太奇='..montage(actor)
     end
+    local activateArt
     local function grab(r,target)
         local w=r.wep;local actor=r.actor
-        local weapon=Weapons.LIST[w.weapon]
+        local weapon=currentWeapon(w)
         w.grabAt=clock();w.grabs=(w.grabs or 0)+1
         local spec=specOf(actor,weapon.grab)
         if not spec then
             say('魂用投技 实例='..r.name..' '..weapon.label..'；技能 '..weapon.grab:match('([^%.]+)$')..' 没授予（spec 不在）')
-            if not w.grabRecorded then w.grabRecorded=true;record('grab',false)end
+            if not w.grabRecorded then w.grabRecorded=true;if not w.rotation then record('grab',false) end end
             return
         end
         if spec.active~=0 or type(spec.handle)~='number'then return end
         if not still(r)then return end
+        if weapon.grabNeeds and (tagCount(target,weapon.grabNeeds) or 0)==0 then return end
         local needs=weapon.grabNeeds and(' 目标 '..weapon.grabNeeds..'='..tostring(tagCount(target,weapon.grabNeeds)))or''
         local asc=U.field(actor,'AbilitySystemComponent')
         say('即将 魂用投技 实例='..r.name..' '..spec.name..' AbilitySystemComponent:TryActivateAbility(句柄='..spec.handle..') 目标='..short(target)..needs)
-        local called,result=call(asc,'TryActivateAbility',{Handle=spec.handle},false)
+        local called,result
+        if w.rotation and weapon.grab==weapon.art then called=true;result=activateArt(r,weapon,spec,target)
+        else called,result=call(asc,'TryActivateAbility',{Handle=spec.handle},false) end
         local after=specOf(actor,weapon.grab)
         local started=called and after~=nil and type(after.active)=='number'and after.active>0
         say('魂用投技 读回 实例='..r.name..' '..spec.name..' 调用='..tostring(called==true)..' 返回='..tostring(result)..' ActiveCount '..tostring(spec.active)
             ..'→'..tostring(after and after.active)..' 启动='..tostring(started)..' 目标 '..grabState(target))
-        if not w.grabRecorded then w.grabRecorded=true;record('grab',started)end
+        if not w.grabRecorded then w.grabRecorded=true;if not w.rotation then record('grab',started) end end
         if started then for _,d in ipairs(GRAB_READS)do w.grabReads[#w.grabReads+1]={target=target,at=clock()+d,label='+'..d..'s'}end end
     end
     local function grabReads(r)
@@ -562,6 +580,8 @@ function Weapons.new(o)
     ---- 3-8: a broken body asks its opponent for a grab (off by default).
     local function victim(r,target)
         local w=r.wep
+        local _,playerControlled=call(target,'IsPlayerControlled')
+        if playerControlled==true or (name(target) or ''):find('BP_Renewal_Hun_C',1,true) then return end
         if o.qteFamily and o.qteFamily(target)then
             once('victimQTE'..tostring(U.key(target)),'请对手出投技 实例='..r.name..' 对手='..short(target)..' 是 QTE 族，按 QTE 闸不请')
             return
@@ -589,11 +609,17 @@ function Weapons.new(o)
     ---- The fight loop of one body, every LOOP_MS.
     local function nearest(r,range)
         local best,bestD
+        local native
+        if o.nativeTarget then
+            local ok,target=pcall(o.nativeTarget,r.actor)
+            if not ok or not U.valid(target) then return nil end
+            native=U.key(target)
+        end
         local _,me=call(r.actor,'K2_GetActorLocation')
         local mx,my,mz=U.struct(me,'X'),U.struct(me,'Y'),U.struct(me,'Z')
         if type(mx)~='number'then return nil end
         for _,a in ipairs(o.opponents and o.opponents(r)or{})do
-            if U.valid(a)then
+            if U.valid(a) and (not native or U.key(a)==native) then
                 local alive=true
                 if o.hp then local ok,hp=pcall(o.hp,a);alive=not ok or type(hp)~='number'or hp>0 end
                 local _,at=call(a,'K2_GetActorLocation')
@@ -606,9 +632,472 @@ function Weapons.new(o)
         end
         return best,bestD
     end
+    local function setInactive(r,idx,cfg)
+        local w=r.wep
+        if not still(r) or index(w.wc,false)==idx then return false end
+        if U.key(slotConfig(w.wc,idx))==U.key(cfg) then return true end
+        local forms=self.ifaceMode=='pointer' and {'pointer','direct'} or {'direct','pointer'}
+        for _,form in ipairs(forms) do
+            if not still(r) or index(w.wc,false)==idx then return false end
+            say('即将 填非当前武器槽 实例='..r.name..' 槽='..idx..' 配置='..short(cfg)..' 传参='..form)
+            local value=form=='direct' and cfg or {ObjectPointer=cfg}
+            call(w.wc,'SetSlotWeapon',slotTag(),idx,value)
+            local actual=slotConfig(w.wc,idx)
+            say('填槽 读回 实例='..r.name..' 槽='..idx..' 配置='..short(actual))
+            if U.key(actual)==U.key(cfg) then
+                self.ifaceMode=form
+                owned(r.actor,slotActors(w.wc,idx),r)
+                return true
+            end
+        end
+        return false
+    end
+    local function failedPick(r,item,t,why)
+        local s=r.wep.rotation
+        s.failures[item.id]=(s.failures[item.id] or 0)+1
+        s.retryAt=t+2
+        say('换武器失败 实例='..r.name..' 武器='..item.label..' 原因='..why..
+            ' 失败数='..s.failures[item.id]..(s.failures[item.id]>=2 and ' 本局剔除' or ''))
+    end
+    local POWER_HOOK='/PBZCombatAsset/Prototypes/Config/PBZ_MainWeaponConfig.PBZ_MainWeaponConfig_C:GetWeaponPowerMultiplier'
+    local powerRecords={}
+    local function ensurePowerHook()
+        if self.powerHook then return end
+        local register=o.register or RegisterHook
+        if type(register)~='function' then return end
+        local ok,pre,post=pcall(register,POWER_HOOK,function(config,avatar)
+            local actor=U.unwrap(avatar)
+            local key=U.key(actor)
+            local rec=key and powerRecords[key]
+            if not rec or not still(rec) then return nil end
+            local w=rec.wep
+            if not w.active or U.key(U.unwrap(config))~=U.key(w.currentConfig) then return nil end
+            return w.active.multipliers[w.active.level]
+        end)
+        if ok and type(pre)=='number' and type(post)=='number' then self.powerHook={pre,post}
+        else once('powerHook','魂专属武器倍率回调未安装：'..tostring(pre)) end
+    end
+    local function alignPresentation(r)
+        local w,actor=r.wep,r.actor
+        local function applyStance(graph)
+            -- ABP_Hun_Locomotion.SelectChooser maps byte 0,1,2,4,7 to these five armed families.
+            local stance
+            for _,tag in ipairs(w.active.tags) do
+                if tag=='Weapon.Type.Global.SingleHanded' then stance=0
+                elseif tag=='Weapon.Type.Global.DualHanded' then stance=1
+                elseif tag=='Weapon.Type.Global.TwoHanded' then stance=2 end
+            end
+            if w.active.native_id=='SnakeDual' then stance=4
+            elseif w.active.native_id=='FangHuaXieShan' then stance=7 end
+            if stance==nil or type(U.field(graph,'WeaponType'))~='number' then return end
+            say('即将 在魂走跑实例选择武器姿态 '..w.active.label..' 目标='..stance)
+            pcall(function()graph.WeaponType=stance end)
+            say('走跑姿态 读回='..tostring(U.field(graph,'WeaponType')))
+        end
+        if w.presentationTried then
+            local graph=w.locomotion
+            local _,pawn=call(graph,'TryGetPawnOwner')
+            if U.valid(graph) and U.key(pawn)==U.key(actor) then applyStance(graph) end
+            return
+        end
+        w.presentationTried=true
+        local mesh=U.field(actor,'Mesh')
+        local _,instance=call(mesh,'GetAnimInstance')
+        local tag=fname('MMGraph')
+        local _,oldGraph=call(instance,'GetLinkedAnimGraphInstanceByTag',tag)
+        local _,oldClass=call(oldGraph,'GetClass')
+        local loco=object(Weapons.PATHS.locomotion)
+        if U.valid(oldClass) and loco and still(r) then
+            say('即将 链接魂武器走跑图 '..r.name)
+            call(instance,'LinkAnimGraphByTag',tag,loco)
+            local _,linked=call(instance,'GetLinkedAnimGraphInstanceByTag',tag)
+            local _,cls=call(linked,'GetClass')
+            local movement=U.field(linked,'CharacterMovement')
+            local _,pawn=call(linked,'TryGetPawnOwner')
+            if not U.valid(movement) and U.key(cls)==U.key(loco) and U.key(pawn)==U.key(actor) then
+                -- Player graph's SetReferences has a player-only cast. The movement field itself accepts the NPC component.
+                local _,ownMove=call(actor,'GetMovementComponent')
+                local _,moveOwner=call(ownMove,'GetOwner')
+                if U.valid(ownMove) and U.key(moveOwner)==U.key(actor) then
+                    say('即将 在魂走跑实例设置本体移动组件 '..r.name)
+                    pcall(function()linked.CharacterMovement=ownMove end)
+                    movement=U.field(linked,'CharacterMovement')
+                end
+            end
+            local _,owner=call(movement,'GetOwner')
+            if U.key(cls)~=U.key(loco) or U.key(owner)~=U.key(actor) then
+                say('即将 还原魂原走跑图 '..r.name)
+                call(instance,'LinkAnimGraphByTag',tag,oldClass)
+                local _,restored=call(instance,'GetLinkedAnimGraphInstanceByTag',tag)
+                local _,restoredClass=call(restored,'GetClass')
+                say('走跑图还原 读回='..tostring(U.key(oldClass)==U.key(restoredClass)))
+            else
+                w.locomotion=linked;w.motionOwner=instance;w.originalGraph=oldClass
+                applyStance(linked)
+                say('魂武器走跑图 读回='..short(linked)..' 移动组件归属='..short(owner))
+            end
+        end
+        local hit=U.field(actor,'Hitreact Component')
+        local _,hitOwner=call(hit,'GetOwner')
+        local original=iface(U.field(hit,'ActorConfig'))
+        local _,class=call(original,'GetClass')
+        local construct=o.construct or StaticConstructObject
+        local combined=object(PLAYER..'Hit_Hun_Combined.Hit_Hun_Combined')
+        if not U.valid(original) or not combined or not U.valid(class) or type(construct)~='function' or
+            U.key(hitOwner)~=U.key(actor) or not still(r) then return end
+        say('即将 建立魂私有受击配置 '..r.name)
+        local made,copy=pcall(construct,class,hit,fname('PG_HunHit_'..self.bodies),0x40,0,false,false,original)
+        local _,outer=call(copy,'GetOuter')
+        local _,copyClass=call(copy,'GetClass')
+        if not made or not U.valid(copy) or U.key(copy)==U.key(original) or U.key(outer)~=U.key(hit)
+            or U.key(copyClass)~=U.key(class) then return end
+        local field='Hitreat Anim Set'
+        local prior=U.field(copy,field)
+        if not U.valid(prior) then return end
+        say('即将 替换魂私有受击动作集 '..r.name)
+        local wrote=pcall(function()copy[field]=combined end)
+        if not wrote or U.key(U.field(copy,field))~=U.key(combined) then return end
+        local function assign(obj)
+            local ok=pcall(function()hit.ActorConfig=obj end)
+            if not ok or U.key(iface(U.field(hit,'ActorConfig')))~=U.key(obj) then
+                pcall(function()hit.ActorConfig={ObjectPointer=obj} end)
+            end
+            return U.key(iface(U.field(hit,'ActorConfig')))==U.key(obj)
+        end
+        say('即将 在魂受击组件挂入私有副本 '..r.name)
+        if assign(copy) then
+            w.hitCopy=copy;w.hitComponent=hit;w.restoreHit=function()return assign(original) end
+            say('武器受击集 读回='..short(combined))
+        else say('即将 还原魂受击接口 '..r.name);say('还原受击接口 读回='..tostring(assign(original))) end
+    end
+    local function scaleCooldown(r)
+        local w=r.wep
+        local scale=w.rotation.resources.cooldown_scale or 1
+        local cd=cooldown(w.wc)
+        if type(cd)=='number' and cd>0 then
+            if scale<1 then
+                say('即将 在魂武器组件缩短换武器冷却 原值='..num(cd)..' 倍率='..num(scale))
+                call(w.wc,'ReduceChangeWeaponCooldown',cd*(1-scale))
+                say('缩短换武器冷却 读回='..num(cooldown(w.wc)))
+            end
+            -- Honor a native reset or accessory reduction. An extended policy adds only the requested excess time.
+            w.extraWait=scale>1 and cd*scale or 0
+        else
+            w.extraWait=COOLDOWN*scale
+        end
+    end
+    local function afterSwitch(r,item,idx,cfg)
+        local w=r.wep
+        w.active,w.weapon,w.currentId,w.idx=item,item.id,item.id,idx
+        w.tagMap=nil;w.skipTag=nil;w.comboOff=false;w.comboFails=0;w.chainCount=0
+        w.retrySwitch=false
+        Rotation.chosen(w.rotation,item)
+        scaleCooldown(r)
+        Rotation.effects(w.rotation,item,U.field(r.actor,'AbilitySystemComponent'),{object=object,call=call,say=say})
+        powerRecords[U.key(r.actor)]=r
+        ensurePowerHook()
+        local got,power=call(cfg,'GetWeaponPowerMultiplier',r.actor)
+        say('武器生效读回 实例='..r.name..' 武器='..item.label..' 等级='..item.level..
+            ' 铸魂='..tostring(item.soul)..' 本局次数='..w.rotation.picks[item.id]..
+            ' 权重来源='..(item.grantGroup or (item.temporary and '临时武器' or '目录序估计'))..
+            ' 方案攻击倍率='..item.multipliers[item.level]..' 原生读取倍率='..tostring(got and power))
+        alignPresentation(r)
+    end
+    local function matchesTarget(actor,target)
+        if not o.nativeTarget then return true end
+        if not U.valid(target) then return false end
+        local ok,actual=pcall(o.nativeTarget,actor)
+        return ok and U.key(actual)==U.key(target)
+    end
+    local CONTROLLER='/Script/Engine.GameplayStatics:GetPlayerController'
+    local activeArt,probeActor,probeCount
+    local function prepareControllerGuard(r)
+        if not self.controllerHook then
+            local register=o.register or RegisterHook
+            local created,empty=pcall(o.createInvalid or CreateInvalidObject)
+            if not created or empty==nil or U.valid(empty) or type(register)~='function' then return false end
+            local ok,pre,post=pcall(register,CONTROLLER,function(_,context,playerIndex)
+                if not activeArt and not probeActor then return end
+                local ctx=U.unwrap(context)
+                if U.unwrap(playerIndex)~=0 then return end
+                if probeActor and U.key(ctx)==U.key(probeActor) then probeCount=probeCount+1;return empty end
+                if not activeArt or not U.valid(ctx) then return end
+                local _,class=call(ctx,'GetClass')
+                if path(class)~=activeArt.class then return end
+                local _,owner=call(ctx,'GetAvatarActorFromActorInfo')
+                if U.key(owner)==U.key(activeArt.actor) then return empty end
+            end)
+            if not ok or type(pre)~='number' or type(post)~='number' then return false end
+            self.controllerHook={pre,post}
+        end
+        if self.guardVerified then return true end
+        probeActor,probeCount=r.actor,0
+        local statics=object('/Script/Engine.Default__GameplayStatics')
+        local ok,result=call(statics,'GetPlayerController',probeActor,0)
+        probeActor=nil
+        self.guardVerified=ok and not U.valid(result) and probeCount==1
+        say('魂战技手柄隔离 自检='..tostring(self.guardVerified))
+        return self.guardVerified
+    end
+    activateArt=function(r,item,spec,target)
+        if not matchesTarget(r.actor,target) or not still(r) then return false end
+        -- BP_CombatArt_Base uses the controller of local player zero for haptic feedback on success.
+        -- Its charge debit is synchronous and takes GetUltimateChargeCost from UltimateChargeCount.
+        if not prepareControllerGuard(r) then once('noArtGuard','魂战技跳过：无法确认玩家手柄隔离');return false end
+        local cost=U.field(spec.ability,'Ultimate Charge Cost')
+        if type(cost)~='number' or cost<0 then return false end
+        cost=math.max(1,cost)
+        local before=stat(r.actor,'UltimateChargeCount')
+        if type(before)~='number' then return false end
+        local free=r.wep.rotation.resources.consume_skill_resources==false
+        local stats=o.stats and o.stats()
+        local borrowed=0
+        if before<cost then
+            if not free or not stats then return false end
+            local cap=stat(r.actor,'UltimateChargeCount_Max')
+            if type(cap)~='number' or cap<cost then return false end
+            say('即将 给魂垫付本次战技缺少的绝技格 '..num(cost-before))
+            local ok,wrote=pcall(stats.writeBase,stats,r.actor,'UltimateChargeCount',cost)
+            local read=stat(r.actor,'UltimateChargeCount')
+            if type(read)=='number' then borrowed=math.max(0,read-before) end
+            if not ok or wrote==false or read~=cost then
+                if borrowed>0 then pcall(stats.writeBase,stats,r.actor,'UltimateChargeCount',before) end
+                return false
+            end
+        end
+        activeArt={actor=r.actor,class=item.art}
+        local called,result=call(U.field(r.actor,'AbilitySystemComponent'),'TryActivateAbility',{Handle=spec.handle},false)
+        activeArt=nil
+        local after=specOf(r.actor,item.art)
+        local balance=stat(r.actor,'UltimateChargeCount')
+        local started=called and result~=false and after and type(after.active)=='number' and after.active>0
+        local paid=type(balance)=='number' and math.abs(before+borrowed-balance-cost)<0.0001
+        if free and stats and type(balance)=='number' then
+            local refund=started and paid and cost or 0
+            local correction=refund-borrowed
+            if correction~=0 then
+                local adjusted=math.max(0,balance+correction)
+                say('即将 结算魂本次战技增减的绝技格 目标='..num(adjusted))
+                pcall(stats.writeBase,stats,r.actor,'UltimateChargeCount',adjusted)
+                say('本次战技绝技格 读回='..num(stat(r.actor,'UltimateChargeCount')))
+            end
+        end
+        return started and paid
+    end
+    local function phaseArt(r,t,target)
+        local w,intent=r.wep,r.intent
+        if not intent or not intent.phaseId or intent.performedPhase==intent.phaseId or
+            not w.active or w.currentId~=intent.weapon_id or t<(w.artRetry or 0) then return false end
+        local item=w.active
+        w.artRetry=t+1
+        if not item.art then
+            once('missingArt'..item.id,'阶段战技：武器 '..item.label..' 没有识别到原生战技')
+            return false
+        end
+        local spec=specOf(r.actor,item.art)
+        if not spec or type(spec.handle)~='number' or spec.active~=0 then return false end
+        say('即将 阶段战技 实例='..r.name..' 阶段='..intent.phaseId..' '..spec.name)
+        if activateArt(r,item,spec,target) then
+            local after=specOf(r.actor,item.art)
+            intent.performedPhase=intent.phaseId
+            intent.busyUntil=math.max(intent.busyUntil or 0,t+0.35)
+            say('阶段战技 读回 实例='..r.name..' 阶段='..intent.phaseId..' ActiveCount='..after.active)
+            return true
+        end
+        return false
+    end
+    local drawTag='CharacterState.Talent.EnableDrawAttack'
+    local switchTag='Ability.Action.Hun.Weapon.Switch.Normal'
+    local function releaseDrawTag(r)
+        local w=r.wep
+        if not w.drawTag or not still(r) then return end
+        local lib=w.drawTag
+        w.drawTag=nil
+        say('即将 还原魂拔刀许可 '..r.name)
+        call(lib,'SetLooseGameplayTagCount',r.actor,{TagName=fname(drawTag)},0)
+        say('拔刀许可 读回='..tostring(tagCount(r.actor,drawTag)))
+    end
+    local function tryDraw(r,item,cfg,idx,from,why,t)
+        local w=r.wep
+        if not w.active then return false end
+        local input=object('/PBZInput/InputActions/IA_ChangeWeapon.IA_ChangeWeapon')
+        local aic=U.field(r.actor,'Ability Input Component')
+        if not input or not U.valid(aic) then return false end
+        local enabled=tagCount(r.actor,drawTag)
+        if enabled==0 then
+            local lib=object('/Script/SGameUtils.Default__AbilityUtils')
+            if not lib then return false end
+            say('即将 启用魂拔刀许可 '..r.name)
+            w.drawTag=lib
+            call(lib,'SetLooseGameplayTagCount',r.actor,{TagName=fname(drawTag)},1)
+            enabled=tagCount(r.actor,drawTag)
+        end
+        if not enabled or enabled<1 then releaseDrawTag(r);return false end
+        say('即将 魂拔刀换武器 '..r.name..' 目标='..item.label)
+        local called,ret=call(aic,'ForceActivateExternalActionAbilityByTag',{TagName=fname(switchTag)},input,1)
+        local active=(tagCount(r.actor,switchTag) or 0)>0
+        local committed=index(w.wc,false)==idx
+        say('拔刀换武器 读回='..tostring(committed)..' 招式启动='..tostring(active)..' 返回='..tostring(ret))
+        if not called or not (active or committed) then releaseDrawTag(r);return false end
+        w.draw={item=item,cfg=cfg,idx=idx,from=from,why=why,expires=t+2}
+        return true
+    end
+    local function settleDraw(r,t)
+        local w=r.wep
+        local d=w.draw
+        if not d then return false end
+        local idx=index(w.wc,false)
+        if idx==d.idx and U.key(slotConfig(w.wc,idx))==U.key(d.cfg) then
+            w.draw=nil;releaseDrawTag(r)
+            w.currentConfig=d.cfg;w.lastSwitch=t;w.switches=(w.switches or 0)+1;w.recheckAt=t+RECHECK_AFTER
+            local shachi,max=stat(r.actor,'Shachi'),stat(r.actor,'Shachi_Max')
+            say('拔刀换武器已切换 实例='..r.name..' 原因='..d.why..' 杀气='..num(shachi)..'/'..num(max))
+            afterSwitch(r,d.item,idx,d.cfg)
+        elseif t>=d.expires then
+            w.draw=nil;releaseDrawTag(r)
+            -- Wait for the native action to end before using the direct path. Leave a pending native switch alone.
+            if idx==d.from and index(w.wc,true)==idx and (tagCount(r.actor,switchTag) or 0)==0 then
+                w.selected=d.item
+                local ok=switchTo(r,d.idx,d.why..'（拔刀未切换）')
+                w.selected=nil
+                if ok and index(w.wc,true)==d.idx then
+                    if index(w.wc,false)==d.idx then w.currentConfig=d.cfg;afterSwitch(r,d.item,d.idx,d.cfg)
+                    else w.pendingSwitch={item=d.item,idx=d.idx,cfg=d.cfg,expires=t+2} end
+                else failedPick(r,d.item,t,'拔刀和直接切换均未读回') end
+            else w.rotation.retryAt=t+1 end
+        end
+        return true
+    end
+    local function weaponAsset(r,item)
+        local shared=object(item.config)
+        if not shared or not item.temporary then return shared end
+        local w=r.wep
+        w.tempConfigs=w.tempConfigs or {}
+        if U.valid(w.tempConfigs[item.id]) then return w.tempConfigs[item.id] end
+        local _,class=call(shared,'GetClass')
+        local construct=o.construct or StaticConstructObject
+        if not U.valid(class) or type(construct)~='function' or not still(r) then return nil end
+        say('即将 建立魂私有临时武器配置 '..item.label)
+        local made,copy=pcall(construct,class,r.actor,fname('PG_Temp_'..item.id),0x40,0,false,false,shared)
+        local _,outer=call(copy,'GetOuter')
+        local _,cls=call(copy,'GetClass')
+        if not made or not U.valid(copy) or U.key(copy)==U.key(shared) or U.key(outer)~=U.key(r.actor)
+            or U.key(cls)~=U.key(class) then return nil end
+        -- GA_TempWeaponPassive is the player's temporary-slot lifetime/force-switch policy.
+        -- The NPC owns and cleans its two slots; only its private copy's array may be cleared.
+        local key='Equip Passive Abilities'
+        local a,b=U.field(copy,key),U.field(shared,key)
+        local before=U.array(b)
+        if not before or #before~=1 then return nil end
+        local name_=name(before[1]) or ''
+        if not name_:find('GA_TempWeaponPassive',1,true) then return nil end
+        local ownArrays=false
+        if type(a)=='table' and type(b)=='table' and U.kind(a)=='table' and U.kind(b)=='table' then
+            ownArrays=a~=b
+        elseif U.kind(a)=='TArray' and U.kind(b)=='TArray' then
+            local ok,x,y=pcall(function()return a:GetArrayDataAddress(),b:GetArrayDataAddress()end)
+            ownArrays=ok and type(x)=='number' and type(y)=='number' and x~=0 and y~=0 and x~=y
+        end
+        if not ownArrays then return nil end
+        say('即将 在魂私有临时武器配置移除玩家临时槽被动 '..item.label)
+        local ok=pcall(function()
+            if U.kind(a)=='TArray' then a:Empty() else copy[key]={} end
+        end)
+        local remaining,unchanged=U.array(U.field(copy,key)),U.array(U.field(shared,key))
+        if not ok or not remaining or #remaining~=0 or not unchanged or #unchanged~=#before then return nil end
+        w.tempConfigs[item.id]=copy
+        say('临时武器副本 读回 '..item.label..' 副本被动=0 原配置被动='..#unchanged)
+        return copy
+    end
+    local function advanceRotation(r,t,target)
+        local w=r.wep
+        local s=w.rotation
+        if settleDraw(r,t) then return true end
+        if w.pendingSwitch then
+            local pending=w.pendingSwitch
+            if index(w.wc,false)==pending.idx and U.key(slotConfig(w.wc,pending.idx))==U.key(pending.cfg) then
+                w.pendingSwitch=nil;w.currentConfig=pending.cfg
+                afterSwitch(r,pending.item,pending.idx,pending.cfg)
+            elseif t>=pending.expires then
+                w.pendingSwitch=nil;failedPick(r,pending.item,t,'原生待切换序号未生效')
+            end
+            return true
+        end
+        if t<s.retryAt then return false end
+        local current=index(w.wc,false)
+        if current~=0 and current~=1 or index(w.wc,true)~=current then return false end
+        if not usable('switch',r) then return false end
+        if w.active and (current~=w.idx or U.key(slotConfig(w.wc,current))~=U.key(w.currentConfig)) then
+            -- A game ability can change the current slot independently. Reconcile before touching either slot.
+            w.active=nil;w.currentId=nil;s.currentId=nil;w.weapon=nil
+            Rotation.effects(s,nil,U.field(r.actor,'AbilitySystemComponent'),{object=object,call=call,say=say})
+        end
+        if phaseArt(r,t,target) then return true end
+        local phase=r.intent and r.intent.weapon_id
+        local cd=cooldown(w.wc)
+        local fallback=w.extraWait or 0
+        if w.lastSwitch and t-w.lastSwitch<math.max(0.2,fallback) or cd and cd>0 then return false end
+        if phase==w.currentId and phase~=nil then return false end
+        local item=Rotation.pick(s,phase,o.random)
+        if not item then
+            if w.comboOff and w.active and w.original then
+                local inactive=1-current
+                if setInactive(r,inactive,w.original) then
+                    say('即将 恢复原生绝影招式池 '..r.name)
+                    call(w.wc,'SetCurrentWeapon',slotTag(),inactive)
+                    if index(w.wc,false)==inactive and U.key(slotConfig(w.wc,inactive))==U.key(w.original) then
+                        w.active=nil;w.currentId=nil;s.currentId=nil;w.weapon=nil;w.idx=inactive
+                        Rotation.effects(s,nil,U.field(r.actor,'AbilitySystemComponent'),{object=object,call=call,say=say})
+                    end
+                end
+                s.retryAt=t+2
+            end
+            return false
+        end
+        if item.id==w.currentId then return false end
+        local cfg=weaponAsset(r,item)
+        if not cfg then failedPick(r,item,t,'无法加载或隔离临时配置');return true end
+        local inactive=1-current
+        local previous=slotConfig(w.wc,inactive)
+        local swapped=setInactive(r,inactive,cfg)
+        local broken=(tagCount(r.actor,'CharacterState.Stand.Break') or 0)>0
+        local shachi,max=stat(r.actor,'Shachi'),stat(r.actor,'Shachi_Max')
+        local low=type(shachi)=='number' and type(max)=='number' and max>0 and shachi/max<LOW_SHACHI
+        local why=phase==item.id and '阶段优先' or broken and '破防' or low and '杀气<20%' or '权重轮换'
+        w.selected=item
+        if swapped and target and tryDraw(r,item,cfg,inactive,current,why,t) then w.selected=nil;return true end
+        local success=swapped and switchTo(r,inactive,why)
+        w.selected=nil
+        local actual=index(w.wc,true)
+        if success and actual==inactive and U.key(slotConfig(w.wc,inactive))==U.key(cfg) then
+            if index(w.wc,false)==inactive then
+                w.currentConfig=cfg;afterSwitch(r,item,inactive,cfg)
+            else
+                w.pendingSwitch={item=item,idx=inactive,cfg=cfg,expires=t+2}
+            end
+            return true
+        end
+        if still(r) then
+            if index(w.wc,true)~=current then
+                say('即将 还原魂当前武器 槽='..current)
+                call(w.wc,'SetCurrentWeapon',slotTag(),current)
+                say('还原魂当前槽 读回='..tostring(index(w.wc,true)))
+            end
+            if index(w.wc,false)==current and index(w.wc,true)==current then
+                if previous then setInactive(r,inactive,previous)
+                elseif slotConfig(w.wc,inactive) then
+                    say('即将 还原空武器槽 槽='..inactive)
+                    call(w.wc,'SetSlotWeapon',slotTag(),inactive,nil)
+                    say('还原空槽 读回='..short(slotConfig(w.wc,inactive)))
+                end
+            end
+        end
+        failedPick(r,item,t,swapped and '切换未读回' or '非当前槽未写入')
+        return true
+    end
     local function fight(r)
         local w=r.wep;local actor=r.actor;local t=clock()
-        if not(o.battle and o.battle())then w.fightStart=nil;return end
+        if not(o.battle and o.battle(r))then w.fightStart=nil;return end
         if o.hp then local ok,hp=pcall(o.hp,actor);if ok and type(hp)=='number'and hp<=0 then return end end
         w.fightStart=w.fightStart or t
         if w.recheckAt and t>=w.recheckAt then
@@ -620,8 +1109,12 @@ function Weapons.new(o)
         if #w.grabReads>0 then grabReads(r)end
         -- Nothing is pushed or switched while the body executes, is executed or grabbed (arena_executions holds its AI).
         for _,t_ in ipairs(BUSY)do if(tagCount(actor,t_)or 0)>0 then return end end
+        if r.intent and r.intent.busy then return end
+        local target,dist=nearest(r,math.max(RANGE,GRAB_RANGE,VICTIM_RANGE))
+        if not matchesTarget(actor,target) then return end
+        if w.rotation and advanceRotation(r,t,target) then return end
         -- 3-2
-        if w.slotted and usable('switch',r)and not w.switchOff then
+        if not w.rotation and w.slotted and usable('switch',r)and not w.switchOff then
             local target,why
             if steps.forceSwitchAt and not w.forced and w.idx==OWN and t-w.fightStart>=steps.forceSwitchAt then
                 target,why=NEW,'开战'..steps.forceSwitchAt..'秒强制（验证用）';w.forced=true
@@ -642,20 +1135,46 @@ function Weapons.new(o)
                 return
             end
         end
-        local target,dist=nearest(r,math.max(RANGE,GRAB_RANGE,VICTIM_RANGE))
         -- 3-8
-        if steps.victimGrab and usable('victim',r)then
+        if steps.victimGrab and usable('victim',r) and not (r.loadout and r.loadout.survival and r.loadout.survival.grab=='immune') then
             local weakTag=(tagCount(actor,'CharacterState.CanWeakExecute.Weak')or 0)>0
             if not weakTag then w.victimAsked=false
-            elseif not w.victimAsked and target then victim(r,target)return end
+            elseif not w.victimAsked and target and matchesTarget(target,actor) then victim(r,target)return end
         end
-        if w.idx~=NEW then return end
-        local weapon=Weapons.LIST[w.weapon]
+        if w.rotation and not w.active or not w.rotation and w.idx~=NEW then return end
+        local weapon=currentWeapon(w)
+        if w.rotation and weapon and not weapon.temporary and weapon.art and weapon.grab~=weapon.art and
+            target and dist<=RANGE and (tagCount(target,'CharacterState.Stand.Break') or 0)>0 and
+            not (r.intent and r.intent.phaseId) and t>=(w.combatArtAt or 0) then
+            w.combatArtAt=t+4
+            local spec=specOf(actor,weapon.art)
+            if spec and spec.active==0 and type(spec.handle)=='number' and activateArt(r,weapon,spec,target) then
+                say('魂乘破防释放原生战技 '..weapon.label..' '..spec.name)
+                return
+            end
+        end
+        if weapon and weapon.temporary and weapon.art and target and dist<=RANGE
+            and (tagCount(target,'CharacterState.Stand.Break') or 0)>0 and t>=(w.tempArtAt or 0) then
+            w.tempArtAt=t+8
+            local spec=specOf(actor,weapon.art)
+            if spec and type(spec.handle)=='number' and spec.active==0 then
+                say('即将 魂临时武器终结技 '..weapon.label..' '..spec.name)
+                call(U.field(actor,'AbilitySystemComponent'),'TryActivateAbility',{Handle=spec.handle},false)
+                local after=specOf(actor,weapon.art)
+                say('临时武器终结技 读回 ActiveCount='..tostring(after and after.active))
+                if after and type(after.active)=='number' and after.active>0 then return end
+            end
+        end
         -- 3-6
-        if weapon.grab and usable('grab',r)and target and dist<=GRAB_RANGE and(w.grabs or 0)<GRAB_MAX and t-(w.grabAt or-math.huge)>=GRAB_EVERY then
+        if weapon and weapon.grab and usable('grab',r)and target and dist<=GRAB_RANGE and(w.grabs or 0)<GRAB_MAX and t-(w.grabAt or-math.huge)>=GRAB_EVERY then
             grab(r,target);return
         end
         -- 3-3
+        local limit=w.rotation and w.rotation.ai.combo_limit or 0
+        if limit>0 and (w.chainCount or 0)>=limit then
+            if t-(w.comboAt or t)<0.9 then return end
+            w.chainCount=0;w.skipTag=nil
+        end
         if usable('combo',r)and not w.comboOff and target and dist<=RANGE and t-(w.comboAt or-math.huge)>=LOOP_MS/1000-0.01 then
             w.comboAt=t
             combo(r,target)
@@ -665,9 +1184,64 @@ function Weapons.new(o)
         local entry=loops[r]
         if not entry then return end
         loops[r]=nil
+        if r.wep and r.wep.drawTag then releaseDrawTag(r) end
+        for k,record in pairs(powerRecords) do if record==r then powerRecords[k]=nil end end
         if entry.handle then pcall(o.cancel or CancelDelayedAction,entry.handle)end
         local w=r.wep
-        if w then for name_,s in pairs(w.stats)do local weapon=Weapons.LIST[name_];if weapon then comboStats(r,weapon,s,true)end end end
+        if w and w.rotation then
+            local s=w.rotation
+            if still(r) then
+                Rotation.effects(s,nil,U.field(r.actor,'AbilitySystemComponent'),{object=object,call=call,say=say},true)
+                if w.hitCopy and U.key(iface(U.field(w.hitComponent,'ActorConfig')))==U.key(w.hitCopy) then
+                    say('即将 撤销魂私有受击配置');say('受击接口还原 读回='..tostring(w.restoreHit()))
+                end
+                if w.locomotion and w.originalGraph then
+                    local tag=fname('MMGraph')
+                    local _,currentGraph=call(w.motionOwner,'GetLinkedAnimGraphInstanceByTag',tag)
+                    if U.key(currentGraph)==U.key(w.locomotion) then
+                        say('即将 撤销魂武器走跑图');call(w.motionOwner,'LinkAnimGraphByTag',tag,w.originalGraph)
+                        local _,restored=call(w.motionOwner,'GetLinkedAnimGraphInstanceByTag',tag)
+                        local _,cls=call(restored,'GetClass');say('走跑图还原 读回='..tostring(U.key(cls)==U.key(w.originalGraph)))
+                    end
+                end
+                local current=index(w.wc,false)
+                if w.active and (current==0 or current==1) and current==index(w.wc,true) then
+                    -- Restore the exact spawn loadout only if the currently selected weapon still belongs to this module.
+                    if U.key(slotConfig(w.wc,current))==U.key(w.currentConfig) then
+                        local dest=w.originalIdx
+                        if current==dest and U.key(slotConfig(w.wc,current))~=U.key(w.original) then
+                            if setInactive(r,1-current,w.original) then
+                                say('即将 切到魂原生武器以还原两个主槽')
+                                call(w.wc,'SetCurrentWeapon',slotTag(),1-current)
+                            end
+                        end
+                        if U.key(slotConfig(w.wc,dest))==U.key(w.original) or setInactive(r,dest,w.original) then
+                            say('即将 还原魂出生时主槽='..dest)
+                            call(w.wc,'SetCurrentWeapon',slotTag(),dest)
+                            if index(w.wc,false)==dest and index(w.wc,true)==dest then
+                                if w.originalOther then setInactive(r,1-dest,w.originalOther)
+                                else
+                                    say('即将 清空魂出生时的空槽')
+                                    call(w.wc,'SetSlotWeapon',slotTag(),1-dest,nil)
+                                end
+                                say('出生主槽还原 读回='..short(slotConfig(w.wc,dest))..' 另一槽='..short(slotConfig(w.wc,1-dest)))
+                                for i=0,1 do
+                                    for _,a in ipairs(slotActors(w.wc,i)) do local key=U.key(a);if key then w.spawned[key]=nil end end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            for _,weapon in ipairs(s.pool) do
+                local counters=w.stats[weapon.id]
+                if counters then comboStats(r,weapon,counters,true) end
+            end
+        elseif w then
+            for name_,counters in pairs(w.stats) do
+                local weapon=Weapons.LIST[name_];if weapon then comboStats(r,weapon,counters,true) end
+            end
+        end
         say('武器循环结束 实例='..r.name..' 原因='..tostring(why))
     end
     local function start(r)
@@ -689,6 +1263,26 @@ function Weapons.new(o)
     function self:equip(r)
         if not steps.enabled or r.wep then return end
         self.bodies=self.bodies+1
+        if not steps.slotWeapons then
+            if not still(r) then return end
+            local rotation=Rotation.new(r)
+            if #rotation.pool==0 then return end
+            r.wep={rotation=rotation,spawned={},stats={},pending={},grabReads={},idx=OWN}
+            local aic,wc=precheck(r)
+            if not aic then r.wep.skipped=true;return end
+            local idx,count=index(wc,false),slotCount(wc)
+            if idx==nil or idx<0 or idx>1 or not count or count>2 then
+                say('武器池未接入：无法确认魂当前两个主槽 实例='..r.name);return
+            end
+            local original=slotConfig(wc,idx)
+            if not original then say('武器池未接入：读不到魂原装配置 实例='..r.name);return end
+            r.wep.wc,r.wep.idx,r.wep.original=wc,idx,original
+            r.wep.originalIdx=idx;r.wep.originalOther=slotConfig(wc,1-idx)
+            r.wep.slotted=true
+            say('武器池 实例='..r.name..' 启用='..#rotation.pool..' 后期权重按发放地图组；无记录的武器按目录顺序估计')
+            start(r)
+            return
+        end
         local list=steps.slotWeapons or{'Tang'}
         local choice=list[(self.bodies-1)%#list+1]
         local weapon=Weapons.LIST[choice]
@@ -738,7 +1332,17 @@ function Weapons.new(o)
         end
         if #texts>0 then say('清理武器 Actor 实例='..r.name..' 原因='..tostring(why)..' '..table.concat(texts,' '))end
     end
-    function self:silence()for r in pairs(loops)do self:stop(r,'Mod 卸载')end end
+    function self:silence()
+        for r in pairs(loops) do self:stop(r,'Mod 卸载') end
+        if self.controllerHook then
+            pcall(o.unregister or UnregisterHook,CONTROLLER,self.controllerHook[1],self.controllerHook[2])
+            self.controllerHook=nil;self.guardVerified=false
+        end
+        if self.powerHook then
+            pcall(o.unregister or UnregisterHook,POWER_HOOK,self.powerHook[1],self.powerHook[2])
+            self.powerHook=nil
+        end
+    end
     return self
 end
 return Weapons

@@ -1247,7 +1247,8 @@ local function weaponPairCase(targetSkeleton,isHun)
         h.found[entry.timing.clip]=object(entry.timing.clip:match('%.([^%.]+)$'),{Skeleton=skeleton})
     end
     local target=h.boss('BP_Monster_MaleThug',500,0,{pairs={},locks={},rank='Standard'})
-    target.Mesh.GetSkeletalMeshAsset=function()return object('MaleThug',{Skeleton=targetSkeleton=='thug' and thug or object(targetSkeleton)})end
+    local asset=object('MaleThug',{Skeleton=targetSkeleton=='thug' and thug or object(targetSkeleton)})
+    target.Mesh.GetSkeletalMeshAsset=function()return asset end
     local nearer=h.enemy({X=100,Y=0,Z=0})
     h.tags[target]={['CharacterState.CanWeakExecute.Weak']=1}
     h.members={{actor=target,team='red'},{actor=nearer,team='blue'},{actor=hun,team='blue'}}

@@ -961,6 +961,7 @@ local function closeOneGrab(pose,why,restore)
     -- Removing a final floor may succeed even when GE_Kill does not. Keep that narrow
     -- completion request until health confirms death, with live identity and phase checks.
     local function finalDeath(target,unit,t,mode,team)
+        if options.immune and options.immune(target,'lethal') then return nil end
         local hp,floor,max=read(target,'Health'),read(target,'Health_Min'),read(target,'Health_Max')
         local r=unit.finalDeath
         local key=U.key(target)
@@ -1180,6 +1181,14 @@ local function closeOneGrab(pose,why,restore)
     end
     local function start(executor,boss,info,d,reason,adopted)
         if phaseBusy(executor) or phaseBusy(boss) then return false end
+        local lionPickup
+        if short(info.pair.execution)=='GA_Hun_BEx_HouHouHou_01_C' then
+            local enabled
+            if options.hunPoleHead then enabled=options.hunPoleHead(executor) end
+            if enabled==false then return false end
+            lionPickup=options.lionPickup and options.lionPickup(executor,boss)
+            if enabled==true and not lionPickup then return false end
+        end
         local unit=units[U.key(boss)]
         if unit and not adopted then unit.state='done' end
         self.started=self.started+1
@@ -1192,8 +1201,6 @@ local function closeOneGrab(pose,why,restore)
         say(string.format('开始（%s）目标=%s HP=%s 底线=%s 执行方=%s 距离=%.1fm 技能对=%s / %s 来源=%s；%s',reason,className(boss),fmt(hp),fmt(floor),
             className(executor),(d or 0)/100,short(info.pair.execution),short(info.pair.executed),info.pair.source,turned))
         local wantPlayback=info.timing.dynamic or (adopted and not info.timing.mash and info.timing.montage~=nil)
-        local lionPickup=short(info.pair.execution)=='GA_Hun_BEx_HouHouHou_01_C'
-            and options.lionPickup and options.lionPickup(executor,boss)
         local body,why
         local direct=not wantPlayback and directBody(executor,info.timing) or nil
         if direct then say('同骨架，直接用本体（不借身体，不算失败）：'..direct)
@@ -1339,6 +1346,10 @@ local function closeOneGrab(pose,why,restore)
         elseif keep then
             self.failures=self.failures+1
             kill=#run.info.locks>0 and '没有处决起来，保留锁血' or '没有处决起来'
+        elseif hp and hp>0 and options.immune and options.immune(boss,'lethal') then
+            kill='魂的方案免疫强制致死，生命读回 '..fmt(hp)
+            local unit=units[U.key(boss)]
+            if unit and not run.adopted then unit.state=run.info.hunPair and 'nopair' or 'ready';unit.again=now()+AGAIN end
         elseif hp and hp>0 and run.info.boss and not run.byLock then
             -- A boss may have another phase: it stays, and may be executed again a little later.
             local unit=units[U.key(boss)]
@@ -1453,6 +1464,7 @@ local function closeOneGrab(pose,why,restore)
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     local function tryExecute(target,unit,t,team)
+        if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) then return false end
         if options.onPole and options.onPole(target) then return false end
         local hp=read(target,'Health')
@@ -1474,7 +1486,7 @@ local function closeOneGrab(pose,why,restore)
         end
         local executor,d,denied
         if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob)end
-        if executor then start(executor,target,selected,d,reason);return true end
+        if executor then return start(executor,target,selected,d,reason)~=false end
         -- A denied finisher cannot leave a minion immortal at its final death floor.
         if denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
             local floor,max=read(target,'Health_Min'),read(target,'Health_Max')
@@ -1497,27 +1509,36 @@ local function closeOneGrab(pose,why,restore)
     -- 1-4: a target with no pair of its own, and a Hun body the nearest enemy that could execute it. The Hun weapon's
     -- generic pairs are taken only when the target's mesh skeleton is the skeleton of the pair's executed montage;
     -- each target is checked once and the result logged.
-    local function hunPairFor(target,unit)
-        if unit.hunChoice~=nil then return unit.hunChoice or nil end
-        unit.hunChoice=false
+    local function hunPairFor(target,unit,executor)
+        local config=options.hunWeapon and options.hunWeapon(executor)
         local skeleton=meshSkeleton(target)
-        for _,entry in ipairs(hunPairs)do
-            local victim=object(entry.victim)
-            local wanted=victim and U.field(victim,'Skeleton')
-            local adopt=skeleton~=nil and U.valid(wanted) and U.key(wanted)==U.key(skeleton)
-            local execution,executed
-            if adopt then execution,executed=object(entry.execution),object(entry.executed);adopt=execution~=nil and executed~=nil end
-            say(string.format('魂武器处决对 目标=%s 目标骨架=%s 受害方骨架=%s（%s） 技能对=%s 采用=%s',className(target),skeleton and short(skeleton) or '读不到',
-                U.valid(wanted) and short(wanted) or '读不到',entry.victim_skeleton,entry.execution:match('%.([^%.]+)$'),tostring(adopt)))
-            if adopt then
-                unit.hunChoice={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,
-                    pair={execution=execution,executed=executed,source='魂武器通用处决对（目标没有自己的处决对）',type='Execution.Type.Combat'}}
-                break
+        local key=U.key(skeleton)
+        if not key then return end
+        if unit.hunConfig~=config or unit.hunSkeleton~=key then
+            unit.hunConfig,unit.hunSkeleton,unit.hunCandidates=config,key,{}
+            local pairsForWeapon=config and require('hun_weapon_execution_data').forConfig(config) or nil
+            for _,entry in ipairs(config and (pairsForWeapon or {}) or hunPairs)do
+                local victim=object(entry.victim)
+                local wanted=victim and U.field(victim,'Skeleton')
+                local adopt=skeleton~=nil and U.valid(wanted) and U.key(wanted)==U.key(skeleton)
+                local execution,executed
+                if adopt then execution,executed=object(entry.execution),object(entry.executed);adopt=execution~=nil and executed~=nil end
+                say(string.format('魂武器处决对 目标=%s 目标骨架=%s 受害方骨架=%s（%s） 技能对=%s 采用=%s',className(target),skeleton and short(skeleton) or '读不到',
+                    U.valid(wanted) and short(wanted) or '读不到',entry.victim_skeleton,entry.execution:match('%.([^%.]+)$'),tostring(adopt)))
+                if adopt then
+                    unit.hunCandidates[#unit.hunCandidates+1]={rule=entry,info={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,
+                        pair={execution=execution,executed=executed,source='魂武器通用处决对（目标没有自己的处决对）',type='Execution.Type.Combat'}}}
+                end
             end
         end
-        return unit.hunChoice or nil
+        for _,pair in ipairs(unit.hunCandidates)do
+            local rule=pair.rule
+            if tagsMatch(executor,rule.executor_required,true) and tagsMatch(executor,rule.executor_ignored,false)
+                and tagsMatch(target,rule.target_required,true) and tagsMatch(target,rule.target_ignored,false) then return pair.info end
+        end
     end
     local function tryHunPair(target,unit,t,team)
+        if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) or (options.onPole and options.onPole(target)) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
@@ -1528,7 +1549,7 @@ local function closeOneGrab(pose,why,restore)
         if not reason then return false end
         local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,isHun)
         if not executor then return false end
-        local info=hunPairFor(target,unit)
+        local info=hunPairFor(target,unit,executor)
         if not info then return false end
         start(executor,target,info,d,reason..'，魂武器处决对')
         return true
@@ -1696,7 +1717,7 @@ local function closeOneGrab(pose,why,restore)
                     end
                 end
                 if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
-                if hunHere and unit.state=='nopair' and unit.hunChoice~=false and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
+                if hunHere and unit.state=='nopair' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
                     and not member.stand and tryHunPair(target,unit,t,member.team) then return end
             end
         end

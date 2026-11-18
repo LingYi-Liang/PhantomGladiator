@@ -11,8 +11,8 @@ local function fixture()
         session=function()return {game_session=h.world,game_ready=h.ready}end,state=function()return h.state end,
         begin=function()h.began=h.began+1;h.state.battle_active=true;return {ok=true}end,
         pending=function(enabled,blue,red)h.pending={enabled,blue,red}end,
-        spawn=function(path,team,n)
-            h.calls[#h.calls+1]={path=path,team=team,count=n,time=h.now}
+        spawn=function(path,team,n,profile)
+            h.calls[#h.calls+1]={path=path,team=team,count=n,time=h.now,profile=profile}
             h.state[team..'_count']=(h.state[team..'_count'] or 0)+n
             return {ok=not h.failSpawn,uncertain=h.failSpawn,spawned_count=n,message='spawn verified'}
         end}
@@ -66,6 +66,18 @@ do
     assert(#h.calls==0 and h.began==0,'existing combatants are the first wave and are not re-prepared')
     h.state.red_count=0;h.failSpawn=true;h.tick(5)
     assert(#h.calls==1 and #h.q.jobs==0 and not h.q.relayStarted,'uncertain generation cancels the remainder, never retries')
+end
+do
+    local h=fixture();h.mode('SINGLE')
+    local first={revision=12,resources={medicine_count=2}}
+    assert(h.q:enqueue('Hun','blue',2,h.q:epoch(),first).ok)
+    first.revision=13;first.resources.medicine_count=9
+    assert(h.q:enqueue('Hun','red',1,h.q:epoch(),first).ok)
+    assert(h.q:startRelay().ok);h.tick(6)
+    assert(h.calls[1].profile.revision==12 and h.calls[2].profile.revision==13)
+    h.state.blue_count=0;h.tick(6)
+    assert(#h.calls==3 and h.calls[3].profile.resources.medicine_count==2 and h.calls[3].count==1)
+    h.q:cancel('stop');h.tick(2);assert(#h.calls==3)
 end
 print('relay_queue: PASS (saved interval, single and mixed team waves, unreadable health, survivor preservation, late reserves, scene cancellation and failure)')
 
