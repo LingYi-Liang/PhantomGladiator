@@ -403,6 +403,10 @@ function Arena.new(options)
         local ok,value=invoke('actionBusy',unit.actor)
         return not ok or value~=false
     end
+    local function may_maintain(unit,revision)
+        return battleActive and not busy and rosterRevision==revision and fighting(unit)
+            and not unit.phaseHeld and not phase_busy(unit) and not action_busy(unit)
+    end
     local function resume_intent(unit)
         if not unit.intentWaiting then return true end
         local revision=rosterRevision
@@ -551,10 +555,12 @@ function Arena.new(options)
     -- After a perception event of a fighting unit (combat_lock.lua), on the next game-thread tick.
     function instance:holdSensed(key)
         if not battleActive or busy or not key then return false end
+        local revision=rosterRevision
         for _,unit in ipairs(units)do
-            if unit.key==key and (unit.team=='blue' or unit.team=='red') and not unit.aid and not stand(unit) and not dormant(unit) and alive_readback(unit)==true then
-                if phase_busy(unit) or unit.phaseHeld then return false end
-                hold_target(unit,'感知更新后');release_lock(unit);return true
+            if unit.key==key and (unit.team=='blue' or unit.team=='red') and not unit.aid and may_maintain(unit,revision) then
+                hold_target(unit,'感知更新后')
+                if not may_maintain(unit,revision) then return false end
+                release_lock(unit);return true
             end
         end
         return false
@@ -659,6 +665,7 @@ function Arena.new(options)
                 end
             elseif options.maintainTarget and(scan or resumed)then
                 invoke('maintainTarget',unit.actor,unit.assignedTarget)
+                if not scan and not may_maintain(unit,revision) then goto continueCombat end
             elseif scan and options.inCombat and options.engage and not action_busy(unit)then
                 local okState,combat,stateName=invoke('inCombat',unit.actor)
                 if okState and combat==false then
@@ -677,8 +684,9 @@ function Arena.new(options)
             if not battleActive or busy or revision~=rosterRevision then return end
             local heldKey=targetable(unit_by_key(unit.assignedKey)) and unit.assignedKey or false
             if scan or unit.heldTargetKey~=heldKey then
+                if not may_maintain(unit,revision) then goto continueCombat end
                 hold_target(unit,'定时检查');unit.heldTargetKey=heldKey
-                if not fighting(unit) then goto continueCombat end
+                if not may_maintain(unit,revision) then goto continueCombat end
             end
             if not battleActive or busy or revision~=rosterRevision then return end
             release_lock(unit)

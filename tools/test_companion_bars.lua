@@ -113,3 +113,12 @@ do
     a.hp=0;probe:sync(list);assert(#calls==0,'death cleanup cannot hide a widget rebound to somebody else')
 end
 print('companion_bars: PASS (own bar created and bound, health readback, re-shown, rebuilt/native reset recovery, fallen hidden, fallback init, foreign binding gate)')
+do
+    local red=makeActor('ArenaHun',true)
+    local roster={{actor=red,team='red',class_path='/Game/ArenaHun.ArenaHun_C'}}
+    local arenaBars=Bars.new({hp=function()return 40 end,maxHP=function()return 80 end,arenaBar=function(unit)return unit.actor==red end})
+    arenaBars:sync(roster)
+    assert(red.hpbar.widget.SelfActor==red and red.hpbar.widget.hpbar.CurPercent==.5)
+    assert(arenaBars:status().companions==0 and arenaBars:status().shown==0,'an arena bar must not inflate companion counts')
+    print('PASS an opted-in arena body gets its native overhead HP without joining the companion roster')
+end

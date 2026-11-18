@@ -1,6 +1,6 @@
 -- Runtime references from DT_ShaqiWeaponData, the weapon input bindings and their ability timelines.
 -- Each table row keeps its identity even when two rows share a native weapon configuration.
-local data={items={},moves={},summons={},variants={}}
+local data={items={},moves={},summons={},variants={},kinds={}}
 do
     local item={id="shadow_armament_1d74bab7b7aeecfa", label="巨凶斧", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe", soul="", category=0}
     item.effects={
@@ -11,6 +11,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/BrutalAxe/GA_BrutalAxe_Sprint.GA_BrutalAxe_Sprint_C", duration=8, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.BrutalAxe.Sprinting", priority=-5, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.Dash", "CharacterState.WeaponUpgrade.BrutalAxe.RunCharge"}, excludes={"CharacterState.AbilityState.BrutalAxe.CanCombo"}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/BrutalAxe/GA_BrutalAxe_Sprint.GA_BrutalAxe_Sprint_C", duration=8, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.BrutalAxe.Sprinting", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.Native.Attitude.Sprinting", "CharacterState.WeaponUpgrade.BrutalAxe.RunCharge"}, excludes={"CharacterState.AbilityState.BrutalAxe.CanCombo"}},
@@ -32,6 +33,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow.Weapon_UnnamedBow"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow.Weapon_UnnamedBow"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow_DeflectCounter.GA_UnnamedBow_DeflectCounter_C", duration=4.166667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.Bow.DeflectCounter", priority=-5, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.AbilityState.ShachiBow.PerfectDodge"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow_Dash.GA_UnnamedBow_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.Bow.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.WeaponUpgrade.Bow.Dash_LR"}, excludes={}},
@@ -39,6 +41,7 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow_Dash.GA_UnnamedBow_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.Bow.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.Bow.Dash", "CharacterState.WeaponUpgrade.Bow.Dash_LR"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow_Dash.GA_UnnamedBow_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.Bow.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.Bow.Dash_LR"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow_Dash.GA_UnnamedBow_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.Bow.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.Bow.DeflectCounter", "CharacterState.WeaponUpgrade.Bow.Dash_LR"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/UnnamedBow/GA_UnnamedBow.GA_UnnamedBow_C", duration=4.389311, cost=1, ongoing=0, radius=450, release="OnRelease_248DF536488D39C7A1E0B6984801C51E", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_c0e36b1dcba78251", label="追命锁镰", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook", soul="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Evolution.Weapon_ShachiHook_Evolution", category=2}
@@ -51,6 +54,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook"]="Martial"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_HookMove.GA_Hun_ShachiHook_HookMove_C", duration=1, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.HookMove", priority=-4, needs={"CharacterState.Space.Ground", "CharacterState.Native.Attitude.Sprinting", "CharacterState.WeaponUpgrade.ShachiHook.HookMove", "CharacterState.AbilityState.Stance.HoldingStanceKey"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_HookMove.GA_Hun_ShachiHook_HookMove_C", duration=1, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.HookMove", priority=-4, needs={"CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.ShachiHook.HookMove", "CharacterState.AbilityState.Stance.HoldingStanceKey"}, excludes={}},
@@ -65,6 +69,7 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_CDD.GA_Hun_ShachiHook_CDD_C", duration=4.9, cost=1, ongoing=0, radius=800, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.CDD", priority=3, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.ShachiAbility.ShachiHook.CD", "Ability.Action.ShaqiReinforced"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_C.GA_Hun_ShachiHook_C_C", duration=2.8, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.C", priority=3, needs={"Ability.Action.Hun.ShachiAbility.ShachiHook.Drag", "CharacterState.Space.Ground"}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Evolution.Weapon_ShachiHook_Evolution"]="Martial"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Evolution.Weapon_ShachiHook_Evolution"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_HookMove.GA_Hun_ShachiHook_HookMove_C", duration=1, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.HookMove", priority=-4, needs={"CharacterState.Space.Ground", "CharacterState.Native.Attitude.Sprinting", "CharacterState.WeaponUpgrade.ShachiHook.HookMove", "CharacterState.AbilityState.Stance.HoldingStanceKey"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ShachiHook/GA_Hun_ShachiHook_HookMove.GA_Hun_ShachiHook_HookMove_C", duration=1, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.ShachiHook.HookMove", priority=-4, needs={"CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.ShachiHook.HookMove", "CharacterState.AbilityState.Stance.HoldingStanceKey"}, excludes={}},
@@ -90,6 +95,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao.Weapon_MiaoShouFeiDao"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao.Weapon_MiaoShouFeiDao"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_DB.GA_MiaoShouFeiDao_DB_C", duration=3.5, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.DB", priority=-3, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.MiaoShouFeiDao.Dash_B"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_Normal_01.GA_MiaoShouFeiDao_Normal_01_C", duration=3.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Common_01", priority=-3, needs={"CharacterState.Space.Ground"}, excludes={}},
@@ -98,6 +104,7 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Wea
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_Normal_03.GA_MiaoShouFeiDao_Normal_03_C", duration=3.133333, cost=0, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Common_03", priority=-3, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Escape.01"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_Normal_01.GA_MiaoShouFeiDao_Normal_01_C", duration=3.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Common_01", priority=-3, needs={"CharacterState.Space.Ground"}, excludes={"Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Common_03", "Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Escape.03", "Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Escape.02"}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao_Evlotion.Weapon_MiaoShouFeiDao_Evlotion"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao_Evlotion.Weapon_MiaoShouFeiDao_Evlotion"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_DB.GA_MiaoShouFeiDao_DB_C", duration=3.5, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.DB", priority=-3, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.MiaoShouFeiDao.Dash_B"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MiaoShouFeiDao/GA_MiaoShouFeiDao_Normal_01.GA_MiaoShouFeiDao_Normal_01_C", duration=3.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.MiaoShouFeiDao.Common_01", priority=-3, needs={"CharacterState.Space.Ground"}, excludes={}},
@@ -117,6 +124,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TieKuangQuanTao/Weapon_TieKuangQuanTao.Weapon_TieKuangQuanTao"]="Martial"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TieKuangQuanTao/Weapon_TieKuangQuanTao.Weapon_TieKuangQuanTao"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TieKuangQuanTao/NewCharge/GA_TieKuangQuanTao_Charge_A.GA_TieKuangQuanTao_Charge_A_C", duration=2.9, cost=1, ongoing=0, radius=750, tag="Ability.Action.Hun.ShachiAbility.TieKuangQuanTao.Combo.C", priority=-4, needs={"CharacterState.Space.Ground"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TieKuangQuanTao/NewCharge/GA_TieKuangQuanTao_Charge_AA.GA_TieKuangQuanTao_Charge_AA_C", duration=3.533333, cost=0, ongoing=0, radius=750, tag="Ability.Action.Hun.ShachiAbility.TieKuangQuanTao.Combo.CC", priority=-4, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.ShachiAbility.TieKuangQuanTao.Combo.C", "Ability.Action.ShaqiReinforced"}, excludes={}},
@@ -134,8 +142,10 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun.Weapon_ZhuoBiDun"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun.Weapon_ZhuoBiDun"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ZhuoBiDun/GA_ZhuoBiDun_Slide.GA_ZhuoBiDun_Slide_C", duration=5.733333, cost=1, ongoing=0, radius=1200, tag="Ability.Action.Hun.ShachiAbility.ZhuoBiDun.Slide", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.ZhuoBiDun.Slide"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ZhuoBiDun/GA_ZhuoBiDun.GA_ZhuoBiDun_C", duration=2.38, cost=1, ongoing=0, radius=450, release="OnRelease_9CB1F7354C0D554154356E8B715153D4", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_9ba8b4321a9befbb", label="苦叶寺珠串", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan.Weapon_KuYeSiZhuChuan", soul="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan_Evolution.Weapon_KuYeSiZhuChuan_Evolution", category=4}
@@ -143,12 +153,14 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan.Weapon_KuYeSiZhuChuan"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan.Weapon_KuYeSiZhuChuan"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/KuYeSiZhuChuan/GA_KuYeSiZhuChuan_Summon_Passive.GA_KuYeSiZhuChuan_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv1.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv2.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv3.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv3_C"}},
 }
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan.Weapon_KuYeSiZhuChuan"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/KuYeSiZhuChuan/GA_KuYeSiZhuChuan_Normal_01.GA_KuYeSiZhuChuan_Normal_01_C", duration=4.9, cost=2, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan_Evolution.Weapon_KuYeSiZhuChuan_Evolution"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/Weapon_KuYeSiZhuChuan_Evolution.Weapon_KuYeSiZhuChuan_Evolution"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/KuYeSiZhuChuan/GA_KuYeSiZhuChuan_Evolution_Summon_Passive.GA_KuYeSiZhuChuan_Evolution_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv1.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv2.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/KuYeSiZhuChuan/UpgradeData/GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv3.GE_ShachiWeapon_KuYeSiZhuChuan_MoreAction_Lv3_C"}},
 }
@@ -165,12 +177,14 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/Weapon_CaoOuSiXian.Weapon_CaoOuSiXian"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/Weapon_CaoOuSiXian.Weapon_CaoOuSiXian"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/CaoOuSiXian/GA_CaoOuSiXian_Summon_Passive.GA_CaoOuSiXian_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv1.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv2.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_UpgradeShachiAttack.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_UpgradeShachiAttack_C"}},
 }
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/Weapon_CaoOuSiXian.Weapon_CaoOuSiXian"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/CaoOuSiXian/GA_CaoOuSiXian_Normal_01.GA_CaoOuSiXian_Normal_01_C", duration=5.133333, cost=2, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/Weapon_CaoOuSiXian_Evolution.Weapon_CaoOuSiXian_Evolution"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/Weapon_CaoOuSiXian_Evolution.Weapon_CaoOuSiXian_Evolution"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/CaoOuSiXian/GA_CaoOuSiXian_Evolution_Summon_Passive.GA_CaoOuSiXian_Evolution_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv1.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv2.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/CaoOuSiXian/UpgradeData/GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_UpgradeShachiAttack.GE_ShachiWeapon_CaoOuSiXian_MoreAction_Lv3_UpgradeShachiAttack_C"}},
 }
@@ -188,6 +202,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.Weapon_Lute"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.Weapon_Lute"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.Lute.Dash_LR"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.Lute.Dash_LR"}, excludes={}},
@@ -195,7 +210,9 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.W
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_AA.GA_Hun_Lute_AA_C", duration=3.716667, cost=0, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.AA", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.Default", "CharacterState.Space.Ground", "Ability.Action.ShaqiReinforced"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_AAA.GA_Hun_Lute_AAA_C", duration=4.916667, cost=0, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.AAA", priority=-5, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.ShachiAbility.PiPa.AA", "Ability.Action.ShaqiReinforced"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.PiPa.Dash", "CharacterState.WeaponUpgrade.Lute.Dash_LR", "CharacterState.Space.Ground"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_A.GA_Hun_Lute_A_C", duration=3.866667, cost=1, ongoing=0, radius=800, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute_Evolution.Weapon_Lute_Evolution"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute_Evolution.Weapon_Lute_Evolution"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.Lute.Dash_LR"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.Lute.Dash_LR"}, excludes={}},
@@ -203,6 +220,7 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute_E
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_AA.GA_Hun_Lute_AA_C", duration=3.716667, cost=0, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.AA", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.Default", "CharacterState.Space.Ground", "Ability.Action.ShaqiReinforced"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_AAA.GA_Hun_Lute_AAA_C", duration=4.916667, cost=0, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.AAA", priority=-5, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.ShachiAbility.PiPa.AA", "Ability.Action.ShaqiReinforced"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Lute_Dash.GA_Lute_Dash_C", duration=3.763333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.PiPa.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.PiPa.Dash", "CharacterState.WeaponUpgrade.Lute.Dash_LR", "CharacterState.Space.Ground"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/Lute/GA_Hun_Lute_A.GA_Hun_Lute_A_C", duration=3.866667, cost=1, ongoing=0, radius=800, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_4e436bd4383181a4", label="火流星", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuoLiuXing/Weapon_HuoLiuXing.Weapon_HuoLiuXing", soul="", category=2}
@@ -214,6 +232,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuoLiuXing/Weapon_HuoLiuXing.Weapon_HuoLiuXing"]="Martial"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuoLiuXing/Weapon_HuoLiuXing.Weapon_HuoLiuXing"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuoLiuXing/GA_Hun_HuoLiuXing_DB.GA_Hun_HuoLiuXing_DB_C", duration=3.533333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.HuoLiuXing.DB", priority=4, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.HuoLiuXing.DB"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuoLiuXing/GA_Hun_HuoLiuXing_A_Short.GA_Hun_HuoLiuXing_A_Short_C", duration=8, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.HuoLiuXing.AShort", priority=3, needs={"CharacterState.Space.Ground", "CharacterState.Native.Attitude.Sprinting"}, excludes={}},
@@ -247,17 +266,21 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead.Weapon_LionHead"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead.Weapon_LionHead"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_Dash.GA_LionHead_Dash_C", duration=4.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.LionHead.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.LionHead.CanDash"}, excludes={"CharacterState.AbilityState.Stance.HoldingStanceKey"}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_DoubleFireBall.GA_LionHead_DoubleFireBall_C", duration=8, cost=1, ongoing=0, radius=1500, tag="Ability.Action.Hun.ShachiAbility.LionHead.DoubleFireBall", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.LionHead.CanDoubleFireBall"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_FireBall.GA_LionHead_FireBall_C", duration=3.95, cost=1, ongoing=0, radius=1500, tag="Ability.Action.Hun.ShachiAbility.LionHead.FireBall", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.LionHead.CanFireBall"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_Dash.GA_LionHead_Dash_C", duration=4.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.LionHead.Dash", priority=-5, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.Dash.Direction.F", "CharacterState.WeaponUpgrade.LionHead.CanDash"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead.GA_LionHead_C", duration=10.52993, cost=1, ongoing=4, radius=450, release="OnRelease_D2352F4240D482F7C66DD0BD76183C2A", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead_Evolution.Weapon_LionHead_Evolution"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead_Evolution.Weapon_LionHead_Evolution"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_Dash.GA_LionHead_Dash_C", duration=4.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.LionHead.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.LionHead.CanDash"}, excludes={"CharacterState.AbilityState.Stance.HoldingStanceKey"}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_DoubleFireBall.GA_LionHead_DoubleFireBall_C", duration=8, cost=1, ongoing=0, radius=1500, tag="Ability.Action.Hun.ShachiAbility.LionHead.DoubleFireBall", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.LionHead.CanDoubleFireBall"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_FireBall.GA_LionHead_FireBall_C", duration=3.95, cost=1, ongoing=0, radius=1500, tag="Ability.Action.Hun.ShachiAbility.LionHead.FireBall", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.LionHead.CanFireBall"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead_Dash.GA_LionHead_Dash_C", duration=4.666667, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.LionHead.Dash", priority=-5, needs={"CharacterState.Space.Ground", "Ability.Action.Hun.Dash.Direction.F", "CharacterState.WeaponUpgrade.LionHead.CanDash"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/LionHead/GA_LionHead.GA_LionHead_C", duration=10.52993, cost=1, ongoing=4, radius=450, release="OnRelease_D2352F4240D482F7C66DD0BD76183C2A", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_5d9da84a7147bae6", label="虚空华扇", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XuKongHuaShan/Weapon_XuKongHuaShan.Weapon_XuKongHuaShan", soul="", category=4}
@@ -268,6 +291,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XuKongHuaShan/Weapon_XuKongHuaShan.Weapon_XuKongHuaShan"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XuKongHuaShan/Weapon_XuKongHuaShan.Weapon_XuKongHuaShan"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XuKongHuaShan/GA_XuKongHuaShan_Skill.GA_XuKongHuaShan_Skill_C", duration=2.6, cost=2, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
@@ -284,6 +308,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua.Weapon_JinGua"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua.Weapon_JinGua"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/JinGua/GA_JinGua_RoAttack.GA_JinGua_RoAttack_C", duration=1.416667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.JinGua.RotateAttack", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.JinGua.Evolution"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/JinGua/GA_JinGua_Normal.GA_JinGua_Normal_C", duration=8.366667, cost=1, ongoing=0, radius=600, release="To Release", tag="Ability.Action.Hun.ShachiAbility.JinGua.Main", priority=-5, needs={"CharacterState.Space.Ground"}, excludes={}},
@@ -297,12 +322,14 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/Weapon_JianKeZhaoJiLing.Weapon_JianKeZhaoJiLing"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/Weapon_JianKeZhaoJiLing.Weapon_JianKeZhaoJiLing"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/JianKeZhaoJiLing/GA_JianKeZhaoJiLing_Summon_Passive.GA_JianKeZhaoJiLing_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv1.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv2.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_UpgradeBreakAttack.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_UpgradeBreakAttack_C"}},
 }
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/Weapon_JianKeZhaoJiLing.Weapon_JianKeZhaoJiLing"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/JianKeZhaoJiLing/GA_JianKeZhaoJiLing_Normal_01.GA_JianKeZhaoJiLing_Normal_01_C", duration=4.333333, cost=2, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/Weapon_JianKeZhaoJiLing_Evolution.Weapon_JianKeZhaoJiLing_Evolution"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/Weapon_JianKeZhaoJiLing_Evolution.Weapon_JianKeZhaoJiLing_Evolution"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/JianKeZhaoJiLing/GA_JianKeZhaoJiLing_Evolution_Summon_Passive.GA_JianKeZhaoJiLing_Evolution_Summon_Passive_C"]={{level=5, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv1.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv1_C"}, {level=15, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv2.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv2_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_C"}, {level=25, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JianKeZhaoJiLing/UpgradeData/GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_UpgradeBreakAttack.GE_ShachiWeapon_JianKeZhaoJiLing_MoreAction_Lv3_UpgradeBreakAttack_C"}},
 }
@@ -322,8 +349,10 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/DuYanBow/Weapon_DuYan_Bow.Weapon_DuYan_Bow"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/DuYanBow/Weapon_DuYan_Bow.Weapon_DuYan_Bow"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/DuYanBow/GA_DuYan_Bow_Laser.GA_DuYan_Bow_Laser_C", duration=5, cost=1, ongoing=0, radius=450, release="OnRelease_93DA54A44E51CBDC9E718FB0D274DDA0", tag="Ability.Action.Hun.ShachiAbility.DuYanBow.Laser", priority=-5, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.DuYanBow.BulletPassThrough", "CharacterState.Space.Ground"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/DuYanBow/GA_DuYan_Bow_Normal.GA_DuYan_Bow_Normal_C", duration=4.389311, cost=1, ongoing=0, radius=450, release="OnRelease_613C82514C82F322FA98A9B9A7C5EC90", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_8f5ff63f9e428bda", label="游龙叉", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha", soul="", category=1}
@@ -338,10 +367,12 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongCha/GA_YouLongCha_Dash.GA_YouLongCha_Dash_C", duration=2.866667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.YouLongCha.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.YouLongCha.Dash_F"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongCha/GA_YouLongCha_Dash.GA_YouLongCha_Dash_C", duration=2.866667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.YouLongCha.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.YouLongCha.Dash_F"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongCha/GA_YouLongCha_Dash.GA_YouLongCha_Dash_C", duration=2.866667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.YouLongCha.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.YouLongCha.Dash", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.YouLongCha.Dash_F"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongCha/GA_YouLongCha_Normal.GA_YouLongCha_Normal_C", duration=4.085379, cost=1, ongoing=0, radius=2000, release="OnRelease_477B35FD43F429386880739A65262F2A", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_b98a5f423e0524be", label="游龙头", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead", soul="", category=3}
@@ -356,8 +387,10 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongHead/GA_YouLongHead_WaterCannon.GA_YouLongHead_WaterCannon_C", duration=7.333333, cost=1, ongoing=4, radius=450, tag="Ability.Action.Hun.ShachiAbility.YouLongTou.WaterCannon", priority=-5, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.YouLongTou.WaterCannon"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/YouLongHead/GA_YouLongHead_Water.GA_YouLongHead_Water_C", duration=7.333333, cost=1, ongoing=1, radius=450, release="OnRelease_20D1E7EC4ACF712F250E6188587C82CE", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_0c6b97092a3901cd", label="黄金火铳", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong", soul="", category=1}
@@ -372,6 +405,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong"]="Ranged"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_DeflectCounter.GA_HuangJinHuoChong_DeflectCounter_C", duration=4.166667, cost=1, ongoing=0, radius=300, tag="Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.DeflectCounter", priority=-5, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.HuangJinHuoChong.DeflectCounter"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_Dash.GA_HuangJinHuoChong_Dash_C", duration=3.933333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.HuangJinHuoChong.DashLR"}, excludes={}},
@@ -380,6 +414,7 @@ data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/W
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_DeflectCounter.GA_HuangJinHuoChong_DeflectCounter_C", duration=4.166667, cost=1, ongoing=0, radius=300, tag="Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.DeflectCounter", priority=-5, needs={"CharacterState.Deflect.Stance", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.HuangJinHuoChong.DeflectCounter"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_Dash.GA_HuangJinHuoChong_Dash_C", duration=3.933333, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.Dash", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.DeflectCounter", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.HuangJinHuoChong.DashLR"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_Normal_04.GA_HuangJinHuoChong_Normal_04_C", duration=3.933333, cost=0, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.HuangJinHuoChong.Common_02", priority=-5, needs={"Ability.Action.Hun.ShachiAbility.Default", "CharacterState.Space.Ground", "Ability.Action.ShaqiReinforced"}, excludes={}},
+    {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/HuangJinHuoChong/GA_HuangJinHuoChong_Normal_02.GA_HuangJinHuoChong_Normal_02_C", duration=3.933333, cost=1, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
 do
     local item={id="shadow_armament_2f483fc9624c455d", label="墨血无痕", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Mojian/Weapon_Mojian.Weapon_Mojian", soul="", category=2}
@@ -391,6 +426,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Mojian/Weapon_Mojian.Weapon_Mojian"]="Martial"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Mojian/Weapon_Mojian.Weapon_Mojian"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MoJian/GA_Hun_Mojian_AAA.GA_Hun_Mojian_AAA_C", duration=5.4, cost=0, ongoing=0, radius=1000, tag="Ability.Action.Hun.ShachiAbility.MoJi.AAA", priority=-3, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Mojian.HasProjectile", "CharacterState.WeaponUpgrade.MoJian.FreeStrike"}, excludes={"CharacterState.WeaponUpgrade.MoJian.Evolution"}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/MoJian/GA_Hun_Mojian_AAA.GA_Hun_Mojian_AAA_C", duration=5.4, cost=0, ongoing=0, radius=1000, tag="Ability.Action.Hun.ShachiAbility.MoJi.AAA", priority=-3, needs={"CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.MoJian.FreeStrike", "CharacterState.WeaponUpgrade.MoJian.Evolution", "CharacterState.AbilityState.Mojian.ProjectileFull"}, excludes={}},
@@ -422,6 +458,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TanLang/Weapon_TanLang.Weapon_TanLang"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TanLang/Weapon_TanLang.Weapon_TanLang"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TanLang/GA_TanLang_SpeicalAttack.GA_TanLang_SpeicalAttack_C", duration=4.566667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.TanLang.SpecialAttack", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.TanLang.SpecialAttack"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TanLang/GA_TanLang_SpeicalAttack.GA_TanLang_SpeicalAttack_C", duration=4.566667, cost=1, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.TanLang.SpecialAttack", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.TanLang.SpecialAttack"}, excludes={"Ability.Action.Hun.ShachiAbility.TanLang.Normal"}},
@@ -442,6 +479,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi.Weapon_XueDiZi"]="Magic"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi.Weapon_XueDiZi"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XueDiZi/GA_XueDiZi_EvolutionAttack.GA_XueDiZi_EvolutionAttack_C", duration=7.266667, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.XueDiZi.EvolutionAttack", priority=-5, needs={"CharacterState.Space.Ground", "CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.WeaponUpgrade.XueDiZi.Evolution"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XueDiZi/GA_XueDiZi_A.GA_XueDiZi_A_C", duration=2.6, cost=1, ongoing=0, radius=900, tag="Ability.Action.Hun.ShachiAbility.XueDiZi.A", priority=-5, needs={"CharacterState.Space.Ground"}, excludes={}},
@@ -463,6 +501,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ThunderSpear/Weapon_ThunderSpear.Weapon_ThunderSpear"]="ThunderSpear"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ThunderSpear/Weapon_ThunderSpear.Weapon_ThunderSpear"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ThunderSpear/GA_ThunderSpear_Dash.GA_ThunderSpear_Dash_C", duration=5.966667, cost=1, ongoing=0, radius=2600, tag="Ability.Action.Hun.ShachiAbility.ThunderSpear.Dash", priority=-5, needs={"Ability.Action.Hun.Dash.Direction.F", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.ThunderSpear.DashAtk"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/ThunderSpear/GA_ThunderSpear_Dash.GA_ThunderSpear_Dash_C", duration=5.966667, cost=1, ongoing=0, radius=2600, tag="Ability.Action.Hun.ShachiAbility.ThunderSpear.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.ThunderSpear.DashAtk"}, excludes={}},
@@ -480,12 +519,14 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/Weapon_XueSeLingDang.Weapon_XueSeLingDang"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/Weapon_XueSeLingDang.Weapon_XueSeLingDang"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XueSeLingDang/GA_XueSeLingDang_Summon_Passive.GA_XueSeLingDang_Summon_Passive_C"]={{level=10, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv1.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv1_C"}, {level=20, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv2.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv2_C"}, {level=30, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv3.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv3_C"}},
 }
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/Weapon_XueSeLingDang.Weapon_XueSeLingDang"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XueSeLingDang/GA_XueSeLingDang_Normal_01.GA_XueSeLingDang_Normal_01_C", duration=2.952383, cost=2, ongoing=0, radius=600, tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/Weapon_XueSeLingDang_Evolution.Weapon_XueSeLingDang_Evolution"]="Summon"
 data.summons["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/Weapon_XueSeLingDang_Evolution.Weapon_XueSeLingDang_Evolution"]={
     ["/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/XueSeLingDang/GA_XueSeLingDang_Evolution_Summon_Passive.GA_XueSeLingDang_Evolution_Summon_Passive_C"]={{level=10, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv1.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv1_C"}, {level=20, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv2.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv2_C"}, {level=30, path="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueSeLingDang/UpgradeData/GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv3.GE_ShachiWeapon_XueSeLingDang_MoreAction_Lv3_C"}},
 }
@@ -509,6 +550,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon.Weapon_TigerCannon"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon.Weapon_TigerCannon"]={
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TigerCannon/GA_TigerCannon_Ultimate.GA_TigerCannon_Ultimate_C", duration=5.333333, cost=2, ongoing=0, radius=450, tag="Ability.Action.Hun.ShachiAbility.TigerCannon.Ultimate", priority=-5, needs={"CharacterState.AbilityState.Stance.HoldingStanceKey", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.TigerCannon.Evolution"}, excludes={}},
     {cls="/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/TigerCannon/GA_TigerCannon_Dash.GA_TigerCannon_Dash_C", duration=4.55, cost=1, ongoing=0, radius=4000, tag="Ability.Action.Hun.ShachiAbility.TigerCannon.Dash", priority=-5, needs={"CharacterState.Native.Attitude.Sprinting", "CharacterState.Space.Ground", "CharacterState.WeaponUpgrade.TigerCannon.CanDash"}, excludes={}},
@@ -533,6 +575,7 @@ do
     }
     data.items[#data.items+1]=item
 end
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/NiTouChe/Weapon_NiTouChe.Weapon_NiTouChe"]="Strength"
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/NiTouChe/Weapon_NiTouChe.Weapon_NiTouChe"]={
     {cls="/Game/Test/HorseTest/GA_HorseCart_Charge.GA_HorseCart_Charge_C", duration=3.2, cost=0, ongoing=1, radius=450, release="OnRelease_0C514AC44E7865959DB3EEAB8118EECB", tag="Ability.Action.Hun.ShachiAbility.Default", priority=-5, needs={}, excludes={}},
 }
@@ -554,28 +597,41 @@ do
 end
 data.variants[#data.variants+1]={id="resource_armament_75d3919bb80b6e2c", label="巨凶斧", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe_Interact.Weapon_BrutalAxe_Interact", soul="", category=0, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe_Interact.Weapon_BrutalAxe_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe_Interact.Weapon_BrutalAxe_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/BrutalAxe/Weapon_BrutalAxe.Weapon_BrutalAxe"]
 data.variants[#data.variants+1]={id="resource_armament_d95589c47bd31342", label="催心琵琶", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HanBingPiPa/Weapon_HanBingPiPa_Interact.Weapon_HanBingPiPa_Interact", soul="", category=3, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.Weapon_Lute", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HanBingPiPa/Weapon_HanBingPiPa_Interact.Weapon_HanBingPiPa_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.Weapon_Lute"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HanBingPiPa/Weapon_HanBingPiPa_Interact.Weapon_HanBingPiPa_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/Lute/Weapon_Lute.Weapon_Lute"]
 data.variants[#data.variants+1]={id="resource_armament_7bfb887618f7bcec", label="黄金火铳", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong_Interact.Weapon_HuangJinHuoChong_Interact", soul="", category=1, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong_Interact.Weapon_HuangJinHuoChong_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong_Interact.Weapon_HuangJinHuoChong_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/HuangJinHuoChong/Weapon_HuangJinHuoChong.Weapon_HuangJinHuoChong"]
 data.variants[#data.variants+1]={id="resource_armament_a6736c735628442a", label="长柄金瓜", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua_Interact.Weapon_JinGua_Interact", soul="", category=0, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua.Weapon_JinGua", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua_Interact.Weapon_JinGua_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua.Weapon_JinGua"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua_Interact.Weapon_JinGua_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/JinGua/Weapon_JinGua.Weapon_JinGua"]
 data.variants[#data.variants+1]={id="resource_armament_9f6bde8e8f2fb631", label="烈焰狮头", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead_Interact.Weapon_LionHead_Interact", soul="", category=3, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead.Weapon_LionHead", displayDiff=true, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead_Interact.Weapon_LionHead_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead.Weapon_LionHead"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead_Interact.Weapon_LionHead_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/LionHead/Weapon_LionHead.Weapon_LionHead"]
 data.variants[#data.variants+1]={id="resource_armament_8b836264d8afcf9c", label="妙手飞刀", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao_Interact.Weapon_MiaoShouFeiDao_Interact", soul="", category=1, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao.Weapon_MiaoShouFeiDao", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao_Interact.Weapon_MiaoShouFeiDao_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao.Weapon_MiaoShouFeiDao"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao_Interact.Weapon_MiaoShouFeiDao_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/MiaoShouFeiDao/Weapon_MiaoShouFeiDao.Weapon_MiaoShouFeiDao"]
 data.variants[#data.variants+1]={id="resource_armament_ea837e6156365114", label="追命锁镰", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Interact.Weapon_ShachiHook_Interact", soul="", category=2, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Interact.Weapon_ShachiHook_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook_Interact.Weapon_ShachiHook_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ShachiHook/Weapon_ShachiHook.Weapon_ShachiHook"]
 data.variants[#data.variants+1]={id="resource_armament_9265994781055c83", label="虎炮", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon_Interact.Weapon_TigerCannon_Interact", soul="", category=0, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon.Weapon_TigerCannon", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon_Interact.Weapon_TigerCannon_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon.Weapon_TigerCannon"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon_Interact.Weapon_TigerCannon_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/TigerCannon/Weapon_TigerCannon.Weapon_TigerCannon"]
 data.variants[#data.variants+1]={id="resource_armament_e4f8a0cbf6d4d03d", label="羽弓", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow_Interact.Weapon_UnnamedBow_Interact", soul="", category=1, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow.Weapon_UnnamedBow", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow_Interact.Weapon_UnnamedBow_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow.Weapon_UnnamedBow"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow_Interact.Weapon_UnnamedBow_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/UnnamedBow/Weapon_UnnamedBow.Weapon_UnnamedBow"]
 data.variants[#data.variants+1]={id="resource_armament_f689988c3b5cd2a1", label="血滴子", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi_Interact.Weapon_XueDiZi_Interact", soul="", category=3, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi.Weapon_XueDiZi", displayDiff=true, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi_Interact.Weapon_XueDiZi_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi.Weapon_XueDiZi"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi_Interact.Weapon_XueDiZi_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/XueDiZi/Weapon_XueDiZi.Weapon_XueDiZi"]
 data.variants[#data.variants+1]={id="resource_armament_f11a095f71ce8970", label="游龙叉", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha_Interact.Weapon_YouLongCha_Interact", soul="", category=1, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha_Interact.Weapon_YouLongCha_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha_Interact.Weapon_YouLongCha_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongCha/Weapon_YouLongCha.Weapon_YouLongCha"]
 data.variants[#data.variants+1]={id="resource_armament_9d356d48e627f956", label="游龙头", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead_Interact.Weapon_YouLongHead_Interact", soul="", category=3, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead_Interact.Weapon_YouLongHead_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead_Interact.Weapon_YouLongHead_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/YouLongHead/Weapon_YouLongHead.Weapon_YouLongHead"]
 data.variants[#data.variants+1]={id="resource_armament_74229c813a4521bb", label="拙壁盾", normal="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun_Interact.Weapon_ZhuoBiDun_Interact", soul="", category=3, donor="/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun.Weapon_ZhuoBiDun", displayDiff=false, effects={}}
 data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun_Interact.Weapon_ZhuoBiDun_Interact"]=data.moves["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun.Weapon_ZhuoBiDun"]
+data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun_Interact.Weapon_ZhuoBiDun_Interact"]=data.kinds["/PBZCombatAsset/ActorData/Players/Hun/ShaqiWeapon/ZhuoBiDun/Weapon_ZhuoBiDun.Weapon_ZhuoBiDun"]
 return data

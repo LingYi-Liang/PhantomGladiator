@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-20"
+local BUILD = "v0.40.16-beta-21"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1498,6 +1498,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local prepared,prepareError=pcall(function()companions:prepare(actor,unitPath)end)
             if not prepared then log('[Companion] 准备失败: '..tostring(prepareError)) end
         end
+        if team~='companion' and arenaSupport.hunBody then arenaSupport.hunBody:prepareRole(actor) end
         if arenaSupport.lionStage then
             local called,ready,reason=pcall(function()
                 return arenaSupport.lionStage:prepare(actor,unitPath,GetCurrentWorld(),escort)
@@ -1706,11 +1707,14 @@ end
 bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=GetCurrentWorld,hp=GetHP,maxHP=GetMaxHP,
     codexPath=Config.RuntimePath..'/codex.tsv',log=log,
     extraBossName=function(unit)
+        local hun=arenaSupport.hunBody and arenaSupport.hunBody:teamBarName(unit)
+        if hun then return hun end
         local story=arenaSupport.standaloneStoryUnits
         return story and story:teamBossName(unit.actor)
     end})
 -- Companions show the game's own health bar above their heads, as enemies do (companion_bars.lua).
-local companionBars=Config.ShowCompanionHealthBars and CompanionBars.new({log=log,hp=GetHP,maxHP=GetMaxHP}) or nil
+local companionBars=Config.ShowCompanionHealthBars and CompanionBars.new({log=log,hp=GetHP,maxHP=GetMaxHP,
+    arenaBar=function(unit)return arenaSupport.hunBody and arenaSupport.hunBody:teamBarName(unit)~=nil end}) or nil
 -- One copy of the arena's members and status per support tick: a dozen modules ask for them, and each
 -- call re-checks every unit with the engine (50 units made the support tick take 20-50 ms in v0.37.2).
 -- Outside a tick the arena is asked directly.
@@ -2093,6 +2097,7 @@ function arenaSupport.hunNativeTarget(actor)
 end
 arenaSupport.hunBody=require('hun_body').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
     requireProfile=true,nativeTarget=arenaSupport.hunNativeTarget,
+    keepNeutral=function()return spectator:status().enabled_requested end,
     target=function(actor,team)
         if team=='blue' or team=='red' then return arena:opponentOf(UEObserve.key(actor)) end
         if team=='companion' then return arenaSupport.hunCompanionTarget and arenaSupport.hunCompanionTarget(actor) end

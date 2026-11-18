@@ -27,4 +27,6 @@ busy=false;target=nil;t=5;brain:tick(b);assert(b.intent.phaseId==nil and not sha
 local custom=Growth.values({Attack=10})
 assert(custom.Health_Max==1360 and custom.Shachi_Max==640 and custom.Attack==10 and custom.ShachiAttack==160)
 assert(Growth.values({}).Attack==160 and Growth.values({}).Health_Max_Lv1==850)
+assert(custom.UltimateCharge_Max==100 and custom.UltimateChargeCount_Max==3 and custom.UltimateChargeCount==3)
+assert(Growth.values({UltimateChargeCount_Max=2}).UltimateChargeCount==2 and Growth.values({UltimateChargeCount=0}).UltimateChargeCount==0)
 print('PASS phase priority, isolation, protected actions, target loss, and permanent growth')

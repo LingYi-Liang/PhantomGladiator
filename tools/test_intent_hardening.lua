@@ -162,4 +162,22 @@ for _,callback in ipairs({'maintainTarget','waitForTarget'})do
         assert(stopped and late==0,'a stopped maintenance/wait callback cannot fall through to fallback target writes')
     end)
 end
+for _,event in ipairs({'death','montage','phase'})do
+    test('controller_maintenance_'..event,function()
+        local h=setup()
+        local source=h.f.actors[1]
+        local changed,holds,locks=false,0,0
+        h.f.options.maintainTarget=function(actor)
+            if actor==source then
+                if event=='death' then actor.hp=0 elseif event=='montage' then actor.casting=true else actor.phase=true end
+                changed=true
+            end
+            return true
+        end
+        h.f.options.holdTarget=function(actor)if changed and actor==source then holds=holds+1 end end
+        h.f.options.releaseLock=function(actor)if changed and actor==source then locks=locks+1 end end
+        h.now=1;h.f.arena:tickReinforcements()
+        assert(changed and holds==0 and locks==0,event..' during maintenance: fallback writes='..holds..', lock calls='..locks)
+    end)
+end
 print('intent hardening: PASS '..n..' reentrancy/ownership/performance checks; no game accessed')

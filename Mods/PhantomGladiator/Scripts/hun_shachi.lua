@@ -132,11 +132,7 @@ local function optionsFor(loadout)
         if (choice.path and choice.path~=activePath) or not level or level<1 or level>60 then return end
         local weight=tonumber(choice.weight) or 1
         if weight>0 then
-            local free=false
-            for _,move in ipairs(Data.moves[activePath]) do
-                if move.cost==0 and move.ongoing==0 then free=true;break end
-            end
-            rows[#rows+1]={id=row.id,meta=row,level=level,soul=choice.soul==true,path=activePath,weight=weight,freeMove=free}
+            rows[#rows+1]={id=row.id,meta=row,level=level,soul=choice.soul==true,path=activePath,weight=weight}
         end
     end
     if loadout and loadout.shadows then
@@ -419,10 +415,56 @@ function Shachi.new(o)
         return applyEffects(r,asc,choice)
     end
 
-    local function choose(s,ctx,now,available)
+    -- Evaluate the same static cost adjustments as BP_ShachiAbility_Base. Only the NPC's own ASC is read.
+    local function usableMove(choice,move,available,hasTag,beforeEquip)
+        local cost=move.cost
+        local kind=Data.kinds[choice.path]
+        if kind=='Ranged' and hasTag('CharacterState.Accessory.RangedWeapon') then cost=0
+        elseif kind=='Magic' and hasTag('CharacterState.Accessory.MagicWeapon') then cost=math.max(0,cost-1)
+        elseif kind=='Strength' and hasTag('CharacterState.Accessory.PowerWeapon') then cost=cost+1 end
+        if available+0.001<cost or (move.ongoing>0 and available<=0) then return false end
+        for _,needed in ipairs(move.needs)do
+            if not (beforeEquip and needed:match('^CharacterState%.WeaponUpgrade%.')) and not hasTag(needed) then return false end
+        end
+        for _,excluded in ipairs(move.excludes)do
+            if not (beforeEquip and excluded:match('^CharacterState%.WeaponUpgrade%.')) and hasTag(excluded)~=false then return false end
+        end
+        return true,cost
+    end
+    local function readTags(asc)
+        local tags={}
+        return function(name)
+            if tags[name]==nil then
+                local n=count(asc,name)
+                if type(n)~='number' then return nil end
+                tags[name]=n>0
+            end
+            return tags[name]
+        end
+    end
+    local function reserveCharge(s,ctx,now,available)
+        return available<=math.max(1,(s.cap or 5)/2) and not ctx.opening and not ctx.targetBroken and (ctx.hpRatio or 1)>.25
+            and now<(s.lastPaidAt or -math.huge)+20
+    end
+    local function choose(s,ctx,now,available,hasTag,aic)
         local pool,total={},0
+        local preserve=reserveCharge(s,ctx,now,available)
+        local gates={}
         for _,choice in ipairs(s.choices) do
-            if (s.untilAt[choice.id] or 0)<=now and (available>0 or choice.freeMove) then
+            local usable=false
+            if (s.untilAt[choice.id] or 0)<=now then
+                for _,move in ipairs(Data.moves[choice.path]) do
+                    local ok,cost=usableMove(choice,move,available,hasTag,true)
+                    if ok and not (preserve and cost>0) then
+                        if gates[move.priority]==nil then
+                            local read,allow=call(aic,'CanActivateExternalActionAbility',move.priority)
+                            gates[move.priority]=not read or allow~=false
+                        end
+                        if gates[move.priority] then usable=true;break end
+                    end
+                end
+            end
+            if usable then
                 local kind=choice.meta.category
                 local far=ctx.distance>650
                 local distant=kind==1 or kind==4 or kind==3
@@ -438,20 +480,17 @@ function Shachi.new(o)
         for _,entry in ipairs(pool) do if pick<=entry.upper then return entry.choice end end
         return pool[#pool].choice
     end
-    local function chooseMove(choice,asc,available)
+    local function chooseMove(choice,asc,available,preserve,aic)
         local specs=granted(asc)
-        local cache={}
-        local function tagCount(name)
-            if cache[name]==nil then cache[name]=count(asc,name) or false end
-            return cache[name]
-        end
+        local hasTag=readTags(asc)
         for _,move in ipairs(Data.moves[choice.path]) do
             local spec=specs[move.cls]
-            local allowed=spec and spec.active==0 and (available>0 or move.cost==0 and move.ongoing==0)
-            if allowed then
-                for _,needed in ipairs(move.needs) do local n=tagCount(needed);if not n or n<=0 then allowed=false;break end end
-                for _,excluded in ipairs(move.excludes) do if tagCount(excluded)~=0 then allowed=false;break end end
-                if allowed then return move,spec end
+            if spec and spec.active==0 then
+                local ok,cost=usableMove(choice,move,available,hasTag,false)
+                if ok and not (preserve and cost>0) then
+                    local read,allowed=call(aic,'CanActivateExternalActionAbility',move.priority)
+                    if not read or allowed~=false then return move,spec end
+                end
             end
         end
     end
@@ -489,6 +528,7 @@ function Shachi.new(o)
         local spec=granted(asc)[cast.move.cls]
         local after=attr(r,'SpiritShadow')
         local debitObserved=type(after)=='number' and after<cast.lastResource
+        if debitObserved then s.lastPaidAt=now end
         if debitObserved and s.resources.consume_skill_resources==false then
             local cap=attr(r,'SpiritShadow_Max')
             if cap then write(r,'SpiritShadow',math.min(cap,cast.lastResource));after=attr(r,'SpiritShadow') end
@@ -534,6 +574,7 @@ function Shachi.new(o)
         s.sampleAt=now+1
         if not s.initialRead then
             local cap=attr(r,'SpiritShadow_Max')
+            s.cap=cap
             local amount=attr(r,'SpiritShadow')
             local attributes=r.loadout and r.loadout.attributes or {}
             -- Accessories can raise the cap after the base resource pass. Fill exactly once,
@@ -603,19 +644,25 @@ function Shachi.new(o)
             local ok,clear=call(controller,'LineOfSightTo',ctx.target,{X=0,Y=0,Z=0},false)
             if not ok or clear~=true then return false end
         end
-        local choice=choose(s,ctx,now,available)
-        if not choice then return false end
+        local aic=ownedComponent(r.actor,'Ability Input Component')
+        local choice=choose(s,ctx,now,available,readTags(asc),aic)
+        if not choice then
+            if available<=0 and not s.emptyReported then
+                say(r,'暗源已耗尽，等待原生免费招式窗口或资源恢复')
+                s.emptyReported=true
+            end
+            return false
+        end
+        if available>0 then s.emptyReported=nil end
         if not equipChoice(r,wc,asc,choice,now) then
             local failures=(s.attempts[choice.id] or 0)+1
             s.attempts[choice.id]=failures;s.untilAt[choice.id]=now+math.min(120,5*failures)
             say(r,'影武槽、配置或技能读回失败 '..choice.meta.label)
             return false
         end
-        local move,spec=chooseMove(choice,asc,available)
+        local move,spec=chooseMove(choice,asc,available,reserveCharge(s,ctx,now,available),aic)
         if not move then s.untilAt[choice.id]=now+2;return false end
-        local aic=ownedComponent(r.actor,'Ability Input Component')
-        local got,gate=call(aic,'CanActivateExternalActionAbility',move.priority)
-        if got and gate==false or not current(r) then return false end
+        if not current(r) then return false end
         say(r,'即将使用 '..choice.meta.label..' '..move.tag..' 暗源='..available)
         local ok,response=call(asc,'TryActivateAbility',{Handle=spec.id},false)
         local read=granted(asc)[move.cls]
@@ -623,6 +670,7 @@ function Shachi.new(o)
         local active=read and read.id==spec.id and type(read.active)=='number' and read.active>0
         say(r,'影武启动读回 返回='..tostring(response)..' 活动数='..tostring(read and read.active)..' 暗源='..tostring(after))
         local debited=type(after)=='number' and after<available
+        if debited then s.lastPaidAt=now end
         if not active and not debited and ok and response==false then
             s.untilAt[choice.id]=now+2;return false
         end

@@ -453,6 +453,9 @@ do
     h.mod:tick(members,true);h.mod:tick(members,true);assert(r and defender==r and callback)
     callback()
     assert(r.intent.weapon_id==weapon and shadowTarget==h.other and not r.brainFailed)
+    assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='blue'})=='魂')
+    assert(h.mod:teamBarName({actor=h.other,class_path=Body.path,team='red'})==nil)
+    assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='companion'})==nil)
     h.mod:cancel();assert(callback==nil and not h.mod:owns(h.actor))
     print('PASS a frozen full profile reaches the combat modules and the arena opponent on the scheduled game loop')
 end

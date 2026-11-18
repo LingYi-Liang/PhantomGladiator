@@ -76,4 +76,52 @@ for _,mode in ipairs({'card','stuck'})do
         count=count+1;print('PASS '..mode..' '..change..' during native lookup aborts stale lethal call')
     end
 end
+local function finishedAnimation(kind)
+    local h=make()
+    local mob=kind=='mob'
+    local hp=mob and 300 or 1
+    local target=h.boss('BP_FinisherTarget',hp,mob and 0 or 1,{rank=mob and 'Standard' or 'NormalBoss'})
+    h.identity='FinisherTarget_0';target.GetFullName=function()return h.identity end
+    h.attrs[target].Health_Max=300
+    if mob then h.tags[target]={['CharacterState.CanWeakExecute.Weak']=1} end
+    h.target,h.attempts=target,0
+    h.members={{actor=target,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    h.e=h.new({phaseBusy=function(a)return a==target and h.phase==true end})
+    local original=target.AbilitySystemComponent.BP_ApplyGameplayEffectToSelf
+    target.AbilitySystemComponent.BP_ApplyGameplayEffectToSelf=function(self,...)
+        h.attempts=h.attempts+1
+        if h.apply then original(self,...)end
+    end
+    for _=1,240 do
+        h.run(h.e,.5)
+        if h.e:status().finished>0 then break end
+    end
+    assert(h.e:status().finished==1 and h.attempts==1,'fixture must exercise an actual completed animation')
+    return h
+end
+for _,kind in ipairs({'mob','boss'})do
+    if not arg[2] or arg[2]==kind then
+        local h=finishedAnimation(kind)
+        assert(h.e:status().kills==0,kind..' finished; remaining HP='..h.attrs[h.target].Health..', reported kills='..h.e:status().kills)
+        for i=1,6 do h.clock=h.clock+.1;h.e:tick()end
+        assert(h.attempts==1,'no per-frame finisher retry')
+        h.apply=true;h.run(h.e,3)
+        assert(h.attempts==2 and h.attrs[h.target].Health==0 and h.e:status().kills==1 and h.e:status().started==1)
+        h.run(h.e,3);assert(h.e:status().kills==1 and h.attempts==2,'count confirmation exactly once')
+        count=count+1;print('PASS '..kind..' completed animation waits for confirmed HP and retries without replay')
+    end
+end
+for _,change in ipairs({'stop','heal','new-floor','identity','phase','leave','immortal'}) do
+    local h=finishedAnimation('mob');h.apply=true
+    if change=='stop' then h.e:stop('cleanup')
+    elseif change=='heal' then h.attrs[h.target].Health=400
+    elseif change=='new-floor' then h.attrs[h.target].Health_Min=150
+    elseif change=='identity' then h.identity='OtherActor'
+    elseif change=='phase' then h.phase=true
+    elseif change=='leave' then h.members={}
+    else h.immortal.red=true end
+    h.run(h.e,3)
+    assert(h.attempts==1 and h.e:status().kills==0,change..' must supersede a pending post-animation kill')
+    count=count+1
+end
 print('execution final retry: PASS '..count..' real-entry readback/retry/phase checks; no game accessed')

@@ -14,13 +14,24 @@ end
 function Policy.new(o)
     local self={enabled=false,draws=0};local records,lines,world={},0,nil
     local random=o.random or math.random
+    local retained=0
+    -- Each sampled pair lives only as long as both roster identities do.
+    local function forget(row)
+        for source in pairs(row.decisions)do
+            source.targets[row]=nil;retained=retained-1
+        end
+        for target in pairs(row.targets)do
+            target.decisions[row]=nil;retained=retained-1
+        end
+        row.decisions,row.targets={},{}
+    end
     function self:sync(members,active)
         self.enabled=active and o.configured and o.configured()==true or false
-        if not self.enabled then records={};self.draws=0;return end
+        if not self.enabled then records={};retained=0;self.draws=0;return end
         if o.world then
             local currentWorld=U.key(o.world())
-            if not currentWorld then records={};return end
-            if currentWorld~=world then records={};self.draws=0;world=currentWorld end
+            if not currentWorld then records={};retained=0;return end
+            if currentWorld~=world then records={};retained=0;self.draws=0;world=currentWorld end
         end
         local current={}
         for _,m in ipairs(members)do
@@ -29,11 +40,12 @@ function Policy.new(o)
                 if key then
                     local id=(m.class_path or''):match('([^/%.]+)$');if id then id=id:gsub('_C$','')end
                     local row=records[key]
-                    if not row or row.id~=id then row={id=id,decisions={}}end
+                    if not row or row.id~=id or row.team~=m.team then row={id=id,decisions={},targets={}}end
                     row.actor=m.actor;row.team=m.team;current[key]=row
                 end
             end
         end
+        for key,row in pairs(records)do if current[key]~=row then forget(row) end end
         records=current
     end
     function self:allow(executor,target,isMob)
@@ -42,8 +54,8 @@ function Policy.new(o)
         if not e or not t or e.team==t.team then return false end
         local en,tn=name(executor),name(target)
         if not en or not tn then return false end
-        if e.name~=en then e.name=en;e.boss=nil;e.decisions={}end
-        if t.name~=tn then t.name=tn;t.boss=nil;t.decisions={}end
+        if e.name~=en then forget(e);e.name=en;e.boss=nil end
+        if t.name~=tn then forget(t);t.name=tn;t.boss=nil end
         local setting=e.id and o.rule(e.id)or'on_100'
         if setting=='on_100'then return true end
         if e.boss==nil then e.boss=boss(executor)end
@@ -53,13 +65,14 @@ function Policy.new(o)
         local percent=tonumber(setting:match('^on_(%d+)$'))
         if not percent or percent<0 or percent>100 then return false end
         if percent==0 then return false end
-        local key=U.key(executor);local d=t.decisions[key]
-        if d and d.name==e.name and d.id==e.id and d.setting==setting then return d.allowed end
-        if self.draws>=4096 then return false end
+        local d=t.decisions[e]
+        if d and d.setting==setting then return d.allowed end
+        if not d and retained>=4096 then return false end
         local ok,roll=pcall(random)
         if not ok or type(roll)~='number'or roll~=roll or roll<0 or roll>=1 then return false end
         local allowed=roll*100<percent
-        t.decisions[key]={name=e.name,id=e.id,setting=setting,allowed=allowed};self.draws=self.draws+1
+        if not d then retained=retained+1;e.targets[t]=true end
+        t.decisions[e]={setting=setting,allowed=allowed};self.draws=self.draws+1
         if lines<40 then lines=lines+1;(o.log or function()end)('[ExecutionPolicy] 处决小怪抽签：源='..e.name..'；目标='..t.name..'；概率='..percent..'；读回='..tostring(allowed))end
         return allowed
     end

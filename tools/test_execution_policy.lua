@@ -1,5 +1,5 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
-local Policy=require('execution_policy')
+local Policy=arg[1] and assert(loadfile(arg[1]))() or require('execution_policy')
 local function actor(key,rank)
     local a={key=key,label='Actor '..key,rank=rank}
     function a:IsValid()return not self.dead end
@@ -28,4 +28,14 @@ test('stop and roster departure discard prior decisions',function()local h=fixtu
 test('configuration change is atomic and invalid randomness skips',function()local h=fixture();h.p:allow(h.boss,h.members[2].actor,true);h.setting='off_50';assert(not h.p:allow(h.boss,h.members[2].actor,true));h.setting='on_25';h.p:allow(h.boss,h.members[2].actor,true);assert(h.rolls==2)
     h=fixture();h.p=Policy.new({configured=function()return true end,rule=function()return'on_50'end,random=function()return 0/0 end});h.p:sync(h.members,true);assert(not h.p:allow(h.boss,h.members[2].actor,true))end)
 test('friendly, missing and reserves never gain a custom finisher',function()local h=fixture();h.members[2].team='red';h.p:sync(h.members,true);assert(not h.p:allow(h.boss,h.members[2].actor,true));h.members[2].team='blue';h.members[2].reserve=true;h.p:sync(h.members,true);assert(not h.p:allow(h.boss,h.members[2].actor,true))end)
+test('leaving the fight frees capacity for subsequent waves',function()
+    local h=fixture()
+    local unit,executors=h.members[2],{h.members[1]}
+    for i=1,4097 do
+        unit.actor=actor('mob'..i,'Mob')
+        h.p:sync({executors[1],unit},true)
+        h.p:allow(h.boss,unit.actor,true)
+    end
+    assert(h.rolls==4097,'one active pair at a time, 4097 opportunities, draws='..h.rolls)
+end)
 print('execution policy: PASS '..passed..' fixed-probability/scope/lifecycle checks; no game accessed')

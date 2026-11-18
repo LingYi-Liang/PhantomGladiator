@@ -97,6 +97,29 @@ local function text(v)
     return ok and type(s)=='string'and s or nil
 end
 
+-- Depending on the binding the getter returns an array, an FRuntimeWeaponSlotData, or no Lua value.
+-- RuntimeWeaponData is the component's reflected TMap and contains the same per-slot Weapons array.
+function Weapons.mainSlotCount(wc,tag)
+    local function size(array)
+        array=U.unwrap(array)
+        if U.kind(array)=='TArray' then
+            local ok,n=pcall(function()return array:GetArrayNum()end)
+            if ok and type(n)=='number' and n>=0 then return n end
+        end
+        local list=U.array(array)
+        return list and #list or nil
+    end
+    local _,value=call(wc,'GetSlotWeapons',tag)
+    local count=size(U.struct(value,'Weapons')) or size(value)
+    if count~=nil then return count,'GetSlotWeapons' end
+    local map=U.field(wc,'RuntimeWeaponData')
+    local ok=pcall(function()map:ForEach(function(key,row)
+        if text(U.struct(key,'TagName'))==MAIN then count=size(U.struct(row,'Weapons')) end
+    end)end)
+    if ok and count~=nil then return count,'RuntimeWeaponData' end
+    return nil,'逐槽核对'
+end
+
 function Weapons.new(o)
     local self={off={},streak={},skipped={},bodies=0,statLines=0,announced={}}
     local steps=o.steps or Weapons.STEPS
@@ -133,9 +156,7 @@ function Weapons.new(o)
         return got and type(i)=='number'and i or nil
     end
     local function slotCount(wc)
-        local _,slots=call(wc,'GetSlotWeapons',slotTag())
-        local list=U.array(slots)
-        return list and #list or nil
+        return Weapons.mainSlotCount(wc,slotTag())
     end
     local function slotData(wc,i)
         local out={}
@@ -1144,12 +1165,14 @@ function Weapons.new(o)
         if w.rotation and not w.active or not w.rotation and w.idx~=NEW then return end
         local weapon=currentWeapon(w)
         if w.rotation and weapon and not weapon.temporary and weapon.art and weapon.grab~=weapon.art and
-            target and dist<=RANGE and (tagCount(target,'CharacterState.Stand.Break') or 0)>0 and
-            not (r.intent and r.intent.phaseId) and t>=(w.combatArtAt or 0) then
+            target and dist<=RANGE and not (r.intent and r.intent.phaseId) and t>=(w.combatArtAt or 0) then
             w.combatArtAt=t+4
+            local broken=(tagCount(target,'CharacterState.Stand.Break') or 0)>0
+            local charge,max=stat(actor,'UltimateChargeCount'),stat(actor,'UltimateChargeCount_Max')
             local spec=specOf(actor,weapon.art)
-            if spec and spec.active==0 and type(spec.handle)=='number' and activateArt(r,weapon,spec,target) then
-                say('魂乘破防释放原生战技 '..weapon.label..' '..spec.name)
+            local full=type(charge)=='number' and type(max)=='number' and max>0 and charge>=max
+            if (broken or full) and spec and spec.active==0 and type(spec.handle)=='number' and activateArt(r,weapon,spec,target) then
+                say('魂释放原生战技 '..weapon.label..' '..spec.name..' 原因='..(broken and '敌方破防' or '绝技格已满'))
                 return
             end
         end
@@ -1267,19 +1290,37 @@ function Weapons.new(o)
             if not still(r) then return end
             local rotation=Rotation.new(r)
             if #rotation.pool==0 then return end
+            r.weaponInitPending=true
             r.wep={rotation=rotation,spawned={},stats={},pending={},grabReads={},idx=OWN}
             local aic,wc=precheck(r)
             if not aic then r.wep.skipped=true;return end
-            local idx,count=index(wc,false),slotCount(wc)
-            if idx==nil or idx<0 or idx>1 or not count or count>2 then
-                say('武器池未接入：无法确认魂当前两个主槽 实例='..r.name);return
+            local idx=index(wc,false)
+            local count,via=slotCount(wc)
+            if (idx~=0 and idx~=1) or (count~=nil and (count<=idx or count>2)) then
+                say('武器池未接入：主槽序号='..tostring(idx)..' 数量='..tostring(count)..' 来源='..via..' 实例='..r.name);return
             end
             local original=slotConfig(wc,idx)
             if not original then say('武器池未接入：读不到魂原装配置 实例='..r.name);return end
+            -- In this build GetSlotWeapon's out parameter also works when the bulk getter is opaque.
+            -- Only write the other of slots 0/1, after capturing its prior contents.
+            local other
+            if count~=nil and 1-idx>=count then other={} else other=slotData(wc,1-idx) end
+            local otherValue=other and U.unwrap(other.WeaponConfig)
+            local otherConfig=iface(otherValue)
+            local knownEmpty=other and otherValue==nil
+            if otherValue~=nil and not otherConfig then
+                local ok,inner=pcall(function()return otherValue:GetObject()end)
+                local readable,valid=pcall(function()return otherValue:IsValid()end)
+                knownEmpty=(ok and not U.valid(inner)) or (readable and valid==false)
+            end
+            if not otherConfig and not knownEmpty then
+                say('武器池未接入：备用槽未读回 实例='..r.name);return
+            end
             r.wep.wc,r.wep.idx,r.wep.original=wc,idx,original
-            r.wep.originalIdx=idx;r.wep.originalOther=slotConfig(wc,1-idx)
+            r.wep.originalIdx=idx;r.wep.originalOther=otherConfig
             r.wep.slotted=true
-            say('武器池 实例='..r.name..' 启用='..#rotation.pool..' 后期权重按发放地图组；无记录的武器按目录顺序估计')
+            r.weaponInitPending=false
+            say('武器池 实例='..r.name..' 启用='..#rotation.pool..' 主槽='..idx..' 数量='..tostring(count)..' 来源='..via..' 原武器='..short(original))
             start(r)
             return
         end

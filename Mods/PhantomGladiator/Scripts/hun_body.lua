@@ -25,7 +25,7 @@ local MOTION_CHECKS={[6]=true,[14]=true}
 local PROBE_TAGS={'AI','CharacterType.AI.Boss','CharacterState.Stand.SimpleExe','CharacterState.Space.Ground',
     'CharacterState.CanWeakExecute.Weak','CharacterState.CanWeakExecute.LowHealth','CharacterState.ReadyToDeflect'}
 local PROBE_ATTRIBUTES={'Health','Health_Max','Shachi','Shachi_Max','ShachiRegen','ShachiRegenCooldown','SpiritShadow','SpiritShadow_Max',
-    'Frost_Accumulation','Infliction_Max'}
+    'UltimateCharge','UltimateCharge_Max','UltimateChargeCount','UltimateChargeCount_Max','Frost_Accumulation','Infliction_Max'}
 local MAX_ABILITY_NAMES=40
 local MAIN_SLOT='Weapon.Slot.Main'
 local SAMPLE_MS=100        -- the deflect-frame sampler's period
@@ -148,6 +148,8 @@ function Body.new(o)
         return qteFamilies and root and qteFamilies[root]~=nil or false
     end
     local function owned(r)return records[U.key(r.actor)or'']==r and current(r.actor,r)end
+    local role=require('hun_arena_role').new({current=owned,load=loadClass,find=find,player=o.player,aiOf=o.aiOf,keepNeutral=o.keepNeutral,
+        fname=fname,log=o.log or function()end})
     local function fighting(r)
         if r and (r.team=='neutral' or r.team=='companion') then return U.valid(o.target and o.target(r.actor,r.team)) end
         return battle
@@ -431,15 +433,14 @@ function Body.new(o)
             announced.weapons=true
             say('即将 只读武器组件 GetSlotWeapons/GetCurrentWeaponIndex/GetCurrentChangeWeaponCooldown（本次加载第一次） '..label)
         end
-        local _,slots=call(wc,'GetSlotWeapons',main)
+        local slotCount=Weapons.mainSlotCount(wc,main)
         local _,index=call(wc,'GetCurrentWeaponIndex',main,false)
         local _,cooldown=call(wc,'GetCurrentChangeWeaponCooldown',main)
         local runtime,keys=U.field(wc,'RuntimeWeaponData'),0
         pcall(function()runtime:ForEach(function()keys=keys+1 end)end)
         local unarm=U.array(U.field(wc,'UnarmLayers'))
-        local slotCount=U.array(slots)
         say('组件：'..label..'；CharacterWeaponsComponent 有效='..tostring(U.valid(wc))..' AbilitySystem有效='..tostring(U.valid(U.field(wc,'AbilitySystem')))
-            ..' AbilityInput有效='..tostring(weak(U.field(wc,'AbilityInput'))~=nil)..' 主槽武器数='..(slotCount and #slotCount or'未读回')
+            ..' AbilityInput有效='..tostring(weak(U.field(wc,'AbilityInput'))~=nil)..' 主槽武器数='..tostring(slotCount or'未读回')
             ..' 当前主武器序号='..tostring(index)..' 换武器冷却='..num(cooldown)..' RuntimeWeaponData键数='..keys..' UnarmLayers数='..(unarm and #unarm or'未读回'))
         say('组件：'..label..'；DeflectComponent 存在='..tostring(U.valid(U.field(actor,'Deflect Component'))))
     end
@@ -603,16 +604,15 @@ function Body.new(o)
         end
         r.accessoryHandles=nil
     end
-    local function equip(r)
-        local effects=r.loadout and r.loadout.accessories and r.loadout.effects or{}
+    local function applyEffects(r,effects,category)
         if #effects==0 then return end
         local asc=U.field(r.actor,'AbilitySystemComponent')
-        if not U.valid(asc)then say('饰品效果：实例='..r.name..'；ASC未就绪，没有施加');return end
+        if not U.valid(asc)then say(category..'：实例='..r.name..'；ASC未就绪，没有施加');return end
         if r.loadout.kit then
             local got,owner=call(asc,'GetOwner')
-            if not got or U.key(owner)~=U.key(r.actor) then say('饰品效果：ASC 归属未确认');return end
+            if not got or U.key(owner)~=U.key(r.actor) then say(category..'：ASC 归属未确认');return end
         end
-        r.accessoryHandles={}
+        r.accessoryHandles=r.accessoryHandles or {}
         local applied,unconfirmed=0,{}
         for _,effect in ipairs(effects)do
             if not current(r.actor,r)then unconfirmed[#unconfirmed+1]='实例已变化，停止';break end
@@ -626,7 +626,7 @@ function Body.new(o)
                 if not got or type(before)~='number' then
                     unconfirmed[#unconfirmed+1]=effect.label..'（原层数未读回）'
                 else
-                    say('即将施加饰品 '..effect.label..' 实例='..r.name)
+                    say('即将施加'..category..' '..effect.label..' 实例='..r.name)
                     local sent,handle=call(asc,'BP_ApplyGameplayEffectToSelf',cls,effect.level,{})
                     local again,after=call(asc,'GetGameplayEffectCount',cls,nil,true)
                     if sent and again and type(after)=='number' and after>before then
@@ -644,9 +644,17 @@ function Body.new(o)
                 end
             end
         end
-        say('饰品效果：实例='..r.name..'；方案启用'..#effects..'条；效果层数增加'..applied..'条'
+        say(category..'：实例='..r.name..'；方案启用'..#effects..'条；效果层数增加'..applied..'条'
             ..(#unconfirmed>0 and'；未确认：'..table.concat(unconfirmed,'、',1,math.min(#unconfirmed,12))..(#unconfirmed>12 and' 等'..#unconfirmed..'条'or'')or''))
-        r.equipped=applied
+        return applied
+    end
+    local function equip(r)
+        if r.loadout and r.loadout.kit and tagCount(r.actor,'CharacterState.Talent.EnableNotConsumeBullet')==0 then
+            -- The native armament cost task reads this talent tag and performs its own chance roll.
+            local effect='GE_Talent_EnableNotConsumeBullet'
+            applyEffects(r,{{label='影武暗源节省',level=1,path='/PBZCombatAsset/Prototypes/GameplayEffects/Talent/'..effect..'.'..effect..'_C'}},'天赋效果')
+        end
+        r.equipped=applyEffects(r,r.loadout and r.loadout.accessories and r.loadout.effects or {},'饰品效果')
     end
     local function describe(r)
         local ai=o.aiOf and o.aiOf(r.actor);local controller=U.field(r.actor,'Controller')
@@ -704,6 +712,7 @@ function Body.new(o)
     function self:finished(actor)
         local r=records[U.key(actor)or''];if not r then return true end
         if not current(actor,r)then return false,'魂本体身份或世界已变化'end
+        role:prepare(r)
         local zero,text_=clear(r)
         r.phase,r.checks,r.tags,r.zero='finished',0,text_,zero
         say('出生后标签：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
@@ -714,6 +723,16 @@ function Body.new(o)
         local applied,why=pcall(look.apply,look,r,function()return current(actor,r)end)
         if not applied then say('外观与动画中断：实例='..r.name..' 原因='..tostring(why))end
         return true
+    end
+    function self:prepareRole(actor)
+        local r=records[U.key(actor) or '']
+        if r and current(actor,r) then
+            role:prepare(r)
+            role:excludePlayer(r)
+        end
+    end
+    function self:teamBarName(unit)
+        if unit.class_path==Body.path and (unit.team=='blue' or unit.team=='red') and self:owns(unit.actor) then return '魂' end
     end
     function self:tick(members,battleActive)
         if not self.alive then return end
@@ -767,11 +786,15 @@ function Body.new(o)
                     local wrote=call(r.actor,'SetActorHiddenInGame',false)
                     say('解除隐藏：实例='..r.name..'；SetActorHiddenInGame(false)调用='..tostring(wrote==true)..'；隐藏读回='..tostring(hidden(r.actor)))
                 end
+                if r.checks==1 then self:prepareRole(r.actor)end
                 if r.checks==WEAPON_CHECK and records[key]==r then
                     optional(weapons,'equip',r)
                     if r.loadout and r.loadout.kit then
                         startBrain(r);optional(defense,'start',r)
                     end
+                elseif r.weaponInitPending and (r.checks==4 or r.checks==8) and records[key]==r then
+                    r.wep=nil
+                    optional(weapons,'equip',r)
                 end
                 if r.lookLogged and MOTION_CHECKS[r.checks]then
                     local read,why=pcall(motion,r.actor,'魂（第'..r.checks..'次复查）')
@@ -780,6 +803,13 @@ function Body.new(o)
                 if r.checks==WATCH then
                     say('复查结束：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
                     self.message=zero and'魂标签持续为0；外观和战斗表现以画面为准'or'魂的隐藏或不可仇恨标签没能保持为0，见日志'
+                end
+            end
+            if records[key]==r and (r.team=='blue' or r.team=='red') and r.phase=='observed' and not r.dead then
+                local t=gameNow()
+                if t and t>=(r.roleCheckAt or 0) then
+                    r.roleCheckAt=t+2
+                    role:excludePlayer(r)
                 end
             end
             if records[key]==r and r.team=='neutral' and r.phase=='observed' and not r.dead and o.challenge then
@@ -819,6 +849,7 @@ function Body.new(o)
     end
     function self:status()return {probe_supported=true,full_ready=false,prepared=self.prepared,message=self.message}end
     local function stopKit(r)
+        role:restore(r)
         executionImmunity(r,true)
         optional(grabGuard,'stop',r)
         optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)

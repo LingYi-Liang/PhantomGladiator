@@ -1,3 +1,5 @@
+package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
+if arg[1] then package.loaded.arena_executions=assert(loadfile(arg[1]))()end
 local saved=arg;arg={'fixture'};local make=assert(loadfile('tools/test_arena_executions.lua'))();arg=saved
 local function fixture(setting,rank,hp,floor,count)
     local h=make();local source=h.enemy({X=100,Y=0,Z=0},{class='BP_Source'})
@@ -33,4 +35,20 @@ do
     local dead=0;for _,t in ipairs(h.targets)do if h.attrs[t].Health==0 then dead=dead+1 end end
     assert(plays(h)==0 and dead==1,'final locked minions must be releasable with a one-per-tick native write budget')
 end
-print('boss minion execution: PASS 4 production-entry scope, animation and final-floor checks; no game accessed')
+do
+    local h=fixture('off_50','Mob',1,1)
+    local target=h.targets[1]
+    local asc=target.AbilitySystemComponent
+    local apply=asc.BP_ApplyGameplayEffectToSelf
+    local calls=0
+    function asc:BP_ApplyGameplayEffectToSelf(...)
+        calls=calls+1
+        if calls==2 then return apply(self,...) end
+    end
+    h.e:tick();h.clock=2;h.e:tick()
+    assert(calls==1 and h.attrs[target].Health_Min==0 and h.e:status().kills==0)
+    h.clock=2.1;h.e:tick();assert(calls==1)
+    h.clock=3.1;h.e:tick()
+    assert(calls==2 and h.attrs[target].Health==0 and h.e:status().kills==1,'denied finisher lost its retry after successfully stripping the floor')
+end
+print('boss minion execution: PASS 5 production-entry scope, animation and final-floor checks; no game accessed')

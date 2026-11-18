@@ -25,6 +25,7 @@ def config(path):
     props = load(path.split('.')[-1])['objects'][0]['properties']
     actions = {}
     fallback = []
+    default_actions = []
     for grant in props.get('Equip Abilities',[]):
         cls=source(grant)
         stem=grant[1].rsplit('/',1)[-1]
@@ -42,6 +43,9 @@ def config(path):
                 row['release']=fn['name']
                 break
         for tag in tags: actions[tag]=row
+        common='Ability.Action.Hun.ShachiAbility.Default'
+        if common in default.get('AbilityTags',[]):
+            default_actions.append(dict(row,tag=common,priority=-5,needs=[],excludes=[]))
         if len(props.get('Equip Abilities',[]))==1: fallback.append(dict(row,tag=tags[0],priority=-5,needs=[],excludes=[]))
     moves=[]
     for key,binding in props.get('Weapon Combos',[]):
@@ -54,6 +58,10 @@ def config(path):
                              needs=ent.get('RequiredTags',[]),excludes=ent.get('IgnoredTags',[]))
                     if row not in moves:moves.append(row)
     if not moves: moves=fallback
+    # Special input maps add counters/combos. An explicit default spec also has the base armament input.
+    for row in default_actions:
+        if not any(m['cls']==row['cls'] for m in moves):
+            moves.append(row)
     if not moves: raise ValueError('no usable actions '+path)
     return moves
 
@@ -104,7 +112,7 @@ def run(catalog, table, decoded, output):
     items=[r for r in json.loads(catalog.read_text(encoding='utf-8'))['items'] if r['kind']=='shadow_armament']
     out=['-- Runtime references from DT_ShaqiWeaponData, the weapon input bindings and their ability timelines.',
          '-- Each table row keeps its identity even when two rows share a native weapon configuration.',
-         'local data={items={},moves={},summons={},variants={}}']
+         'local data={items={},moves={},summons={},variants={},kinds={}}']
     configs=set()
     for i in items:
         row=rows[i['row']]
@@ -119,6 +127,9 @@ def run(catalog, table, decoded, output):
         for p in (normal,soul):
             if p and p not in configs:
                 configs.add(p)
+                tags=load(p.split('.')[-1])['objects'][0]['properties']['Weapon Equip Tags']
+                kind,=[t.rsplit('.',1)[-1] for t in tags if t.startswith('Weapon.Type.ShaqiWeapon.Category.')]
+                out.append('data.kinds['+literal(p)+']='+literal(kind))
                 rules=summon_rules(p)
                 if rules:
                     out.append('data.summons['+literal(p)+']={')
@@ -142,6 +153,7 @@ def run(catalog, table, decoded, output):
                  donor=donor['normal_config'],displayDiff=native['Display Data']!=base['Display Data'],effects=[])
         out.append('data.variants[#data.variants+1]='+literal(row))
         out.append('data.moves['+literal(path)+']=data.moves['+literal(donor['normal_config'])+']')
+        out.append('data.kinds['+literal(path)+']=data.kinds['+literal(donor['normal_config'])+']')
 
     output.write_text('\n'.join(out+['return data','']),encoding='utf-8')
 if __name__=='__main__':

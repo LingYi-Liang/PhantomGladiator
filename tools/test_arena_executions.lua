@@ -13,6 +13,7 @@ end
 local function class(name)return object(name)end
 local function actor(className,fields)
     local o=object(className..'_0',fields)
+    o.GetFullName=function()return className..' '..className..'_'..o:GetAddress()end
     o.GetClass=function()return class(className..'_C')end
     return o
 end

@@ -362,6 +362,19 @@ local function armed(profile,body,construct,nativeTarget)
     return h
 end
 
+test('the live component can expose only its runtime slot struct and indexed weapon',function()
+    local h=fixture({profile=true})
+    h.r.loadout={weapons={item('Tang')}}
+    h.wc.GetSlotWeapons=function()return nil end
+    h.wc.RuntimeWeaponData={ForEach=function(_,fn)
+        fn({TagName='Weapon.Slot.Main'},{Weapons=h.wc.slots})
+    end}
+    h.mod:equip(h.r)
+    assert(h.r.wep.slotted and h.r.wep.original==h.wc.slots[1].config,'beta-20 stopped here with current index 0')
+    h:tick(0)
+    assert(h.r.wep.currentId==h.r.loadout.weapons[1].id,'the actual rotation loop must use the validated initial slot')
+end)
+
 test('the whole catalog has native power tiers, a real input chain and matching weapon execution pairs',function()
     local pairsFor=require('hun_weapon_execution_data').forConfig
     local ids,paths={},{}
@@ -581,6 +594,13 @@ test('free combat art settles only its own charge debit and isolates hand feedba
     -- The free policy restores the exact debit while preserving an already funded charge.
     asc_.TryActivateAbility=original
     h:tick(1.6);assert(h.r.intent.performedPhase=='free2' and h.stats.values.UltimateChargeCount==2)
+end)
+test('a fully charged NPC requests an ordinary combat art against an unbroken target and pays once',function()
+    local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
+    local h=armed({weapons={a},resources={consume_skill_resources=true}},{grants={{art,126,{}}}})
+    h.stats.values.UltimateChargeCount=3;h.stats.values.UltimateChargeCount_Max=3
+    h.r.intent={};h:tick(0);h:tick(.6);h:tick(5);h:tick(10)
+    assert(h.stats.values.UltimateChargeCount==2 and h:logged('原因=绝技格已满')==1)
 end)
 test('a weapon and its opponent must each target the intended actor before a forced grab',function()
     local a=item('Tang')

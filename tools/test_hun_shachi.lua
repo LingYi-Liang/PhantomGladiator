@@ -165,6 +165,15 @@ check('native failed activation, empty owned resource, user-owned custom resourc
     h.refuseAction=true;assert(not h:tick(0) and h.casts==0 and h.attrs.SpiritShadow==2 and h.attrs.ShachiRegen==0.5)
     h=fixture();h.r.loadout.attributes={SpiritShadow=0};assert(not h:tick(0) and h.casts==0 and h.attrs.SpiritShadow==0)
 end)
+check('zero ammo does not equip unreachable followups and native free ranged openers remain usable',function()
+    local h=fixture(Data.items[3])
+    h.r.loadout.attributes={SpiritShadow=0}
+    for t=0,60 do h:tick(t)end
+    assert(h.sets==0,'zero resource with no combo window must never swap slots or construct chains')
+    h=fixture(Data.items[2]);h.r.loadout.attributes={SpiritShadow=0}
+    h.tags={['CharacterState.Space.Ground']=1,['CharacterState.Accessory.RangedWeapon']=1}
+    assert(h:tick(0) and h.casts==1 and h.attrs.SpiritShadow==0,'native zero-cost ranged opener should reach the ASC')
+end)
 check('free skill setting refunds its own cast and instant cast',function()
     for _,instant in ipairs({false,true}) do
         local h=fixture();h.r.loadout.resources.consume_skill_resources=false;h.instant=instant

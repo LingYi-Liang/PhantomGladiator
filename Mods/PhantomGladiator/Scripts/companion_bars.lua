@@ -117,9 +117,10 @@ function Bars.new(options)
     function self:sync(members)
         local seen,count,shown={},0,0
         for _,unit in ipairs(members or {})do
-            local key=unit.team=='companion' and not unit.summoner and U.key(unit.actor)
+            local companion=unit.team=='companion'
+            local key=not unit.summoner and (companion or options.arenaBar and options.arenaBar(unit)) and U.key(unit.actor)
             if key and not seen[key] then
-                seen[key]=true;count=count+1
+                seen[key]=true;if companion then count=count+1 end
                 local record=self.records[key]
                 if not record then
                     record={path=tostring((unit.class_path or ''):match('([^/%.]+)_C$') or unit.class_path or key)}
@@ -134,7 +135,7 @@ function Bars.new(options)
                     local ratio=hp and maximum and maximum>0 and math.max(0,math.min(1,hp/maximum)) or nil
                     local ok,err=pcall(show,record,unit.actor,ratio)
                     if not ok then self.failures=self.failures+1;say('显示出错 unit='..record.path..' error='..tostring(err))end
-                    if record.shown then shown=shown+1 end
+                    if companion and record.shown then shown=shown+1 end
                 end
             end
         end
