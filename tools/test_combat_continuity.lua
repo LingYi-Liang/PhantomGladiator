@@ -18,6 +18,11 @@ local function fixture()
         local a=obj(label,h.world);a.hp=100;a.boss=boss;a.tags={};a.casting=false
         local asc=obj('ASC',a);function asc:GetGameplayTagCount(t)if h.unreadTags then error('unreadable')end;return a.tags[t.TagName]or 0 end
         a.AbilitySystemComponent=asc
+        function asc:HasAnyMatchingGameplayTags(container)
+            if h.unreadTags then error('unreadable')end
+            for _,t in ipairs(container.GameplayTags)do if (a.tags[t.TagName] or 0)>0 then return true end end
+            return false
+        end
         local mesh=obj('Mesh',a);local anim=obj('Anim',a)
         function mesh:GetAnimInstance()return anim end;function anim:IsAnyMontagePlaying()return a.casting end;a.Mesh=mesh
         local pc=obj('Controller',h.world);local brain=obj('Brain',pc);brain.paused=false;pc.Pawn=a;brain.AIOwner=pc

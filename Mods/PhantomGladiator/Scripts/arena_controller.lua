@@ -414,6 +414,11 @@ function Arena.new(options)
         local ok,value=invoke('actionBusy',unit.actor)
         return not ok or value~=false
     end
+    local function keep_opponent(unit,fresh)
+        if not options.keepOpponent or not unit then return false end
+        local ok,keep=invoke('keepOpponent',unit.actor,fresh)
+        return ok and keep==true and fighting(unit)
+    end
     local function may_maintain(unit,revision)
         return battleActive and not busy and rosterRevision==revision and fighting(unit)
             and not unit.phaseHeld and not phase_busy(unit) and not action_busy(unit)
@@ -443,9 +448,12 @@ function Arena.new(options)
         local revision=rosterRevision
         local started,locked=battleActive,busy
         if not fighting(unit) or not targetable(target) then return false end
+        local previous=unit_by_key(unit.assignedKey)
+        if previous~=target and keep_opponent(previous,true) then return false end
         if action_busy(unit)then unit.attackPending=true;return false end
         if not resume_intent(unit)then return false end
         if battleActive~=started or busy~=locked or revision~=rosterRevision or not fighting(unit)or not targetable(target)or action_busy(unit)then return false end
+        if keep_opponent(target,true) or (previous~=target and keep_opponent(previous,true)) then return false end
         local called,verified=invoke('forceAttack',unit.actor,target.actor)
         if revision~=rosterRevision then return false end
         local confirmed=called and verified==true
@@ -453,6 +461,7 @@ function Arena.new(options)
             unit.assignedTarget,unit.assignedKey=target.actor,target.key or actor_key(target.actor)
             unit.attackPending,unit.attackRetryAt,unit.attackFailures=nil,nil,nil
             unit.rejectedPeers=nil
+            unit.protectedPair=nil
             if options.onAssigned then invoke('onAssigned',unit.actor,target.actor) end
         else
             unit.attackPending=true
@@ -503,6 +512,11 @@ function Arena.new(options)
                 if phase_busy(unit) or unit.phaseHeld then return false end
                 if stand(unit) or dormant(unit) or alive_readback(unit)~=true then return false end
                 local target=unit_by_key(unit.assignedKey)
+                if keep_opponent(unit,true) then return false end
+                if keep_opponent(target,true) then
+                    unit.protectedPair=target
+                    return wait_for_target(unit,target,current_time(),true)
+                end
                 if target and fighting(target)and untargetable(target)then return wait_for_target(unit,target,current_time(),true)end
                 if not targetable(target)or action_busy(unit)or not resume_intent(unit)then return false end
                 if options.maintainTarget then
@@ -595,6 +609,7 @@ function Arena.new(options)
         local revision=rosterRevision
         for _,unit in ipairs(units)do
             if unit.key==key and (unit.team=='blue' or unit.team=='red') and not unit.aid and may_maintain(unit,revision) then
+                if keep_opponent(unit) or keep_opponent(unit_by_key(unit.assignedKey)) then return false end
                 hold_target(unit,'感知更新后')
                 if not may_maintain(unit,revision) then return false end
                 release_lock(unit);return true
@@ -690,8 +705,31 @@ function Arena.new(options)
         for _,unit in ipairs(active) do
           if not battleActive or busy or revision~=rosterRevision then return end
           if fighting(unit) and not phase_busy(unit) then
+            local original=unit_by_key(unit.assignedKey)
+            if keep_opponent(unit) then
+                unit.protectedPair=original
+                goto continueCombat
+            end
+            if keep_opponent(original) then
+                unit.protectedPair=original
+                wait_for_target(unit,original,now)
+                goto continueCombat
+            end
             if unit.phaseHeld then
                 unit.phaseHeld=nil;unit.attackPending=true;unit.attackRetryAt=nil;unit.attackFailures=nil;unit.heldTargetKey=nil
+            end
+            if unit.protectedPair then
+                if original and original==unit.protectedPair and targetable(original) then
+                    if action_busy(unit) or not resume_intent(unit) then goto continueCombat end
+                    if not may_maintain(unit,revision) or not targetable(original) then goto continueCombat end
+                    local read,bound=invoke('engagedWith',unit.actor,original.actor)
+                    if not may_maintain(unit,revision) or not targetable(original) then goto continueCombat end
+                    if read and bound==true then
+                        unit.protectedPair,unit.attackPending,unit.attackRetryAt,unit.attackFailures=nil,nil,nil,nil
+                    elseif now>=(unit.attackRetryAt or 0) then assign_target(unit,original,now) end
+                    goto continueCombat
+                end
+                unit.protectedPair=nil
             end
             -- The game's fall safety can hold a unit in the air with combat blocked (options.unstick, main.lua).
             if scan and options.unstick and not action_busy(unit)then

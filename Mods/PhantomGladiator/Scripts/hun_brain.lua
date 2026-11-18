@@ -59,19 +59,20 @@ function Brain.new(o)
         end
         intent.phaseId,intent.weapon_id=phase and phase.id,phase and phase.weapon_id
         local locked=active(o.tag,r.actor,BUSY) or (intent.busyUntil or 0)>t
+        local pairProtected=o.pairProtected and o.pairProtected(r,target)
         local opening=(o.tag(target,'CharacterState.Stand.Break') or 0)>0
         local ctx={target=target,now=t,distance=o.distance(r.actor,target),hpRatio=ratio,
             busy=locked,opening=opening,targetBroken=opening,underThreat=(intent.incomingUntil or -1)>=t,allowAction=not locked,allowShadow=not locked}
-        ctx.busy=ctx.busy or r.shadowBusy==true
+        ctx.busy=ctx.busy or r.shadowBusy==true or pairProtected==true
         local supplyBusy=o.supply:tick(r,ctx)==true
         r.supplyBusy=supplyBusy
         ctx.busy=locked or supplyBusy
         -- Give the requested weapon first choice. A cooling-down or unavailable art must not starve other actions.
-        ctx.allowAction=not ctx.busy and (not phase or t-(r.phaseRequestedAt or t)>2)
+        ctx.allowAction=not ctx.busy and not pairProtected and (not phase or t-(r.phaseRequestedAt or t)>2)
         ctx.allowShadow=ctx.allowAction
         local shadowBusy=o.shadows:tick(r,ctx)==true
         r.shadowBusy=shadowBusy
-        intent.busy=ctx.busy or shadowBusy
+        intent.busy=ctx.busy or shadowBusy or pairProtected==true
     end
     return self
 end

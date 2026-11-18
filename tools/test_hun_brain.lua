@@ -4,7 +4,9 @@ local Growth=require('hun_growth')
 local t,hp,target,busy,casting=0,25,{},false,false
 local supplyCalls,shadowCalls={},{}
 local threat={}
+local protectedFoe,seenTarget=nil,nil
 local brain=Brain.new({now=function()return t end,hp=function()return hp end,target=function()return target end,
+    pairProtected=function(_,foe)seenTarget=foe;return foe==protectedFoe end,
     stat=function(_,field)assert(field=='Health_Max');return 100 end,distance=function()return 450 end,
     tag=function(_,field)return field=='Ability.Executed' and busy and 1 or 0 end,log=function()end,
     supply={tick=function(_,r,ctx)supplyCalls[r]=ctx.busy;return false end},
@@ -26,6 +28,8 @@ a.shadowState={running={hold={},released=false}};a.intent.incomingUntil=3.04;t=3
 brain:tick(a);assert(not threat[a]);a.shadowState=nil
 t=3.5;brain:tick(a);assert(supplyCalls[a],'medicine waits until the shadow action ends')
 casting=false;busy=true;t=4;brain:tick(a);assert(a.intent.busy and not shadowCalls[a])
+busy=false;protectedFoe=target;t=4.3;brain:tick(a);assert(seenTarget==target and a.intent.busy and not shadowCalls[a])
+protectedFoe=nil;t=4.6;brain:tick(a);assert(seenTarget==target and not a.intent.busy and shadowCalls[a])
 busy=false;target=nil;t=5;brain:tick(b);assert(b.intent.phaseId==nil and not shadowCalls[b])
 local custom=Growth.values({Attack=10})
 assert(custom.Health_Max==1360 and custom.Shachi_Max==640 and custom.Attack==10 and custom.ShachiAttack==160)

@@ -165,7 +165,7 @@ function Body.new(o)
         return battle
     end
     local weapons=o.weapons or Weapons.new({log=o.log,find=find,load=loadClass,fname=fname,clock=o.now or clock,loop=o.loop,cancel=o.cancel,
-        stats=getStats,hp=o.hp,battle=fighting,opponents=opponents,nativeTarget=o.nativeTarget,
+        stats=getStats,hp=o.hp,battle=fighting,opponents=opponents,nativeTarget=o.nativeTarget,pairProtected=o.pairProtected,
         qteFamily=qteFamily,steps=o.weaponSteps,current=owned})
     local function optional(module,method,...)
         local fn=module and module[method]
@@ -314,7 +314,7 @@ function Body.new(o)
     local grabGuard=o.grabGuard or require('hun_grab_guard').new(kitOptions)
     local supply=o.supply or require('hun_supply').new(kitOptions)
     local shadows=o.shadows or require('hun_shachi').new(kitOptions)
-    local brain=require('hun_brain').new({now=gameNow,tag=tagCount,hp=o.hp,stat=stat,
+    local brain=require('hun_brain').new({now=gameNow,tag=tagCount,hp=o.hp,stat=stat,pairProtected=o.pairProtected,
         log=o.log or function()end,supply=supply,shadows=shadows,distance=o.distance or function()end,
         target=function(r)
             if (r.team=='blue' or r.team=='red') and not battle then return nil end

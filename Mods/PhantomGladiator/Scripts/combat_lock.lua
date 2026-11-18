@@ -24,10 +24,11 @@ local AI='/SGameAI/BP_SGameAIComponent.BP_SGameAIComponent_C:'
 local HATRED='/SGameAI/Tools/Hatred/BP_SGameHatredManagerComponent.BP_SGameHatredManagerComponent_C:'
 Lock.path=AI..'ShouldExitCombatAfterAction'
 Lock.paths={exit=Lock.path,canHate=HATRED..'CheckCanHatredTarget',canBeHated=HATRED..'CheckActorCanBeHatred',
-    transition=AI..'CallTransition',sensed=AI..'OnTargetPerceptionUpdated',sensedInfo=AI..'OnTargetPerceptionInfoUpdated'}
+    transition=AI..'CallTransition',sensed=AI..'OnTargetPerceptionUpdated',sensedInfo=AI..'OnTargetPerceptionInfoUpdated',
+    removed=HATRED..'RemoveActorFromHatredList',cleared=HATRED..'RemoveAllActorsFromHatredList'}
 local ORDER={'exit','canHate','canBeHated','transition','sensed','sensedInfo'}
 local LABEL={exit='留在战斗中',canHate='允许仇恨',canBeHated='允许被仇恨',transition='脱战后拉回',sensed='感知后改回对手',
-    sensedInfo='感知后改回对手(信息)'}
+    sensedInfo='感知后改回对手(信息)',removed='处决或无敌时补回条目',cleared='处决或无敌时整表清除后补回'}
 local UNHOOK_SECONDS,LINES,SUMMARY_SECONDS=10,8,10
 local DROP='AI.Transition.CombatToIdle'
 local DROP_SECONDS=0.5   -- at most one send-back per unit in this time, so a quick re-drop cannot loop
@@ -51,11 +52,15 @@ local function identity(actor)
 end
 
 function Lock.new(options)
+    local order={table.unpack(ORDER)}
+    if options.guard and options.guard.onHatredRemoved then
+        order[#order+1]='removed';order[#order+1]='cleared'
+    end
     local log=options.log or function()end
     local clock=options.clock or os.clock
     local self={alive=true,state='idle',held=0,passed=0,refused=0,message='没有进行中的战斗',counts={},window={}}
     local corpseLines=0
-    for _,name in ipairs(ORDER)do self.counts[name]=0;self.window[name]=0 end
+    for _,name in ipairs(order)do self.counts[name]=0;self.window[name]=0 end
     local hooks={}        -- name -> {pre=, post=} while installed
     local components={}   -- AI component address -> team, for this mod's blue and red units in a fight
     local managers={}     -- hatred manager address -> team
@@ -74,7 +79,7 @@ function Lock.new(options)
     local installAt,installDelay,unhookAt,unhookLines=0,1,0,0
     local installWarnings={}
     local lines,quietSince,summaryAt={},nil,nil
-    for _,name in ipairs(ORDER)do lines[name]=0 end
+    for _,name in ipairs(order)do lines[name]=0 end
     local function say(m)log('[CombatLock] '..m)end
     local function count(name,text)
         self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
@@ -210,9 +215,23 @@ function Lock.new(options)
             return nil
         end
     end
+    for _,name in ipairs({'removed','cleared'}) do
+        callbacks[name]=function(context,arg)
+            if not self.alive or not next(managers) then return end
+            local checked,onThread=pcall(options.inGameThread)
+            if not checked or onThread~=true then return end
+            local component=component_address(context)
+            local unit=component and managers[component] and owners[component]
+            if not unit then return end
+            local removed=name=='removed' and U.unwrap(arg) or nil
+            if name=='removed' and not U.valid(removed) then return end
+            local ok,restored=pcall(options.guard.onHatredRemoved,options.guard,actorObjects[unit],removed)
+            if ok and restored then count(name,function()return objectNames[unit]end) end
+        end
+    end
 
     local function missing_hooks()
-        for _,name in ipairs(ORDER)do if not hooks[name] then return true end end
+        for _,name in ipairs(order)do if not hooks[name] then return true end end
         return false
     end
     local function install()
@@ -225,7 +244,7 @@ function Lock.new(options)
                 return
             end
         end
-        for _,name in ipairs(ORDER)do
+        for _,name in ipairs(order)do
           if not hooks[name] then
             local path=Lock.paths[name]
             local okFind,found=pcall(StaticFindObject,path)
@@ -255,7 +274,7 @@ function Lock.new(options)
             if not ok or value==false then kept[name]=hook end
         end
         local parts={}
-        for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.counts[name] end
+        for _,name in ipairs(order)do parts[#parts+1]=LABEL[name]..'='..self.counts[name] end
         if unhookLines<LINES or not next(kept) then
             unhookLines=unhookLines+1
             say('摘除挂钩（'..reason..'） '..table.concat(parts,' ')..' 其他AI照常='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
@@ -379,7 +398,7 @@ function Lock.new(options)
         if now-summaryAt>=SUMMARY_SECONDS then
             if next(hooks) then
                 local parts={}
-                for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.window[name];self.window[name]=0 end
+                for _,name in ipairs(order)do parts[#parts+1]=LABEL[name]..'='..self.window[name];self.window[name]=0 end
                 if options.guard then parts[#parts+1]='状态与仇恨持续保留累计='..tostring(options.guard.retained) end
                 say(string.format('近 %.0f 秒：%s',now-summaryAt,table.concat(parts,' ')))
             end

@@ -2,8 +2,10 @@
 local U=require('ue_observe')
 local Continuity={}
 local LIB='/Script/SGameAI.Default__SGameAIFunctionLibrary'
-local BLOCKED={'CharacterState.Unselectable','AI.Hatred.CanNotBeHatred','AI.Hatred.IgnoreByNPC','CharacterState.Hitreact.State.Executing'}
-local BUSY={'CharacterState.Hitreact.State.Executing','CharacterState.Unselectable.Force.Perform'}
+local BLOCKED={'CharacterState.Unselectable','AI.Hatred.CanNotBeHatred','AI.Hatred.IgnoreByNPC'}
+local EXECUTION={'CharacterState.Hitreact.State.Executing','Ability.Executed','Ability.Action.Execution'}
+local INVULNERABLE={'CharacterState.Immortal','CharacterState.Stand.Invulnerable'}
+local BUSY={'CharacterState.Unselectable.Force.Perform'}
 local function call(obj,method,...)
     if not U.valid(obj)then return false end
     local args={...};local ok,v=pcall(function()return obj[method](obj,table.unpack(args))end)
@@ -23,6 +25,7 @@ function Continuity.new(options)
     local owned,leases,samples={},{},{}
     local serial,epoch=0,0
     local tagNames,engageAfter={},{}
+    local executionContainer,batchSupported=nil,true
     local messages,lines={},{}
     local function log(key,text)
         local kind=key:match('^[^:]+')or key
@@ -59,6 +62,23 @@ function Continuity.new(options)
         if unknown then return nil end
         return false
     end
+    local function executionTags(actor)
+        if batchSupported then
+            local asc=U.field(actor,'AbilitySystemComponent')
+            if not U.valid(asc)then return nil end
+            if not executionContainer then
+                executionContainer={GameplayTags={},ParentTags={}}
+                for _,t in ipairs(EXECUTION) do
+                    tagNames[t]=tagNames[t] or FName(t)
+                    table.insert(executionContainer.GameplayTags,{TagName=tagNames[t]})
+                end
+            end
+            local ok,value=call(asc,'HasAnyMatchingGameplayTags',executionContainer)
+            if ok and type(value)=='boolean' then return value end
+            batchSupported=false
+        end
+        return counts(actor,EXECUTION)
+    end
     local function state(ai)return tag(U.field(ai,'CurrentStateTag'))end
     local function idle(s)return s=='AI.State.Idle'or s=='AI.State.Search'or s and(s:find('^AI.State.Idle%.')or s:find('^AI.State.Search%.'))~=nil end
     function self:beginTick(members,active)
@@ -77,21 +97,39 @@ function Continuity.new(options)
             if not owned[key]and not r.owns then leases[key]=nil end
         end
     end
-    function self:protected(actor,fresh)
+    local function protection(actor,fresh)
         if not U.valid(actor)then return nil end
         local key=U.key(actor);local known=key and samples[key]
-        if not fresh and known and known.name==name(actor)then return known.blocked end
+        if options.executionParticipant and options.executionParticipant(actor) then return true,true end
+        if not fresh and known and known.name==name(actor)then return known.blocked,known.keep end
+        local executing=executionTags(actor)
+        if fresh and executing~=true then executing=counts(actor,EXECUTION) end
         local value=counts(actor,BLOCKED)
         local hm=options.hatredOf and options.hatredOf(actor)
         if U.valid(hm)and U.field(hm,'CanBeHatredNow')==false then value=true end
+        local keep=executing==true or (value==true and counts(actor,INVULNERABLE)==true)
+        if keep and not executing and options.stageUntargetable and options.stageUntargetable(actor) then keep=false end
+        if executing==true then value=true end
         if options.phaseBusy then
             local ok,busy=pcall(options.phaseBusy,actor)
-            if ok and busy==true then value=true elseif not ok then value=nil end
+            if ok and busy==true then value=true;keep=executing==true elseif not ok then value=nil;keep=false end
         end
-        if key then samples[key]={name=name(actor),blocked=value}end
-        return value
+        if key then samples[key]={name=name(actor),blocked=value,keep=keep}end
+        return value,keep
+    end
+    function self:protected(actor,fresh)
+        local blocked=protection(actor,fresh);return blocked
+    end
+    function self:keepOpponent(actor,fresh)
+        local _,keep=protection(actor,fresh);return keep==true
+    end
+    function self:threatProtected(actor,fresh)
+        local blocked,keep=protection(actor,fresh)
+        -- Damage-only immunity can keep a native hatred entry while its owner remains targetable.
+        return keep==true or (blocked==false and counts(actor,INVULNERABLE)==true)
     end
     function self:actionBusy(actor)
+        if (options.executionParticipant and options.executionParticipant(actor)) or executionTags(actor)~=false then return true end
         local blocked=counts(actor,BUSY)
         if blocked~=false then return true end
         local mesh=U.field(actor,'Mesh')

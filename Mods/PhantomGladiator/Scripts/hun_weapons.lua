@@ -1176,6 +1176,7 @@ function Weapons.new(o)
         for _,t_ in ipairs(BUSY)do if(tagCount(actor,t_)or 0)>0 then return end end
         if r.intent and r.intent.busy then return end
         local target,dist=nearest(r,math.max(RANGE,GRAB_RANGE,VICTIM_RANGE))
+        if o.pairProtected and o.pairProtected(r,target) then return end
         if not matchesTarget(actor,target) then return end
         if w.rotation and advanceRotation(r,t,target) then return end
         -- 3-2

@@ -1823,6 +1823,11 @@ local function closeOneGrab(pose,why,restore)
         local key=U.key(actor)
         return key~=nil and active~=nil and U.key(active.executor)==key
     end
+    function self:participant(actor)
+        if not active then return false end
+        local key=U.key(actor)
+        return key~=nil and (key==U.key(active.executor) or key==U.key(active.boss))
+    end
     function self:status()
         return {enabled=self.enabled,active=active~=nil,started=self.started,finished=self.finished,failures=self.failures,
             kills=self.kills,message=self.message}

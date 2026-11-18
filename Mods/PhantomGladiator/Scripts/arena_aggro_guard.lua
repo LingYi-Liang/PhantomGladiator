@@ -43,8 +43,9 @@ local function entry(map,key)
     if ok then return result end
 end
 function Guard.new(o)
-    local self={retained=0,unverified=0}
+    local self={retained=0,unverified=0,repaired=0}
     local records,retry={},{}
+    local repairAfter={}
     local now=o.clock or os.clock
     local flags={}
     local idle,combat
@@ -100,6 +101,27 @@ function Guard.new(o)
         return U.valid(ai) and same(U.field(ai,'Pawn'),actor) and
             same(U.field(ai,'AbilitySystemComponent'),U.field(actor,'AbilitySystemComponent'))
     end
+    local function keep(actor,fresh)
+        return o.keepOpponent and o.keepOpponent(actor,fresh)==true
+    end
+    -- Native protection can explicitly remove a living target from the attacker's list.
+    -- Only the already assigned pair may be restored here, without sending a combat action.
+    function self:onHatredRemoved(actor,removed)
+        if not o.repairHatred then return false end
+        local target=o.opponent(actor)
+        if not U.valid(target) or (removed~=nil and not same(target,removed)) then return false end
+        local window=o.threatProtected or keep
+        if not window(target,true) and not window(actor,true) then return false end
+        local k=U.key(actor)
+        if not k or (repairAfter[k] or -1)>now() or o.hates(actor,target)~=false then return false end
+        repairAfter[k]=now()+.5
+        local ok=o.repairHatred(actor,target)==true and o.hates(actor,target)==true
+        if ok then
+            repairAfter[k]=nil;self.repaired=self.repaired+1
+            say('keptPair','处决或无敌期间已补回原生仇恨 '..tostring(name(actor))..' -> '..tostring(name(target)))
+        end
+        return ok
+    end
     function self:arm(actor,target)
         local k=U.key(actor)
         if not k or not U.valid(target) or same(actor,target) then return end
@@ -116,7 +138,7 @@ function Guard.new(o)
         end
         if (retry[k] or -1)>now() then return end
         retry[k]=now()+1
-        if not attributed(ai,actor) or U.field(ai,'bAIStarted')~=true or o.protected(actor,true)~=false then return end
+        if not attributed(ai,actor) or U.field(ai,'bAIStarted')~=true or (o.protected(actor,true)~=false and not keep(actor)) then return end
         if tagName(U.field(ai,'CurrentStateTag'))~=COMBAT or tagName(U.field(ai,'DesiredStateTag'))~=COMBAT then return end
         if not tags() or o.hates(actor,target)~=true then return end
         local asc=U.field(ai,'AbilitySystemComponent')
@@ -142,7 +164,7 @@ function Guard.new(o)
         local r=records[U.key(actor) or '']
         if not r or not r.verified or r.removing or not same(ai,r.ai) or not matches(r) then return false end
         local target=o.opponent(actor)
-        if not U.valid(target) or o.protected(actor,true)~=false then remove(r);return false end
+        if not U.valid(target) or (o.protected(actor,true)~=false and not keep(actor)) then remove(r);return false end
         if not attributed(ai,actor) or U.field(ai,'bAIStarted')~=true or
             tagName(U.field(ai,'CurrentStateTag'))~=COMBAT or tagName(U.field(ai,'DesiredStateTag'))~=IDLE then return false end
         local gate=entry(U.field(ai,'StateBlockMap'),idle)
@@ -155,7 +177,7 @@ function Guard.new(o)
         if tagName(U.field(ai,'DesiredStateTag'))~=COMBAT then
             self.unverified=self.unverified+1;remove(r);return false
         end
-        if not kept or o.hates(actor,target)~=true then return false end
+        if not kept or o.hates(actor,target)~=true then return self:onHatredRemoved(actor,target) end
         self.retained=self.retained+1
         say('retained','脱战请求已拦住 原生状态=Combat 原对手仇恨=true '..r.actorName)
         return true
@@ -202,14 +224,17 @@ function Guard.new(o)
         recover()
         if not active then
             if next(records) then self:stop() end
-            retry={};return
+            repairAfter={};retry={};return
         end
         local seen={}
         for _,m in ipairs(members)do
             if (m.team=='red' or m.team=='blue') and not m.aid and not m.stand and not m.reserve then
                 local actor=m.actor;local k=U.key(actor)
                 local target=k and o.opponent(actor)
-                if U.valid(target) and o.protected(actor)==false then
+                if U.valid(target) and (o.protected(actor)==false or keep(actor)) then
+                    if o.repairHatred and (keep(actor) or keep(target)) and o.hates(actor,target)==false then
+                        self:onHatredRemoved(actor,target)
+                    end
                     seen[k]=true;self:arm(actor,target)
                     local r=records[k]
                     if r and r.verified and tagName(U.field(r.ai,'DesiredStateTag'))==IDLE then self:onDrop(actor,r.ai) end
@@ -218,11 +243,12 @@ function Guard.new(o)
         end
         for k,r in pairs(records)do if not seen[k] then remove(r) end end
         for k in pairs(retry)do if not seen[k] then retry[k]=nil end end
+        for k in pairs(repairAfter)do if not seen[k] then repairAfter[k]=nil end end
     end
     function self:stop()
         local ok=true
         for _,r in pairs(records)do if not remove(r) then ok=false end end
-        retry={};return ok
+        retry={};repairAfter={};return ok
     end
     function self:silence(onGameThread)
         if onGameThread then self:stop() end

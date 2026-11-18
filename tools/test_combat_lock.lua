@@ -121,6 +121,20 @@ do
     assert(#h.dropped==1,'unverified retention keeps existing recovery')
     h.fighting=false;lock:tick();assert(not guard.active);lock:silence('test')
 end
+do
+    local h=harness();local calls=0;local onThread=true
+    local a,_,manager=h.unit('blue');local b=h.unit('red')
+    local guard={sync=function()end,onHatredRemoved=function(_,actor,removed)
+        assert(actor==a and (removed==nil or removed==b));calls=calls+1;return true
+    end}
+    local lock=h.new({guard=guard,inGameThread=function()return onThread end})
+    h.fighting=true;lock:tick()
+    h.call('removed',manager,b);h.call('cleared',manager)
+    h.call('removed',object('map manager'),b);h.call('removed',manager,nil)
+    onThread=false;h.call('removed',manager,b);assert(calls==2)
+    onThread=true;h.fighting=false;lock:tick();h.call('cleared',manager);assert(calls==2)
+    lock:silence('test')
+end
 -- A unit that leaves the field is no longer answered for.
 do
     local h=harness()

@@ -77,6 +77,35 @@ for i=1,144 do
 end
 assert(old.clears==144 and old.recalls==144)
 print('PASS negative control: 144 exits cleared hatred before the recovery callback')
+do
+    local f=fixture();local boss=f:add('red');local others={}
+    local previousFName=FName;FName=function(n)return n end
+    local status=require('combat_continuity').new({hp=function(a)return a.hp end})
+    f.o.keepOpponent=function(a,fresh)return status:keepOpponent(a,fresh)end
+    f.o.protected=function(a,fresh)return status:protected(a,fresh)end
+    f.o.threatProtected=function(a,fresh)return status:threatProtected(a,fresh)end
+    f.o.repairHatred=function(a,b)assert(b==f.known[a]);a.foe=b;return true end
+    for i=1,46 do others[i]=f:add('blue');f:pair(others[i],boss)end
+    f:pair(boss,others[1]);f:add('red') -- A second red opponent remains on the field.
+    f.g:sync(f.roster,true)
+    for _,stage in ipairs({'Ability.Action.Execution','Ability.Executed','CharacterState.Immortal'})do
+        boss.AbilitySystemComponent.tags={[C]=1,[stage]=1,['CharacterState.Unselectable']=1}
+        status:beginTick(f.roster,true)
+        for _,source in ipairs(others)do
+            source.foe=nil -- RemoveActorFromHatredList on each observer.
+            assert(f.g:onHatredRemoved(source,boss) and source.foe==boss)
+            local before=f.clears;f:drop(source);assert(f.clears==before and source.foe==boss)
+        end
+        boss.foe=nil;assert(f.g:onHatredRemoved(boss,nil))
+        f.g:sync(f.roster,true);assert(boss.ai.StateBlockMap.rows[I]==C);f:drop(boss)
+        assert(boss.foe==others[1] and f.recalls==0)
+    end
+    boss.hp=0;f.g:sync(f.roster,true)
+    assert(not f.g:onHatredRemoved(others[1],boss) and others[1].ai.StateBlockMap.rows[I]==nil)
+    assert(f.g.repaired==141 and f.g.retained==141)
+    FName=previousFName
+    print('PASS 46 observers and the protected participant: 141 explicit removals repaired and 141 later idle exits prevented independently')
+end
 
 local function duel()
     local f=fixture();local a,b=f:add('blue'),f:add('red')

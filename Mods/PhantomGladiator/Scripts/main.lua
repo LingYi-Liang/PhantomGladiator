@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-26"
+local BUILD = "v0.40.16-beta-27"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -363,12 +363,7 @@ local function HatredListContains(hm, actor)
     return false
 end
 
-local function AddHatred(attacker, victim)
-    local hm = GetHatredComp(attacker)
-    if not hm or not safeValid(victim) then return false, "对象无效" end
-    local before = HatredListContains(hm, victim)
-    if before == nil then return false, "成员读取失败" end
-    if before then return true, "原本存在" end
+function arenaSupport:rememberHatred(hm,victim)
     -- A record whose objects are gone has nothing left to put back, whoever's unit it was. Kept, it would hold up every
     -- later cleanup and summon: an adopted summon is engaged before the arena registers it as its own.
     battle:remember("hatred:" .. hm:GetAddress() .. ":" .. victim:GetAddress(), function()
@@ -380,6 +375,14 @@ local function AddHatred(attacker, victim)
         local has = HatredListContains(hm, victim)
         return has == false, "成员读回=" .. tostring(has)
     end)
+end
+local function AddHatred(attacker, victim)
+    local hm = GetHatredComp(attacker)
+    if not hm or not safeValid(victim) then return false, "对象无效" end
+    local before = HatredListContains(hm, victim)
+    if before == nil then return false, "成员读取失败" end
+    if before then return true, "原本存在" end
+    arenaSupport:rememberHatred(hm,victim)
     local ok, err = pcall(function() hm:AddActorToHatredList(victim, false) end)
     local has = HatredListContains(hm, victim)
     -- 仅对本Mod创建的两名参赛者保留历史已观察到出招的数组配对路径。
@@ -1491,6 +1494,14 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
     targetProtected=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:protected(actor)end,
+    keepOpponent=function(actor,fresh)return arenaSupport.combatContinuity:keepOpponent(actor,fresh)end,
+    engagedWith=function(actor,target)
+        local state=UEObserve.struct(UEObserve.field(GetAIComp(actor),'CurrentStateTag'),'TagName')
+        local label=state and FNameToString(state)
+        return type(label)=='string' and (label=='AI.State.Combat' or label:match('^AI%.State%.Combat%.')~=nil)
+            and UEObserve.key(arenaSupport.hunNativeTarget(actor,true))==UEObserve.key(target)
+            and HatredListContains(GetHatredComp(actor),target)==true
+    end,
     actionBusy=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:actionBusy(actor)or false end,
     waitForTarget=function(actor,target)return arenaSupport.combatContinuity:wait(actor,target)end,
     resumeIntent=function(actor)return arenaSupport.combatContinuity:resume(actor)end,
@@ -2130,10 +2141,14 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
 -- The Hun body takes the count, attribute values and accessory effects of the profile the panel last saved.
 local hunLoadout=require('hun_loadout').new({path=Config.RuntimePath,log=log})
 arenaSupport.hunLoadout=function()return hunLoadout:read()end
-function arenaSupport.hunNativeTarget(actor)
+function arenaSupport.hunNativeTarget(actor,privateOnly)
     local board=UEObserve.field(GetAIComp(actor),'BlackboardComponent')
     if not UEObserve.valid(board) then return end
-    local handler=arenaSupport:targetHandler(actor,board)
+    local handler
+    if privateOnly then
+        handler=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
+        if UEObserve.key(UEObserve.field(handler,'Blackboard'))~=UEObserve.key(board) then return end
+    else handler=arenaSupport:targetHandler(actor,board) end
     local key=UEObserve.field(handler,'Target Key') or FName('TargetActor')
     local ok,target=pcall(function()return UEObserve.unwrap(board:GetValueAsObject(key))end)
     if ok and UEObserve.valid(target) then return target end
@@ -2147,6 +2162,10 @@ arenaSupport.hunBody=require('hun_body').new({log=log,probe=Config.EnableHunBody
             local target=arenaSupport.hunNativeTarget(actor)
             if target and UEObserve.key(target)==UEObserve.key(GetPlayerPawn()) and (GetHP(target) or 0)>0 then return target end
         end
+    end,
+    pairProtected=function(r,target)
+        return (r.team=='blue' or r.team=='red') and
+            (arenaSupport.combatContinuity:keepOpponent(r.actor) or arenaSupport.combatContinuity:keepOpponent(target))
     end,
     challenge=function(actor)
         if spectator:status().enabled_requested or not arenaSupport.hunBody:owns(actor) then return end
@@ -2170,6 +2189,8 @@ arenaSupport.hunStats=StatMatch.new({path=Config.RuntimePath,log=log,tag='[HunSt
     settings='hun-stats-settings.tsv',request='hun-stats-request.tsv'})
 arenaSupport.hunStatFields={};for _,field in ipairs(require('character_stats').allFields)do arenaSupport.hunStatFields[field]=true end
 arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
+    executionParticipant=function(actor)return arenaExecutions and arenaExecutions:participant(actor)end,
+    stageUntargetable=function(actor)return bossStages and bossStages:untargetable(actor)end,
     context=function()return arena:intentContext()end,
     deferTargetHold=true,
     hp=GetHP,aiOf=GetAIComp,hatredOf=GetHatredComp,hates=HatredListContains,addHatred=AddHatred,
@@ -2184,7 +2205,35 @@ arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=Li
         return label:match('Boss$')==nil
     end,
     track=function(key,restore)battle:remember(key,restore);return true end})
+function arenaSupport:restoreProtectedHatred(actor,target)
+    local world=GetCurrentWorld()
+    if not UEObserve.inWorld(actor,world) or not UEObserve.inWorld(target,world) then return false end
+    local hm=GetHatredComp(actor)
+    if not UEObserve.valid(hm) then return false end
+    local k=UEObserve.key
+    local ok,restored=pcall(function()
+        if k(hm:GetOwner())~=k(actor) or k(arena:aggroOpponent(actor))~=k(target) then return false end
+        for _,unit in ipairs({actor,target})do
+            local asc=UEObserve.field(unit,'AbilitySystemComponent')
+            if not UEObserve.valid(asc) or asc:GetGameplayTagCount({TagName=FName('CharacterState.Dead')})~=0 then return false end
+        end
+        if not self.combatContinuity:threatProtected(actor,true) and not self.combatContinuity:threatProtected(target,true) then return false end
+        local before=HatredListContains(hm,target)
+        if before~=false then return before==true end
+        self:rememberHatred(hm,target)
+        if not engineValid(hm) or not engineValid(target) or k(arena:aggroOpponent(actor))~=k(target) then return false end
+        local current=HatredListContains(hm,target)
+        if current~=false then return current==true end
+        local list=hm.HatredList
+        list[#list+1]=target
+        return HatredListContains(hm,target)==true
+    end)
+    return ok and restored==true
+end
 arenaSupport.aggroGuard=require('arena_aggro_guard').new({aiOf=GetAIComp,log=log,clock=LiveSeconds,
+    keepOpponent=function(actor,fresh)return arenaSupport.combatContinuity:keepOpponent(actor,fresh)end,
+    threatProtected=function(actor,fresh)return arenaSupport.combatContinuity:threatProtected(actor,fresh)end,
+    repairHatred=function(actor,target)return arenaSupport:restoreProtectedHatred(actor,target)end,
     hates=function(actor,target)return HatredListContains(GetHatredComp(actor),target)end,
     opponent=function(actor)return arena:aggroOpponent(actor)end,
     protected=function(actor,fresh)return arenaSupport.combatContinuity:protected(actor,fresh)end,

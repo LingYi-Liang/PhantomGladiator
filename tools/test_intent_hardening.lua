@@ -145,6 +145,8 @@ test('stable_hold_cost',function()
     for _,a in ipairs({h.actor,h.boss})do
         local native=a.AbilitySystemComponent.GetGameplayTagCount
         a.AbilitySystemComponent.GetGameplayTagCount=function(self,t)tags=tags+1;return native(self,t)end
+        local group=a.AbilitySystemComponent.HasAnyMatchingGameplayTags
+        a.AbilitySystemComponent.HasAnyMatchingGameplayTags=function(self,t)tags=tags+1;return group(self,t)end
     end
     for _=1,200 do h.c:beginTick(h.members,true);h.c:maintain(h.actor,h.boss)end
     print('MEASURE 200 stable Combat ticks duplicate module target holds='..holds..' protection tag reads='..tags)
