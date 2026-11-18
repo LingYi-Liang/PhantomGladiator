@@ -399,6 +399,9 @@ function Defense.new(o)
             local hit = U.struct(frame, 'HitGameTime')
             if not id or type(hit)~='number' then return end
             seen[id] = true
+            if r.intent and hit>=now and hit<=now+.35 and U.struct(frame,'IsHit')~=true then
+                r.intent.incomingUntil=math.max(r.intent.incomingUntil or 0,hit+.1)
+            end
             if s.handles[id]==hit or U.struct(frame,'IsHit')==true or hit<now or hit>now+0.13 then return end
             local source = weak(U.struct(frame,'SourceAction'))
             local _,attacker=call(source,'GetAvatarActor')

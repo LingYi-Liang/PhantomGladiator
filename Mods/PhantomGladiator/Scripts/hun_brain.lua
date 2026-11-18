@@ -24,7 +24,10 @@ function Brain.new(o)
     end
     function self:tick(r)
         local t=o.now()
-        if type(t)~='number' or t<r.nextDecision then return end
+        local cast=r.shadowState and r.shadowState.running
+        -- This shared timer already fires every 100 ms. Avoid skipping a second tick
+        -- because of clock rounding during a short native perfect-release window.
+        if type(t)~='number' or (t<r.nextDecision and not (cast and cast.hold and not cast.released)) then return end
         r.nextDecision=t+.10
         local intent=r.intent
         if intent.performedPhase then
@@ -58,7 +61,7 @@ function Brain.new(o)
         local locked=active(o.tag,r.actor,BUSY) or (intent.busyUntil or 0)>t
         local opening=(o.tag(target,'CharacterState.Stand.Break') or 0)>0
         local ctx={target=target,now=t,distance=o.distance(r.actor,target),hpRatio=ratio,
-            busy=locked,opening=opening,targetBroken=opening,allowAction=not locked,allowShadow=not locked}
+            busy=locked,opening=opening,targetBroken=opening,underThreat=(intent.incomingUntil or -1)>=t,allowAction=not locked,allowShadow=not locked}
         ctx.busy=ctx.busy or r.shadowBusy==true
         local supplyBusy=o.supply:tick(r,ctx)==true
         r.supplyBusy=supplyBusy

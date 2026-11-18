@@ -85,9 +85,11 @@ local function frame(hit,dodge,strength)
     return {HitGameTime=hit,IsDodge=dodge,IsHit=false,DeflectStrength={TagName=strength or 'Light'}}
 end
 local f=fixture()
+f.r.intent={}
 assert(f.callback and #f.asc.ActivatableAbilities.Items==2)
 f.frames[1]=frame(5.10,false)
 f.callback();assert(f.presses==0 and #f.asc.ActivatableAbilities.Items==6)
+assert(f.r.intent.incomingUntil>=5.10,'forecast reaches the combat brain before a defensive action starts')
 f.time=5.05;f.callback();assert(f.presses==1 and f.r.intent.busyUntil>f.time)
 f.callback();assert(f.presses==1)
 f.time=5.16;f.callback();assert(f.released and f.stance['Stance Key Down']==false)

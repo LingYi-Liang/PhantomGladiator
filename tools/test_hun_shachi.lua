@@ -92,6 +92,7 @@ local function fixture(item,soul)
         assert(rows[handle.Handle].ActiveCount==0)
         h.casts=h.casts+1
         if not h.instant then rows[handle.Handle].ActiveCount=1 end
+        if h.onActivate then h.onActivate(rows[handle.Handle]) end
         attrs.SpiritShadow=math.max(0,attrs.SpiritShadow-1)
         return true
     end
@@ -102,7 +103,7 @@ local function fixture(item,soul)
         construct=construct,fname=function(n)return n end,random=function()return 0.1 end,log=function(x)h.logs[#h.logs+1]=x end})
     h.ctx={now=0,target=enemy,distance=200}
     function h:tick(t)self.ctx.now=t;return self.mod:tick(self.r,self.ctx) end
-    h.attrs,h.wc,h.asc,h.rows,h.source,h.counts=attrs,wc,asc,rows,find(path),counts
+    h.attrs,h.wc,h.asc,h.rows,h.source,h.counts,h.asset=attrs,wc,asc,rows,find(path),counts,find
     return h
 end
 local count=0
@@ -337,19 +338,147 @@ check('late failed switch, stale slot and late cleanup preserve owned boundaries
     h=fixture();assert(h:tick(0));local before=h.sets;h.owner=false
     h.mod:cleanup(h.r);assert(h.sets==before and h.r.shadowState==nil)
 end)
-check('release enters only the local cast receiver while its exact hold task is alive',function()
-    local h=fixture();assert(h:tick(0));local run=h.r.shadowState.running
-    assert(run.move.release=='To Release')
-    local inst=h.rows[run.handle].NonReplicatedInstances[1]
+local holdPath='/PBZInput/InputActions/IA_ShachiAbility_Hold.IA_ShachiAbility_Hold'
+local function inputs(h)
+    local a=h.r.actor
+    h.action=h.asset(holdPath)
+    h.tags={['CharacterState.Space.Ground']=1}
+    function a:IsPlayerControlled()return h.player==true end
+    local lib=h.asset('/Script/SGameInputSystem.Default__SGameInputUtils')
+    function lib:GetSGameInputComponent(actor)assert(actor==a);return actor.InputComponent end
+    function a:AddComponentByClass(cls)
+        assert(cls==h.asset('/Script/SGameInputSystem.SGameInputComponent'))
+        local c=object('input');h.made=c
+        local map={values={}}
+        function map:ForEach(f)for k,v in pairs(self.values) do f(k,v) end end
+        function map:Contains(k)return self.values[k]~=nil end
+        function map:Add(k,v)self.values[k]=v end
+        function map:Find(k)return self.values[k] end
+        function map:Remove(k)self.values[k]=nil end
+        c.HoldingInputs=map
+        function c:GetOwner()return a end
+        function c:IsHolding(k)return map.values[k]~=nil end
+        function c:GetHoldTime(k)if self:IsHolding(k) then return 1024+h.ctx.now-map.values[k] end;return 0 end
+        function c:K2_DestroyComponent()self.gone=true end
+        function c:IsBeingDestroyed()return self.gone==true end
+        return c
+    end
+    h.onActivate=function(row)
+        h.inst=row.NonReplicatedInstances[1]
+        local c=a.InputComponent
+        h.heldAtStart=c and type(c.IsHolding)=='function' and c:IsHolding(h.action) or false
+        function h.inst:IsPlayingTimeline(t)return t~=nil and self.playing==t end
+    end
+    return h
+end
+local function waitTask(inst,c,action)
     local t=object('wait');local cls=object('taskclass')
     function t:GetClass()return cls end
     function cls:GetFName()return {ToString=function()return 'AbilityTask_WaitSInputRelease' end} end
-    t.Input=object('/PBZInput/InputActions/IA_ShachiAbility_Hold.IA_ShachiAbility_Hold')
-    t.Ability=object('another ability')
-    inst.ActiveTasks={t};local releases=0;inst['To Release']=function()releases=releases+1 end
-    assert(h:tick(.75) and releases==0)
-    t.Ability=inst;assert(h:tick(.8) and releases==1)
-    assert(h:tick(.9) and releases==1)
+    t.Ability,t.Input,t.InputComponent=inst,action,c
+    inst.ActiveTasks={t}
+    return t
+end
+check('axe holds before activation, waits for real stages without a release task and allows the whole strike',function()
+    local h=inputs(fixture());h.ctx.opening=true
+    assert(h:tick(0) and h.heldAtStart)
+    local inst=h.inst
+    inst['Min Duration Reached']=true;inst['Current Charge']=1;inst['Is Charging']=function()return true end
+    inst.Release3=object('highest');local releases=0
+    inst['To Release']=function()assert(not h.made:IsHolding(h.action));releases=releases+1;inst.playing=inst.Release3 end
+    assert(h:tick(.8) and h.made:IsHolding(h.action) and releases==0)
+    inst['Current Charge']=2
+    assert(h:tick(2.2) and releases==1 and h.r.shadowState.running.confirmed)
+    assert(h:tick(6.3) and h.cancels==0 and releases==1)
+    h.mod:cleanup(h.r)
+    assert(not h.r.actor.InputComponent and h.made.gone)
+end)
+check('cannon at range waits for the real perfect window on its own task and reads back the launch',function()
+    local h=inputs(fixture(Data.items[25]));h.ctx.distance=950
+    local ai=object('sighted AI')
+    function h.r.actor:GetController()return ai end
+    function ai:K2_GetPawn()return h.r.actor end
+    function ai:LineOfSightTo()return true end
+    assert(h:tick(0) and h.heldAtStart)
+    local run,inst=h.r.shadowState.running,h.inst
+    local t=waitTask(inst,h.made,h.action)
+    local fired=0;inst.LaunchPerfect=object('perfect')
+    inst[run.move.release]=function(_,time)assert(time>=2 and not h.made:IsHolding(h.action));fired=fired+1;inst.playing=inst.LaunchPerfect end
+    assert(h:tick(.71) and fired==0)
+    h.tags['CharacterState.AbilityState.TigerCannon.Great']=1;assert(h:tick(1.9) and fired==0)
+    h.tags['CharacterState.AbilityState.TigerCannon.Perfect']=1
+    t.Ability=object('foreign');assert(h:tick(2.2) and fired==0)
+    t.Ability=inst;t.InputComponent=object('other input');assert(h:tick(2.24) and fired==0)
+    t.InputComponent=h.made;t.Input=object('other action');assert(h:tick(2.26) and fired==0)
+    t.Input=h.action;assert(h:tick(2.3) and fired==1 and run.confirmed)
+    assert(h:tick(2.4) and fired==1)
+end)
+check('mace waits for a legal release window at tier three or takes an earlier window when threatened',function()
+    for _,threat in ipairs({true,false}) do
+        local h=inputs(fixture(Data.items[13]));h.ctx.opening=true
+        assert(h:tick(0) and h.heldAtStart)
+        local inst=h.inst;inst['Is Charging']=function()return true end
+        local fired=0;inst['To Release']=function()fired=fired+1 end
+        h.tags['CharacterState.AbilityState.JinGua.Charge2']=1
+        h.tags['CharacterState.AbilityState.JinGua.CanRelease']=1
+        assert(h:tick(2.8) and fired==0)
+        if threat then h.ctx.underThreat=true else h.tags['CharacterState.AbilityState.JinGua.Charge3']=1 end
+        assert(h:tick(2.9) and fired==1 and not h.made:IsHolding(h.action))
+        assert(not h.r.shadowState.running.confirmed)
+    end
+end)
+check('fist polls the key in the short native perfect window and requires its own upgrade',function()
+    local h=inputs(fixture(Data.items[5]));h.ctx.opening=true
+    assert(h:tick(0) and not h.heldAtStart)
+    h=inputs(fixture(Data.items[5]));h.ctx.opening=true
+    h.tags['CharacterState.WeaponUpgrade.TieKuangQuanTao.CanCharge']=1
+    assert(h:tick(0) and h.heldAtStart)
+    assert(h:tick(.18) and h.made:IsHolding(h.action))
+    h.tags['CharacterState.AbilityState.TieKuangQuanTao.Charge.PerfectTime']=1
+    assert(h:tick(.26) and not h.made:IsHolding(h.action) and not h.r.shadowState.running.confirmed)
+    h.tags['CharacterState.AbilityState.TieKuangQuanTao.Charge.PeffectSuccess']=1
+    assert(h:tick(.32) and h.r.shadowState.running.confirmed)
+end)
+check('close pressure uses a tap, an opening ending releases early, a dead or changed target cancels',function()
+    local h=inputs(fixture());h.ctx.underThreat=true;h.ctx.opening=true;assert(h:tick(0) and not h.heldAtStart)
+    h=inputs(fixture());h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
+    h.ctx.opening=false;assert(h:tick(.2) and not h.made:IsHolding(h.action) and h.cancels==0)
+    h.inst['Is Charging']=function()return true end
+    h.inst['To Release']=function()h.finishedEarly=true end
+    h.inst['Min Duration Reached']=true
+    assert(h:tick(1.5) and h.finishedEarly)
+    for _,change in ipairs({'native','scheduled'}) do
+        h=inputs(fixture());h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
+        if change=='native' then h.targetReadback=object('different enemy') else h.ctx.target=nil end
+        assert(h:tick(.2) and h.cancels==1 and not h.made:IsHolding(h.action) and not h.r.actor.InputComponent)
+    end
+end)
+check('decline, missing release task, existing input, replacement and independent NPCs unwind correctly',function()
+    local h=inputs(fixture());h.ctx.opening=true;h.refuseAction=true
+    assert(not h:tick(0) and h.made and not h.r.actor.InputComponent and not h.made:IsHolding(h.action))
+    h=inputs(fixture(Data.items[2]));h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
+    h:tick(5.1);assert(h.cancels==1 and not h.made:IsHolding(h.action))
+    h=inputs(fixture());h.ctx.opening=true;h.player=true;assert(h:tick(0) and not h.made)
+    h=inputs(fixture());h.ctx.opening=true
+    local foreign=object('player input');h.r.actor.InputComponent=foreign
+    assert(h:tick(0) and h.r.actor.InputComponent==foreign and not h.made)
+    local a,b=inputs(fixture()),inputs(fixture());a.ctx.opening=true;b.ctx.opening=true
+    assert(a:tick(0) and b:tick(0) and a.made~=b.made)
+    a.r.actor.InputComponent=foreign;a.made.HoldingInputs:Add(a.action,777)
+    a.mod:cleanup(a.r);assert(a.r.actor.InputComponent==foreign and a.made.HoldingInputs:Find(a.action)==777)
+    assert(b.made:IsHolding(b.action));b.mod:cleanup(b.r);assert(not b.made:IsHolding(b.action))
+end)
+check('an existing NPC input retains other bindings and a preexisting hold survives a quick cast',function()
+    local h=inputs(fixture(Data.items[2]));h.ctx.opening=true
+    local c=h.r.actor:AddComponentByClass(h.asset('/Script/SGameInputSystem.SGameInputComponent'))
+    c.AbilitySystem=h.asc;h.r.actor.InputComponent=c
+    local other=object('weapon input');c.HoldingInputs:Add(other,195)
+    c.HoldingInputs:Add(h.action,972)
+    assert(h:tick(0) and not h.r.shadowState.running.hold)
+    local run=h.r.shadowState.running
+    waitTask(h.inst,c,h.action);h.inst[run.move.release]=function()error('foreign hold released')end
+    assert(h:tick(.3) and not run.released and c.HoldingInputs:Find(h.action)==972)
+    h.mod:cleanup(h.r);assert(c.HoldingInputs:Find(other)==195 and not c.gone and h.r.actor.InputComponent==c)
 end)
 
 print('hun_shachi: '..count..' checks passed')
