@@ -66,6 +66,7 @@ function Lock.new(options)
     local owners={}       -- AI component address -> unit address
     local cache={}        -- unit address -> {ai=, hatred=} component addresses (a unit keeps its components)
     local dropped={}      -- unit address -> clock() of the last send-back
+    local pendingSense,pendingDrop={},{}
     local identities={}   -- names only for addresses with corpse or send-back state
     local actorObjects={}
     local objectNames,componentNames={},{}
@@ -152,6 +153,28 @@ function Lock.new(options)
             return true
         end
     end
+    local function schedule(pending,callback,unit,component)
+        if not options.defer then pcall(callback,unit);return end
+        local token=options.context and options.context()
+        if options.context and token==nil then return end
+        local actorName,aiName=objectNames[unit],componentNames[component]
+        local prior=pending[unit]
+        if prior and prior.token==token and prior.actor==actorName and prior.component==component and prior.ai==aiName then return end
+        local ticket={token=token,actor=actorName,component=component,ai=aiName}
+        pending[unit]=ticket
+        local ok,result=pcall(options.defer,function()
+            if pending[unit]~=ticket then return end
+            pcall(function()
+                if self.alive and (not options.context or options.context()==token) and owners[component]==unit
+                    and objectNames[unit]==actorName and componentNames[component]==aiName
+                    and identity(actorObjects[unit])==actorName and component_address(options.aiOf(actorObjects[unit]))==component then
+                    callback(unit)
+                end
+            end)
+            if pending[unit]==ticket then pending[unit]=nil end
+        end)
+        if (not ok or result==false) and pending[unit]==ticket then pending[unit]=nil end
+    end
     -- AI component transition: CombatToIdle on a fighting unit sends it back at its target.
     callbacks.transition=function(context,tag)
         if not self.alive or not next(components) or not options.onDropped then return nil end
@@ -163,7 +186,7 @@ function Lock.new(options)
         dropped[unit]=now
         identities[unit]=identity(actorObjects[unit])
         count('transition',function()return team end)
-        pcall(options.onDropped,unit)
+        schedule(pendingDrop,options.onDropped,unit,component)
         return nil
     end
     -- Perception events (the component's two delegates, before the native sense handlers): the AI's targeting falls
@@ -176,7 +199,7 @@ function Lock.new(options)
             local team,unit=components[component],owners[component]
             if not team or not unit then return nil end
             count(name,function()return team end)
-            pcall(options.onSensed,unit)
+            schedule(pendingSense,options.onSensed,unit,component)
             return nil
         end
     end
@@ -323,6 +346,8 @@ function Lock.new(options)
         -- Departed actors must not retain corpse completion or send-back throttles at a reused address.
         for key in pairs(forgotten)do if not present[key] then forgotten[key]=nil end end
         for key in pairs(dropped)do if not known[key] then dropped[key]=nil end end
+        for key in pairs(pendingSense)do if not known[key] then pendingSense[key]=nil end end
+        for key in pairs(pendingDrop)do if not known[key] then pendingDrop[key]=nil end end
         for _,member in ipairs(fresh)do
             local confirmed=forget(member.actor,living,not fighting)
             local key=U.key(member.actor)

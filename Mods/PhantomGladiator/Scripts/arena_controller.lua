@@ -184,9 +184,16 @@ function Arena.new(options)
         local ok,result=invoke('untargetable',unit.actor)
         return not ok or result~=false
     end
+    local function summonFactionReady(unit)
+        if not unit.summoner or not options.factionReady then return true end
+        local ok,ready=invoke('factionReady',unit.actor)
+        if ok and ready==true then unit.awaitingFaction=nil;return true end
+        unit.awaitingFaction,unit.needsJoin,unit.joinedPeers=true,true,nil
+        return false
+    end
     -- In the fight as a body: what a skill asking for "the player" may be given, out of reach or not.
     local function fighting(unit)
-        return unit and not stand(unit) and not dormant(unit) and alive_readback(unit)==true
+        return unit and not unit.awaitingFaction and not stand(unit) and not dormant(unit) and alive_readback(unit)==true
     end
     -- And what a unit may be sent at.
     local function targetable(unit)
@@ -416,13 +423,14 @@ function Arena.new(options)
         local revision=rosterRevision
         local ok,done=invoke('resumeIntent',unit.actor)
         if not ok or done~=true or not battleActive or busy or revision~=rosterRevision then return false end
-        unit.intentWaiting,unit.waitRetryAt=nil,nil
+        unit.intentWaiting,unit.waitRetryAt,unit.waitingKey=nil,nil,nil
         unit.attackRetryAt,unit.attackFailures=nil,nil
         return true
     end
     local function wait_for_target(unit,target,now,immediate)
         if not options.waitForTarget or not target or not fighting(target)then return false end
         unit.intentWaiting=true
+        unit.waitingKey=target.key or actor_key(target.actor)
         if action_busy(unit)then return true end
         if not immediate and unit.waitRetryAt and now<unit.waitRetryAt then return true end
         unit.waitRetryAt=now+1
@@ -444,8 +452,11 @@ function Arena.new(options)
         if confirmed then
             unit.assignedTarget,unit.assignedKey=target.actor,target.key or actor_key(target.actor)
             unit.attackPending,unit.attackRetryAt,unit.attackFailures=nil,nil,nil
+            unit.rejectedPeers=nil
         else
             unit.attackPending=true
+            unit.rejectedPeers=unit.rejectedPeers or setmetatable({},{__mode='k'})
+            unit.rejectedPeers[target]=now
             unit.attackFailures=math.min((unit.attackFailures or 0)+1,4)
             local delay=2^(unit.attackFailures-1)
             unit.attackRetryAt=now+delay
@@ -466,11 +477,14 @@ function Arena.new(options)
         end
         local refused={}
         while true do
-            local best,bestLoad
+            local best,bestLoad,bestRejected
             for _,other in ipairs(active) do
                 if other.team~=unit.team and not other.untargetable and not refused[other] then
                     local n=load[other.key] or 0
-                    if not best or n<bestLoad then best,bestLoad=other,n end
+                    local rejected=unit.rejectedPeers and unit.rejectedPeers[other] or -math.huge
+                    if not best or rejected<bestRejected or (rejected==bestRejected and n<bestLoad) then
+                        best,bestLoad,bestRejected=other,n,rejected
+                    end
                 end
             end
             if not best or targetable(best) then return best end
@@ -534,6 +548,16 @@ function Arena.new(options)
         local unit=key and unit_by_key(key)
         return unit and unit.actor or nil
     end
+    function instance:canReplaceDefeatedTarget(actor,old,wanted)
+        local revision=self:intentContext()
+        if not revision then return false end
+        local fallen=unit_by_key(actor_key(old))
+        if not fallen or (fallen.team~='red' and fallen.team~='blue') or alive_readback(fallen)~=false then return false end
+        local unit,target=unit_by_key(actor_key(actor)),unit_by_key(actor_key(wanted))
+        return unit and target and not unit.aid and not unit.needsJoin and not target.aid and not target.needsJoin
+            and (unit.team=='red' or unit.team=='blue') and (target.team=='red' or target.team=='blue')
+            and unit.team~=target.team and unit.assignedKey==target.key and targetable(target) and may_maintain(unit,revision)
+    end
     function instance:opponentOf(key)
         local me=key and unit_by_key(key)
         if not me or (me.team~='blue' and me.team~='red') then return nil end
@@ -589,7 +613,7 @@ function Arena.new(options)
         for _,unit in ipairs(units) do
             if (unit.team=='blue' or unit.team=='red') and alive_readback(unit)==true then
                 local isStand=stand(unit)
-                if isStand or not dormant(unit) then
+                if (isStand or not dormant(unit)) and summonFactionReady(unit) then
                     local ok,ready=invoke('combatReady',unit.actor)
                     if not isStand and ok and ready==true and unit.needsJoin and is_story_team_actor(unit) then
                         ready=prepare_story_team_actor(unit.actor)
@@ -649,6 +673,11 @@ function Arena.new(options)
             for _,unit in ipairs(active) do if not unit.needsJoin then ready[#ready+1]=unit end end
             active=ready
         end
+        local protectedPeer,available={},{}
+        for _,u in ipairs(active) do
+            if u.untargetable then protectedPeer[u.team]=protectedPeer[u.team] or u
+            else available[u.team]=true end
+        end
         for _,unit in ipairs(active) do
           if not battleActive or busy or revision~=rosterRevision then return end
           if fighting(unit) and not phase_busy(unit) then
@@ -669,8 +698,9 @@ function Arena.new(options)
             -- Issue once for a new unit, after its assigned opponent dies or goes out of reach.
             -- Never force the same live target every tick and interrupt attacks.
             local held=unit_by_key(unit.assignedKey)
-            local resumed=unit.intentWaiting and held and targetable(held)
-            if unit.intentWaiting and(not held or not fighting(held)or resumed)then
+            local waited=unit.intentWaiting and unit_by_key(unit.waitingKey)
+            local resumed=waited and targetable(waited)
+            if unit.intentWaiting and(not waited or not fighting(waited)or resumed)then
                 if not resume_intent(unit)then goto continueCombat end
             end
             if held and not (fighting(held) and untargetable(held)) then held=nil end
@@ -678,18 +708,20 @@ function Arena.new(options)
                 -- A failed request cannot be retried before its deadline. Only a protected held
                 -- opponent needs an earlier scan to distinguish waiting from switching targets.
                 local retryDue=not unit.attackRetryAt or now>=unit.attackRetryAt
-                local target=(retryDue or held)and leastAttacked(unit,active)or nil
+                local otherSide=unit.team=='red' and 'blue' or 'red'
+                local target=available[otherSide] and (retryDue or held)and leastAttacked(unit,active)or nil
                 if target and (not unit.attackRetryAt or now>=unit.attackRetryAt) then
                     if assign_target(unit,target,now) then
                         log('增援/换敌请求 '..actor_name(unit.actor)..' -> '..actor_name(target.actor)..'；读回=true')
                     end
                     if not battleActive or busy or revision~=rosterRevision then return end
                     if not fighting(unit) then goto continueCombat end
-                elseif not target and held then
-                    if wait_for_target(unit,held,now)then
+                elseif not target and (held or (options.waitForTarget and not available[otherSide] and protectedPeer[otherSide])) then
+                    local standby=held or protectedPeer[otherSide]
+                    if wait_for_target(unit,standby,now)then
                         -- Logical opponent identity survives protection; no attack is issued against it.
                         if action_busy(unit)then goto continueCombat end
-                    else
+                    elseif held then
                         unit.assignedTarget,unit.assignedKey=nil,nil
                         log('暂不迎敌 '..actor_name(unit.actor)..'：对手 '..actor_name(held.actor)..' 按游戏设定暂时不能被锁定，等新的对手出现')
                     end
@@ -952,27 +984,29 @@ function Arena.new(options)
             local reachable={blue={},red={}}
             local relations={blue={},red={}}
             local storyActors={}
+            local deferred=0
             for _, unit in ipairs(units) do
               if unit.team=='blue' or unit.team=='red' then
                 local alive=alive_readback(unit)
-                if alive==nil then return response(false,'参赛者存活状态未读回，未下达交战指令') end
                 local isStand=stand(unit)
-                if alive==true and (isStand or not dormant(unit)) then
-                    local list=relations[unit.team];list[#list+1]=unit.actor
-                end
-                if alive == true and not isStand and not unit.aid and not dormant(unit) then
-                    if unit.team=="blue" or unit.team=="red" then
-                        if options.canBattle then
-                            local allowed,battleAllowed,reason=invoke('canBattle',unit.class_path)
-                            if not allowed or battleAllowed~=true then
-                                return response(false,tostring(reason or '该单位未开放交战'))
-                            end
+                local reserve=not isStand and dormant(unit)
+                if alive==nil and not unit.summoner then return response(false,'参赛者存活状态未读回，未下达交战指令') end
+                local factionReady=alive==false or reserve or summonFactionReady(unit)
+                if alive~=false and not isStand and not unit.aid and not reserve then
+                    if options.canBattle then
+                        local allowed,battleAllowed,reason=invoke('canBattle',unit.class_path)
+                        if not allowed or battleAllowed~=true then
+                            return response(false,tostring(reason or '该单位未开放交战'))
                         end
-                        local okHP,hp=invoke("hp",unit.actor)
-                        local okCombat,combat=invoke("combatReady",unit.actor)
-                        if not okHP or not finite(hp) or hp<=0 or not okCombat or combat~=true then
-                            return response(false,"参赛者没有已确认的正血量或战斗AI；未修改关系、未发起攻击")
+                    end
+                    local okHP,hp=invoke("hp",unit.actor)
+                    local okCombat,combat=invoke("combatReady",unit.actor)
+                    if alive~=true or not okHP or not finite(hp) or hp<=0 or not okCombat or combat~=true or not factionReady then
+                        if unit.summoner then
+                            unit.needsJoin=true;deferred=deferred+1
+                            goto nextStartUnit
                         end
+                        return response(false,"参赛者没有已确认的正血量或战斗AI；未修改关系、未发起攻击")
                     end
                     if unit.team == "blue" then blue[#blue + 1] = unit.actor end
                     if unit.team == "red" then red[#red + 1] = unit.actor end
@@ -980,8 +1014,13 @@ function Arena.new(options)
                     if not unit.untargetable then local list=reachable[unit.team];list[#list+1]=unit.actor end
                     if is_story_team_actor(unit) then storyActors[unit.actor]=true end
                 end
+                if alive==true and not reserve and factionReady then
+                    local list=relations[unit.team];list[#list+1]=unit.actor
+                end
               end
+              ::nextStartUnit::
             end
+            if deferred>0 then log('召唤物等待生命、阵营或战斗AI就绪 '..deferred..' 只；就绪后按增援入场') end
             if #blue == 0 or #red == 0 then return response(false, "开战至少需要蓝队和红队各一名有效参赛者") end
             local okPlayer, player = invoke("getPlayer")
             if not okPlayer or live(player) ~= true then return response(false, "玩家无效，未修改战斗关系") end

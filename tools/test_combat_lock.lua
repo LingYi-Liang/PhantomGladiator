@@ -87,6 +87,24 @@ do
     lock:silence('test');assert(#h.unhooked==12)
 end
 
+-- A perception burst on the two native delegates needs one deferred repair per participant.
+do
+    local h=harness();local queue={};local revision=1
+    local lock=h.new({defer=function(f)queue[#queue+1]=f end,context=function()return revision end})
+    local units={}
+    for i=1,48 do local _,ai=h.unit(i%2==0 and 'blue' or 'red');units[i]=ai end
+    h.fighting=true;lock:tick()
+    for i=1,12 do for _,ai in ipairs(units)do h.call('sensed',ai);h.call('sensedInfo',ai)end end
+    assert(#queue==48 and #h.sensed==0,'1152 native notifications must queue one repair per live unit')
+    for _,fn in ipairs(queue)do fn()end;assert(#h.sensed==48)
+    queue={};h.call('sensed',units[1]);h.call('transition',units[1],tag('AI.Transition.CombatToIdle'))
+    assert(#queue==2,'dropping out of combat must keep its own immediate recovery')
+    revision=2;for _,fn in ipairs(queue)do fn()end
+    assert(#h.sensed==48 and #h.dropped==0,'a changed roster invalidates earlier deferred work')
+    queue={};h.call('sensed',units[1]);assert(#queue==1)
+    local actor=h.members[1].actor;h.ai[actor]=object('replacement controller AI');queue[1]();assert(#h.sensed==48)
+    h.ai[actor]=units[1];queue={};h.call('sensed',units[1]);assert(#queue==1);lock:silence('test');queue[1]();assert(#h.sensed==48)
+end
 -- A unit that leaves the field is no longer answered for.
 do
     local h=harness()

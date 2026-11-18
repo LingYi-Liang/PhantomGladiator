@@ -40,6 +40,21 @@ local errors=''
 local logged=Links.new({getWorld=function()return world end,findAll=function()return {ability} end,getNPCs=function()return {} end,log=function(s)errors=s end})
 logged:scan({{actor=root,team='blue'}},function()error('boom')end)
 assert(errors:find('errors=1',1,true),'an error there stays in the count and the scan goes on: '..errors)
+-- A third duplicate cannot resolve two conflicting native parent records.
+do
+    local rival=object(906,{outer=level,class=cls})
+    local child=object(907,{outer=level,class=cls})
+    local function listedBy(owner)
+        local p=object(908,{SpawnedSummonInstances={{Pawn=child,bPawnPending=false}}})
+        function p:GetAvatarActorFromActorInfo()return owner end
+        return p
+    end
+    for _,order in ipairs({{root,rival,root},{rival,root,rival},{root,root,rival}}) do
+        local s=Links.new({getWorld=function()return world end,getNPCs=function()return {} end,
+            findAll=function()return {listedBy(order[1]),listedBy(order[2]),listedBy(order[3])}end})
+        assert(#s:scan({{actor=root,team='blue'},{actor=rival,team='red'}})==0,'conflicting summoners cannot be decided by list order')
+    end
+end
 -- Whom the passive's summons fight (SummonCombatTargetMode, a name): EncounterSummons and Summoner fight the
 -- summoner's side; InheritedHatred, no value, None and a non-name do not.
 do

@@ -19,7 +19,12 @@ local function fixture()
     h.handler=object();h.handler.Blackboard=h.bb;h.handler.LastSensedActorKey='fallback';h.handler['Target Key']='main'
     local targeting=object();targeting.DefaultTargetHandler=h.handler
     h.actor=actor(4);h.actor['Targeting Component']=targeting
-    local env=setmetatable({UEObserve=U,safeValid=U.valid,GetPlayerPawn=function()return h.player end,
+    local controller={canReplaceDefeatedTarget=function(_,a,old,nextTarget)
+        return a==h.actor and old==h.dead and nextTarget==h.target and not h.busy
+    end}
+    local env=setmetatable({UEObserve=U,safeValid=U.valid,GetPlayerPawn=function()return h.player end,arena=controller,
+        engineValid=U.valid,checked=function(v)assert(U.valid(v))end,FNameToString=tostring,
+        battle={remember=function()end},arenaSupport={},
         objectName=function(v)return tostring(U.key(v))end,log=function(line)h.logs[#h.logs+1]=line end},{__index=_G})
     h.hold=assert(load(source:sub(first,last-1)..'\nreturn HoldSensedTarget','production target fallback','t',env))()
     return h
@@ -28,6 +33,12 @@ local h=fixture();assert(h.hold(h.actor,h.target,'fixture'));assert(h.values.fal
 assert(h.writes==1 and h.logs[1]:find('读回=true',1,true))
 h=fixture();h.values.main=h.other;assert(h.hold(h.actor,h.target));assert(h.writes==0,'a valid primary must be retained')
 h=fixture();h.values.fallback=h.other;assert(h.hold(h.actor,h.target));assert(h.writes==0,'a valid native fallback must be retained')
+for _,key in ipairs({'main','fallback'}) do
+    h=fixture();h.dead=actor(91);h.values[key]=h.dead
+    h.busy=true;h.hold(h.actor,h.target);assert(h.values[key]==h.dead)
+    h.busy=false;assert(h.hold(h.actor,h.target));assert(h.values[key]==h.target,'still targeting an owned corpse through '..key)
+    local writes=h.writes;assert(h.hold(h.actor,h.target) and h.writes==writes)
+end
 h=fixture();h.values.fallback=h.player;assert(h.hold(h.actor,h.target));assert(h.values.fallback==h.target)
 h=fixture();h.values.fallback=h.player;assert(h.hold(h.actor,nil));assert(h.values.fallback==nil)
 h=fixture();h.failRead='main';assert(not h.hold(h.actor,h.target));assert(h.writes==0,'unknown primary cannot be treated as empty')

@@ -34,6 +34,7 @@ function Links.new(options)
             local path=U.npcPath(child);if not path then return end
             local prior=links[ck]
             if prior and prior.rank>rank then return end
+            if prior and prior.rank==rank and prior.conflict then return end
             if prior and prior.rank==rank and prior.parentKey~=pk then prior.conflict=true;stats.conflicts=stats.conflicts+1;return end
             links[ck]={actor=child,parent=owned[pk],parentKey=pk,class_path=path,evidence=proof..(mode and ('；SummonCombatTargetMode='..mode) or ''),
                 rank=rank,mode=mode,opposing=OPPOSING[mode or '']==true}

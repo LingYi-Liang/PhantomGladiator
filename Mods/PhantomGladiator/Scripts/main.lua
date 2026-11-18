@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-24"
+local BUILD = "v0.40.16-beta-25"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -757,8 +757,29 @@ end
 -- A fighting unit's fallback target (arena_controller.lua hold_target): PBZ_TargetingHandler_AI, the AI's default
 -- targeting handler, reads the blackboard key "Target Key" and, when that holds nothing, "LastSensedActorKey"; the
 -- handler instance is the unit's own (Targeting Component.DefaultTargetHandler, its Blackboard set in Initialize).
--- Correct the player fallback, or fill it only when both targeting keys are confirmed empty. Other native targets stay.
+-- Repair player fallback, confirmed empty keys and an owned corpse still selected in either key.
 local senseHold={written=0,cleared=0,failed=0,lines=0,summaryAt=nil}
+function arenaSupport:writeArenaTarget(bb,key,wanted,defeated,actor)
+    if not engineValid(bb) or not engineValid(wanted) then return false end
+    local original=UEObserve.unwrap(bb:GetValueAsObject(key))
+    if defeated and (UEObserve.key(original)~=UEObserve.key(defeated) or not arena:canReplaceDefeatedTarget(actor,defeated,wanted)) then return false end
+    local originalValid=not defeated and engineValid(original)
+    battle:remember("blackboard:" .. bb:GetAddress() .. ":" .. FNameToString(key),function()
+        if not engineValid(bb) then return true,"黑板已失效" end
+        local back=originalValid and engineValid(original)
+        if back then bb:SetValueAsObject(key,original) else bb:ClearValue(key) end
+        if not engineValid(bb) then return true,"黑板已失效" end
+        local actual=UEObserve.unwrap(bb:GetValueAsObject(key))
+        return (back and engineValid(actual) and UEObserve.key(actual)==UEObserve.key(original)) or (not back and not engineValid(actual)),
+            "恢复目标读回="..objectName(actual)..((originalValid and not back) and "；原目标已不存在，改为清空" or "")
+    end)
+    if not engineValid(bb) or not engineValid(wanted) then return false end
+    bb:SetValueAsObject(key,wanted)
+    if not engineValid(bb) then return false end
+    local actual=UEObserve.unwrap(bb:GetValueAsObject(key))
+    local actualKey=UEObserve.key(actual)
+    return actualKey~=nil and actualKey==UEObserve.key(wanted),actual
+end
 local function HoldSensedTarget(actor,target,why)
     local handler=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
     local bb=UEObserve.field(handler,'Blackboard')
@@ -769,12 +790,31 @@ local function HoldSensedTarget(actor,target,why)
     local wanted=safeValid(target) and target or nil
     local player=GetPlayerPawn()
     local wasPlayer=safeValid(player) and UEObserve.key(current)==UEObserve.key(player)
+    local function replaceCorpse(ref,keyName)
+        if not wanted or not safeValid(ref) or UEObserve.key(ref)==UEObserve.key(wanted) or not arena
+            or not arena:canReplaceDefeatedTarget(actor,ref,wanted) then return end
+        local called,wrote=pcall(arenaSupport.writeArenaTarget,arenaSupport,bb,keyName,wanted,ref,actor)
+        if senseHold.lines<12 then
+            senseHold.lines=senseHold.lines+1
+            log('[Arena] 尸体目标改派 '..objectName(actor)..' -> '..objectName(wanted)..'；读回='..tostring(called and wrote==true))
+        end
+        return called and wrote==true
+    end
+    local primaryKey=UEObserve.field(handler,'Target Key')
+    local primaryRead,primary
+    if wanted and primaryKey~=nil then
+        local got,value=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(primaryKey))end)
+        primaryRead=got
+        primary=got and value or nil
+        local replaced=replaceCorpse(primary,primaryKey)
+        if replaced==false then return false end
+        if replaced then primary=wanted end
+    end
+    local replaced=replaceCorpse(current,key)
+    if replaced~=nil then return replaced end
     if not wasPlayer then
         if safeValid(current) or not wanted then return true end
-        local primaryKey=UEObserve.field(handler,'Target Key')
-        if primaryKey==nil then return false end
-        local read,primary=pcall(function()return UEObserve.unwrap(bb:GetValueAsObject(primaryKey))end)
-        if not read then return false end
+        if not primaryRead then return false end
         if safeValid(primary) then return true end
     end
     if wanted then pcall(function()bb:SetValueAsObject(key,wanted)end)
@@ -813,27 +853,8 @@ local function ForceAttack(attacker, victim)
         local handler=arenaSupport:targetHandler(attacker,bb)
         if safeValid(handler) then
                     local key=handler["Target Key"]
-                    local original=bb:GetValueAsObject(key)
-                    local originalValid=safeValid(original)
-                    battle:remember("blackboard:" .. bb:GetAddress() .. ":" .. FNameToString(key),function()
-                        if not engineValid(bb) then
-                            return true,"参赛黑板有效性读回=false，目标已不存在；丢弃过期记录"
-                        end
-                        checked(bb)
-                        -- The old target is gone too: no target is the nearest there is to put back.
-                        local back=originalValid and engineValid(original)
-                        if back then bb:SetValueAsObject(key,original)
-                        else bb:ClearValue(key) end
-                        local actual=bb:GetValueAsObject(key)
-                        local restored=back and safeValid(actual) and actual:GetAddress()==original:GetAddress()
-                            or (not back and not safeValid(actual))
-                        return restored,"目标读回=" .. objectName(actual)
-                            .. ((originalValid and not back) and "；原目标已不存在，改为清空" or "")
-                    end)
-                    checked(victim)
-                    bb:SetValueAsObject(key,victim)
-                    local actual=UEObserve.unwrap(bb:GetValueAsObject(key))
-                    targetVerified=UEObserve.key(actual)==UEObserve.key(victim)
+                    local actual
+                    targetVerified,actual=arenaSupport:writeArenaTarget(bb,key,victim)
                     log("参赛目标写入=" .. objectName(victim) .. "；黑板读回=" .. objectName(actual)..'；确认='..tostring(targetVerified))
         end
     end);if not wrote then targetVerified=false end end
@@ -841,7 +862,8 @@ local function ForceAttack(attacker, victim)
     if sg then pcall(function() state = FNameToString(sg.CurrentStateTag.TagName) end) end
     log("作战请求=" .. tostring(okForce) .. "；状态读回=" .. state
         .. "；仇恨=" .. tostring(okH) .. "/" .. tostring(how) .. "；实际出招待观察")
-    return okF and okH and okForce and targetVerified~=false
+    local combat=state=='AI.State.Combat' or (type(state)=='string' and state:sub(1,#'AI.State.Combat.')=='AI.State.Combat.')
+    return okF and okH and okForce and (targetVerified==true or (targetVerified==nil and combat))
 end
 
 function arenaSupport:targetHandler(actor,bb)
@@ -1457,6 +1479,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     spawnLimits=SpawnPolicy.limits,canBattle=SpawnPolicy.canBattle,
     spawnGuard=spawnGuard,
     combatReady=function(actor) return safeValid(actor) and spawnRoutes[actor]~='actor' and GetAIComp(actor)~=nil end,
+    factionReady=function(actor)return engineValid(GetFactionComp(actor))end,
     isStand=require('arena_stands').isStand,
     -- Kept in reserve by its summoner: hidden in game with its AI not started (冷荼's stand-by dolls show ai_state=None).
     dormant=function(actor)
@@ -2163,8 +2186,9 @@ combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     hates=HatredListContains,vehicles=function(members)return mounts and mounts:vehicles(members) or {} end,
     -- Called inside the game's transition; the send-back runs on the next game-thread tick instead.
-    onDropped=function(key)ExecuteInGameThread(function()if not (mounts and mounts:dropped(key)) then arena:reengage(key) end end)end,
-    onSensed=function(key)ExecuteInGameThread(function()arena:holdSensed(key)end)end,
+    defer=ExecuteInGameThread,context=function()return arena:intentContext()end,
+    onDropped=function(key)if not (mounts and mounts:dropped(key)) then arena:reengage(key) end end,
+    onSensed=function(key)arena:holdSensed(key)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 -- 招式锁玩家（二）: while a fight runs, a skill of a blue or red unit that asks GameplayStatics for the player gets the
 -- unit's opponent instead; executions keep the player (player_aim.lua).
