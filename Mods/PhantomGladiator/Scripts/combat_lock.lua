@@ -3,7 +3,7 @@
 --   * after every action the AI asks BP_SGameAIComponent_C.ShouldExitCombatAfterAction;
 --   * the hatred manager refuses another monster as a target (CheckCanHatredTarget/CheckActorCanBeHatred);
 --   * the state machine itself calls CallTransition(AI.Transition.CombatToIdle), which empties the
---     hatred list; that one cannot be refused, the callback only runs after it.
+--     hatred list. The per-instance Idle guard is evaluated before this post-hook.
 -- While a fight runs, these hooks answer for this mod's blue and red units only: no to leaving combat,
 -- yes to hating a unit of the other side, and on CombatToIdle the unit is sent straight back at its
 -- target on the next game-thread tick (options.onDropped); after a perception event the unit's fallback target goes
@@ -181,6 +181,13 @@ function Lock.new(options)
         local component=component_address(context) or ''
         local team,unit=components[component],owners[component]
         if not team or not unit or tagName(tag)~=DROP then return nil end
+        if options.guard then
+            local checked,onThread=pcall(options.inGameThread)
+            if checked and onThread==true then
+                local read,kept=pcall(options.guard.onDrop,options.guard,actorObjects[unit],U.unwrap(context))
+                if read and kept then return nil end
+            end
+        end
         local now=clock()
         if dropped[unit] and now-dropped[unit]<DROP_SECONDS then return nil end
         dropped[unit]=now
@@ -302,6 +309,10 @@ function Lock.new(options)
         local fresh,living,present,objects,names,boundNames={},{},{},{},{},{}
         local fighting=options.fighting()
         local members=options.members() or {}
+        if options.guard then
+            local ok,err=pcall(options.guard.sync,options.guard,members,fighting)
+            if not ok and not installWarnings.guard then installWarnings.guard=true;say('战斗保持检查中断 '..tostring(err)) end
+        end
         for _,member in ipairs(members)do
             -- Stands keep their native AI/hatred answers. A summon held in reserve is not in the fight yet;
             -- a unit out of reach by its own design
@@ -369,6 +380,7 @@ function Lock.new(options)
             if next(hooks) then
                 local parts={}
                 for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.window[name];self.window[name]=0 end
+                if options.guard then parts[#parts+1]='状态与仇恨持续保留累计='..tostring(options.guard.retained) end
                 say(string.format('近 %.0f 秒：%s',now-summaryAt,table.concat(parts,' ')))
             end
             summaryAt=now

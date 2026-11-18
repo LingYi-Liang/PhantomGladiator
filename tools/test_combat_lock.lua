@@ -105,6 +105,22 @@ do
     local actor=h.members[1].actor;h.ai[actor]=object('replacement controller AI');queue[1]();assert(#h.sensed==48)
     h.ai[actor]=units[1];queue={};h.call('sensed',units[1]);assert(#queue==1);lock:silence('test');queue[1]();assert(#h.sensed==48)
 end
+do
+    local h=harness();local guard={retained=0}
+    function guard:sync(_,active)self.active=active end
+    function guard:onDrop(a,ai)
+        assert(a==self.actor and ai==self.ai)
+        if self.keep then self.retained=self.retained+1;return true end
+    end
+    local lock=h.new({guard=guard,inGameThread=function()return true end})
+    guard.actor,guard.ai=h.unit('blue');h.unit('red')
+    h.fighting=true;lock:tick();assert(guard.active)
+    guard.keep=true;h.call('transition',guard.ai,tag('AI.Transition.CombatToIdle'))
+    assert(#h.dropped==0 and guard.retained==1,'verified retention needs no deferred combat request')
+    guard.keep=false;h.call('transition',guard.ai,tag('AI.Transition.CombatToIdle'))
+    assert(#h.dropped==1,'unverified retention keeps existing recovery')
+    h.fighting=false;lock:tick();assert(not guard.active);lock:silence('test')
+end
 -- A unit that leaves the field is no longer answered for.
 do
     local h=harness()

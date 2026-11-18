@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16-beta-25"
+local BUILD = "v0.40.16-beta-26"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1644,6 +1644,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return position,forward
     end,
     setRelation=SetFactionRelation,
+    onAssigned=function(actor,target)arenaSupport.aggroGuard:arm(actor,target)end,
     forceAttack=function(attacker,victim)
         if not arenaSupport.standaloneStoryUnits:assignOpponent(attacker,victim) then return false end
         local sent=ForceAttack(attacker,victim)
@@ -1681,6 +1682,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     isDestroying=actorIsDestroying,
     restore=function()
+        local aggroRestored=not arenaSupport.aggroGuard or arenaSupport.aggroGuard:stop()
         probeSampleGen=probeSampleGen+1
         probe:stop("停止参赛者")
         local guillotineRestored=not arenaSupport.guillotine or arenaSupport.guillotine:stop()
@@ -1690,7 +1692,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         local grabRestored=not arenaGrabs or arenaGrabs:restore()
         local phaseRestored=not arenaSupport.menghuaPhase or arenaSupport.menghuaPhase:stop()
         local battleRestored=battle:reset("停止参赛者")
-        return guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
+        return aggroRestored and guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
     end,
     onUnitsChanged=function(units)
         if arenaSupport.menghuaPhase then arenaSupport.menghuaPhase:syncParents(units) end
@@ -2182,7 +2184,13 @@ arenaSupport.combatContinuity=require('combat_continuity').new({log=log,clock=Li
         return label:match('Boss$')==nil
     end,
     track=function(key,restore)battle:remember(key,restore);return true end})
+arenaSupport.aggroGuard=require('arena_aggro_guard').new({aiOf=GetAIComp,log=log,clock=LiveSeconds,
+    hates=function(actor,target)return HatredListContains(GetHatredComp(actor),target)end,
+    opponent=function(actor)return arena:aggroOpponent(actor)end,
+    protected=function(actor,fresh)return arenaSupport.combatContinuity:protected(actor,fresh)end,
+    ready=function()return runtimeSession:status().game_ready==true end})
 combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,hp=GetHP,label=objectName,
+    guard=arenaSupport.aggroGuard,inGameThread=IsInGameThread,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
     hates=HatredListContains,vehicles=function(members)return mounts and mounts:vehicles(members) or {} end,
     -- Called inside the game's transition; the send-back runs on the next game-thread tick instead.
@@ -2489,6 +2497,7 @@ if ModRef then
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         local checkedThread,onGameThread=pcall(IsInGameThread)
         local restoreNative=checkedThread and onGameThread==true
+        arenaSupport.aggroGuard:silence(restoreNative)
         playerAim:silence('Mod卸载',restoreNative)
         arenaSupport.combatContinuity:silence()
         arenaSupport.hunBody:silence(restoreNative)

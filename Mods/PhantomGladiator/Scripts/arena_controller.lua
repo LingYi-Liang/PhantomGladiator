@@ -453,6 +453,7 @@ function Arena.new(options)
             unit.assignedTarget,unit.assignedKey=target.actor,target.key or actor_key(target.actor)
             unit.attackPending,unit.attackRetryAt,unit.attackFailures=nil,nil,nil
             unit.rejectedPeers=nil
+            if options.onAssigned then invoke('onAssigned',unit.actor,target.actor) end
         else
             unit.attackPending=true
             unit.rejectedPeers=unit.rejectedPeers or setmetatable({},{__mode='k'})
@@ -547,6 +548,14 @@ function Arena.new(options)
     function instance:actorOf(key)
         local unit=key and unit_by_key(key)
         return unit and unit.actor or nil
+    end
+    function instance:aggroOpponent(actor)
+        if not self:intentContext() then return end
+        local u=unit_by_key(actor_key(actor))
+        if not u or not u.assignedKey or u.aid or u.needsJoin or (u.team~='blue' and u.team~='red') or not fighting(u) then return end
+        local target=unit_by_key(u.assignedKey)
+        if target and target.team==(u.team=='blue' and 'red' or 'blue') and not target.aid and not target.needsJoin
+            and fighting(target) then return target.actor end
     end
     function instance:canReplaceDefeatedTarget(actor,old,wanted)
         local revision=self:intentContext()
