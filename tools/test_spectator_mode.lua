@@ -321,3 +321,8 @@ f=fixture();f.opts.isPlayerSide=function()error('unreadable')end;f.mode=Spectato
 assert(f.mode:on().overrides_verified==1 and f.fc.override==1)
 assert(f.mode:off().ok and f.fc.override==nil)
 print("spectator_mode: PASS (pending destruction, unknown state retention, reversible relations, immediate spawn, camera hold, persisted reload recovery, player's side left alone and never restored hostile)")
+f=fixture();f.opts.preserveCombatFaction=function(n)return n==f.npc end
+f.mode=Spectator.new(f.opts);f.mode:on();f.mode:applyTo(f.npc);f.mode:tick()
+assert(f.fc.override==nil,'observing a registered arena Hun must preserve its original combat relation')
+assert(f.mode:off().ok and f.fc.override==nil)
+print('PASS spectator target suppression preserves the arena Hun faction used for player attacks')

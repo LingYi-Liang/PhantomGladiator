@@ -9,6 +9,7 @@
 local U=require('ue_observe')
 local Look=require('hun_look')
 local Weapons=require('hun_weapons')
+local Vitals=require('hun_vitals')
 local Body={path='/PBZCombatAsset/ActorData/Mobs/000_Hun/BP_Monster_Hun.BP_Monster_Hun_C'}
 local CONFIG='/PBZCombatAsset/ActorData/Mobs/000_Hun/ActorConfig/ActorC_Monster_Hun.ActorC_Monster_Hun'
 local ABILITY_UTILS='/Script/SGameUtils.Default__AbilityUtils'
@@ -148,9 +149,15 @@ function Body.new(o)
         return qteFamilies and root and qteFamilies[root]~=nil or false
     end
     local function owned(r)return records[U.key(r.actor)or'']==r and current(r.actor,r)end
-    local role=require('hun_arena_role').new({current=owned,load=loadClass,find=find,player=o.player,aiOf=o.aiOf,keepNeutral=o.keepNeutral,
+    local role=require('hun_arena_role').new({current=owned,load=loadClass,find=find,player=o.player,aiOf=o.aiOf,
+        stat=function(actor,field)
+            local adapter=getStats()
+            local sample=adapter and adapter:read(actor,field)
+            return sample and sample.current
+        end,
         fname=fname,log=o.log or function()end})
     local function fighting(r)
+        if r and r.dead then return false end
         if r and (r.team=='neutral' or r.team=='companion') then return U.valid(o.target and o.target(r.actor,r.team)) end
         return battle
     end
@@ -649,12 +656,19 @@ function Body.new(o)
         return applied
     end
     local function equip(r)
+        local before
+        if r.loadout and r.loadout.kit then before=Vitals.read(r.actor,stat) end
         if r.loadout and r.loadout.kit and tagCount(r.actor,'CharacterState.Talent.EnableNotConsumeBullet')==0 then
             -- The native armament cost task reads this talent tag and performs its own chance roll.
             local effect='GE_Talent_EnableNotConsumeBullet'
             applyEffects(r,{{label='影武暗源节省',level=1,path='/PBZCombatAsset/Prototypes/GameplayEffects/Talent/'..effect..'.'..effect..'_C'}},'天赋效果')
         end
         r.equipped=applyEffects(r,r.loadout and r.loadout.accessories and r.loadout.effects or {},'饰品效果')
+        if before then
+            Vitals.fillSpawn(r,before,Vitals.read(r.actor,stat),{current=owned,stats=getStats,read=stat,
+                alive=function(a)return (hpOf(a) or 0)>0 and tagCount(a,'CharacterState.Dead')==0 end,
+                log=o.log or function()end})
+        end
     end
     local function describe(r)
         local ai=o.aiOf and o.aiOf(r.actor);local controller=U.field(r.actor,'Controller')
@@ -734,6 +748,26 @@ function Body.new(o)
     function self:teamBarName(unit)
         if unit.class_path==Body.path and (unit.team=='blue' or unit.team=='red') and self:owns(unit.actor) then return '魂' end
     end
+    function self:isArenaBody(actor)
+        local r=records[U.key(actor) or '']
+        return r~=nil and (r.team=='blue' or r.team=='red') and current(actor,r)
+    end
+    function self:confirmedDead(actor)
+        local r=records[U.key(actor) or '']
+        return r~=nil and r.dead==true and current(actor,r)
+    end
+    function self:hudVitals(unit)
+        if not self:teamBarName(unit) then return end
+        local r=records[U.key(unit.actor)]
+        local v=Vitals.read(unit.actor,stat)
+        if r.awaitHitSample then
+            r.awaitHitSample=nil
+            say('玩家命中后下一拍 '..r.team..' '..r.name..' HP='..tostring(v.hp)..' 杀气='..tostring(v.shachi)..'/'..tostring(v.shachiMax))
+        end
+        r.lastHudSample=v
+        if self:confirmedDead(unit.actor) then v.hp=0 end
+        return v
+    end
     function self:tick(members,battleActive)
         if not self.alive then return end
         battle=battleActive==true
@@ -744,6 +778,7 @@ function Body.new(o)
         local owned={};for _,m in ipairs(members or{})do local key=U.key(m.actor);if key then owned[key]=true end end
         for key,r in pairs(records)do
             if not owned[key]or not current(r.actor,r)then
+                role:restore(r)
                 releaseEffects(r)
                 executionImmunity(r,true)
                 optional(grabGuard,'stop',r)
@@ -753,8 +788,21 @@ function Body.new(o)
                 optional(weapons,'stop',r,'实例离场')
                 if r.dead or(r.phase=='observed'and U.valid(r.actor)and(hpOf(r.actor)or 1)<=0)then watchDeath(key,r)end
                 if dying[key]and dying[key].record==r then dying[key].left=true else cleanup(r,'实例离场')end
-            elseif r.phase=='observed'and not r.dead and(hpOf(r.actor)or 1)<=0 and not self:holdsDeath(r.actor) then
-                r.dead=true;watchDeath(key,r)
+            elseif r.phase=='observed' then
+                local hp=hpOf(r.actor)
+                local dead
+                if r.dead or (r.loadout and r.loadout.kit) or (hp and hp<=0) then
+                    dead=tagCount(r.actor,'CharacterState.Dead')
+                end
+                if dead and dead>0 then r.sawDead=true end
+                if not r.dead and ((hp and hp<=0) or (dead and dead>0)) and not self:holdsDeath(r.actor)
+                    and (tagCount(r.actor,'Ability.Action.Hun.HeiMoShang.Reborn') or 0)==0
+                    and (tagCount(r.actor,'CharacterState.Immortal.HeiMoShang') or 0)==0 then
+                    r.dead=true;watchDeath(key,r)
+                elseif r.dead and r.sawDead and dead==0 and hp and hp>0 then
+                    r.dead,r.sawDead,r.deathWatched=false,false,false
+                    if dying[key] then endDeath(key,dying[key],'死亡标签已解除且生命为正') end
+                end
             end
             if records[key]==r and(r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
                 r.checks=r.checks+1

@@ -25,12 +25,25 @@ for _,team in ipairs({'blue','red','companion','neutral'})do
     hatred.HatredList={enemy,player}
     function hatred:RemoveActorFromHatredList(a)assert(a==player);table.remove(self.HatredList,2)end
     local r={actor=actor,team=team,name='test'}
+    local hooks,logs={},{}
     local role=Role.new({current=function(x)return x==r end,load=function(p)assert(p==base..'.StateTreeConfig_Humaniod');return normal end,
-        aiOf=function(a)assert(a==actor);return ai end,player=function()return player end,fname=function(s)return s end,log=function()end})
+        aiOf=function(a)assert(a==actor);return ai end,player=function()return player end,fname=function(s)return s end,
+        gameThread=function()return true end,find=function()return object('fixture')end,
+        register=function(key,pre,post)hooks[key]={pre,post};return 1,2 end,unregister=function(key)hooks[key]=nil end,
+        stat=function(owner,key)assert(owner==actor);return key=='Shachi' and actor.shachi or 100 end,log=function(s)logs[#logs+1]=s end})
     role:prepare(r);role:excludePlayer(r)
     assert(ai:GetStateTreeConfig()==(team=='companion' and summon or normal))
     if team=='blue' or team=='red' then
-        assert(faction.relation==1 and #hatred.HatredList==1 and values.FollowTargetActor==nil and values.Sensed==nil)
+        assert(faction.relation==2 and #hatred.HatredList==1 and values.FollowTargetActor==nil and values.Sensed==nil)
+        local hate=hooks['/SGameAI/Tools/Hatred/BP_SGameHatredManagerComponent.BP_SGameHatredManagerComponent_C:CheckCanHatredTarget'][1]
+        assert(hate(hatred,player)==false and hate(hatred,enemy)==nil)
+        local hit=hooks['/Script/SGameCombatSystem.BulletAttackModule:DealDamageToAvatar']
+        local module=object('bullet');module.LastOwnerAvatar=player
+        actor.shachi=80;hit[1](module,actor,0,0,0,0);actor.shachi=44;hit[2](module,actor,0,0,0,0)
+        assert(logs[#logs]:find('杀气=80→44',1,true))
+        local written=#logs;module.LastOwnerAvatar=enemy;hit[1](module,actor,0,0,0,0);hit[2](module,actor,0,0,0,0)
+        assert(#logs==written,'another NPC hit must not be attributed to the player')
+        role:restore(r);assert(next(hooks)==nil)
     else assert(faction.relation==2 and #hatred.HatredList==2 and values.FollowTargetActor==player)end
     assert(values.Enemy==enemy and hatred.HatredList[1]==enemy)
 end

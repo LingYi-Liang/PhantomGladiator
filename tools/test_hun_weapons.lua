@@ -595,6 +595,25 @@ test('free combat art settles only its own charge debit and isolates hand feedba
     asc_.TryActivateAbility=original
     h:tick(1.6);assert(h.r.intent.performedPhase=='free2' and h.stats.values.UltimateChargeCount==2)
 end)
+test('a rotated weapon cannot count its original twin-blade spec as a successful normal attack',function()
+    local a=item('YuuBlade')
+    local selected='/PBZCombatAsset/ActorData/Players/Hun/Abilities/DoubleBalde/YuuBlade/GA_Hun_YuuBlade_A.GA_Hun_YuuBlade_A_C'
+    local h=armed({weapons={a}},{grants={{selected,204,{'Ability.Action.Hun.Light.A.Normal'}}}})
+    h.assets[a.path]['Equip Abilities']={object('BlueprintGeneratedClass '..selected)}
+    h:tick(0);h:tick(.6)
+    assert(h:count('activate hun 204')>=1,'YuuBlade and JueYing share Light.A.Normal; only the equipped spec may run')
+    assert(h:count('bytag Ability.Action.Hun.Light.A.Normal')==0)
+end)
+test('rotation waits until the live native montage releases the mesh',function()
+    local a=item('YuuBlade')
+    local h=armed({weapons={a}})
+    local anim=object('Anim');local clip=object('Live attack montage')
+    function h.actor.Mesh:GetAnimInstance()return anim end
+    function anim:GetCurrentActiveMontage()return clip end
+    function anim:Montage_IsPlaying()return self.busy end
+    anim.busy=true;h:tick(1);assert(h.r.wep.currentId==nil,'do not replace layers during a live motion')
+    anim.busy=false;h:tick(.4);assert(h.r.wep.currentId==a.id)
+end)
 test('a fully charged NPC requests an ordinary combat art against an unbroken target and pays once',function()
     local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
     local h=armed({weapons={a},resources={consume_skill_resources=true}},{grants={{art,126,{}}}})

@@ -54,7 +54,7 @@ function Bars.new(options)
             ..' 血条比例='..tostring((U.field(U.field(widget,'hpbar'),'CurPercent')))
     end
 
-    local function show(record,actor,ratio)
+    local function show(record,actor,ratio,vitals)
         local component=U.field(actor,'hpbar')
         if not U.valid(component) then
             if not record.noComponent then record.noComponent=true;say('没有头顶血条组件 unit='..record.path..' 类='..className(actor))end
@@ -92,7 +92,15 @@ function Bars.new(options)
             if SHOWN[now]~=true then call(widget,'SetVisibility',VISIBLE)end
         end
         local actual=U.field(U.field(widget,'hpbar'),'CurPercent')
-        if ratio and (record.ratio==nil or math.abs(record.ratio-ratio)>0.001 or type(actual)~='number' or math.abs(actual-ratio)>0.001) then
+        if vitals then
+            local sync=require('hun_vitals').syncBar
+            local hp=sync(widget,'hpbar','ForSeq_UpdateHealth',vitals.hp,vitals.maximum)
+            local shachi=sync(widget,'BreakmeterBar','ForSeq_UpdateShachi',vitals.shachi,vitals.shachiMax)
+            local state=tostring(hp)..'/'..tostring(shachi)
+            if state~=record.hunBarState then
+                record.hunBarState=state;say('魂头顶条 生命/杀气显示读回='..state..' 实例='..tostring(U.key(actor)))
+            end
+        elseif ratio and (record.ratio==nil or math.abs(record.ratio-ratio)>0.001 or type(actual)~='number' or math.abs(actual-ratio)>0.001) then
             local wrote=call(widget,'ForSeq_UpdateHealth',ratio)
             local after=U.field(U.field(widget,'hpbar'),'CurPercent')
             local verified=wrote and type(after)=='number' and math.abs(after-ratio)<=0.001
@@ -127,13 +135,15 @@ function Bars.new(options)
                     self.records[key]=record
                 end
                 record.actor=unit.actor
-                local okHP,hp=pcall(options.hp,unit.actor)
-                local okMax,maximum=pcall(options.maxHP,unit.actor)
+                local v=options.vitals and options.vitals(unit)
+                local okHP,hp,okMax,maximum
+                if v then okHP,hp,okMax,maximum=true,v.hp,true,v.maximum
+                else okHP,hp=pcall(options.hp,unit.actor);okMax,maximum=pcall(options.maxHP,unit.actor) end
                 hp,maximum=okHP and tonumber(hp) or nil,okMax and tonumber(maximum) or nil
                 if hp and hp<=0 then hide(record)
                 else
                     local ratio=hp and maximum and maximum>0 and math.max(0,math.min(1,hp/maximum)) or nil
-                    local ok,err=pcall(show,record,unit.actor,ratio)
+                    local ok,err=pcall(show,record,unit.actor,ratio,v)
                     if not ok then self.failures=self.failures+1;say('显示出错 unit='..record.path..' error='..tostring(err))end
                     if companion and record.shown then shown=shown+1 end
                 end

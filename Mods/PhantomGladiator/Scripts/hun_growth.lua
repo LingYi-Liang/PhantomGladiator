@@ -7,7 +7,7 @@ local attributes={
 }
 function Growth.values(overrides)
     -- Player base charge is 100 per bar and one bar. Both permanent IncreaseUltimateCharge effects add one bar.
-    local out={UltimateCharge_Max=100,UltimateChargeCount_Max=3,UltimateChargeCount=3}
+    local out={UltimateCharge_Max=100,UltimateChargeCount_Max=3,UltimateChargeCount=3,Shachi_Min=0}
     for _,row in ipairs(attributes) do
         local field,base,bonus=table.unpack(row)
         out[field]=base+bonus

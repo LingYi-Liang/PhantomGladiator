@@ -41,12 +41,14 @@ function HUD.new(options)
         for _,unit in ipairs(members)do
             local show,extraName=wanted(unit)
             if show and (not world or U.inWorld(unit.actor,world))then
-                local ok,hp=pcall(options.hp,unit.actor)
-                local maxOK,maximum=pcall(options.maxHP,unit.actor)
+                local v=options.vitals and options.vitals(unit)
+                local ok,hp,maxOK,maximum
+                if v then ok,hp,maxOK,maximum=true,v.hp,true,v.maximum
+                else ok,hp=pcall(options.hp,unit.actor);maxOK,maximum=pcall(options.maxHP,unit.actor) end
                 if ok and maxOK and number(hp) and number(maximum) and hp>0 and maximum>0 then
                     local key=U.key(unit.actor)
                     if key and not desired[key]then
-                        desired[key]={unit=unit,hp=hp,maximum=maximum,extraName=extraName}
+                        desired[key]={unit=unit,hp=hp,maximum=maximum,extraName=extraName,vitals=v}
                         ordered[#ordered+1]=key
                     end
                 end
@@ -72,7 +74,7 @@ function HUD.new(options)
                 local name=(options.getName and options.getName(unit)) or self.names[unit.class_path] or data.extraName
                     or (unit.class_path or ''):match('%.([^%.]+)$') or 'BOSS'
                 local title=self.teams[unit.team]..' · '..name
-                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team],frame)
+                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team],frame,data.vitals)
                 if state then
                     result.registered=result.registered+1
                     if state.visible then result.visible=result.visible+1 end

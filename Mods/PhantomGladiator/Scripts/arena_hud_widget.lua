@@ -70,7 +70,7 @@ function Renderer.new(options)
         if value>0 and rounded==0 then rounded=0.1 end
         return rounded%1==0 and string.format('%.0f',rounded) or string.format('%.1f',rounded)
     end
-    function self:update(record,unit,hp,maximum,title,row,frame)
+    function self:update(record,unit,hp,maximum,title,row,frame,vitals)
         local widget,numeric=record.widget,record.numeric
         if not U.valid(widget) or not U.valid(numeric) or not same(U.field(widget,'Character'),unit.actor) then return false,'private binding lost' end
         local ok,result=pcall(function()
@@ -104,19 +104,27 @@ function Renderer.new(options)
             local ratio=math.max(0,math.min(1,hp/maximum));local bar=U.field(widget,'hpbar')
             call(bar,'SetVisibility',3)
             local actual=U.field(bar,'CurPercent')
-            if not record.healthInitialized or type(actual)~='number' or math.abs(actual-ratio)>0.0001 then
+            local healthVerified,shachiVerified
+            if vitals then
+                local sync=require('hun_vitals').syncBar
+                healthVerified=sync(widget,'hpbar','ForSeq_UpdateHealth',hp,maximum)
+                shachiVerified=sync(widget,'BreakmeterBar','ForSeq_UpdateShachi',vitals.shachi,vitals.shachiMax)
+            elseif not record.healthInitialized or type(actual)~='number' or math.abs(actual-ratio)>0.0001 then
                 call(widget,'ForSeq_UpdateHealth',ratio);record.healthInitialized=true
             end
             local value=displayNumber(hp)..' / '..displayNumber(maximum)
+            if vitals and type(vitals.shachi)=='number' and type(vitals.shachiMax)=='number' then
+                value=value..'   杀气 '..displayNumber(vitals.shachi)..' / '..displayNumber(vitals.shachiMax)
+            end
             if readText(numeric)~=value then call(numeric,'SetText',makeText(value))end
             actual=U.field(bar,'CurPercent')
             local state={visible=call(widget,'IsVisible')==true,names=readText(name)==title,
-                health=type(actual)=='number' and math.abs(actual-ratio)<0.002,numbers=readText(numeric)==value}
-            local signature=title..':'..math.floor(ratio*10)..':'..tostring(state.visible)..':'..tostring(state.names)..':'..tostring(state.health)..':'..tostring(state.numbers)
+                health=(healthVerified==true or (not vitals and type(actual)=='number' and math.abs(actual-ratio)<0.002)),shachi=shachiVerified,numbers=readText(numeric)==value}
+            local signature=title..':'..math.floor(ratio*10)..':'..tostring(state.visible)..':'..tostring(state.names)..':'..tostring(state.health)..':'..tostring(state.numbers)..':'..tostring(shachiVerified)
             if record.signature~=signature then
                 record.signature=signature
                 log('[ArenaHUD] 显示读回 name='..title..' HP='..value..' visible='..tostring(state.visible)
-                    ..' name_ok='..tostring(state.names)..' hp_ok='..tostring(state.health)..' number_ok='..tostring(state.numbers))
+                    ..' name_ok='..tostring(state.names)..' hp_ok='..tostring(state.health)..' number_ok='..tostring(state.numbers)..' shachi_ok='..tostring(shachiVerified))
             end
             return state
         end)

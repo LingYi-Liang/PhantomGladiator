@@ -436,15 +436,25 @@ function Weapons.new(o)
         -- weapon's prefix wins.
         local map={}
         local prefix=currentWeapon(r.wep).prefix
+        local exact={}
+        if r.wep.rotation then
+            local cfg=r.wep.currentConfig
+            for i,cls in ipairs(U.array(U.field(cfg,'Equip Abilities')) or {})do
+                local key=path(cls)
+                if key then exact[key:lower()]=i end
+            end
+        end
         for _,spec in ipairs(specs(r.actor)or{})do
             local ability=U.struct(spec,'Ability')
             local n_=abilityName(ability)
-            local mine=n_:sub(1,#prefix)==prefix
+            local abilityPath=(path(ability) or ''):gsub('%.Default__','.')
+            local rank=exact[abilityPath:lower()]
+            local mine=rank~=nil or (not r.wep.rotation and n_:sub(1,#prefix)==prefix)
             local container=U.field(ability,'AbilityTags')
             for _,t in ipairs(U.array(U.struct(container,'GameplayTags'))or{})do
                 local n=text(U.struct(t,'TagName'))
-                if n and(not map[n]or mine and not map[n].mine)then
-                    map[n]={handle=U.struct(U.struct(spec,'Handle'),'Handle'),name=n_,mine=mine}
+                if n and(not map[n]or mine and (not map[n].mine or rank and rank<(map[n].rank or math.huge)))then
+                    map[n]={handle=U.struct(U.struct(spec,'Handle'),'Handle'),name=n_,mine=mine,rank=rank,cls=abilityPath}
                 end
             end
         end
@@ -491,18 +501,42 @@ function Weapons.new(o)
         if gotGate and gate==false then return end
         local tag,kind=nextTag(r,chain)
         if not tag then return end
+        if w.rotation and kind=='起手' and require('hun_vitals').montagePlaying(actor) then return end
         local ia=object(heavy and Weapons.PATHS.heavy or Weapons.PATHS.light)
         if not ia then return end
+        local exact
+        if w.rotation then
+            local entry=tagMap(r)[tag]
+            exact=entry and entry.mine and specOf(actor,entry.cls) or nil
+            if not exact or type(exact.handle)~='number' or exact.handle~=entry.handle then
+                if clock()>=(w.nextMapRead or 0) then w.tagMap=nil;w.nextMapRead=clock()+1 end
+                once('missing-combo:'..weapon.config..tag,'当前武器还没有匹配的连段句柄 '..weapon.label..' '..tag)
+                return
+            end
+            if exact.active~=0 then return end
+            exact.path=entry.cls
+        end
         w.stats[w.weapon]=w.stats[w.weapon]or{tries=0,ok=0,byTag=0,byHandle=0,hits=0}
         local s=w.stats[w.weapon]
         s.tries=s.tries+1;s.lastTag=tag
-        once(heavy and 'heavyByTag' or 'byTag','即将 AbilityInputComponent:TryActivateExternalActionAbilityByTag(标签,'..(heavy and 'IA_AttackH_Press' or 'IA_AttackL_Press')..','..priority..')（本次加载第一次，之后不再逐次写）')
+        if exact then once('exactCombo','即将按本武器授予的具体技能句柄出招 '..exact.name)
+        else once(heavy and 'heavyByTag' or 'byTag','即将 AbilityInputComponent:TryActivateExternalActionAbilityByTag(标签,'..(heavy and 'IA_AttackH_Press' or 'IA_AttackL_Press')..','..priority..')（本次加载第一次，之后不再逐次写）')end
         local before=tagCount(actor,tag)or 0
-        local called,result=call(aic,'TryActivateExternalActionAbilityByTag',{TagName=fname(tag)},ia,priority)
+        local called,result
+        if exact then
+            called,result=call(U.field(actor,'AbilitySystemComponent'),'TryActivateAbility',{Handle=exact.handle},false)
+        else
+            called,result=call(aic,'TryActivateExternalActionAbilityByTag',{TagName=fname(tag)},ia,priority)
+        end
         local after=tagCount(actor,tag)or 0
         local started=after>before or(result==true and after>0)
         local how='标签'
-        if not started then
+        if exact then
+            local live=specOf(actor,exact.path)
+            started=called and result~=false and live and live.handle==exact.handle and type(live.active)=='number' and live.active>0
+            how='句柄'
+            s.lastClass=exact.name
+        elseif not started then
             local spec=tagMap(r)[tag]
             if spec and spec.mine and type(spec.handle)=='number'then
                 once('byHandle','即将 AbilitySystemComponent:TryActivateAbility(句柄)（出招备选，本次加载第一次）')
@@ -523,7 +557,7 @@ function Weapons.new(o)
         end
         if not w.comboFirst then
             w.comboFirst=true
-            say('出招 第一次 实例='..r.name..' '..weapon.label..' 标签='..tag..'（'..kind..'） ByTag调用='..tostring(called==true)..' 返回='..tostring(result)
+            say('出招 第一次 实例='..r.name..' '..weapon.label..' 标签='..tag..'（'..kind..'） 调用='..tostring(called==true)..' 技能类='..tostring(s.lastClass)..' 返回='..tostring(result)
                 ..' 标签计数 '..before..'→'..after..' 方式='..how..' 启动='..tostring(started)..' 蒙太奇='..montage(actor))
         end
         if started and not w.comboRecorded then w.comboRecorded=true;record('combo',true)end
@@ -822,7 +856,8 @@ function Weapons.new(o)
             ' 铸魂='..tostring(item.soul)..' 本局次数='..w.rotation.picks[item.id]..
             ' 权重来源='..(item.grantGroup or (item.temporary and '临时武器' or '目录序估计'))..
             ' 方案攻击倍率='..item.multipliers[item.level]..' 原生读取倍率='..tostring(got and power))
-        alignPresentation(r)
+        if require('hun_vitals').montagePlaying(r.actor) then w.presentationPending=item.id
+        else w.presentationPending=nil;alignPresentation(r) end
     end
     local function matchesTarget(actor,target)
         if not o.nativeTarget then return true end
@@ -1052,6 +1087,11 @@ function Weapons.new(o)
             -- A game ability can change the current slot independently. Reconcile before touching either slot.
             w.active=nil;w.currentId=nil;s.currentId=nil;w.weapon=nil
             Rotation.effects(s,nil,U.field(r.actor,'AbilitySystemComponent'),{object=object,call=call,say=say})
+        end
+        if require('hun_vitals').montagePlaying(r.actor) then return false end
+        if w.presentationPending then
+            if w.active and w.presentationPending==w.active.id then alignPresentation(r) end
+            w.presentationPending=nil
         end
         if phaseArt(r,t,target) then return true end
         local phase=r.intent and r.intent.weapon_id

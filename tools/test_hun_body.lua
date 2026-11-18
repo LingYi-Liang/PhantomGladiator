@@ -459,3 +459,13 @@ do
     h.mod:cancel();assert(callback==nil and not h.mod:owns(h.actor))
     print('PASS a frozen full profile reaches the combat modules and the arena opponent on the scheduled game loop')
 end
+do
+    local h=probeFixture()
+    assert(h:run().ok);h:tick(2)
+    h.counts['CharacterState.Dead']=1;h.hpValue=0;h:tick(1)
+    h.hpValue=34;h:tick(1)
+    assert(h.mod:confirmedDead(h.actor),'regeneration on a corpse must not revive the participant or either bar')
+    h.counts['CharacterState.Dead']=0;h:tick(1)
+    assert(not h.mod:confirmedDead(h.actor),'positive HP with the native death tag removed can return to the fight')
+    print('PASS a dead-tagged body remains out while an accessory raises its raw HP')
+end

@@ -310,6 +310,8 @@ function Spectator.new(options)
             local ok,released=pcall(options.releasePlayerTarget,npc,player)
             if not ok or released~=true then fail('玩家AI目标释放未确认') end
         end
+        -- Arena Hun bodies suppress player hatred on their own manager. Preserve native hit classification.
+        if options.preserveCombatFaction and options.preserveCombatFaction(npc) then return end
         local fc = component(npc, "Faction Component")
         local fcKey = key(fc)
         local before = relation(npc, fc, player)

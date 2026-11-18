@@ -654,6 +654,11 @@ function Shachi.new(o)
             return false
         end
         if available>0 then s.emptyReported=nil end
+        if require('hun_vitals').montagePlaying(r.actor) then
+            local _,idx=call(wc,'GetCurrentWeaponIndex',tag(SLOT),false)
+            local active=s.slots[idx]
+            if not active or active.id~=choice.id then return false end
+        end
         if not equipChoice(r,wc,asc,choice,now) then
             local failures=(s.attempts[choice.id] or 0)+1
             s.attempts[choice.id]=failures;s.untilAt[choice.id]=now+math.min(120,5*failures)
