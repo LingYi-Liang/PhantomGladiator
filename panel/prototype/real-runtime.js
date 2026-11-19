@@ -25,6 +25,8 @@ const RealRuntime = (() => {
   const webview = window.chrome && window.chrome.webview;
   const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next", "dismiss_companions", "hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
+  const EYE_KEYS = ["eyes_player","eyes_npc"];
+  const WEATHER_KEYS = window.PG_I18N?.weatherKeys || [];
   const HUN_KEYS = ["hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const QUEUE_STUCK_MS = 12000;
   const READ_TIMEOUT_MS = 5000;
@@ -136,7 +138,7 @@ const RealRuntime = (() => {
     // arena_state after a cleanup the mod could not confirm: cleanup_pending / restore_pending need
     // another cleanup, spawn_uncertain needs a game restart. Spawning is blocked meanwhile.
     cleanup: "",
-    keys: Object.fromEntries(KEY_NAMES.map(k => [k, null])),
+    keys: Object.fromEntries([...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS].map(k => [k, null])),
     unitKeys: {},
     scan: null,
     synced: null,
@@ -473,9 +475,10 @@ const RealRuntime = (() => {
       Object.assign(s.companionStats, { supported: yes("companion_stats_supported"), mode: v.companion_stats_mode === "custom" ? "custom" : "game", customCount: num("companion_stats_count"),
         customized: num("companion_stats_customized"), failures: num("companion_stats_failures"), rejectedCount: num("companion_stats_rejected"),
         rejected: String(v.companion_stats_rejected_fields || "").split(",").filter(Boolean) });
-      s.track = { supported: yes("track_supported"), on: yes("track_on"), framing: v.track_framing || "side", resume: num("track_resume"),
+      s.track = { supported: yes("track_supported"), eyesSupported:yes("first_person_supported"), on: yes("track_on"), framing: v.track_framing || "side", resume: num("track_resume"),
         target: v.track_target || "", targetClass: v.track_target_class || "", otherClass: v.track_other_class || "",
         targets: (v.track_targets || "").split(";").filter(Boolean).map(item => { const [key, cls, team] = item.split(":"); return { key, cls, team }; }) };
+      s.entourageSupported = yes("entourage_rule_supported");
       s.unitRulesSupported = yes("unit_rules_supported");
       s.executionMinionsSupported = yes("execution_minions_rule_supported");
       s.remoteReflectSupported = yes("remote_reflect_supported");
@@ -504,8 +507,11 @@ const RealRuntime = (() => {
 
     const bindings = data.function_keys?.bindings || {};
     s.dismissKeySupported = online && data.function_keys?.dismiss_supported === true;
+    s.weather = {supported: online && yes("weather_supported"), choice: v.weather_choice || "map"};
+    s.eyesKeysSupported = online && data.function_keys?.eyes_supported === true;
+    s.weatherKeysSupported = online && data.function_keys?.weather_supported === true;
     s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
-    for (const k of KEY_NAMES) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
+    for (const k of [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS]) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
 
     const updates = new Map();
     for (const q of [...(data.watched_commands || []), ...(data.queue || [])]) {
@@ -556,14 +562,14 @@ const RealRuntime = (() => {
       companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, { ...s.companionStats, values: undefined }],
       match: [s.game, { ...s.statMatch, values: undefined }],
       diff: [s.game, s.difficulty, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
-      fun: [s.game, s.fun],
+      fun: [s.game, s.fun, s.weather, s.weatherKeysSupported, WEATHER_KEYS.map(k => s.keys[k])],
       battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, [s.keys.start, s.keys.stop],
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
-      keys: [s.game, s.keys, s.dismissKeySupported, s.hunKeysSupported],
-      grid: [s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
+      keys: [s.game, s.keys, s.eyesKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported],
+      grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
       summonQueue: [s.game, s.summonQueue],
@@ -640,6 +646,7 @@ const RealRuntime = (() => {
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
+    else if (action === "set_weather") body = {action, mode:payload.mode};
     else if (action === "set_battle_music") body = { action, mode: payload.mode, track: payload.track };
     else if (action === 'hun_body_probe') body = { action, team: payload.team, count: payload.count, profile_revision: payload.profile_revision };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
@@ -649,7 +656,7 @@ const RealRuntime = (() => {
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
     else if (action === "set_stat_mode" || action === "set_companion_stats") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
     else if (action === "set_ai_params") body = { action, values: payload.values };
-    else if (action === "configure_keys") { path = "/api/keybinds"; body = Object.fromEntries(KEY_NAMES.map(k => [k, wireKey(payload.bindings[k])])); }
+    else if (action === "configure_keys") { path = "/api/keybinds"; body = Object.fromEntries((s.eyesKeysSupported ? [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS] : s.weatherKeysSupported ? [...KEY_NAMES,...WEATHER_KEYS] : KEY_NAMES).map(k => [k, wireKey(payload.bindings[k])])); }
     else body = { action };
     const held = action === "stop" ? owned : action === "clear_neutral" ? s.neutral + s.down.neutral : 0;
     const companionsHeld = action === "dismiss_companions" ? s.companion + s.down.companion : 0;
@@ -741,7 +748,7 @@ const RealRuntime = (() => {
 
   const setup = {
     detectGame: () => host("detectGame"),
-    pickFolder: () => host("pickFolder"),
+    pickFolder: () => host("pickFolder", { lang: document.documentElement.lang }),
     async setGamePath(path) {
       const info = await host("setGamePath", { path });
       s.gamePath = info.path;
@@ -807,7 +814,7 @@ const RealRuntime = (() => {
       save: request => submitCommand('/api/hun-profile',request),
     },
     localAudio: {
-      pick: () => host("pickAudio"),
+      pick: () => host("pickAudio", { lang: document.documentElement.lang }),
       async change(request) {
         const reply = await submitCommand("/api/local-audio", request);
         s.localAudio = reply;

@@ -52,7 +52,10 @@ local function harness()
             opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
             paused=function()return h.paused end,phaseBusyKey=h.phaseBusyKey,phaseBusy=h.phaseBusy,
-            companionTargetOf=function(actor)return h.targets[tostring(actor:GetAddress())]end})
+            companionTargetOf=function(actor,target,name)
+                if h.companionTarget then return h.companionTarget(actor,target,name) end
+                return h.targets[tostring(actor:GetAddress())]
+            end})
     end
     function h.all()return table.concat(h.lines,'\n')end
     return h
@@ -106,5 +109,53 @@ if not only or only=='reuse' then test('an address reused by a different compani
     local replacement=object('BP_Monster_ZuoShang_C');replacement.GetAddress=buddy.GetAddress
     h.members[1].actor=replacement;aim:tick()
     assert(h.hooks[Aim.paths.FlyingSwordStart]~=nil,'a reused address cannot inherit another class capability')
+end)end
+if not only or only=='rain' then test('silver-haired companion sword rain acquires late particles and keeps simultaneous casts separate',function()
+    local h=harness();local first=object('BP_Monster_ZuoShang_Ending_C');local second=object('BP_Monster_ZuoShang_Ending_C')
+    h.members={{actor=first,team='companion'},{actor=second,team='companion'}}
+    local aim=h.new();aim:tick()
+    FName=function(s)return s end
+    local loop,scans,list=nil,0,{}
+    LoopInGameThreadWithDelay=function(ms,fn)assert(ms==50 and not loop);loop=fn;return 1 end
+    CancelDelayedAction=function()loop=nil end
+    FindAllOf=function(kind)assert(kind=='PBZ_ParticleBullet');scans=scans+1;return list end
+    local function step(n)for _=1,n do h.now=h.now+.05;if loop then loop()end end end
+    local function named(s)return object(s,{GetFName=function()return {ToString=function()return s end}end})end
+    local rain=named('BD_ZuoShang_Skill_19')
+    local asset=named('NS_ZuoShang_SwordShooting_001')
+    local function enemy(x)return object('BP_MapBoss_C',{K2_GetActorLocation=function()return {X=x,Y=0,Z=0}end})end
+    h.targets[key(first)]=enemy(400);h.targets[key(second)]=enemy(900)
+    local reads=0
+    h.companionTarget=function(actor,previous,name)
+        reads=reads+1
+        return h.targets[key(actor)] or (previous and previous:GetFullName()==name and previous)
+    end
+    local function bullet(owner)
+        local b=object('PBZ_ParticleBullet',{BulletOwnerAvatar=owner,BulletData=rain,BulletStatus=2})
+        b.ParticleComponent=object('NiagaraComponent',{Asset=asset,GetOwner=function()return b end,
+            SetVariableBool=function(c,_,v)c.use=v end,SetVariablePosition=function(c,_,p)c.x=p.X end})
+        return b
+    end
+    local launch=h.hooks[Aim.paths.launch]
+    local function fire(owner)launch(object('GAA_DelayDeflectProjectileBullet_C',{['Bullet Data']=rain,GetAvatarActor=function()return owner end}))end
+    fire(first);fire(second);step(5);h.targets[key(first)]=nil
+    local a,b,playerShot=bullet(first),bullet(second),bullet(h.player)
+    list={a,b,playerShot};step(12)
+    assert(a.ParticleComponent.use and a.ParticleComponent.x==400,'late companion sword rain kept its native player position')
+    assert(b.ParticleComponent.use and b.ParticleComponent.x==900 and playerShot.ParticleComponent.use==nil)
+    local done=scans;h.targets[key(first)]=enemy(600);step(6)
+    assert(a.ParticleComponent.x==600 and b.ParticleComponent.x==900 and scans==done,'acquired particles should only track their own targets')
+    a.BulletStatus=3;b.BulletStatus=3;step(2);assert(not loop)
+    local skill=h.hooks[Aim.paths.skillStart];assert(skill)
+    local function cast(owner)skill(object('GA_ZuoShang_Skill_19_C',{GetAvatarActorFromActorInfo=function()return owner end}))end
+    cast(h.player);assert(not loop)
+    cast(second);step(11)
+    list={bullet(second),bullet(second),bullet(second),bullet(second),bullet(second),playerShot};step(16)
+    for i=1,5 do assert(list[i].ParticleComponent.x==900,'cast start must cover a missing launcher notification')end
+    reads=0;step(1);assert(reads==1,'five emitters from one volley share a fresh target read per tick')
+    for i=1,5 do list[i].BulletStatus=3 end
+    step(3);assert(not loop and playerShot.ParticleComponent.use==nil)
+    done=scans;list={};fire(first);step(120);assert(not loop and scans-done<=9,'an absent volley must retire its bounded search')
+    LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
 end)end
 print('companion_aim: PASS (ordinary view and actual player isolation)')

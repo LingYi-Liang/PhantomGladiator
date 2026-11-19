@@ -100,7 +100,8 @@ const MockRuntime = (() => {
     companionExec: { supported: true, on: savedCompanionExec },
     offCombatRegen: { supported: true, on: false, state: "off", failures: 0 },
     companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
-    track: { supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
+    eyesKeysSupported:true,
+    track: { eyesSupported:true, supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
     unitRulesSupported: true,
     remoteReflectSupported: true,
@@ -112,6 +113,7 @@ const MockRuntime = (() => {
     stopOutcome: "ok",          // ok | partial (next cleanup leaves one restore record) | stuck (every cleanup does)
     // The eight function keys (BINDING_NAMES in backend.py) start unbound; each is null or { code, mods }.
     dismissKeySupported: true,
+    weatherKeysSupported:true,weather:{supported:true,choice:"map"},
     hunKeysSupported: true,
     battleMusic: { supported: true, mode: "NATIVE", track: "MOYUAN_P1", state: "native", message: "保留原版音乐", playing: 0 },
     keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, dismiss_companions: null, hun_blue: null, hun_red: null, hun_companion: null, hun_neutral: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
@@ -266,6 +268,8 @@ const MockRuntime = (() => {
         job.message = "镜头跟踪已开启";
         return;
       }
+      case "eyes_player": case "eyes_npc":
+        s.freeCam=true;s.track.on=true;s.track.framing="eyes";return;
       case "set_camera_track": {
         const p = job.payload, chosen = s.track.targets.find(u => u.key === p.target);
         Object.assign(s.track, { framing: p.framing, resume: p.resume }, chosen ? { target: chosen.key, targetClass: chosen.cls, otherClass: s.track.targets.find(u => u !== chosen)?.cls || "" } : {});
@@ -292,6 +296,7 @@ const MockRuntime = (() => {
         releaseBaseline();
         return;
       case "set_boss_combos": s.combo = { supported: true, on: p.enabled }; return;
+      case "set_weather": s.weather.choice=p.mode==="restore"?"map":p.mode;return;
       case "set_battle_music": Object.assign(s.battleMusic, p, { state: p.mode === "NATIVE" ? "native" : "waiting", message: "设置已保存，进入蓝红对战后生效" }); return;
       case "set_fun_feature": {
         const f = s.fun;

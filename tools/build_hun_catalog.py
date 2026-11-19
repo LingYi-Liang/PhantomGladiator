@@ -39,7 +39,9 @@ if __name__=='__main__':
         prior=json.loads(args.out.read_text(encoding='utf-8'));previous={r['id']:r for r in prior['items']}
         for row in data['items']:
             old=previous.get(row['id'],{})
-            row.update({key:old[key]for key in ('name','variant','description','icon','image_note')if key in old})
+            row.update({key:old[key]for key in ('name','variant','description','icon','image_note','en')if key in old})
+            if 'has_combat_art' in old and row['normal_config']==old['normal_config'] and row['soul_config']==old['soul_config']:
+                row['has_combat_art']=old['has_combat_art']
         if 'character'in prior:data['character']=prior['character']
     args.out.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8',newline='\n')
     print('Hun metadata:',len(data['items']),'variant-preserving entries; runtime compatibility remains unverified')

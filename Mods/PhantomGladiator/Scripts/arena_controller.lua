@@ -231,7 +231,7 @@ function Arena.new(options)
         indexRevision=-1;byKey,unkeyed=nil,nil
         if not options.onUnitsChanged then return true end
         local copy = {}
-        for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,summoner=unit.summoner,aid=unit.aid==true } end
+        for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,formation=unit.formation,formationGroup=unit.formationGroup,summoner=unit.summoner,aid=unit.aid==true } end
         local ok, err = pcall(options.onUnitsChanged, copy)
         if not ok then log("参赛者同步失败: " .. tostring(err)) end
         return ok
@@ -287,28 +287,34 @@ function Arena.new(options)
         return result
     end
 
-    local function choose(path, requestedTeam, requestedCount)
+    local function choose(path, requestedTeam, requestedCount, preserveSelection)
         local newTeam = requestedTeam == nil and team or team_name(requestedTeam)
         local newCount = requestedCount == nil and count or tonumber(requestedCount)
         if not newTeam then return false, "队伍只允许 blue/red/neutral/companion" end
         if not finite(newCount) or newCount % 1 ~= 0 or newCount < 1 or newCount > MAX_BATCH then
             return false, "单次数量必须是1到" .. MAX_BATCH .. "的整数"
         end
+        local batchEntry
         if path ~= nil then
             if type(path) ~= "string" or path == "" then return false, "单位类路径为空" end
             local okPolicy,allowed,why=invoke("canSpawn",path)
             if not okPolicy or allowed~=true then return false,tostring(why or "未取得该单位的生成验证许可") end
-            if type(catalog) ~= "table" or type(catalog.registerPath) ~= "function" or type(catalog.select) ~= "function" then
+            if type(catalog) ~= "table" or type(catalog.registerPath) ~= "function" or (not preserveSelection and type(catalog.select) ~= "function") then
                 return false, "目录不支持路径登记和选择"
             end
             local okRegister, entry, why = pcall(catalog.registerPath, catalog, path)
             if not okRegister or not entry then return false, "登记失败: " .. tostring(why or entry) end
-            local okSelect, chosen, selectError = pcall(catalog.select, catalog, path)
-            if not okSelect or not chosen then return false, "选择失败: " .. tostring(selectError or chosen) end
-            selected = path
+            if preserveSelection then
+                if type(entry)~='table' or entry.path~=path then return false,'本批单位路径未读回' end
+                batchEntry=entry
+            else
+                local okSelect, chosen, selectError = pcall(catalog.select, catalog, path)
+                if not okSelect or not chosen then return false, "选择失败: " .. tostring(selectError or chosen) end
+                selected = path
+            end
         end
-        team, count = newTeam, newCount
-        return true
+        if not preserveSelection then team,count=newTeam,newCount end
+        return true,nil,newTeam,newCount,batchEntry
     end
 
     function instance:select(path, requestedTeam, requestedCount)
@@ -344,7 +350,7 @@ function Arena.new(options)
         prune()
         local copy={}
         for _,unit in ipairs(units) do
-            copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,summoner=unit.summoner,
+            copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,formation=unit.formation,formationGroup=unit.formationGroup,summoner=unit.summoner,
                 stand=stand(unit),reserve=unit.dormant==true or stand(unit),untargetable=unit.untargetable==true,aid=unit.aid==true}
         end
         return copy
@@ -842,7 +848,7 @@ function Arena.new(options)
                 Y = origin.Y + y * distance + x * lateral, Z = origin.Z + 50 } }
     end
 
-    function instance:spawn(path, requestedTeam, requestedCount)
+    function instance:spawn(path, requestedTeam, requestedCount, preserveSelection)
         return run(function()
             prune()
             local block=spawn_block()
@@ -850,7 +856,9 @@ function Arena.new(options)
             if state=="cleanup_pending" or state=="restore_pending" then
                 return response(false,"上次清理或恢复未完成，已阻止继续生成；请先完成清理",{spawned_count=0})
             end
-            local okChoose, whyChoose = choose(path, requestedTeam, requestedCount)
+            -- A custom fighter has a batch of its own. Keep the ordinary arena
+            -- selection visible to callbacks, including throughout a failed spawn.
+            local okChoose,whyChoose,team,count,batchEntry=choose(path,requestedTeam,requestedCount,preserveSelection)
             if not okChoose then return response(false, whyChoose, { spawned_count = 0 }) end
             -- 必须先有可控制玩家与当前World；启动/读档期间不能先加载类再发现玩家无效。
             local okPlayer, player = invoke("getPlayer")
@@ -861,11 +869,13 @@ function Arena.new(options)
             if maxUnits>0 and #units + count > maxUnits then
                 return response(false, "擂台总数上限"..maxUnits.."；当前=" .. #units .. "，请求=" .. count, { spawned_count = 0 })
             end
-            if type(catalog) ~= "table" or type(catalog.selected) ~= "function" or type(catalog.resolveSelected) ~= "function" then
+            if type(catalog)~='table' or (batchEntry and type(catalog.resolvePath)~='function') or
+                (not batchEntry and (type(catalog.selected)~='function' or type(catalog.resolveSelected)~='function')) then
                 return response(false, "目录接口不可用", { spawned_count = 0 })
             end
             log("召唤阶段=直接读取所选路径；跳过全量类扫描")
-            local okEntry,entry=pcall(catalog.selected,catalog)
+            local okEntry,entry=true,batchEntry
+            if not batchEntry then okEntry,entry=pcall(catalog.selected,catalog) end
             if not okEntry or type(entry)~="table" or type(entry.path)~="string" then
                 return response(false,"没有可用的明确单位路径",{spawned_count=0})
             end
@@ -884,12 +894,17 @@ function Arena.new(options)
                     end
                 end
             end
-            log("召唤阶段=解析当前选中类")
-            local okClass, cls, classError = pcall(catalog.resolveSelected, catalog)
+            log('召唤阶段=解析本批单位 '..entry.path)
+            local okClass,cls,classError,resolved
+            if batchEntry then okClass,cls,classError,resolved=pcall(catalog.resolvePath,catalog,entry.path)
+            else okClass,cls,classError=pcall(catalog.resolveSelected,catalog) end
             if not okClass or live(cls) ~= true then
                 return response(false, "类解析未通过: " .. tostring(classError or cls), { spawned_count = 0 })
             end
-            if type(catalog.selected) == "function" then
+            if batchEntry then
+                if type(resolved)~='table' or resolved.path~=entry.path then return response(false,'本批单位类与目录不一致',{spawned_count=0}) end
+                batchEntry=resolved
+            elseif not preserveSelection then
                 local okEntry, entry = pcall(catalog.selected, catalog)
                 if okEntry and type(entry) == "table" and type(entry.path) == "string" then selected = entry.path end
             end
@@ -910,21 +925,25 @@ function Arena.new(options)
                 if at and look then location,forward=at,look end
             end
             local spawned, activated, failures = 0, 0, 0
+            local formation
+            if options.formationEnabled then local ok,value=invoke("formationEnabled",entry.path);if ok then formation=value end end
             local escorted, escortsWanted = 0, 0
             local spawnWarning
             local refusal   -- why a unit was not started (spawnClass outcome not_started), said in the reply
             local cleanupRequired=false
             -- One unit: spawn, take ownership, finish and activate it. Returns the actor once it is owned and
             -- whether the batch has to stop. escort = {parent=, parent_path=, entry=} for a unit that comes with another.
-            local function spawn_one(unitCls,unitPath,slot,transform,escort)
+            local function spawn_one(unitCls,unitPath,slot,transform,escort,group)
                 local guarded,guardError=guard_call('begin')
                 if not guarded then failures=failures+1; log(tostring(guardError)); return nil,true end
-                local okSpawn, actor, spawnError, outcome = invoke("spawnClass", unitCls, transform, world, escort and escort.entry)
+                local okSpawn, actor, spawnError, outcome = invoke("spawnClass", unitCls, transform, world, escort and escort.entry or batchEntry)
                 local duplicate = false
                 for _, unit in ipairs(units) do if unit.actor == actor then duplicate = true; break end end
                 if okSpawn and live(actor) == true and not duplicate then
                     -- 先接管所有权并通知root，再调用可能失败的登场操作。
-                    units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive }
+                    units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,
+                        formationGroup=group }
+                    if not escort then units[#units].formation=formation end
                     if escort then escorted=escorted+1 else spawned = spawned + 1 end
                     if spawnError~=nil then failures=failures+1; log("生成返回警告: "..tostring(spawnError)) end
                     if not notify_units() then failures = failures + 1; cleanupRequired=true; return actor,true end
@@ -964,11 +983,14 @@ function Arena.new(options)
                 unknownSpawn=true; return nil,true
             end
             -- Units the game places with this one (options.escortsFor, escorts.lua: a 驯犬客's two 狂犬), same team.
-            local function spawn_escorts(parent)
-                local okList,list=invoke('escortsFor',entry.path)
+            local function spawn_escorts(parent,group)
+                local okList,list=invoke('escortsFor',entry.path,formation)
                 if not okList or type(list)~='table' then return false end
                 for _,spec in ipairs(list) do
                     escortsWanted=escortsWanted+spec.count
+                    if maxUnits>0 and #units+spec.count+(count-spawned)>maxUnits then
+                        failures=failures+1;log("随行名额不足，未生成这一组队员");return false
+                    end
                     local okResolve,escortCls,why,escortEntry=invoke('resolveEscort',spec.path)
                     if not okResolve or live(escortCls)~=true or type(escortEntry)~='table' then
                         failures=failures+1
@@ -981,7 +1003,7 @@ function Arena.new(options)
                             if not transform then failures=failures+1; log('随行中止：站位无效'); return false end
                             log(string.format('召唤阶段=随行 %d/%d unit=%s 跟随=%s team=%s slot=%d position=%.1f,%.1f,%.1f',index,spec.count,
                                 spec.path,actor_name(parent),team,slot,transform.Translation.X,transform.Translation.Y,transform.Translation.Z))
-                            local _,stop=spawn_one(escortCls,spec.path,slot,transform,{parent=parent,parent_path=entry.path,entry=escortEntry})
+                            local _,stop=spawn_one(escortCls,spec.path,slot,transform,{parent=parent,parent_path=entry.path,entry=escortEntry},spec.formation and group or nil)
                             if stop then return true end
                         end
                     end
@@ -997,9 +1019,10 @@ function Arena.new(options)
                 if not transform then failures = failures + 1; log("召唤中止：朝向或站位无效"); break end
                 log(string.format("召唤阶段=生成 %d/%d team=%s slot=%d position=%.1f,%.1f,%.1f",
                     index, count, team, slot, transform.Translation.X, transform.Translation.Y, transform.Translation.Z))
-                local actor,stop=spawn_one(cls,entry.path,slot,transform,nil)
+                local group=formation and {} or nil
+                local actor,stop=spawn_one(cls,entry.path,slot,transform,nil,group)
                 if stop then break end
-                if actor and options.escortsFor and spawn_escorts(actor) then break end
+                if actor and options.escortsFor and spawn_escorts(actor,group) then break end
             end
             if relaySide and spawned>0 and not relay.anchor then
                 relay.anchor={location=vector(location),forward=vector(forward)}

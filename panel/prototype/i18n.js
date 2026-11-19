@@ -1312,7 +1312,7 @@ I18N.add("en", {
   "settings.updates.autoDesc": "You'll be told about new versions. Nothing installs on its own.",
   "settings.updates.nexus": "This Nexus Mods build does not check for or download updates. Track the mod on Nexus Mods to be told about new versions.",
   "settings.repair": "Repair save",
-  "settings.repair.desc": "In earlier versions, summoned units or finishers could write story progress into your save: the fifth dragon pillar trial ending with nothing happening, both phases of Lei Dang showing up together in 戏梦山庄, Lengtu starting her story fight at a later phase, and so on. Click to check the current save. What can be repaired is put right with the game's own steps; anything that needs you to go somewhere or summon a unit once is said in the result. Enter the game world first.",
+  "settings.repair.desc": "In earlier versions, summoned units or finishers could write story progress into your save: the fifth dragon pillar trial ending with nothing happening, both phases of Lei Dang showing up together in Mirage Estate, Lengtu starting her story fight at a later phase, and so on. Click to check the current save. What can be repaired is put right with the game's own steps; anything that needs you to go somewhere or summon a unit once is said in the result. Enter the game world first.",
   "settings.repair.btn": "Check and repair",
   "toast.repair.done": "Save check done; the result is on the Settings page",
   "action.repair_save": "Repair save",
@@ -1321,7 +1321,7 @@ I18N.add("en", {
   "repair.pillar.stuck": "Dragon pillars: stuck at pillar {n} ({map}); it is put right automatically when you go near it",
   "repair.pillar.fixed": "Dragon pillars: put right; that pillar will collapse and give its reward on its own",
   "repair.pillar.failed": "Dragon pillars: the repair did not take; see the log",
-  "repair.leidang.pending": "Lei Dang: recorded as already defeated{note}; in 戏梦山庄 his first phase's spawn point will be turned off and you fight only his second phase",
+  "repair.leidang.pending": "Lei Dang: recorded as already defeated{note}; in Mirage Estate his first phase's spawn point will be turned off and you fight only his second phase",
   "repair.leidang.unread": " (whether that fight is over could not be read)",
   "repair.leidang.fixed": "Lei Dang: his first phase's spawn point is turned off; you fight only his second phase",
   "repair.lengtu.armed": "Lengtu: her phase progress was written by the mod; it is cleared the next time you summon Lengtu in the arena",
@@ -2367,4 +2367,18 @@ I18N.add("en", {
   "update.stableBody": "Current test build: {build}. The stable release replaces it in place and keeps your settings. No manual download or extraction is needed.",
   "update.stableDownload": "Download and switch to stable",
   "update.notesUnavailable": "Release notes could not be retrieved. See the release page."
+});
+
+I18N.add("zh", {
+  "support.wechat": "微信赞赏",
+  "support.international": "境外赞助 · Patreon",
+  "support.patreonImage": "Patreon 会员档位配图（点击放大）",
+  "support.openPatreon": "前往 Patreon 赞助"
+});
+
+I18N.add("en", {
+  "support.wechat": "WeChat Pay",
+  "support.international": "International support · Patreon",
+  "support.patreonImage": "Patreon membership tiers (click to enlarge)",
+  "support.openPatreon": "Support on Patreon"
 });

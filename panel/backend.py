@@ -39,7 +39,7 @@ DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platf
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
-ACTIONS.add('hun_body_probe')
+ACTIONS.update(('hun_body_probe','set_weather','eyes_player','eyes_npc'))
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
@@ -59,6 +59,8 @@ HOME_LEVEL_HEADER = "unit\tlevel\tsource\tmap\tpart\tdefault\tpicked\tcount"
 UNIT_SHORT_ID = re.compile(r"[A-Za-z0-9_]{1,128}")
 # Rules set on a unit's card (unit_rules.lua).
 UNIT_RULES = {"lock": ("execute", "kill"), "phantom": ("off", "keep"), "remote_reflect": ("keep", "off"), "menghua_stage": ("keep", "skip")}
+ENTOURAGE_UNITS={'BP_Monster_HuaShan_Blue','BP_Monster_HuaShan_RedTroop_BigBro','BP_Monster_JadeMaskMan','BP_Monster_FemaleVessel_YuZan','BP_Monster_CanQu_BiHai','BP_Monster_Danghui','BP_Monster_XiaoXue'}
+UNIT_RULES['entourage']=('off','on')
 UNIT_RULES['execution_minions']=tuple(f'{state}_{chance}'for state in ('on','off')for chance in range(101))
 THORN_SHIELD_UNITS = {"BP_Monster_JingYe", "BP_Monster_MaleThug_Club_Yellow_Shield", "BP_Monster_MaleThug_Club_Yellow_Shield_Teaching"}
 # Player-only fun features (fun_features.lua): infinite Shachi, auto perfect deflect, auto red-light dodge.
@@ -184,12 +186,19 @@ V2_BINDING_NAMES = LEGACY_BINDING_NAMES + ("toggle_camera", "exit_camera", "cycl
 V4_BINDING_NAMES = V2_BINDING_NAMES + ("recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next")
 V5_BINDING_NAMES = V4_BINDING_NAMES + ("dismiss_companions",)
 HUN_BINDING_NAMES = ("hun_blue", "hun_red", "hun_companion", "hun_neutral")
-BINDING_NAMES = V5_BINDING_NAMES + HUN_BINDING_NAMES
-BINDING_LABELS = dict(zip(BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位", "解散全部随从", "魂：召唤到蓝方", "魂：召唤到红方", "魂：召为随从", "魂：与我对战")))
+V6_BINDING_NAMES = V5_BINDING_NAMES + HUN_BINDING_NAMES
+WEATHER_CHOICES = ('previous', 'next', 'restore', 'clear_skies', 'partly_cloudy', 'cloudy', 'overcast', 'foggy', 'rain_light', 'rain', 'rain_thunderstorm', 'snow_light', 'snow', 'snow_blizzard', 'sand_dust_calm', 'sand_dust_storm')
+WEATHER_BINDING_NAMES = tuple("weather_" + mode for mode in WEATHER_CHOICES)
+V7_BINDING_NAMES = V6_BINDING_NAMES + WEATHER_BINDING_NAMES
+EYE_BINDING_NAMES = ("eyes_player","eyes_npc")
+BINDING_NAMES = V7_BINDING_NAMES + EYE_BINDING_NAMES
+BINDING_LABELS = dict(zip(V6_BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位", "解散全部随从", "魂：召唤到蓝方", "魂：召唤到红方", "魂：召为随从", "魂：与我对战")))
+BINDING_LABELS.update(eyes_player="玩家第一人称观战",eyes_npc="NPC第一人称观战")
+BINDING_LABELS.update(zip(WEATHER_BINDING_NAMES, ['天气：上一个', '天气：下一个', '天气：恢复地图天气', '天气：晴天', '天气：局部多云', '天气：多云', '天气：阴天', '天气：雾', '天气：小雨', '天气：雨', '天气：雷雨', '天气：小雪', '天气：雪', '天气：暴风雪', '天气：浮尘', '天气：沙尘暴']))
 # Schemas 2/3/4 carry eight/ten/thirteen keys; 5 appends companion dismissal; 6 the four Hun summon keys.
 FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5", "6")
 # 镜头跟踪 (camera_track.lua).
-TRACK_FRAMINGS = ("side", "shoulder", "orbit")
+TRACK_FRAMINGS = ("side", "shoulder", "orbit", "eyes")
 TRACK_RESUME_MAX = 10
 TRACK_TARGET = re.compile(r"[0-9]{1,24}")
 CATALOG_FIELDS = ("id", "name", "category", "class_path", "loaded", "spawnable", "reason")
@@ -208,7 +217,7 @@ MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
 POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
+READY_ACTIONS = {"eyes_player", "eyes_npc", "set_weather", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -1127,6 +1136,10 @@ class Bridge:
                 if type(value) is not int or not low <= value <= high:
                     raise ValidationError('%s must be a whole number from %d to %d' % (field, low, high))
                 payload[field] = value
+        elif action == 'set_weather':
+            allowed.add('mode');mode=request.get('mode')
+            if mode not in WEATHER_CHOICES:raise ValidationError('Invalid weather preset')
+            payload['mode']=mode
         elif action == 'set_camera_track':
             allowed |= {'framing', 'resume', 'unit_id'}
             framing, resume, target = request.get('framing'), request.get('resume'), request.get('unit_id')
@@ -1148,6 +1161,8 @@ class Bridge:
                 raise ValidationError('rule and value must be one of the unit rules')
             if rule == 'remote_reflect' and unit not in THORN_SHIELD_UNITS:
                 raise ValidationError('该单位没有刺盾反伤开关')
+            if rule == 'entourage' and unit not in ENTOURAGE_UNITS:
+                raise ValidationError('该单位没有配合阵容')
             if rule == 'menghua_stage' and unit != 'BP_Monster_MengHua':
                 raise ValidationError('只有梦华支持剧情联动设置')
             payload.update(unit_id=unit, rule=rule, value=value)
@@ -1181,19 +1196,25 @@ class Bridge:
         elif action == "configure_keys":
             allowed.add("bindings")
             bindings = request.get("bindings")
-            if not isinstance(bindings, dict) or set(bindings) not in (set(BINDING_NAMES), set(V5_BINDING_NAMES), set(V4_BINDING_NAMES)):
+            if not isinstance(bindings, dict) or set(bindings) not in (set(BINDING_NAMES), set(V7_BINDING_NAMES), set(V6_BINDING_NAMES), set(V5_BINDING_NAMES), set(V4_BINDING_NAMES)):
                 raise ValidationError("快捷键设置必须包含全部功能，请刷新面板")
             parsed,seen = {},{}
             game=self.game_status();values=game.get('values',{})
-            if values.get('function_keys_schema') not in ('4','5','6'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
+            if values.get('function_keys_schema') not in ('4','5','6','7','8'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
             pool_keys=self._pool_owners()
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
-                if name=='dismiss_companions' and values.get('function_keys_schema') not in ('5','6'):
+                if name=='dismiss_companions' and values.get('function_keys_schema') not in ('5','6','7','8'):
                     if vk:raise ValidationError('解散随从快捷键需要更新并重载新版Mod')
                     continue
-                if name in HUN_BINDING_NAMES and values.get('function_keys_schema')!='6':
+                if name in EYE_BINDING_NAMES and values.get('function_keys_schema')!='8':
+                    if vk:raise ValidationError('第一人称观战快捷键需要更新并重载新版Mod')
+                    continue
+                if name in WEATHER_BINDING_NAMES and values.get('function_keys_schema') not in ('7','8'):
+                    if vk:raise ValidationError('天气快捷键需要更新并重载新版Mod')
+                    continue
+                if name in HUN_BINDING_NAMES and values.get('function_keys_schema') not in ('6','7','8'):
                     if vk:raise ValidationError('魂的召唤快捷键需要更新并重载新版Mod')
                     continue
                 blocked=binding_system_owner(vk,mods)
@@ -1328,14 +1349,16 @@ class Bridge:
             bindings={'spawn':str(payload['profile_revision']),'start':payload.get('queue_epoch','')}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
+        elif payload['action']=='set_weather':
+            bindings={'spawn':payload['mode'].upper()}
         elif payload['action']=='set_camera_track':
             bindings={'spawn':payload['framing'].upper(),'start':str(payload['resume'])}
         fields = [str(row["id"]), payload["action"], payload.get("unit_id", ""),
                   payload.get("team", "blue"), str(payload.get("count", 1))]
         if payload['action']=='configure_keys':
-            names=BINDING_NAMES if 'hun_blue' in bindings else V5_BINDING_NAMES if 'dismiss_companions' in bindings else V4_BINDING_NAMES
+            names=BINDING_NAMES if 'eyes_npc' in bindings else V7_BINDING_NAMES if 'weather_next' in bindings else V6_BINDING_NAMES if 'hun_blue' in bindings else V5_BINDING_NAMES if 'dismiss_companions' in bindings else V4_BINDING_NAMES
             fields.extend(binding_token(bindings.get(name)) for name in names)
-            fields.append('6' if names is BINDING_NAMES else '5' if names is V5_BINDING_NAMES else '4')
+            fields.append('8' if names is BINDING_NAMES else '7' if names is V7_BINDING_NAMES else '6' if names is V6_BINDING_NAMES else '5' if names is V5_BINDING_NAMES else '4')
         else:
             fields.extend(bindings.get(name, "") for name in LEGACY_BINDING_NAMES)
             fields.append("1")
@@ -1611,9 +1634,11 @@ class Bridge:
             if rows and rows[0]==['FunctionKeyStateV2',str(revision),epoch]:
                 for row in rows[1:]:
                     if len(row)==3 and row[0] in bindings and row[2]:bindings[row[0]]['message']=row[2]
-        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5','6') and epoch),
-                'dismiss_supported':bool(game['online'] and values.get('function_keys_schema') in ('5','6') and epoch),
-                'hun_supported':bool(game['online'] and values.get('function_keys_schema')=='6' and epoch),
+        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5','6','7','8') and epoch),
+                'dismiss_supported':bool(game['online'] and values.get('function_keys_schema') in ('5','6','7','8') and epoch),
+                'eyes_supported':bool(game['online'] and values.get('function_keys_schema')=='8' and epoch),
+                'weather_supported':bool(game['online'] and values.get('function_keys_schema') in ('7','8') and epoch),
+                'hun_supported':bool(game['online'] and values.get('function_keys_schema') in ('6','7','8') and epoch),
                 'bindings':bindings,'revision':revision,'errors':errors}
 
     # A codex icon's texture name (codex_icons.lua): the only thing an icon URL or index row may carry.

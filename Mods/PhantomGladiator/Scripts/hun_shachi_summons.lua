@@ -33,15 +33,27 @@ function M.new(o)
         local _,class=call(ability,'GetClass')
         local _,name=call(class,'GetFullName')
         local path=type(name)=='string' and name:match('^%S+ (/.+)$') or nil
-        local rule=path and r.shadowSummons.byClass[path]
-        if rule then return r,rule,child end
-    end
-    local function remember(r,unit)
-        local key=U.key(unit)
-        local ok,name=call(unit,'GetFullName')
-        if key and ok and type(name)=='string' and r.shadowSummons and o.current(r) then
-            r.shadowSummons.children[key]={actor=unit,name=name}
+        local state=r.shadowSummons
+        if not state or not path then return end
+        local key=U.key(child)
+        local named,childName=call(child,'GetFullName')
+        if not key or not named or type(childName)~='string' then return end
+        local owner=U.key(U.field(child,'Owner'))
+        if owner and parents[owner] and parents[owner]~=r then return end
+        local prior=state.children[key]
+        local rule
+        if prior and prior.name==childName then
+            if prior.path~=path or (prior.owner and owner and prior.owner~=owner and owner~=U.key(parent)) then return end
+            prior.owner=owner or prior.owner
+            rule=prior.rule
+        else
+            rule=state.byClass[path]
+            if not rule then return end
+            -- Record the birth even if the level or ASC has not initialized yet.
+            -- Late upgrade callbacks use the loadout that created this child.
+            state.children[key]={actor=child,name=childName,path=path,rule=rule,owner=owner}
         end
+        return r,rule,child
     end
     local function onDeferred(ability,child)
         local r,rule,unit=identity(ability,child)
@@ -53,7 +65,6 @@ function M.new(o)
         o.say(r,'即将写影武召唤物等级 '..level)
         if o.current(r) then pcall(function()unit.Level=level end) end
         o.say(r,'召唤物等级读回 '..tostring((U.field(unit,'Level'))))
-        remember(r,unit)
     end
     local function onUpgrade(ability,child)
         local r,rule,unit=identity(ability,child)
@@ -79,7 +90,6 @@ function M.new(o)
             end
             ::continue::
         end
-        remember(r,unit)
     end
     local function hook(path,cb)
         if hooks[path] then return true end
@@ -88,26 +98,44 @@ function M.new(o)
         if ok and type(pre)=='number' and type(post)=='number' then hooks[path]={pre,post};return true end
         return false
     end
-    function self:arm(r,choice,rules)
-        if not alive then return false end
-        if not rules then return true end
-        if not o.current(r) then return false end
-        r.shadowSummons=r.shadowSummons or {byClass={},children={}}
-        parents[U.key(r.actor)]=r
-        if not hook(base..':OnDeferedSpawn',onDeferred) or not hook(base..':OnSpawnFinish',onUpgrade)
-            or not hook(base..':ApplySummonUpgradeEffect',onUpgrade) then return false end
-        for cls,effects in pairs(rules) do
-            o.asset(cls)
-            if U.valid(o.asset(cls..':ApplyEffectOnSummon')) and not hook(cls..':ApplyEffectOnSummon',onUpgrade) then return false end
-            r.shadowSummons.byClass[cls]={choice=choice,effects=effects}
-        end
-        return true
-    end
     local function detach()
         if type(unregister)~='function' then return end
         for path,ids in pairs(hooks)do
             local ok,result=pcall(unregister,path,ids[1],ids[2])
             if ok and result~=false then hooks[path]=nil end
+        end
+    end
+    function self:arm(r,choice,rules)
+        if not alive then return false end
+        if not rules then return true end
+        if not o.current(r) then return false end
+        local parentKey=U.key(r.actor)
+        if not parentKey then return false end
+        local ready=hook(base..':OnDeferedSpawn',onDeferred) and hook(base..':OnSpawnFinish',onUpgrade)
+            and hook(base..':ApplySummonUpgradeEffect',onUpgrade)
+        for cls in pairs(rules) do
+            if not ready then break end
+            o.asset(cls)
+            if U.valid(o.asset(cls..':ApplyEffectOnSummon')) then ready=hook(cls..':ApplyEffectOnSummon',onUpgrade) end
+        end
+        if not ready or not o.current(r) then if not next(parents) then detach() end;return false end
+        local state=r.shadowSummons or {byClass={},children={}}
+        r.shadowSummons=state;parents[parentKey]=r
+        local previous,installed={},{}
+        for cls,effects in pairs(rules) do
+            previous[cls]=state.byClass[cls]
+            installed[cls]={choice=choice,effects=effects}
+            state.byClass[cls]=installed[cls]
+        end
+        return true,function()
+            if parents[parentKey]~=r or r.shadowSummons~=state then return end
+            for cls,rule in pairs(installed) do
+                if state.byClass[cls]==rule then state.byClass[cls]=previous[cls] end
+            end
+            if not next(state.byClass) and not next(state.children) then
+                parents[parentKey]=nil;r.shadowSummons=nil
+                if not next(parents) then detach() end
+            end
         end
     end
     function self:cleanup(r)
@@ -121,8 +149,10 @@ function M.new(o)
                 -- The native ability established parentage at birth; recheck the original identity,
                 -- world and a still-live Owner or Instigator so a reused actor cannot be removed.
                 local ok,name=call(unit,'GetFullName')
+                local owner=U.key(U.field(unit,'Owner'))
                 if ok and name==entry.name and U.key(unit)==key and inWorld(unit,r.world) and
-                    (U.key(U.field(unit,'Owner'))==parentKey or U.key(U.field(unit,'Instigator'))==parentKey) then
+                    (owner==parentKey or ((not entry.owner or not owner or entry.owner==owner)
+                        and U.key(U.field(unit,'Instigator'))==parentKey)) then
                     local got,gone=call(unit,'IsActorBeingDestroyed')
                     if got and gone==false then
                         o.say(r,'即将清理影武召唤物 '..key)

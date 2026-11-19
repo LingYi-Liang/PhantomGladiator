@@ -34,6 +34,7 @@ local function fixture()
         t.events[#t.events+1]=tag.TagName
         if tag.TagName=='GameplayEvent.Medicine.PreActivate' then
             assert(p.OptionalObject['Use Count']==1)
+            if t.interruptOnSip then t.module:interrupt(r) end
             if t.free then p.OptionalObject['Use Count']=0 end
         end
     end
@@ -102,10 +103,46 @@ assert(bonus.module:remaining(bonus.r)==5)
 local unlimited=fixture();unlimited.r.loadout.resources.consume_medicine=false
 assert(unlimited:tick() and unlimited.module:remaining(unlimited.r)==4)
 local stopped=fixture();stopped.noPlay=true;assert(not stopped:tick() and stopped.module:remaining(stopped.r)==4)
+local windup=fixture()
+local input=windup.r.actor['Ability Input Component'];input.InActionPhase=true
+input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+assert(not windup:tick() and windup.module:remaining(windup.r)==4,'a low-health fighter must finish the current attack before drinking')
+input.InActionPhase=false;windup.time=.1;assert(windup:tick())
+windup.playing=nil;windup.time=.2
+assert(not windup:tick() and (windup.r.intent.busyUntil or 0)<=windup.time,'losing the drink animation releases its own decision lock')
 stopped.allows=false;assert(not stopped:tick() and not stopped:hold())
 local cancel=fixture();assert(cancel:tick());cancel.module:stop(cancel.r);assert(cancel.stops==1 and cancel.drinks==0)
+do
+    local h=fixture();assert(h:tick())
+    local anim=h.r.actor.Mesh:GetAnimInstance()
+    function anim:Montage_IsPlaying(m)return m==h.playing and not h.paused end
+    function anim:Montage_IsActive(m)return m==h.playing end
+    h.paused=true;h.position=.18;h.time=.2
+    assert(h:tick() and h.drinks==0,'a paused, still active flask animation keeps the pending sip')
+    h.paused=false;h.position=.3;h.time=.45;assert(h:tick() and h.drinks==1)
+    h:tick();assert(h.drinks==1 and h.module:remaining(h.r)==3)
+    h.paused=true;h.module:stop(h.r);assert(h.stops==1,'cleanup also recognizes a paused owned montage')
+end
+do
+    local h=fixture();assert(h:tick());h.inBattle=false;h.position=.3;h.time=.3
+    assert(h:tick() and h.drinks==1,'an already committed flask can finish after the target leaves')
+    local other=fixture();assert(other:tick())
+    other.r.actor.Mesh.GetAnimInstance=function()return obj()end;other.position=.4;other.time=.4
+    assert(not other:tick() and other.drinks==0,'a detached animation instance cannot commit a heal')
+end
 local lost=fixture();assert(lost:tick());lost.allows=false;lost.module:stop(lost.r);assert(not lost.stops)
 local d=fixture();d.hp=0;assert(not d:hold());d:addPassive()
+do
+    local h=fixture();assert(h:tick());h.interruptOnSip=true;h.time=.4;h.position=.4
+    assert(not h:tick() and h.drinks==0 and #h.events==1,'a synchronous interruption must not heal after the drink is retired')
+end
+do
+    local h=fixture();h.hp=0;h:addPassive().AbilityInput=obj()
+    assert(h:hold());h.time=2;assert(not h:hold())
+    h.hp=100;h.time=3;h:tick()
+    h.hp=0;h.time=30
+    assert(h:hold(),'positive life observed in ordinary combat must reset the previous native death attempt')
+end
 d.asc.tags['CharacterState.Forbid.Resurrect']=1;assert(not d:hold())
 d.asc.tags['CharacterState.Forbid.Resurrect']=0
 assert(d:hold());d.time=.2;d.pending=false;d.canVanish=true;d:hold();assert(d.reborns==0)
@@ -117,6 +154,12 @@ d.hp=50;assert(not d:hold())
 d.hp=0;d.asc.tags['Ability.Action.Hun.HeiMoShang.Reborn']=0;assert(not d:hold())
 local x=fixture();x.hp=0;x:addPassive();assert(x:hold())
 x.time=1.6;assert(not x:hold());x.time=2;assert(not x:hold() and x.reborns==0)
+do
+    local h=fixture();h.hp=0;h:addPassive();assert(h:hold())
+    h.hp=nil;h.time=.35;assert(h:hold() and h.reborns==0,'preserve an existing rebirth window across an unreadable health sample')
+    h.time=2;assert(not h:hold() and h.reborns==0,'incomplete readbacks must not extend that window')
+    h.hp=0;assert(not h:hold(),'a transient read failure must not start a second death attempt')
+end
 local native=fixture();native.hp=0;native:addPassive().AbilityInput=obj()
 native.pending=true;native.canVanish=true;assert(native:hold());native.time=.5
 native:hold();assert(native.reborns==0)

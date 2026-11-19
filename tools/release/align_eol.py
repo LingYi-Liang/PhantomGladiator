@@ -6,10 +6,8 @@ Only the working tree is touched; run it before tools/package/build.py.
 usage: python -I tools/release/align_eol.py <repo> <previous package folder, e.g. dist/PhantomGladiator-0.37.5>
 """
 import pathlib
+import runpy
 import sys
-
-BACKEND = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "unit_validation.json"]
-UI = ["styles.css", "i18n.js", "i18n-more.js", "units.js", "changelog.js", "real-runtime.js", "app.js"]
 
 
 def pairs(root, old):
@@ -19,10 +17,12 @@ def pairs(root, old):
             yield p, app / "payload" / "gameconfig" / p.relative_to(root / "GameConfig")
     for p in sorted((root / "Mods/PhantomGladiator/Scripts").glob("*.lua")):
         yield p, app / "payload/mod/PhantomGladiator/Scripts" / p.name
-    for f in BACKEND:
+    package = runpy.run_path(str(root / "tools/package/build.py"))
+    for f in package["BACKEND_FILES"]:
         yield root / "panel" / f, app / "backend" / f
-    for f in UI:
-        yield root / "panel/prototype" / f, app / "ui" / f
+    for f in package["UI_FILES"]:
+        if pathlib.Path(f).suffix in {".js", ".css", ".json", ".html"}:
+            yield root / "panel/prototype" / f, app / "ui" / f
     yield root / "LICENSE", old / "licenses/PhantomGladiator-LICENSE.txt"
     for name in ["PhantomGladiator.cs", "AppUpdate.cs"]:  # what build.py compiles; not shipped as text
         yield root / "desktop" / name, None

@@ -30,6 +30,7 @@ local statics=object({
     end},'Default__GameplayStatics')
 local mapSpawners={}
 local m=Mounts.new({log=function(s)lines[#lines+1]=s end,now=function()return now end,
+    scripts=function(a)return a.scripts end,
     location=function(a)return locations[a] end,
     isDestroying=function(a)return a.destroying==true end,
     findClass=function(path)assert(path=='/SGameAI/Tools/Spawner/BP_AISpawner.BP_AISpawner_C');return findable and spawnerClass or nil end,
@@ -99,20 +100,26 @@ test('clearing the rider takes its mount and both spawners with it',function()
     local before=#destroyed;m:releaseActor(jingye);assert(#destroyed==before,'nothing twice')
 end)
 
-test('a rider that never gets on is matched to the mount by the spawner standing on ours',function()
+test('an unseated rider uses its own script even when two mounts spawn at the same spot',function()
     local bandit=rider('BP_Monster_Bandit_Sword_Rider_C')
     now=10;assert(m:prepare(bandit,{Translation={X=0,Y=0,Z=0}},world).ok)
     local ours=spawned[#spawned]
     local mount=object({},'BP_Monster_Horse_MonsterHorse_C')
     local standing=object({SpawnedAI=mount,SpawnerID=FName('None')},'BP_AISpawner_C');locations[standing]={X=10,Y=0,Z=0}
-    mapSpawners={standing}
+    local foreignMount=object({},'BP_Monster_Horse_MonsterHorse_C')
+    local foreign=object({SpawnedAI=foreignMount},'BP_AISpawner_C');locations[foreign]=locations[standing]
+    local other=rider('BP_Monster_Bandit_Sword_Rider_C')
+    bandit.scripts={object({Pawn=other,VehiclePawn=foreignMount,VehicleSpawner=foreign},'AIScript_Rider_C'),
+        object({Pawn=bandit,VehiclePawn=mount,VehicleSpawner=standing},'AIScript_Rider_C')}
+    mapSpawners={foreign,standing}
     now=20;m:tick()
     assert(not all():find('BP_Monster_Bandit_Sword_Rider_C：坐骑',1,true),'waits before looking around')
     now=26;m:tick()
-    assert(all():find('坐骑 BP_Monster_Horse_MonsterHorse_C 没骑上（按刷怪点找到）',1,true),all())
+    assert(m.records[tostring(bandit:GetAddress())].mount==mount,'a nearby map or other rider mount is not ours')
     -- Gone by itself (fell out of the world, killed by the game): the next tick clears the rest.
     bandit.alive=false;m:tick()
     assert(destroyed[#destroyed]==ours and destroyed[#destroyed-1]==standing and destroyed[#destroyed-2]==mount)
+    assert(not foreign.destroying and not foreignMount.destroying)
     assert(all():find('骑兵 BP_Monster_Bandit_Sword_Rider_C 已不在场上，一并移除',1,true))
 end)
 
@@ -122,6 +129,9 @@ test('no mount at all is said once',function()
     now=30;m:prepare(spear,transform,world)
     now=46;m:tick();m:tick()
     local _,n=all():gsub('15 秒内没骑上坐骑',''); assert(n==1,all())
+    local late=object({},'BP_Monster_Horse_MonsterHorse_C')
+    spear.BP_SGameDriverComponent.DrivingVehicle=late
+    now=50;m:tick();assert(m:carrierOf(spear)==late,'a native mount can arrive after the initial timeout')
     m:releaseActor(spear)
 end)
 
@@ -151,18 +161,32 @@ end)
 -- In a fight: the mount goes where the rider is sent, is kept at it and sent back, and stops counting once the rider is off.
 do
     local attacks,engages={},{}
+    local attackOK,current,assigned=true,nil,nil
     local state='AI.State.Idle'
     local health={}
     local local_lines={}
-    local fight=Mounts.new({log=function(s)local_lines[#local_lines+1]=s end,now=function()return now end,
+    local observer=object({},'BP_RenewalPlayer_C')
+    local fight=Mounts.new({log=function(s)local_lines[#local_lines+1]=s end,now=function()return now end,player=function()return observer end,
         location=function(a)return locations[a] end,isDestroying=function(a)return a.destroying==true end,
         findClass=function()return spawnerClass end,statics=function()return statics end,findAll=function()return {} end,
         destroy=function(a)a.destroying=true end,hp=function(a)return health[a] end,
-        attack=function(mount,target)attacks[#attacks+1]={mount,target};return true end,
+        attack=function(mount,target)attacks[#attacks+1]={mount,target};return attackOK end,
+        nativeTarget=function()return current end,assignedTarget=function()return assigned end,
         inCombat=function()return state:find('Combat',1,true)~=nil,state end,
         engage=function(mount,target)engages[#engages+1]={mount,target};return true,'AI.State.Combat' end})
     local function text()return table.concat(local_lines,'\n') end
     local jingye=rider('BP_Monster_JingYe_C')
+    local lists=0
+    local lock=object({},'TargetingComponent')
+    local locked=object({GetOwner=function()return jingye end},'Mesh')
+    lock.LockTarget={Component=locked}
+    lock.TargetingSubsystem=object({GetTargetsByTag=function(_,tag,exact,out)
+        assert(exact and tag.TagName:ToString()=='Targeting.Target.Combat');lists=lists+1;out.OutTargets={jingye}
+    end},'TargetingWorldSubsystem')
+    observer['Targeting Component']=lock
+    observer['Faction Component']=object({GetFactionRelation=function(_,r)assert(r==jingye);return 2 end},'Faction')
+    jingye.Mesh=object({DoesSocketExist=function(_,s)return s:ToString()=='spine_04' end},'Mesh')
+    jingye.AbilitySystemComponent=object({GetGameplayTagCount=function()return 0 end},'ASC')
     local target=object({},'BP_Monster_MoTian_C')
     local second=object({},'BP_Monster_AHua_C')
     assert(fight:prepare(jingye,transform,world).ok)
@@ -171,6 +195,8 @@ do
     local horse=object({},'BP_Monster_Horse_JingYe_C')
     jingye.BP_SGameDriverComponent.DrivingVehicle=horse
     fight:tick()
+    now=now+2;fight:tick();assert(lists==1 and text():find('骑手在战斗目标列表=true spine_04=true 不可选标签数=0 玩家当前锁住骑手=true',1,true))
+    now=now+1;fight:tick();assert(lists==1,'steady riding does not rescan the target registry every tick')
     assert(fight:holds(horse) and not fight:holds(jingye))
     local members={{actor=jingye,team='blue'},{actor=target,team='red'}}
     local list=fight:vehicles(members)
@@ -187,14 +213,21 @@ do
     assert(fight:fight(jingye,second)==true and attacks[2][2]==second)
     assert(fight:hold(jingye,second)==false and #attacks==2)
     -- Its AI drops: by the mount's address, at the current target.
+    assigned=second
     assert(fight:dropped(tostring(horse:GetAddress()))==true and #engages==2 and engages[2][2]==second)
     assert(fight:dropped('nobody')==false)
+    current=target;assert(fight:hold(jingye,second) and #attacks==3,'a mount in combat against the wrong actor needs the rider target')
+    current=second;assert(not fight:hold(jingye,second) and #attacks==3)
+    assigned=nil;assert(fight:dropped(tostring(horse:GetAddress())) and #engages==2,'expired assignments cannot restart a fight')
+    attackOK=false;assert(not fight:fight(jingye,target))
+    current=nil;attackOK=true;assert(fight:hold(jingye,target) and #attacks==5,'a rejected command must be retried even in combat')
     -- A dead rider's mount is out of the hatred hooks.
     health[jingye]=0
     assert(#fight:vehicles(members)==0)
     health[jingye]=100
     -- Off the mount: no longer sent, no longer counted, still cleared with the rider.
     jingye.BP_SGameDriverComponent.DrivingVehicle=nil
+    now=now+1;fight:tick();assert(lists==2 and text():find('骑乘=false',1,true))
     assert(#fight:vehicles(members)==0 and fight:fight(jingye,target)==false and fight:hold(jingye,target)==false)
     assert(fight:holds(horse),'the mod still holds it for the clean-up')
     fight:releaseActor(jingye,'已清理')

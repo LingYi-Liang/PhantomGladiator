@@ -31,3 +31,49 @@ for _,kind in ipairs({'boss','overhead'}) do
     assert(Vitals.syncBar(w,'BreakmeterBar','ForSeq_UpdateShachi',0,nil)==nil)
 end
 print('PASS birth bonus and damage/current overrides; top and overhead real foreground and trailing meters including zero')
+
+do
+    local row={}
+    assert(not Vitals.recentLoss(row,800,800,0))
+    assert(Vitals.recentLoss(row,319.3,800,.5)>480)
+    assert(Vitals.recentLoss(row,360,800,1)>480)
+    assert(not Vitals.recentLoss(row,400,800,2.1))
+    assert(not Vitals.recentLoss(row,100,400,2.5),'new maximum resets the comparison')
+end
+
+do
+    local a,main,linked,m=actor(),actor(),actor(),actor();function a:GetAddress()return 17 end
+    a.Mesh=actor();function a.Mesh:GetAnimInstance()return main end
+    a.Mesh.LinkedInstances={linked};function linked:TryGetPawnOwner()return a end
+    function linked:GetCurrentActiveMontage()return m end;function linked:Montage_IsPlaying()return true end
+    assert(Vitals.montagePlaying(a),'a weapon-layer montage must block a new opener or switch')
+    function linked:TryGetPawnOwner()return nil end
+    assert(not Vitals.montagePlaying(a))
+end
+do
+    local function param(value)return {type=function()return 'RemoteUnrealParam' end,get=function()return value end} end
+    local a,main,clip=actor(),actor(),actor()
+    a.Mesh=actor();a.Mesh.GetAnimInstance=function()return main end
+    main.GetCurrentActiveMontage=function()return clip end
+    main.Montage_IsPlaying=function()return param(false) end
+    main.Montage_IsActive=function()return param(true) end
+    assert(Vitals.actionState(a),'hit stop preserves the active montage')
+    main.Montage_IsActive=function()return param(false) end
+    assert(not Vitals.actionState(a),'a stopped montage releases the slot even with reflected booleans')
+    local input=actor();a['Ability Input Component']=input
+    input.InActionPhase=param(true);input.ActionPhase={TagName={ToString=function()return 'CharacterState.Action.Phase.Combo' end}}
+    local busy,chain=Vitals.actionState(a);assert(busy and chain)
+    input.InActionPhase=param(false);assert(not Vitals.actionState(a),'ignore a stale combo name after the phase ends')
+    main.Montage_IsActive=function()return true end
+    a.AbilitySystemComponent=actor()
+    function a.AbilitySystemComponent:GetGameplayTagCount(tag)return tag.TagName=='CharacterState.Action.Phase.Combo' and 1 or 0 end
+    busy,chain=Vitals.actionState(a,function(name)return name end)
+    assert(busy and not chain,'an ASC combo tag is stale while the montage is paused')
+    main.Montage_IsPlaying=function()return param(true) end
+    a.Mesh.bPauseAnims=param(true)
+    busy,chain=Vitals.actionState(a,function(name)return name end)
+    assert(busy and not chain,'a paused mesh cannot consume an input before its next pose')
+    a.Mesh.bPauseAnims=param(false)
+    busy,chain=Vitals.actionState(a,function(name)return name end)
+    assert(busy and chain,'the native ASC can expose a live combo window on a playing montage')
+end

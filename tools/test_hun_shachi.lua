@@ -98,12 +98,12 @@ local function fixture(item,soul)
     end
     h.r={actor=a,name='hun',loadout={shadows={{id=item.id,path=path,weight=1,level=60,soul=soul}},resources={}}}
     h.mod=Shachi.new({current=function(r)return r==h.r and h.owner end,stats=function()return stats end,find=find,load=find,
-        nativeTarget=function()return h.targetReadback or enemy end,
+        nativeTarget=function()return h.targetReadback or enemy end,hp=function(actor)return actor==h.deadTarget and 0 or 100 end,
         registerHook=function()return 1,2 end,unregisterHook=function()end,
         construct=construct,fname=function(n)return n end,random=function()return 0.1 end,log=function(x)h.logs[#h.logs+1]=x end})
     h.ctx={now=0,target=enemy,distance=200}
     function h:tick(t)self.ctx.now=t;return self.mod:tick(self.r,self.ctx) end
-    h.attrs,h.wc,h.asc,h.rows,h.source,h.counts,h.asset=attrs,wc,asc,rows,find(path),counts,find
+    h.attrs,h.wc,h.asc,h.rows,h.source,h.counts,h.asset,h.stats=attrs,wc,asc,rows,find(path),counts,find,stats
     return h
 end
 local count=0
@@ -112,6 +112,15 @@ local function check(label,fn)
     assert(ok,label..': '..tostring(e))
     count=count+1
 end
+check('evolved combat config with a readable empty normalized map retains its authored weights',function()
+    local bell
+    for _,item in ipairs(Data.items)do if item.label=='操偶铃铛' then bell=item;break end end
+    assert(bell);local h=fixture(bell,true);h.tags={}
+    for _,name in ipairs(Data.moves[bell.soul][1].needs)do h.tags[name]=1 end
+    h.source['Weapon Attack Multipliers Normalized'].v={}
+    assert(h:tick(0),'empty normalized table must not veto the equipped combat config')
+    assert(not next(h.source['Weapon Attack Multipliers Normalized'].v))
+end)
 check('28 independent rows and both configurations have native grants and durations',function()
     local seen={}
     assert(#Data.items==28)
@@ -181,6 +190,144 @@ check('free skill setting refunds its own cast and instant cast',function()
         assert(h:tick(0) and h.attrs.SpiritShadow==4)
     end
 end)
+check('a two-point free armament runs with a partial balance without creating ammunition',function()
+    local bell
+    for _,row in ipairs(Data.items)do if row.label=='操偶铃铛' then bell=row;break end end
+    for _,start in ipairs({0,1,2}) do
+        local h=fixture(assert(bell),false);h.r.loadout.attributes={SpiritShadow=start,SpiritShadow_Max=4}
+        h.r.loadout.resources.consume_skill_resources=false
+        local function spend(handle)
+            assert(h.attrs.SpiritShadow>=2);h.casts=h.casts+1
+            h.attrs.SpiritShadow=h.attrs.SpiritShadow-2;h.rows[handle.Handle].ActiveCount=1;return true
+        end
+        h.asc.TryActivateAbility=function(_,handle)return spend(handle) end
+        assert(h:tick(0) and h.casts==1 and h.attrs.SpiritShadow==start,'free two-point opener with starting balance '..start)
+        h.rows[h.r.shadowState.running.handle].ActiveCount=0;h:tick(.2)
+        assert(h:tick(3) and h.casts==2 and h.attrs.SpiritShadow==start,'free casts should not enter paid resource conservation')
+    end
+    local rejected=fixture(bell,false);rejected.r.loadout.attributes={SpiritShadow=0};rejected.r.loadout.resources.consume_skill_resources=false
+    rejected.targetReadback=rejected.r.actor
+    assert(not rejected:tick(0) and rejected.attrs.SpiritShadow==0 and rejected.sets==0,'no funding for an invalid target')
+    rejected.targetReadback=nil;rejected.refuseAction=true
+    assert(not rejected:tick(3) and rejected.attrs.SpiritShadow==0,'a refused cast must return its advance')
+    local paid=fixture(bell,false);paid.r.loadout.attributes={SpiritShadow=1}
+    assert(not paid:tick(0) and paid.casts==0 and paid.attrs.SpiritShadow==1)
+end)
+check('free channels return their temporary balance on completion, death and cleanup',function()
+    local lion
+    for _,row in ipairs(Data.items) do if row.label=='烈焰狮头' then lion=row;break end end
+    for _,stop in ipairs({'finish','interrupt','cleanup'}) do
+        local h=fixture(assert(lion),false);h.r.loadout.attributes={SpiritShadow=1,SpiritShadow_Max=4}
+        h.r.loadout.resources.consume_skill_resources=false
+        assert(h:tick(0));local cast=h.r.shadowState.running
+        assert(cast.move.ongoing>0 and h.attrs.SpiritShadow==4)
+        h.attrs.SpiritShadow=2;assert(h:tick(.3) and h.attrs.SpiritShadow==4)
+        if stop=='finish' then h.rows[cast.handle].ActiveCount=0;h:tick(.5)
+        else h.mod[stop](h.mod,h.r) end
+        assert(h.attrs.SpiritShadow==1 and h.casts==1,stop..' retained channel ammunition')
+    end
+end)
+check('one-shot refunds are bounded; a failed advance or target change cannot submit the skill',function()
+    local h=fixture();h.r.loadout.resources.consume_skill_resources=false
+    assert(h:tick(0) and h.attrs.SpiritShadow==4)
+    h.attrs.SpiritShadow=2;h:tick(.3);assert(h.attrs.SpiritShadow==2,'an unrelated later change is not another charge for this cast')
+    local bell
+    for _,row in ipairs(Data.items) do if row.label=='操偶铃铛' then bell=row;break end end
+    for _,mode in ipairs({'partial','new target','deferred refund'}) do
+        h=fixture(assert(bell),false);h.r.loadout.attributes={SpiritShadow=1,SpiritShadow_Max=4}
+        h.r.loadout.resources.consume_skill_resources=false;h.mod:equip(h.r)
+        local set=h.stats.writeBase;local failed=false
+        function h.stats:writeBase(actor,field,value)
+            if field=='SpiritShadow' and value==2 then
+                if mode=='partial' then h.attrs.SpiritShadow=1.5;return false end
+                if mode=='new target' then h.targetReadback=h.r.actor end
+            elseif mode=='deferred refund' and field=='SpiritShadow' and value==1 and not failed then
+                failed=true;return false
+            end
+            return set(self,actor,field,value)
+        end
+        if mode=='deferred refund' then
+            h.asc.TryActivateAbility=function(_,handle)
+                h.casts=h.casts+1;h.attrs.SpiritShadow=h.attrs.SpiritShadow-2;h.rows[handle.Handle].ActiveCount=1;return true
+            end
+            assert(h:tick(0));h:tick(.2);assert(h.casts==1 and h.attrs.SpiritShadow==1)
+        else
+            assert(not h:tick(0) and h.casts==0 and h.attrs.SpiritShadow==1,mode)
+        end
+    end
+end)
+check('interruption during native activation retires a late debit and the exact late-started spec',function()
+    local h=fixture(Data.items[8],false)
+    h.r.loadout.attributes={SpiritShadow=1,SpiritShadow_Max=4}
+    h.r.loadout.resources.consume_skill_resources=false
+    function h.asc:TryActivateAbility(handle)
+        h.casts=h.casts+1
+        h.mod:interrupt(h.r)
+        h.rows[handle.Handle].ActiveCount=1
+        h.attrs.SpiritShadow=math.max(0,h.attrs.SpiritShadow-2)
+        return true
+    end
+    assert(not h:tick(0) and not h.r.shadowState.running)
+    assert(h.casts==1 and h.cancels==1 and h.attrs.SpiritShadow==1,'native callbacks retired the cast before its debit and handle became visible')
+end)
+check('an equipped shadow opener cannot replace a weapon swing even when its input priority is eligible',function()
+    local h=fixture();assert(h:tick(0))
+    local run=h.r.shadowState.running;h.rows[run.handle].ActiveCount=0;h:tick(.35)
+    local input=h.r.actor['Ability Input Component'];input.InActionPhase=true
+    input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+    local sets=h.sets;local spirit=h.attrs.SpiritShadow
+    assert(not h:tick(3) and h.casts==1 and h.sets==sets and h.attrs.SpiritShadow==spirit)
+    input.ActionPhase.TagName='CharacterState.Action.Phase.Combo'
+    assert(not h:tick(3.3) and h.casts==1,'an ordinary opener is not a weapon follow-up')
+    input.InActionPhase=false;assert(h:tick(4.5) and h.casts==2)
+end)
+check('reinforced Blood Guillotine chains through native input only inside its own live combo window',function()
+    for _,delivery in ipairs({'immediate','delayed','interrupted'}) do
+        local delayed=delivery~='immediate'
+        local disc
+        for _,item in ipairs(Data.items) do if item.normal:find('/XueDiZi/',1,true) then disc=item;break end end
+        local h=fixture(assert(disc),false);h.tags={['CharacterState.Space.Ground']=1}
+        assert(h:tick(0))
+        local first=h.r.shadowState.running
+        assert(first.move.tag:match('XueDiZi%.A$'))
+        h.tags[first.move.tag]=1;h.tags['Ability.Action.ShaqiReinforced']=1
+        h.tags['Ability.Action.Hun.ShachiAbility']=1
+        local input=h.r.actor['Ability Input Component']
+        input.InActionPhase=true;input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+        local transitions,pending=0,nil
+        function input:TryActivateExternalActionAbilityByClass(cls,action,priority)
+            assert(action==h.asset('/PBZInput/InputActions/IA_ShachiAbility.IA_ShachiAbility') and priority==-5)
+            for i,spec in ipairs(h.rows) do
+                if spec.Ability:GetFullName():gsub('%.Default__','.')==cls:GetFullName() then
+                    transitions=transitions+1
+                    if delayed then pending=spec
+                    else h.rows[first.handle].ActiveCount=0;h.tags[first.move.tag]=0;spec.ActiveCount=1 end
+                    return true
+                end
+            end
+            return false
+        end
+        local spirit=h.attrs.SpiritShadow;assert(h:tick(.2) and transitions==0)
+        input.ActionPhase.TagName='CharacterState.Action.Phase.Combo'
+        assert(h:tick(.45) and transitions==1)
+        if delivery=='interrupted' then
+            h.mod:interrupt(h.r);assert(h.cancels==1 and h.r.shadowState.quarantine)
+            assert(not h:tick(.51));pending.ActiveCount=1
+            assert(not h:tick(1.6) and h.cancels==2 and pending.ActiveCount==0 and not h.r.shadowState.quarantine)
+            h.mod:cleanup(h.r);assert(h.cancels==2)
+        else
+            if delayed then
+                assert(h:tick(.51) and h.r.shadowState.running==first and pending)
+                h.rows[first.handle].ActiveCount=0;h.tags[first.move.tag]=0;pending.ActiveCount=1
+                assert(h:tick(.55))
+            end
+            assert(h.r.shadowState.running.move.tag:match('XueDiZi%.AA$'))
+            assert(h.casts==1 and h.cancels==0 and h.attrs.SpiritShadow==spirit)
+            assert(h:tick(.7) and transitions==1)
+            h.mod:cleanup(h.r);assert(h.cancels==1 and not h.r.shadowState)
+        end
+    end
+end)
 check('cancel exact owned spec after its native timeline and never cancel foreign actor',function()
     local h=fixture();assert(h:tick(0));h.ctx.allowShadow=false
     assert(h:tick(1) and h.cancels==0)
@@ -232,13 +379,24 @@ check('summon blueprint corrections apply only to the owned child and deregister
     local prefix='/PBZCombatAsset/ActorData/Players/Hun/Abilities/ShachiAbility/GA_SummonPassive_Hun.GA_SummonPassive_Hun_C:'
     h.parent=foreign;callbacks[prefix..'OnDeferedSpawn'](ab,child);assert(child.Level==4)
     h.parent=parent;callbacks[prefix..'OnDeferedSpawn'](ab,child);assert(child.Level==17)
+    local armed,undo=mod:arm(r,{level=30},rules);assert(armed,'the summoner can equip another variant before the child finishes')
     callbacks[prefix..'OnSpawnFinish'](ab,child)
-    assert(h.stacks[asset(low)]==1 and h.stacks[asset(high)]==0)
+    assert(h.stacks[asset(low)]==1 and h.stacks[asset(high)]==0,'the existing child must retain its birth-level upgrades')
+    undo();assert(r.shadowSummons.byClass[passive].choice.level==15,'a rejected switch must restore the previous rule for future births')
     mod:cleanup(r);assert(h.destroy and unloaded[prefix..'OnDeferedSpawn'])
     h.destroy=false
     assert(mod:arm(r,{level=15},rules));callbacks[prefix..'OnDeferedSpawn'](ab,child)
     function child:GetFullName()return 'Object replacement_at_the_same_address' end
     mod:cleanup(r);assert(not h.destroy,'a replacement child with the same owner and address must survive')
+    local config,asc=child.GetGlobalCombatConfig,child.AbilitySystemComponent
+    child.GetGlobalCombatConfig=function()return nil end;child.AbilitySystemComponent=nil
+    assert(mod:arm(r,{level=15},rules));callbacks[prefix..'OnDeferedSpawn'](ab,child);callbacks[prefix..'OnSpawnFinish'](ab,child)
+    mod:cleanup(r);assert(h.destroy,'a confirmed owned child with delayed components must still be removed on cleanup')
+    child.GetGlobalCombatConfig,child.AbilitySystemComponent=config,asc;h.destroy=false
+    assert(mod:arm(r,{level=15},rules));callbacks[prefix..'OnDeferedSpawn'](ab,child)
+    child.Instigator,child.Owner=parent,foreign
+    mod:cleanup(r);assert(not h.destroy,'an old instigator must not delete a child transferred to another owner')
+    child.Owner,child.Instigator=parent,nil
     assert(mod:arm(r,{level=15},rules))
     local retired=r;r={actor=parent,world=retired.world}
     assert(mod:arm(r,{level=30},rules));mod:cleanup(retired)
@@ -489,6 +647,26 @@ check('decline, missing release task, existing input, replacement and independen
     a.r.actor.InputComponent=foreign;a.made.HoldingInputs:Add(a.action,777)
     a.mod:cleanup(a.r);assert(a.r.actor.InputComponent==foreign and a.made.HoldingInputs:Find(a.action)==777)
     assert(b.made:IsHolding(b.action));b.mod:cleanup(b.r);assert(not b.made:IsHolding(b.action))
+end)
+check('a held armament survives a protected opponent temporarily clearing the blackboard',function()
+    local h=inputs(fixture());h.ctx.opening=true;assert(h:tick(0) and h.heldAtStart)
+    local enemy=h.ctx.target
+    h.ctx.pairProtected=true;h.ctx.allowAction=false;h.ctx.opening=false
+    h.targetReadback=object('temporary blackboard target')
+    assert(h:tick(.2) and h.cancels==0 and h.made:IsHolding(h.action),'retain this living opponent during execution')
+    h.targetReadback=enemy;h.ctx.pairProtected=false;h.ctx.allowAction=true
+    assert(h:tick(.4) and h.cancels==0 and not h.made:IsHolding(h.action),'evaluate release normally when the window ends')
+    local d=inputs(fixture());d.ctx.opening=true;assert(d:tick(0))
+    d.ctx.pairProtected=true;d.deadTarget=d.ctx.target;d:tick(.2)
+    assert(d.cancels==1 and not d.made:IsHolding(d.action),'actual death still retires the charge')
+end)
+check('death releases only this fighter’s input and leaves its equipment, spent resource and other fighters intact',function()
+    local a,b=inputs(fixture()),inputs(fixture());a.ctx.opening=true;b.ctx.opening=true
+    assert(a:tick(0) and b:tick(0));local spirit=a.attrs.SpiritShadow;local slot=a.wc.active
+    a.mod:interrupt(a.r);a.mod:interrupt(a.r)
+    assert(a.cancels==1 and not a.made:IsHolding(a.action) and not a.r.actor.InputComponent)
+    assert(not a.r.shadowState.running and a.wc.active==slot and a.attrs.SpiritShadow==spirit)
+    assert(b.made:IsHolding(b.action) and b.cancels==0)
 end)
 check('an existing NPC input retains other bindings and a preexisting hold survives a quick cast',function()
     local h=inputs(fixture(Data.items[2]));h.ctx.opening=true

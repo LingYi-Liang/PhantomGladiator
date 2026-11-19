@@ -39,7 +39,6 @@ local ANCHORED={
 }
 local WAIT=15        -- seconds a rider may take to get on its mount before the log says it never did
 local FIGHT_LINES=24 -- log lines about mounts in a fight
-local NEAR=50        -- cm: the script puts the mount's spawner exactly where ours stands
 
 function Mounts.isRider(className)
     return type(className)=='string' and RIDERS[(className:gsub('_C$',''))]==true
@@ -130,19 +129,32 @@ function Mounts.new(options)
         return {ok=linked}
     end
 
-    -- The spawner the rider's script made for the mount: its SpawnedAI is the mount, or it stands where ours does.
+    -- Stacked summons and map spawners can share the same position.
+    local function scriptMount(record)
+        local scripts=options.scripts and options.scripts(record.rider)
+        for _,script in ipairs(scripts or {})do
+            if U.className(script)=='AIScript_Rider_C' and U.key(U.field(script,'Pawn'))==record.key then
+                local mount=U.field(script,'VehiclePawn')
+                local spawner=U.field(script,'VehicleSpawner')
+                local spawned=U.field(spawner,'SpawnedAI')
+                if U.valid(spawned) and (not U.valid(mount) or U.key(spawned)==U.key(mount)) then
+                    return spawned,spawner
+                end
+            end
+        end
+    end
     local function mountSpawner(record,mount)
+        local mountKey=U.key(mount)
+        if not mountKey then return nil end
+        local own=U.field(mount,'Spawner')
+        if U.key(U.field(own,'SpawnedAI'))==mountKey then return own end
         local ok,list=pcall(options.findAll,'BP_AISpawner_C')
         if not ok or type(list)~='table' then return nil end
         local ours=U.key(record.spawner)
-        local mountKey=mount and U.key(mount)
         for _,spawner in ipairs(list)do
             local key=U.key(spawner)
             if key and key~=ours then
-                local spawned=U.key(U.field(spawner,'SpawnedAI'))
-                if mountKey and spawned==mountKey then return spawner end
-                local d=not mountKey and spawned and metres(where(spawner),record.origin)
-                if d and d*100<NEAR then return spawner end
+                if U.key(U.field(spawner,'SpawnedAI'))==mountKey then return spawner end
             end
         end
     end
@@ -161,18 +173,54 @@ function Mounts.new(options)
         if key then self:release(self.records[key],why or '已清理') end
     end
 
+    -- Jing Ye's horse is natively unselectable. Sample the rider separately, after spawn and a change of seat.
+    local function read(obj,method,...)
+        if not U.valid(obj) then return nil end
+        local args={...}
+        local ok,value=pcall(function()return obj[method](obj,table.unpack(args))end)
+        if ok then return U.unwrap(value) end
+    end
+    local function lockSnapshot()
+        local player=options.player()
+        if not U.valid(player) then return end
+        local targeting=U.field(player,'Targeting Component')
+        local sub=U.field(targeting,'TargetingSubsystem')
+        local out={}
+        local listed=U.valid(sub) and pcall(function()sub:GetTargetsByTag({TagName=FName('Targeting.Target.Combat')},true,out)end)
+        local list=listed and U.array(out.OutTargets or (out[1] and out)) or nil
+        local members
+        if list then
+            members={}
+            for _,actor in ipairs(list)do local key=U.key(actor);if key then members[key]=true end end
+        end
+        local component,known=U.struct(U.field(targeting,'LockTarget'),'Component')
+        local locked=U.key(read(component,'GetOwner'))
+        return {player=player,listed=members,locked=locked,lockKnown=known and (not U.valid(component) or locked~=nil)}
+    end
+    local function sampleLock(record,seat,snapshot)
+        local rider=record.rider
+        local registered=snapshot.listed and tostring(snapshot.listed[record.key]==true) or '?'
+        local relation=read(U.field(snapshot.player,'Faction Component'),'GetFactionRelation',rider)
+        local blocked=read(U.field(rider,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=FName('CharacterState.Unselectable')})
+        local socket=read(U.field(rider,'Mesh'),'DoesSocketExist',FName('spine_04'))
+        local distance=metres(where(snapshot.player),where(rider))
+        say(string.format('荆野锁定读回 实例=%s 骑乘=%s 玩家对骑手关系=%s 骑手在战斗目标列表=%s spine_04=%s 不可选标签数=%s 玩家当前锁住骑手=%s 距离=%s米',
+            record.key,tostring(seat),tostring(relation or '?'),registered,socket==nil and '?' or tostring(socket),
+            tostring(blocked or '?'),snapshot.lockKnown and tostring(snapshot.locked==record.key) or '?',distance and string.format('%.1f',distance) or '?'))
+    end
     function self:tick()
         local t=now()
+        local snapshot
         for key,record in pairs(self.records)do
             if gone(record.rider) then self:release(record,'已不在场上')
-            elseif not record.anchorOnly and not record.mount and not record.gaveUp then
+            elseif not record.anchorOnly and not record.mount then
                 local mount=U.field(U.field(record.rider,'BP_SGameDriverComponent'),'DrivingVehicle')
                 local late=t-record.at>WAIT
+                local seated=U.valid(mount)
                 local vehicleSpawner
-                if not U.valid(mount) and late then
-                    -- Never got on: its mount may still stand by the spawner the script made.
-                    vehicleSpawner=mountSpawner(record,nil)
-                    mount=vehicleSpawner and U.field(vehicleSpawner,'SpawnedAI') or nil
+                if not seated and late and t>=(record.nextScriptRead or 0) then
+                    record.nextScriptRead=t+2
+                    mount,vehicleSpawner=scriptMount(record)
                 end
                 if U.valid(mount) and U.key(mount)~=key then
                     record.mount=mount
@@ -180,13 +228,25 @@ function Mounts.new(options)
                     self.mounted=self.mounted+1
                     local at,origin=where(mount),record.origin
                     say(string.format('骑兵 %s：坐骑 %s %s，%.1f 秒，位置=%s 离召唤点=%s 米；坐骑的刷怪点=%s',record.name,className(mount),
-                        late and '没骑上（按刷怪点找到）' or '已骑上',t-record.at,
+                        seated and '已骑上' or '尚未骑上（原生骑兵脚本确认）',t-record.at,
                         at and string.format('%.0f,%.0f,%.0f',at.X,at.Y,at.Z) or '?',
                         metres(at,origin) and string.format('%.1f',metres(at,origin)) or '?',
                         record.vehicleSpawner and className(record.vehicleSpawner) or '没找到'))
-                elseif late then
-                    record.gaveUp=true;self.failures=self.failures+1
-                    say(string.format('骑兵 %s：%d 秒内没骑上坐骑，也没找到坐骑的刷怪点',record.name,WAIT))
+                elseif late and not record.warned then
+                    record.warned=true;self.failures=self.failures+1
+                    say(string.format('骑兵 %s：%d 秒内没骑上坐骑，继续等本体的坐骑记录',record.name,WAIT))
+                end
+            end
+            if self.records[key]==record and record.name=='BP_Monster_JingYe_C' and options.player and t-record.at>=2
+                and (record.lockSamples or 0)<4 and t>=(record.nextLockCheck or 0) then
+                record.nextLockCheck=t+1
+                local seat=U.key(U.field(U.field(record.rider,'BP_SGameDriverComponent'),'DrivingVehicle')) or false
+                if record.lastSeat~=seat or record.lockSamples==1 and t-record.at>=8 then
+                    if snapshot==nil then snapshot=lockSnapshot() or false end
+                    if snapshot then
+                        sampleLock(record,seat,snapshot)
+                        record.lastSeat=seat;record.lockSamples=(record.lockSamples or 0)+1
+                    end
                 end
             end
         end
@@ -205,7 +265,7 @@ function Mounts.new(options)
         if not record or record.anchorOnly then return rider end
         local mount=riding(record)
         if mount then return mount end
-        if not record.mount and not record.gaveUp then return nil end
+        if not record.mount and not record.warned then return nil end
         local driver=U.field(rider,'BP_SGameDriverComponent')
         local current,read=U.field(driver,'DrivingVehicle')
         if read and not U.valid(current) then return rider end
@@ -220,7 +280,7 @@ function Mounts.new(options)
         local mount=riding(record)
         if not mount or not U.valid(target) or not options.attack then return false end
         local ok,sent=pcall(options.attack,mount,target)
-        record.target=target;record.targetKey=U.key(target)
+        record.target=target;record.targetKey=ok and sent==true and U.key(target) or nil
         sayFight(string.format('骑兵 %s：坐骑 %s 跟着攻击 %s 调用=%s 读回=%s',record.name,className(mount),className(target),tostring(ok),tostring(ok and sent)))
         return ok and sent==true
     end
@@ -232,7 +292,14 @@ function Mounts.new(options)
         if record.targetKey~=U.key(target) then return self:fight(rider,target) end
         if not options.inCombat or not options.engage then return false end
         local okState,combat=pcall(options.inCombat,mount)
-        if not okState or combat~=false then return false end
+        if not okState then return false end
+        if combat~=false then
+            if combat==true and options.nativeTarget then
+                local current=options.nativeTarget(mount)
+                if U.valid(current) and U.key(current)~=record.targetKey then return self:fight(rider,target) end
+            end
+            return false
+        end
         local ok,engaged,after=pcall(options.engage,mount,target)
         sayFight(string.format('骑兵 %s：坐骑不在战斗状态，重新迎敌 调用=%s 状态读回=%s',record.name,tostring(ok and engaged),tostring(after)))
         return ok and engaged==true
@@ -242,7 +309,9 @@ function Mounts.new(options)
         for _,record in pairs(self.records)do
             if U.key(record.mount)==key then
                 local mount=riding(record)
-                if mount and U.valid(record.target) and options.engage then pcall(options.engage,mount,record.target) end
+                local target=record.target
+                if options.assignedTarget then target=options.assignedTarget(record.rider) end
+                if mount and U.valid(target) and options.engage then pcall(options.engage,mount,target) end
                 return true
             end
         end

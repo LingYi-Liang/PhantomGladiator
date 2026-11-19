@@ -158,6 +158,43 @@ local function fixture(opts)
 end
 local n=0;local function test(label,fn)fn();n=n+1;print('PASS '..label)end
 
+test('a lost NPC movement layer is restored after the action, without rebuilding the body or item layer',function()
+    local h=fixture();assert(h:apply().anim)
+    local mesh,main=h.mesh,h.mesh.anim
+    local move=object('movement');function move:GetOwner()return h.actor end
+    function h.actor:GetMovementComponent()return move end
+    function main:TryGetPawnOwner()return h.actor end
+    local graph=instance(h.mm,h);function graph:TryGetPawnOwner()return h.actor end
+    local refs=0
+    function graph:SetReferences()refs=refs+1;self.CharacterMovement=move;self.RenewalHun=h.actor end
+    local item=instance(h.item,h);mesh.LinkedInstances={item}
+    function mesh:GetLinkedAnimLayerInstanceByClass(c)
+        for _,i in ipairs(self.LinkedInstances) do if i:GetClass()==c then return i end end
+    end
+    local links=0
+    function main:LinkAnimClassLayers(c)
+        assert(c==h.mm);links=links+1;mesh.LinkedInstances[#mesh.LinkedInstances+1]=graph
+    end
+    local clip=object('sword swing')
+    function main:GetCurrentActiveMontage()return clip end
+    function main:Montage_IsPlaying()return true end
+    h.look:maintainMotion(h.r,0);assert(links==0,'never relink during an attack')
+    clip=nil
+    h.look:maintainMotion(h.r,2);assert(links==1 and refs==1 and graph.RenewalHun==h.actor)
+    h.look:maintainMotion(h.r,4);assert(links==1 and refs==1 and mesh.anim==main and mesh.LinkedInstances[1]==item)
+    mesh.LinkedInstances={item};h.look:maintainMotion(h.r,8)
+    assert(links==2,'repair a later loss on the same body, even without a weapon change')
+    mesh.LinkedInstances={instance(class('/Game/Cinematic.Cinematic_C'),h),item}
+    h.look:maintainMotion(h.r,10);assert(links==2,'preserve a deliberate replacement layer')
+    mesh.LinkedInstances={item};h.still=false;h.look:maintainMotion(h.r,12);assert(links==2)
+end)
+test('a partial bone position during appearance readback leaves the equipped parts attached',function()
+    local h=fixture({steps=Look.STEPS});assert(h:apply().full)
+    function h.mesh:GetSocketLocation()return {X=0} end
+    h.look:recheck(h.r)
+    assert(h.r.full and h.r.lookResult.full and not h:part('meshhead').destroying)
+end)
+
 ---- Stage 1 (Hun_Clone + anim class), with the look switch on 'clone'.
 test('local attachment traversal reads both weapon sockets without scanning the world',function()
     local h=fixture()
@@ -353,6 +390,17 @@ test('parts: death and cleanup leave transferred and replaced parts intact',func
     cape.label='another component at this address'
     h.look:hideParts(h.r);h.look:cleanup(h.r,'实例离场')
     assert(hat.visible and cape.visible and not hat.destroying and not cape.destroying)
+end)
+test('native revival shows only the same parts actually hidden for this death',function()
+    local h=fixture({steps=FULL});h:apply()
+    local head,hat,cape=h:part('meshhead'),h:part('Hun_Hat'),h:part('CA_Hun_Cape')
+    cape.visible=false
+    h.look:hideParts(h.r);h.look:hideParts(h.r)
+    assert(not head.visible and not hat.visible)
+    function hat:GetOwner()return h.player end
+    h.look:restoreDeathVisibility(h.r)
+    assert(head.visible and not cape.visible and not hat.visible)
+    head.visible=false;h.look:restoreDeathVisibility(h.r);assert(not head.visible,'consume the restoration only once')
 end)
 test('parts: visibility text, the death hide, and cleanup destroy every registered part and read it back',function()
     local h=fixture({steps=FULL});h:body();h:apply()

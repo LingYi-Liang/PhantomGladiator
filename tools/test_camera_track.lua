@@ -623,3 +623,34 @@ do
     assert(minimum>=0,'tracked camera went below the floor at Z='..minimum)
 end
 print('camera_track: PASS')
+
+do
+    local world=unit('World',0,0,0);local player=unit('Player',0,0,0)
+    function player:GetOuter()return world end
+    function player:GetActorEyesViewPoint(at,rot)at.X,at.Y,at.Z=30,20,175;rot.Yaw,rot.Pitch=90,15 end
+    local h=harness({world=function()return world end,player=function()return player end})
+    assert(h.track:firstPerson('player').ok and h.track:status().framing=='eyes')
+    local at,rot=h.track:frame(.016,1,{world=world})
+    assert(near(at.X,30) and at.Y>20 and at.Z==175 and rot.Pitch==15)
+    assert(not h.track:firstPerson('npc').ok)
+    local npc=h.add('Summon',400,10,25);function npc:GetOuter()return world end
+    function npc:K2_GetActorRotation()return {Yaw=0,Pitch=0}end
+    npc.BaseEyeHeight=62
+    assert(h.track:firstPerson('npc').ok);at,rot=h.track:frame(.016,2,{world=world})
+    assert(at.X>400 and at.Y==10 and at.Z==87)
+    -- A pawn may return its origin as the eye point. Use the actual head socket in that case.
+    npc.BaseEyeHeight=0;function npc:GetActorEyesViewPoint(pos,r)pos.X,pos.Y,pos.Z=400,10,25;r.Yaw,r.Pitch=0,0 end
+    npc.Mesh=unit('Mesh',0,0,0)
+    local oldFName=FName;FName=function(n)return n end
+    function npc.Mesh:DoesSocketExist(n)return n=='head' end
+    function npc.Mesh:GetSocketLocation(n)assert(n=='head');return {X=400,Y=10,Z=111}end
+    at=h.track:frame(.016,2.22,{world=world});assert(at.Z==111)
+    FName=oldFName
+    npc.hp=0;assert(h.track:frame(.016,2.5,{world=world})==nil and not h.track:running())
+    npc.hp=100;assert(h.track:firstPerson('npc').ok);h.members={}
+    assert(h.track:frame(.016,3,{world=world})==nil and not h.track:running())
+    assert(h.track:firstPerson('player').ok);assert(h.track:set('side',3).ok and not h.track:running())
+    assert(h.track:firstPerson('player').ok)
+    assert(not h.track:frame(.016,4,{world=unit('AnotherWorld',0,0,0)}))
+    print('PASS player/NPC eyes, native height fallback, target death, roster removal, change of framing and world')
+end

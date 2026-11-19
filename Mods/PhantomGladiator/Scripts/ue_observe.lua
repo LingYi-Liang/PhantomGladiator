@@ -20,7 +20,9 @@ end
 function U.unwrap(v)
     local kind=U.kind(v)
     if kind=='RemoteUnrealParam' or kind=='LocalUnrealParam' then
-        local ok,result=pcall(function() return v:get() end);return ok and result or nil
+        local ok,result=pcall(function() return v:get() end)
+        if ok then return result end
+        return nil
     end
     return v
 end

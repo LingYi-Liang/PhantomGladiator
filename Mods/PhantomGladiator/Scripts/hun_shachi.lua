@@ -1,6 +1,7 @@
 -- Shadow armaments on an owned Hun NPC. Shared configs are only read; the instance's two
 -- ShaChi slots hold transient copies. Activation uses a spec granted on this actor's ASC.
 local U = require('ue_observe')
+local Vitals = require('hun_vitals')
 local Data = require('hun_shachi_data')
 local Charge = require('hun_shadow_charge')
 local Shachi = {}
@@ -44,7 +45,7 @@ local function damageMap(object, field)
             values[name] = number
         end)
     end)
-    return ok and next(values) and values or nil
+    return ok and values or nil
 end
 
 local function matches(values, expected, scale)
@@ -63,14 +64,15 @@ end
 
 local function granted(asc)
     local specs = U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
-    if not specs or #specs>1024 then return {} end
+    local ascKey=U.key(asc)
+    if not ascKey or not specs or #specs>1024 then return {} end
     local out = {}
     for index,spec in ipairs(specs) do
         local path = objectPath(U.struct(spec,'Ability'))
         if path then
             local id=U.struct(U.struct(spec,'Handle'),'Handle')
             if type(id)=='number' and id>0 then
-                out[path:gsub('%.Default__','.')]={id=id, active=U.struct(spec,'ActiveCount'), spec=spec,index=index,abilityKey=U.key(U.struct(spec,'Ability'))}
+                out[path:gsub('%.Default__','.')]={id=id, active=U.struct(spec,'ActiveCount'), spec=spec,index=index,ascKey=ascKey,abilityKey=U.key(U.struct(spec,'Ability'))}
             end
         end
     end
@@ -85,6 +87,11 @@ end
 
 -- GAS can move or regrant specs. Cache an array position, never a pointer into that array.
 local function activeSpec(asc,cast)
+    if cast.ascKey then
+        local key=U.key(asc)
+        if not key then return nil,false end
+        if key~=cast.ascKey then return nil,true end
+    end
     local items=U.struct(U.field(asc,'ActivatableAbilities'),'Items')
     local function match(row)
         if U.struct(U.struct(row,'Handle'),'Handle')==cast.handle and U.key(U.struct(row,'Ability'))==cast.abilityKey then
@@ -200,8 +207,8 @@ function Shachi.new(o)
     local function attr(r,field)
         local stats=o.stats and o.stats()
         if not stats then return nil end
-        local value=stats:read(r.actor,field)
-        return value and value.current
+        local ok,value=pcall(stats.read,stats,r.actor,field)
+        if ok and type(value)=='table' and type(value.current)=='number' and math.abs(value.current)<math.huge then return value.current end
     end
     local function write(r,field,value)
         if not current(r) then return false end
@@ -211,10 +218,10 @@ function Shachi.new(o)
         if before==nil then return false end
         if near(before,value) then return true end
         say(r,'即将写 '..field..'='..value)
-        local ok=stats:writeBase(r.actor,field,value)
+        local called,ok=pcall(stats.writeBase,stats,r.actor,field,value)
         local after=attr(r,field)
         say(r,field..' '..before..'→'..tostring(after))
-        return ok and near(after,value)
+        return called and ok and near(after,value)
     end
     local function tag(name) return {TagName=fname(name)} end
     local function count(asc,name)
@@ -263,7 +270,8 @@ function Shachi.new(o)
         local _,actualClass=call(copy,'GetClass')
         if U.key(outer)~=U.key(r.actor) or U.key(actualClass)~=U.key(class) then return end
         local beforeA,beforeB=damageMap(source,MAP),damageMap(source,NORMALIZED)
-        local values=(choice.soul and beforeB) or beforeA
+        if not beforeA or not beforeB then return end
+        local values=(choice.soul and next(beforeB) and beforeB) or beforeA
         if choice.meta.donor then
             values=damageMap(form,MAP)
             local skin,skinKey=display(form)
@@ -277,18 +285,21 @@ function Shachi.new(o)
             if copiedKey~=skinKey or originalKey~=sourceKey then return end
         end
         local ok,power=call(copy,'GetWeaponPowerMultiplier',r.actor)
-        if not ok or type(power)~='number' or not (power>0 and power<1000) or not values then return end
+        if not ok or type(power)~='number' or not (power>0 and power<1000) or not values or not next(values) then return end
         local scale=(1+(choice.level-1)/10)/power
         for _,field in ipairs({MAP,NORMALIZED}) do
             if not current(r) then return end
             local map=U.field(copy,field)
             local prior=damageMap(copy,field)
             if not prior then return end
+            -- A normalized map can legitimately be empty on an evolved config (e.g. the puppet bell).
+            -- Leave that optional channel empty; scale only the authored combat channel in the private copy.
+            local desired=(field==NORMALIZED and not next(beforeB)) and beforeB or values
             local changed=pcall(function()
-                for name in pairs(prior) do if values[name]==nil then map:Remove(tag(name)) end end
-                for name,amount in pairs(values) do map:Add(tag(name),amount*scale) end
+                for name in pairs(prior) do if desired[name]==nil then map:Remove(tag(name)) end end
+                for name,amount in pairs(desired) do map:Add(tag(name),amount*scale) end
             end)
-            if not changed or not matches(damageMap(copy,field),values,scale) then return end
+            if not changed or not matches(damageMap(copy,field),desired,scale) then return end
         end
         if not matches(damageMap(source,MAP),beforeA,1) or not matches(damageMap(source,NORMALIZED),beforeB,1) then return end
         if choice.meta.normal:find('Weapon_ThunderSpear',1,true) then
@@ -397,21 +408,24 @@ function Shachi.new(o)
         if now<(s.switchedAt or -100)+0.35*scale then return false end
         local copy=privateConfig(r,choice)
         if not copy then return false end
-        if not summons:arm(r,choice,Data.summons[choice.path]) then return false end
         local other=index==0 and 1 or 0
         local saved=s.slots[other]
         local prev,read=slotConfig(wc,slot,other)
         if not read or (saved and U.key(prev)~=U.key(saved.copy)) then return false end
+        local armed,restoreRules=summons:arm(r,choice,Data.summons[choice.path])
+        if not armed then return false end
         local previousSlot=s.slots[other]
         s.slots[other]={id=choice.id,copy=copy,original=previousSlot and previousSlot.original or prev}
         if previousSlot then s.slots[other].original=previousSlot.original end
         if not setSlot(r,wc,other,copy,prev) then
+            if restoreRules then restoreRules() end
             local actual,readable=slotConfig(wc,slot,other)
             if readable and U.key(actual)==U.key(prev) then s.slots[other]=previousSlot else s.disabled=true end
             return false
         end
         if s.originalIndex==nil then s.originalIndex=index end
         local function rollback()
+            if restoreRules then restoreRules() end
             if not current(r) then return end
             if index>=0 then call(wc,'SetCurrentWeapon',slot,index) end
             local restored=setSlot(r,wc,other,prev,copy)
@@ -467,22 +481,30 @@ function Shachi.new(o)
         end
     end
     local function reserveCharge(s,ctx,now,available)
-        return available<=math.max(1,(s.cap or 5)/2) and not ctx.opening and not ctx.targetBroken and (ctx.hpRatio or 1)>.25
+        return s.resources.consume_skill_resources~=false and available<=math.max(1,(s.cap or 5)/2) and not ctx.opening and not ctx.targetBroken and (ctx.hpRatio or 1)>.25
             and now<(s.lastPaidAt or -math.huge)+20
     end
-    local function choose(s,ctx,now,available,hasTag,aic)
+    local function followup(move)
+        for _,need in ipairs(move.needs) do
+            if need:match('^Ability%.Action%.Hun%.') or need=='Ability.Action.Stance' or need=='Ability.Action.HoldDeflect'
+                or need=='CharacterState.Deflect.Stance' or need=='CharacterState.AbilityState.Stance.HoldingStanceKey'
+                or need:match('^CharacterState%.AbilityState%..*CanCombo') or need:match('^CharacterState%.AbilityState%..*PerfectDodge') then return true end
+        end
+        return false
+    end
+    local function choose(s,ctx,now,available,hasTag,aic,equipped)
         local pool,total={},0
         local preserve=reserveCharge(s,ctx,now,available)
         local gates={}
         for _,choice in ipairs(s.choices) do
             local usable,favour,ranged=false,false,false
-            if (s.untilAt[choice.id] or 0)<=now then
+            if (not equipped or equipped==choice.id) and (s.untilAt[choice.id] or 0)<=now then
                 for _,move in ipairs(Data.moves[choice.path]) do
                     local ok,cost=usableMove(choice,move,available,hasTag,true)
-                    if ok and not (preserve and cost>0) then
+                    if ok and (not equipped or followup(move)) and not (preserve and cost>0) then
                         if gates[move.priority]==nil then
                             local read,allow=call(aic,'CanActivateExternalActionAbility',move.priority)
-                            gates[move.priority]=not read or allow~=false
+                            gates[move.priority]=read and allow==true
                         end
                         if gates[move.priority] then
                             usable=true
@@ -510,32 +532,30 @@ function Shachi.new(o)
         for _,entry in ipairs(pool) do if pick<=entry.upper then return entry.choice end end
         return pool[#pool].choice
     end
-    local function chooseMove(choice,asc,available,preserve,aic,ctx)
+    local function chooseMove(choice,asc,available,preserve,aic,ctx,continuation,moves)
         local specs=granted(asc)
         local hasTag=readTags(asc)
-        local best,bestSpec,bestProfile,bestScore
-        for _,move in ipairs(Data.moves[choice.path]) do
+        local best,bestSpec,bestProfile,bestScore,bestCost
+        for _,move in ipairs(moves or Data.moves[choice.path]) do
             local spec=specs[move.cls]
-            if spec and spec.active==0 then
+            if spec and spec.active==0 and (not continuation or followup(move)) then
                 local ok,cost=usableMove(choice,move,available,hasTag,false)
-                if ok and not (preserve and cost>0) then
+                if ok and not (preserve and cost>0) and (not moves or cost==0) then
                     local read,allowed=call(aic,'CanActivateExternalActionAbility',move.priority)
-                    if not read or allowed~=false then
+                    if read and allowed==true then
                         local p=Charge.profile(move)
                         local hold=Charge.opportunity(p,move,ctx) and (not p.upgrade or hasTag(p.upgrade))
                         local score=hold and p.kind~='channel' and 2 or 0
                         -- Retain native follow-ups and counters during their short eligibility window.
-                        for _,need in ipairs(move.needs) do
-                            if need:find('Ability.Action.',1,true)==1 or need:find('CanCombo',1,true) then score=score+3;break end
-                        end
+                        if followup(move) then score=score+3 end
                         if not bestScore or score>bestScore then
-                            best,bestSpec,bestProfile,bestScore=move,spec,hold and p or nil,score
+                            best,bestSpec,bestProfile,bestScore,bestCost=move,spec,hold and p or nil,score,cost
                         end
                     end
                 end
             end
         end
-        return best,bestSpec,bestProfile
+        return best,bestSpec,bestProfile,bestCost
     end
 
     local function ownedInstances(r,spec,fn)
@@ -547,19 +567,37 @@ function Shachi.new(o)
         end
     end
 
-    local function matchesTarget(r,target)
+    local function retireCast(r,asc,action)
+        if not asc then return false end
+        local spec,read=activeSpec(asc,action)
+        if not read then return false end
+        if not spec or spec.active==0 then return true end
+        if type(spec.active)~='number' or action.retireAttempted then return false end
+        action.retireAttempted=true
+        say(r,'即将结束该魂未收招的影武 '..action.move.tag)
+        ownedInstances(r,spec,function(instance)call(instance,'K2_CancelAbility')end)
+        spec,read=activeSpec(asc,action)
+        say(r,'影武中止读回 活动数='..tostring(spec and spec.active))
+        return read and (not spec or spec.active==0)
+    end
+    local function livingTarget(target)
         if not U.valid(target) then return false end
         if o.hp then
             local ok,hp=pcall(o.hp,target)
-            if not ok or type(hp)~='number' or hp<=0 then return false end
+            return ok and type(hp)=='number' and hp>0 and hp<math.huge
         end
+        return true
+    end
+    local function matchesTarget(r,target)
+        local key=U.key(target)
+        if not key or not livingTarget(target) then return false end
         if o.nativeTarget then
             local ok,selected=pcall(o.nativeTarget,r.actor)
-            return ok and U.key(selected)==U.key(target)
+            return ok and U.key(selected)==key
         elseif o.aiOf then
             local ok,ai=pcall(o.aiOf,r.actor)
             local _,selected=call(ok and U.field(ai,'BlackboardComponent'),'GetValueAsObject',fname('TargetActor'))
-            return U.key(selected)==U.key(target)
+            return U.key(selected)==key
         end
         return true
     end
@@ -572,9 +610,123 @@ function Shachi.new(o)
         local ok,clear=call(controller,'LineOfSightTo',target,{X=0,Y=0,Z=0},false)
         return ok and clear==true
     end
+    local function castRecord(choice,move,spec,now,resource,target,duration)
+        local _,name=call(target,'GetFullName')
+        return {choice=choice,move=move,handle=spec.id,started=now,deadline=now+duration+1,
+            before=resource,lastResource=resource,index=spec.index,ascKey=spec.ascKey,abilityKey=spec.abilityKey,target=U.key(target),targetName=name}
+    end
+    -- Free casts may need ammunition for the native activation check. Return only
+    -- that advance and the cost observed on this cast. A one-shot cannot refund later hits.
+    local function applyCorrection(r,p,target)
+        p.writing=true
+        local ok=write(r,'SpiritShadow',target)
+        p.writing=false
+        return ok
+    end
+    local function settleFree(r,s,asc,value,closing)
+        local p=s.payment
+        if not p then return value end
+        if closing then p.closing=true end
+        if p.writing or not current(r) or not U.valid(asc) then return nil end
+        if p.asc~=U.key(asc) then s.payment=nil;return value end
+        value=value or attr(r,'SpiritShadow')
+        if type(value)~='number' then return nil end
+        if p.funding then
+            local original=p.last-p.advance
+            if value<original or value>p.last then
+                say(r,'垫付期间暗源另有变化，保留新的读回 '..value)
+                s.payment=nil
+                return value
+            end
+            -- No native cast was sent. Undo only the part of the advance that actually landed.
+            p.advance=value-original;p.last=value;p.remaining=0;p.funding=false
+        end
+        if p.pending then
+            -- Retry the same absolute write only while its original value is still present.
+            if near(value,p.pending.from) then
+                if not applyCorrection(r,p,p.pending.to) then return nil end
+                value=p.pending.to
+            elseif not near(value,p.pending.to) then
+                say(r,'结算期间暗源已变化，保留新的读回 '..value)
+                p.last=value
+            end
+            p.pending=nil
+        end
+        local loss=math.max(0,p.last-value)
+        local refund=math.min(loss,p.remaining)
+        local repay=(p.closing or (not p.channel and loss>0)) and p.advance or 0
+        local wanted=math.max(0,value+refund-repay)
+        if wanted>value then
+            local cap=attr(r,'SpiritShadow_Max')
+            if type(cap)~='number' then return nil end
+            wanted=math.min(math.max(cap,value),wanted)
+        end
+        p.remaining=p.remaining-refund;p.advance=p.advance-repay;p.last=wanted
+        if not near(wanted,value) then
+            p.pending={from=value,to=wanted}
+            if not applyCorrection(r,p,wanted) then return nil end
+            p.pending=nil
+        end
+        if p.closing and p.advance>0 then return settleFree(r,s,asc,wanted,true) end
+        if p.closing or (p.remaining==0 and p.advance==0) then s.payment=nil end
+        return wanted
+    end
+    local function inputFollowup(aic,move)
+        local class=asset(move.cls)
+        local input=asset('/PBZInput/InputActions/IA_ShachiAbility.IA_ShachiAbility')
+        if not input or objectPath(class)~=move.cls then return false,false end
+        return call(aic,'TryActivateExternalActionAbilityByClass',class,input,move.priority)
+    end
+    local function continueCast(r,s,asc,now,ctx)
+        local cast=s.running
+        if cast.followTried or cast.pendingUntil or cast.cancelled or cast.hold or cast.move.release or cast.move.ongoing>0
+            or ctx.busy or ctx.pairProtected or ctx.allowAction==false or ctx.allowShadow==false or cast.target~=U.key(ctx.target) then return end
+        -- Only offer a free follow-up explicitly naming this live predecessor.
+        if not cast.followups then
+            cast.followups={}
+            for _,move in ipairs(Data.moves[cast.choice.path]) do
+                if move.cls~=cast.move.cls and move.cost==0 and move.ongoing==0 and not move.release then
+                    for _,needed in ipairs(move.needs) do
+                        if needed==cast.move.tag then cast.followups[#cast.followups+1]=move;break end
+                    end
+                end
+            end
+        end
+        if #cast.followups==0 or now<(cast.nextWindowRead or 0) then return end
+        cast.nextWindowRead=now+.10
+        local _,window=Vitals.actionState(r.actor,fname)
+        if not window or not matchesTarget(r,ctx.target) then return end
+        local wc=ownedComponent(r.actor,'Character Weapons Component')
+        local _,idx=call(wc,'GetCurrentWeaponIndex',tag(SLOT),false)
+        local slot=s.slots[idx]
+        if not slot or slot.id~=cast.choice.id or U.key(slotConfig(wc,tag(SLOT),idx))~=U.key(slot.copy) then return end
+        local aic=ownedComponent(r.actor,'Ability Input Component')
+        local spirit=attr(r,'SpiritShadow')
+        if type(spirit)~='number' or type(ctx.distance)~='number' then return end
+        local move,spec=chooseMove(cast.choice,asc,spirit,false,aic,ctx,true,cast.followups)
+        if not move or not (ctx.distance>=0 and ctx.distance<=move.radius) or not clearSight(r,ctx.target,ctx.distance) then return end
+        cast.followTried=true
+        local nextCast=castRecord(cast.choice,move,spec,now,spirit,ctx.target,move.duration)
+        say(r,'即将 原生影武接段 '..cast.move.tag..' → '..move.tag)
+        local sent,result=inputFollowup(aic,move)
+        local read=activeSpec(asc,nextCast)
+        local active=read and type(read.active)=='number' and read.active>0
+        say(r,'影武接段读回 返回='..tostring(result)..' 活动数='..tostring(read and read.active))
+        if active then s.running=nextCast
+        elseif sent and result==true then cast.queued=nextCast end
+    end
     local function observe(r,s,asc,now,ctx)
         local cast=s.running
         if not cast then return false end
+        if cast.queued then
+            local nextCast=cast.queued
+            local read=activeSpec(asc,nextCast)
+            if read and type(read.active)=='number' and read.active>0 then
+                say(r,'影武接段延后读回 活动数='..read.active)
+                s.running=nextCast;cast=nextCast
+            elseif now<nextCast.started+.45 then return true
+            else cast.queued=nil end
+        end
         local spec,readable=activeSpec(asc,cast)
         if not readable then
             if now<cast.deadline then return true end
@@ -585,14 +737,17 @@ function Shachi.new(o)
         local after=attr(r,'SpiritShadow')
         local debitObserved=type(after)=='number' and after<cast.lastResource
         if debitObserved then s.lastPaidAt=now end
-        if debitObserved and s.resources.consume_skill_resources==false then
-            local cap=attr(r,'SpiritShadow_Max')
-            if cap then write(r,'SpiritShadow',math.min(cap,cast.lastResource));after=attr(r,'SpiritShadow') end
-        end
+        if s.payment then after=settleFree(r,s,asc,after,s.payment.cast~=cast) end
+        if r.shadowState~=s or s.running~=cast then return false end
         if after then cast.lastResource=after end
+        local protected=false
+        if ctx.pairProtected and cast.target==U.key(ctx.target) and livingTarget(ctx.target) then
+            local read,name=call(ctx.target,'GetFullName')
+            protected=read and type(name)=='string' and cast.targetName==name
+        end
         local lost=cast.hold and (not cast.released or cast.awaitWindow) and (cast.target~=U.key(ctx.target)
-            or not matchesTarget(r,ctx.target) or type(ctx.distance)~='number' or not (ctx.distance>=0 and ctx.distance<=3000)
-            or not clearSight(r,ctx.target,ctx.distance))
+            or (not protected and (not matchesTarget(r,ctx.target) or type(ctx.distance)~='number'
+                or not (ctx.distance>=0 and ctx.distance<=3000) or not clearSight(r,ctx.target,ctx.distance))))
         if cast.pendingUntil then
             if (spec and spec.id==cast.handle and type(spec.active)=='number' and spec.active>0) or debitObserved then
                 cast.pendingUntil=nil
@@ -618,10 +773,10 @@ function Shachi.new(o)
             say(r,'原生影武仍活动，暂缓新的影武并交还战斗决策 '..cast.choice.meta.label)
             return false
         end
-        if cast.hold and not lost and now<cast.deadline and not cast.cancelled then
+        if cast.hold and not lost and not protected and now<cast.deadline and not cast.cancelled then
             local hasTag=readTags(asc)
             ownedInstances(r,spec,function(instance)charge:observe(r,cast,instance,ctx,now,hasTag) end)
-        elseif not cast.hold and not cast.released and cast.move.release and now<cast.deadline then
+        elseif not cast.hold and not protected and not cast.released and cast.move.release and now<cast.deadline then
             ownedInstances(r,spec,function(instance)charge:tap(r,cast,instance,now) end)
         end
         if (lost or now>=cast.deadline or (cast.hold and not cast.released and now>cast.started+cast.profile.limit+.5)) and not cast.cancelled then
@@ -663,17 +818,33 @@ function Shachi.new(o)
 
     function self:tick(r,ctx)
         if not current(r) then return false end
+        if r.dead then self:interrupt(r);return false end
+        if r.shadowSubmitting then return true end
         if not r.shadowState then self:equip(r) end
         local s=r.shadowState
         if not s or s.disabled or #s.choices==0 then return false end
         local now=ctx.now or clock()
         local asc=ownedComponent(r.actor,'AbilitySystemComponent')
         if not asc then return false end
+        if s.running and s.running.starting then return true end
         observeResources(r,s,now)
-        if observe(r,s,asc,now,ctx) then return true end
+        if observe(r,s,asc,now,ctx) then
+            continueCast(r,s,asc,now,ctx)
+            return true
+        end
+        if r.shadowState~=s or r.dead then return false end
+        if s.payment then
+            settleFree(r,s,asc,nil,true)
+            if s.payment then return false end
+        end
         if s.quarantine then
             if now<(s.checkQuarantineAt or 0) then return false end
             s.checkQuarantineAt=now+1
+            local queued=s.quarantine.queued
+            if queued then
+                if not retireCast(r,asc,queued) or (not queued.retireAttempted and now<queued.started+.45) then return false end
+                s.quarantine.queued=nil
+            end
             local old,readable=activeSpec(asc,s.quarantine)
             if not readable or (old and old.active~=0) then return false end
             s.quarantine=nil;s.checkQuarantineAt=nil
@@ -681,18 +852,25 @@ function Shachi.new(o)
         if now<s.nextAt or ctx.busy or ctx.allowAction==false or ctx.allowShadow==false or not U.valid(ctx.target)
             or U.key(ctx.target)==U.key(r.actor) or type(ctx.distance)~='number'
             or not (ctx.distance>=0 and ctx.distance<=3000) then return false end
-        s.nextAt=now+1
+        local performing,canChain=Vitals.actionState(r.actor,fname)
+        s.nextAt=now+(performing and .15 or 1)
+        if performing and not canChain then return false end
         local wc=ownedComponent(r.actor,'Character Weapons Component')
         if not wc or count(asc,ACTIVE_TAG)~=0 then return false end
+        local equipped
+        if performing then
+            local _,idx=call(wc,'GetCurrentWeaponIndex',tag(SLOT),false)
+            local entry=s.slots[idx]
+            if not entry then return false end
+            equipped=entry.id
+        end
         local available=attr(r,'SpiritShadow')
         if type(available)~='number' then return false end
-        if available<=0 and s.resources.consume_skill_resources==false then
-            local cap=attr(r,'SpiritShadow_Max')
-            if cap and cap>0 and write(r,'SpiritShadow',cap) then available=cap end
-        end
         if not matchesTarget(r,ctx.target) or not clearSight(r,ctx.target,ctx.distance) then return false end
+        local free=s.resources.consume_skill_resources==false
+        local budget=free and math.max(available,attr(r,'SpiritShadow_Max') or available) or available
         local aic=ownedComponent(r.actor,'Ability Input Component')
-        local choice=choose(s,ctx,now,available,readTags(asc),aic)
+        local choice=choose(s,ctx,now,budget,readTags(asc),aic,equipped)
         if not choice then
             if available<=0 and not s.emptyReported then
                 say(r,'暗源已耗尽，等待原生免费招式窗口或资源恢复')
@@ -701,62 +879,128 @@ function Shachi.new(o)
             return false
         end
         if available>0 then s.emptyReported=nil end
-        if require('hun_vitals').montagePlaying(r.actor) then
-            local _,idx=call(wc,'GetCurrentWeaponIndex',tag(SLOT),false)
-            local active=s.slots[idx]
-            if not active or active.id~=choice.id then return false end
-        end
         if not equipChoice(r,wc,asc,choice,now) then
             local failures=(s.attempts[choice.id] or 0)+1
             s.attempts[choice.id]=failures;s.untilAt[choice.id]=now+math.min(120,5*failures)
             say(r,'影武槽、配置或技能读回失败 '..choice.meta.label)
             return false
         end
-        local move,spec,profile=chooseMove(choice,asc,available,reserveCharge(s,ctx,now,available),aic,ctx)
+        -- Equipping can run passives and change either the balance or the target.
+        available=attr(r,'SpiritShadow')
+        if type(available)~='number' or not current(r) or not matchesTarget(r,ctx.target) then return false end
+        budget=free and math.max(available,attr(r,'SpiritShadow_Max') or available) or available
+        local move,spec,profile,cost=chooseMove(choice,asc,budget,reserveCharge(s,ctx,now,available),aic,ctx,performing)
         if not move then s.untilAt[choice.id]=now+2;return false end
-        if not current(r) then return false end
+        local cast=castRecord(choice,move,spec,now,available,ctx.target,move.duration)
+        local funded=available
+        cast.starting=true;s.running=cast
+        if free then
+            funded=move.ongoing>0 and budget or math.max(available,cost)
+            s.payment={cast=cast,asc=U.key(asc),advance=funded-available,last=funded,
+                channel=move.ongoing>0,remaining=move.ongoing>0 and math.huge or cost,funding=funded>available}
+            if funded>available and not write(r,'SpiritShadow',funded) then
+                if s.running==cast then s.running=nil;settleFree(r,s,asc,nil,true) end
+                return false
+            end
+            if s.running~=cast or not current(r) then return false end
+            s.payment.funding=false
+        end
+        cast.lastResource=funded
         -- The ability checks its owner's input during activation. Establish it before the request.
         local hold=profile and charge:begin(r,asc)
+        if r.shadowState~=s or s.running~=cast or not current(r) then charge:finish(r,hold);return false end
+        cast.hold,cast.profile=hold,profile
+        local ready=activeSpec(asc,cast)
+        if not ready or ready.active~=0 or not matchesTarget(r,ctx.target)
+            or U.key(ownedComponent(r.actor,'AbilitySystemComponent'))~=cast.ascKey then
+            s.running=nil;charge:finish(r,hold)
+            settleFree(r,s,ownedComponent(r.actor,'AbilitySystemComponent'),nil,true)
+            return false
+        end
         local priorSuccess=hold and profile.success and (count(asc,profile.success) or 0)>0
         if profile and not hold and not s.inputUnavailable then
             say(r,'未读回魂的独立长按，本次使用原生点按')
             s.inputUnavailable=true
         end
         say(r,'即将使用 '..choice.meta.label..' '..move.tag..' 暗源='..available)
-        local ok,response=call(asc,'TryActivateAbility',{Handle=spec.id},false)
-        local read=granted(asc)[move.cls]
+        local ok,response
+        r.shadowSubmitting=cast
+        if performing then ok,response=inputFollowup(aic,move)
+        else ok,response=call(asc,'TryActivateAbility',{Handle=spec.id},false) end
+        r.shadowSubmitting=nil
+        if r.shadowState~=s or s.running~=cast or not current(r) then
+            if current(r) then
+                local live=ownedComponent(r.actor,'AbilitySystemComponent')
+                if U.key(live)==cast.ascKey and not retireCast(r,live,cast) and r.shadowState==s then
+                    s.quarantine=cast;s.checkQuarantineAt=nil
+                end
+                if s.payment and s.payment.cast==cast then settleFree(r,s,live,nil,true) end
+            end
+            return false
+        end
+        cast.starting=nil
+        local read=activeSpec(asc,cast)
         local after=attr(r,'SpiritShadow')
         local active=read and read.id==spec.id and type(read.active)=='number' and read.active>0
         say(r,'影武启动读回 返回='..tostring(response)..' 活动数='..tostring(read and read.active)..' 暗源='..tostring(after))
-        local debited=type(after)=='number' and after<available
+        local debited=type(after)=='number' and after<funded
         if debited then s.lastPaidAt=now end
-        if not active and not debited and ok and response==false then
+        if not active and not debited and (not ok or response==false) then
             charge:finish(r,hold)
+            s.running=nil;settleFree(r,s,asc,after,true)
             s.untilAt[choice.id]=now+2;return false
         end
         local duration=hold and math.max(move.duration,profile.limit+profile.tail) or move.duration
-        s.running={choice=choice,move=move,handle=spec.id,started=now,deadline=now+duration+1,before=available,lastResource=available,
-            index=spec.index,abilityKey=spec.abilityKey,target=U.key(ctx.target),profile=profile,hold=hold,
-            priorSuccess=priorSuccess,opening=ctx.opening or ctx.targetBroken}
+        cast.deadline=now+duration+1;cast.priorSuccess=priorSuccess
+        cast.opening=ctx.opening or ctx.targetBroken
         if not active and not debited then s.running.pendingUntil=now+1 end
         s.last=choice.id;s.nextAt=now+math.max(0.35,(s.resources.cooldown_scale or 1)*2.0)
         observe(r,s,asc,now,ctx)
+        if not s.running and s.payment then settleFree(r,s,asc,nil,true) end
         return true
     end
     function self:silence()
         summons:silence();assets={}
     end
+    -- A dead body stops receiving brain ticks but may return with the same
+    -- equipment. Retire its own transient inputs before suspending the brain.
+    function self:interrupt(r)
+        local s=r.shadowState
+        local cast=s and s.running
+        if not s or (not cast and not s.payment) then return end
+        local asc=current(r) and ownedComponent(r.actor,'AbilitySystemComponent')
+        s.running=nil
+        if s.payment and not r.shadowSubmitting then settleFree(r,s,asc,nil,true) end
+        if not cast then return end
+        local retired=retireCast(r,asc,cast)
+        local queued=cast.queued
+        if queued and retireCast(r,asc,queued) and queued.retireAttempted then cast.queued=nil end
+        charge:finish(r,cast.hold)
+        if not retired or cast.queued then s.quarantine=cast;s.checkQuarantineAt=nil end
+    end
     function self:cleanup(r)
         local s=r.shadowState
         if not s then return end
-        if current(r) and s.running then
+        if current(r) and s.quarantine then
+            local asc=ownedComponent(r.actor,'AbilitySystemComponent')
+            retireCast(r,asc,s.quarantine)
+            if s.quarantine.queued then retireCast(r,asc,s.quarantine.queued) end
+        end
+        if r.shadowSubmitting then self:interrupt(r)
+        elseif current(r) and s.running then
             local asc=ownedComponent(r.actor,'AbilitySystemComponent')
             if asc then
+                local queued=s.running.queued
+                if queued then
+                    s.running.queued=nil
+                    retireCast(r,asc,queued)
+                end
                 s.running.pendingUntil=nil
                 observe(r,s,asc,s.running.deadline+1,{})
             end
         end
         if s.running then charge:finish(r,s.running.hold) end
+        if s.payment and not r.shadowSubmitting and current(r) then settleFree(r,s,ownedComponent(r.actor,'AbilitySystemComponent'),nil,true) end
         charge:cleanup(r)
         summons:cleanup(r)
         chains:cleanup(r)

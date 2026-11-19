@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.16"
+local BUILD = "v0.40.17"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -853,7 +853,7 @@ local function ForceAttack(attacker, victim)
     if sg then local wrote=pcall(function()
         local bb=sg.BlackboardComponent
         if not safeValid(bb) then return end
-        local handler=arenaSupport:targetHandler(attacker,bb)
+        local handler=arenaSupport:targetHandler(attacker,bb,true)
         if safeValid(handler) then
                     local key=handler["Target Key"]
                     local actual
@@ -869,17 +869,32 @@ local function ForceAttack(attacker, victim)
     return okF and okH and okForce and (targetVerified==true or (targetVerified==nil and combat))
 end
 
-function arenaSupport:targetHandler(actor,bb)
-    if not UEObserve.valid(bb) then return nil end
+function arenaSupport:targetHandler(actor,bb,refreshMissing)
+    local board=UEObserve.key(bb)
+    if not board then return nil end
     local function bound(handler)
-        return UEObserve.valid(handler) and UEObserve.key(UEObserve.field(handler,'Blackboard'))==UEObserve.key(bb)
+        return UEObserve.valid(handler) and UEObserve.key(UEObserve.field(handler,'Blackboard'))==board
             and UEObserve.field(handler,'Target Key')~=nil
     end
     local own=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
     if bound(own) then return own end
+    -- Some controllers expose the bound handler only through the object list.
+    -- Index bindings across fighters, but always read the target from the live board.
+    local world=UEObserve.key(GetCurrentWorld())
+    local cache=world and self.targetHandlerCache
+    if cache and cache.world==world and bound(cache.boards[board]) then return cache.boards[board] end
+    local now=world and (GameSeconds() or os.clock())
+    if not refreshMissing and cache and cache.world==world and now>=cache.at and now-cache.at<.5 then
+        return nil
+    end
+    cache={world=world,at=now,boards={}}
     local ok,list=pcall(FindAllOf,'PBZ_TargetingHandler_AI_C')
-    for _,handler in ipairs(ok and UEObserve.array(list) or {})do if bound(handler) then return handler end end
-    return nil
+    for _,handler in ipairs(ok and UEObserve.array(list) or {})do
+        local key=UEObserve.key(UEObserve.field(handler,'Blackboard'))
+        if key and not cache.boards[key] and UEObserve.field(handler,'Target Key')~=nil then cache.boards[key]=handler end
+    end
+    self.targetHandlerCache=world and cache or nil
+    if bound(cache.boards[board]) then return cache.boards[board] end
 end
 
 -- 不再调用通用ApplyDamage种仇恨；本版不执行假伤害或假死亡。
@@ -1477,7 +1492,14 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     holdsDeath=function(actor)return arenaSupport.hunBody and arenaSupport.hunBody:holdsDeath(actor)end,
     confirmedDead=function(actor)return arenaSupport.hunBody and arenaSupport.hunBody:confirmedDead(actor)end,
     canSpawn=SpawnPolicy.check,maxUnits=0,
-    escortsFor=function(path)return Config.SummonEscorts and Escorts.of(path) or nil end,
+    formationEnabled=function(path)
+        local m=require('boss_entourage');local id=m.id(path)
+        if m.supports(id) then return arenaSupport.unitRules and arenaSupport.unitRules:get(id,'entourage')=='on' or false end
+    end,
+    escortsFor=function(path,enabled)
+        local m=require('boss_entourage')
+        return enabled and m.parties[m.id(path)] or (Config.SummonEscorts and Escorts.of(path) or nil)
+    end,
     resolveEscort=function(path)return npcCatalog:resolvePath(path)end,
     spawnLimits=SpawnPolicy.limits,canBattle=SpawnPolicy.canBattle,
     spawnGuard=spawnGuard,
@@ -1707,6 +1729,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return aggroRestored and guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
     end,
     onUnitsChanged=function(units)
+        if arenaSupport.entourage then arenaSupport.entourage:roster(units) end
         if arenaSupport.yubiArena then arenaSupport.yubiArena:roster(units) end
         if arenaSupport.menghuaPhase then arenaSupport.menghuaPhase:syncParents(units) end
         if statMatch then statMatch:roster(units) end
@@ -1770,7 +1793,7 @@ bossHUD=BossHUD.new({getController=GetRealPlayerController,getWorld=GetCurrentWo
 -- Companions show the game's own health bar above their heads, as enemies do (companion_bars.lua).
 local companionBars=Config.ShowCompanionHealthBars and CompanionBars.new({log=log,hp=GetHP,maxHP=GetMaxHP,
     vitals=arenaSupport.hunVitalsFor,
-    arenaBar=function(unit)return arenaSupport.hunBody and arenaSupport.hunBody:teamBarName(unit)~=nil end}) or nil
+    arenaBar=function(unit)return arenaSupport.hunBody and unit.class_path==require('hun_body').path and arenaSupport.hunBody:owns(unit.actor) end}) or nil
 -- One copy of the arena's members and status per support tick: a dozen modules ask for them, and each
 -- call re-checks every unit with the engine (50 units made the support tick take 20-50 ms in v0.37.2).
 -- Outside a tick the arena is asked directly.
@@ -1832,9 +1855,15 @@ spawnLevel=SpawnLevel.new({log=log,path=Config.RuntimePath,getPlayer=GetPlayerPa
         return keys
     end})
 -- Riders: an empty spawner of the mod's where they are summoned, their mount found and cleared with them (mounts.lua).
-mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,
+mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
     findClass=function(path)return StaticFindObject(path)end,statics=GetGameplayStatics,
     findAll=function(name)return FindAllOf(name)end,hp=GetHP,attack=ForceAttack,
+    scripts=function(rider)return UEObserve.array(UEObserve.field(GetAIComp(rider),'SpawnedAIScripts'))end,
+    nativeTarget=function(mount)return arenaSupport.hunNativeTarget(mount,true)end,
+    assignedTarget=function(rider)
+        local target=arena:aggroOpponent(rider)
+        if target and not arenaSupport.combatContinuity:keepOpponent(rider,true) and not arenaSupport.combatContinuity:keepOpponent(target,true) then return target end
+    end,
     inCombat=function(actor)
         local sg=GetAIComp(actor)
         if not sg then return nil end
@@ -1903,12 +1932,13 @@ onGround=require('on_ground').new({log=log,location=GetLocation,ground=GroundZ,l
 -- A straight line through the world: where it hits and which way that surface faces, for the summon spot and the view.
 -- Starting inside something solid reads as Distance 0.
 -- channel: ETraceTypeQuery, 0 = visibility (the default), 1 = camera.
-function arenaSupport:traceLine(world,from,to,channel)
+function arenaSupport:traceLine(world,from,to,channel,ignore)
     local lib=StaticFindObject('/Script/Engine.Default__KismetSystemLibrary')
     if not safeValid(lib) or not safeValid(world) then return nil end
     local out,none={},{R=0,G=0,B=0,A=0}
     local query=channel==1 and 1 or 0
-    local ok,hit=pcall(function()return lib:LineTraceSingle(world,from,to,query,false,{},0,out,true,none,none,0)end)
+    local ignored=ignore and safeValid(ignore) and {ignore} or {}
+    local ok,hit=pcall(function()return lib:LineTraceSingle(world,from,to,query,false,ignored,0,out,true,none,none,0)end)
     if not ok or hit~=true then return nil end
     local distance=UEObserve.unwrap(out.Distance)
     if type(distance)=='number' and distance<=0 then return {inside=true} end
@@ -1932,9 +1962,9 @@ end
 arenaSupport.spawnSpot=require('spawn_spot').new({log=log,ground=GroundZ,view=function()return freeCamera:view() end,
     trace=function(world,from,to)return arenaSupport:traceLine(world,from,to) end})
 -- 镜头跟踪: the free camera follows a unit and keeps its opponent in the picture (camera_track.lua).
-arenaSupport.track=require('camera_track').new({log=log,path=Config.RuntimePath,members=ArenaMembers,hp=GetHP,location=GetLocation,player=GetPlayerPawn,
+arenaSupport.track=require('camera_track').new({log=log,world=GetCurrentWorld,path=Config.RuntimePath,members=ArenaMembers,hp=GetHP,location=GetLocation,player=GetPlayerPawn,
     view=function()return freeCamera:view() end,fov=function()return freeCamera:fieldOfView() end,
-    trace=function(world,from,to,channel)return arenaSupport:traceLine(world,from,to,channel) end,
+    trace=function(world,from,to,channel,ignore)return arenaSupport:traceLine(world,from,to,channel,ignore) end,
     isBoss=function(actor)
         local asc=UEObserve.field(actor,'AbilitySystemComponent')
         if not safeValid(asc) then return false end
@@ -2037,7 +2067,7 @@ function arenaSupport:removeHelper(link)
     return gone
 end
 function arenaSupport:discover()
-    for _,link in ipairs(summonLinks:scan(ArenaMembers(),function(ability)self.summonKeep:passive(ability)end)) do
+    for _,link in ipairs(summonLinks:scan(ArenaMembers(),function(ability)self.summonKeep:passive(ability);self.entourage:passive(ability)end)) do
         if not (link.opposing and self:removeHelper(link)) then
             -- A summon's own summon that writes story progress: its summoner was let in only with the story holding
             -- that already; logged once here if not (story_writes.lua says it once per class).
@@ -2144,18 +2174,42 @@ clockHUD=BattleClockHUD.new({log=log,path=Config.RuntimePath,getController=GetRe
 local hunLoadout=require('hun_loadout').new({path=Config.RuntimePath,log=log})
 arenaSupport.hunLoadout=function()return hunLoadout:read()end
 function arenaSupport.hunNativeTarget(actor,privateOnly)
-    local board=UEObserve.field(GetAIComp(actor),'BlackboardComponent')
-    if not UEObserve.valid(board) then return end
+    local ai=GetAIComp(actor)
+    local pawn=UEObserve.field(ai,'Pawn')
+    if UEObserve.valid(pawn) and UEObserve.key(pawn)~=UEObserve.key(actor) then return end
+    local board=UEObserve.field(ai,'BlackboardComponent')
+    local boardKey=UEObserve.key(board)
+    if not boardKey then return end
     local handler
     if privateOnly then
         handler=UEObserve.field(UEObserve.field(actor,'Targeting Component'),'DefaultTargetHandler')
-        if UEObserve.key(UEObserve.field(handler,'Blackboard'))~=UEObserve.key(board) then return end
+        if UEObserve.key(UEObserve.field(handler,'Blackboard'))~=boardKey then return end
     else handler=arenaSupport:targetHandler(actor,board) end
-    local key=UEObserve.field(handler,'Target Key') or FName('TargetActor')
+    local key
+    if UEObserve.valid(handler) then key=UEObserve.field(handler,'Target Key') else key=FName('TargetActor') end
+    if key==nil then return end
     local ok,target=pcall(function()return UEObserve.unwrap(board:GetValueAsObject(key))end)
-    if ok and UEObserve.valid(target) then return target end
+    if not ok then return end
+    if UEObserve.valid(target) then return target end
+    local sensed=UEObserve.field(handler,'LastSensedActorKey')
+    if sensed==nil or UEObserve.key(UEObserve.field(handler,'Blackboard'))~=boardKey
+        or UEObserve.key(UEObserve.field(ai,'BlackboardComponent'))~=boardKey then return end
+    ok,target=pcall(function()return UEObserve.unwrap(board:GetValueAsObject(sensed))end)
+    if ok and UEObserve.valid(target) then
+        if not arenaSupport.loggedSensedLock then
+            arenaSupport.loggedSensedLock=true
+            log('[ArenaTarget] 原生主目标为空，最后感知目标读回 '..objectName(actor)..' -> '..objectName(target))
+        end
+        return target
+    end
 end
 arenaSupport.hunBody=require('hun_body').new({log=log,probe=Config.EnableHunBodyProbe==true,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
+    paused=function()
+        local lib,world=GetGameplayStatics(),GetCurrentWorld()
+        if not safeValid(lib) or not safeValid(world) then return false end
+        local ok,value=pcall(function()return UEObserve.unwrap(lib:IsGamePaused(world))end)
+        return ok and value==true
+    end,
     requireProfile=true,nativeTarget=arenaSupport.hunNativeTarget,
     target=function(actor,team)
         if team=='blue' or team=='red' then return arena:opponentOf(UEObserve.key(actor)) end
@@ -2264,7 +2318,13 @@ fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=Get
         return ai and UEObserve.array(UEObserve.field(ai,'SpawnedAIScripts')) or nil
     end})
 local companionTargets=require('companion_target').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,
-    boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end,
+    boardOf=function(actor)
+        local ai=GetAIComp(actor)
+        local pawn=UEObserve.field(ai,'Pawn')
+        if UEObserve.valid(pawn) and UEObserve.key(pawn)~=UEObserve.key(actor) then return end
+        return UEObserve.field(ai,'BlackboardComponent')
+    end,
+    boundHandler=function(actor,bb)return arenaSupport:targetHandler(actor,bb)end,
     stillOwned=function(actor)return UEObserve.key(arena:actorOf(UEObserve.key(actor)))==UEObserve.key(actor)end})
 arenaSupport.hunCompanionTarget=function(actor)return companionTargets:current(actor)end
 arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWorld,player=GetPlayerPawn,
@@ -2273,7 +2333,7 @@ arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWo
     statics=GetGameplayStatics,clock=LiveSeconds,inGameThread=IsInGameThread})
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     prepareMembers=function(members)companionTargets:sync(members)end,
-    companionTargetOf=function(actor)return companionTargets:current(actor)end,
+    companionTargetOf=function(actor,target,name)return companionTargets:current(actor,target,name)end,
     boundaryCharacter=function(context,index)return arenaSupport.yubiArena:character(context,index)end,
     boundaryPending=function()return arenaSupport.yubiArena:hasPending()end,
     phaseBusyKey=function(key)return arenaSupport.menghuaPhase:busyKey(key)end,
@@ -2306,12 +2366,22 @@ executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getControll
     getWorld=GetCurrentWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
+arenaSupport.entourage=require('boss_entourage').new({adopt=function(child,parent,path)
+    local result=arena:adoptSummon(child,parent,path,'原生召唤完成回调')
+    if not result.ok then log('[Entourage] 队员接管未确认 '..tostring(result.message)) end
+end,world=GetCurrentWorld,hp=GetHP,find=StaticFindObject,register=RegisterHook,unregister=UnregisterHook,log=log,now=os.clock})
 arenaSupport.unitRules=require('unit_rules').new({log=log,path=Config.RuntimePath})
 arenaSupport.xianzhePhantom=require('xianzhe_phantom').new({log=log,members=ArenaMembers,clock=LiveSeconds,
     ready=function()return runtimeSession:status().game_ready==true end,
     rule=function(id)return arenaSupport.unitRules:get(id,'phantom')end})
 arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end})
+arenaSupport.weather=require('map_weather').new({world=GetCurrentWorld,findAll=FindAllOf,load=LoadAsset,log=log,
+    mapActor=function(world)
+        local cls=StaticFindObject('/Weather/UltraDynamicSky/Blueprints/Ultra_Dynamic_Weather.Ultra_Dynamic_Weather_C')
+        local lib=GetGameplayStatics()
+        if safeValid(lib) and safeValid(cls) then return UEObserve.unwrap(lib:GetActorOfClass(world,cls)) end
+    end})
 arenaSupport.battleMusic=require('battle_music').new({log=log,path=Config.RuntimePath,clock=os.clock,
     session=function()return runtimeSession:status().game_session end,
     members=ArenaMembers,status=ArenaStatus,hp=GetHP,world=GetCurrentWorld,
@@ -2435,6 +2505,7 @@ local function supportSteps(self)
     step('yubiArena',function()self.yubiArena:tick()end)
     step('effectAim',function()self.effectAim:tick()end)
     step('aiParams',function()aiParams:tick()end)
+    step('entourage',function()self.entourage:tick()end)
     step('bossCombos',function()bossCombos:tick()end)
     step('fightWatch',function()fightWatch:tick()end)
     step('reinforce',function()arena:tickReinforcements()end)
@@ -2556,6 +2627,8 @@ if ModRef then
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         local checkedThread,onGameThread=pcall(IsInGameThread)
         local restoreNative=checkedThread and onGameThread==true
+        arenaSupport.weather:silence(restoreNative)
+        arenaSupport.entourage:silence(restoreNative)
         arenaSupport.aggroGuard:silence(restoreNative)
         arenaSupport.yubiArena:silence(restoreNative)
         playerAim:silence('Mod卸载',restoreNative)

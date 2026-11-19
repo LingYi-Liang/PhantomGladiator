@@ -39,15 +39,42 @@ class LoadoutTests(unittest.TestCase):
     def test_a_save_rewrites_the_copy_with_count_attributes_and_the_trial_switch(self):
         profile = self.store.snapshot()['profile']
         profile['count'] = 7
-        profile['attributes'] = {'Health_Max': 123456.5, 'Attack': 0, 'Shachi': -1, 'Level': -3}
+        profile['attributes'] = {'Health_Max': 123456.5, 'Attack': .25, 'Shachi': 0, 'Level': -3}
         profile['experimental']['accessory_effects'] = True
         self.assertEqual(self.store.save({'revision': 0, 'profile': profile})['revision'], 1)
         rows = self.rows()
         self.assertEqual(rows[0], ['HunLoadoutV1', '1'])
         self.assertIn(['count', '7'], rows)
         self.assertIn(['accessories', 'on'], rows)
-        self.assertEqual(sorted(r[1:] for r in rows if r[0] == 'attr'), [['Health_Max', '123456.5'], ['Level', '-3']],
-                         'values the game would refuse (zero attack, negative Sha-Chi) are left out')
+        self.assertEqual(sorted(r[1:] for r in rows if r[0] == 'attr'),
+                         [['Attack', '0.25'], ['Health_Max', '123456.5'], ['Level', '-3'], ['Shachi', '0']])
+
+    def test_unusable_values_cannot_be_reported_as_saved_or_imported(self):
+        original = self.store.snapshot()['profile']
+        mirror = self.loadout.read_bytes()
+        for field, value in (('Attack', 0), ('Health_Max', -3), ('Shachi', -1)):
+            invalid = copy.deepcopy(original)
+            invalid['attributes'][field] = value
+            with self.assertRaisesRegex(ValueError, field):
+                self.store.save({'revision': 0, 'profile': invalid})
+            package = {'format': 'PhantomGladiatorHunProfile', 'version': 1, 'profile': invalid}
+            with self.assertRaisesRegex(ValueError, field):
+                self.store.import_text(0, json.dumps(package))
+        self.assertEqual(self.store.snapshot()['revision'], 0)
+        self.assertEqual(self.loadout.read_bytes(), mirror)
+
+    def test_old_ignored_values_reopen_with_the_same_effective_stats(self):
+        old = self.store.snapshot()['profile']
+        old['name'] = 'My build'
+        old['attributes'] = {'Attack': 0, 'Health_Max': 242.5, 'Shachi': -1, 'Level': -3}
+        record = json.dumps({'revision': 7, 'profile': old}).encode()
+        self.file.write_bytes(record)
+        reopened = hun.Store(self.file, FIELDS, {}, positive=('Health_Max','Attack'), non_negative=('Shachi',))
+        saved = reopened.snapshot()
+        self.assertEqual((saved['error'], saved['revision'], saved['profile']['name']), ('', 7, 'My build'))
+        self.assertEqual(saved['profile']['attributes'], {'Health_Max': 242.5, 'Level': -3})
+        self.assertEqual(self.file.read_bytes(), record)
+        self.assertEqual(reopened.immutable_snapshot(7)['profile'], saved['profile'])
 
     def test_refine_level_picks_the_tier_and_disabled_accessories_are_left_out(self):
         accessories = [(key, row) for key, row in hun.ITEMS.items() if row['kind'] == 'accessory']
@@ -87,6 +114,23 @@ class LoadoutTests(unittest.TestCase):
         store = hun.Store(self.file, FIELDS, {})
         self.assertTrue(store.snapshot()['error'])
         self.assertEqual(self.loadout.read_text(encoding='utf-8'), before)
+
+    @unittest.skipUnless(shutil.which('texlua') or shutil.which('lua'), 'Lua interpreter unavailable')
+    def test_phase_selector_matches_native_arts_in_both_weapon_forms(self):
+        script = pathlib.Path(self.tmp.name) / 'phase-options.lua'
+        script.write_text("""
+package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
+local catalog=require('hun_weapon_catalog')
+for _,row in ipairs(catalog.rows) do
+    local normal=catalog.configs[row.path]
+    local tempered=catalog.configs[row.soulPath] or normal
+    if normal.art or tempered.art then print(row.id) end
+end
+""",encoding='utf-8')
+        native = subprocess.check_output([shutil.which('texlua') or shutil.which('lua'), str(script)],
+                                         cwd=ROOT.parent,text=True).splitlines()
+        shown = [key for key,row in hun.ITEMS.items() if row['kind']=='main_weapon' and row.get('has_combat_art', True)]
+        self.assertEqual(set(native), set(shown))
 
     @unittest.skipUnless(shutil.which('texlua') or shutil.which('lua'), 'Lua interpreter unavailable')
     def test_panel_export_reaches_the_game_weapon_pool(self):

@@ -1,3 +1,4 @@
+package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 -- 文件协议/幂等测试；内存文件系统模拟重载和失败，不调用游戏handler。
 local Bridge = dofile("Mods/PhantomGladiator/Scripts/panel_bridge.lua")
 local tests = 0
@@ -412,6 +413,15 @@ test('v3 key configuration adds recall and time stop as keys nine and ten; both 
     assert(#got==4 and got[4].schema_version==6 and got[4].key_dismiss_companions=='VK_119_MOD_1')
     assert(got[4].key_hun_blue=='VK_116_MOD_0' and got[4].key_hun_red=='VK_117_MOD_0' and got[4].key_hun_companion=='UNBOUND' and got[4].key_hun_neutral=='VK_118_MOD_2')
     deliver(fs,keys6:gsub('keys6','bad6'):gsub('\t6\n','\t5\n'));bridge:tick();assert(#got==4)
+    local weather={}
+    for i,id in ipairs(require('map_weather').commands)do weather[i]=id=='rain' and 'VK_120_MOD_4' or 'UNBOUND' end
+    local keys7=keys6:gsub('keys6','keys7'):gsub('\t6\n','\t'..table.concat(weather,'\t')..'\t7\n')
+    deliver(fs,keys7);bridge:tick()
+    assert(#got==5 and got[5].schema_version==7 and got[5].key_weather_rain=='VK_120_MOD_4' and got[5].key_weather_snow=='UNBOUND')
+    local eyes8=keys7:gsub('keys7','eyes8'):gsub('\t7\n','\tVK_120_MOD_0\tVK_119_MOD_1\t8\n')
+    deliver(fs,eyes8);bridge:tick()
+    assert(#got==6 and got[6].schema_version==8 and got[6].key_eyes_player=='VK_120_MOD_0' and got[6].key_eyes_npc=='VK_119_MOD_1' and got[6].key_weather_rain=='VK_120_MOD_4')
+    got[6]=nil;got[5]=nil
     got[4]=nil
     deliver(fs,command('c0','set_unit_rule','BP_Monster_MoTian','blue',1,{'LOCK','KILL','',''}));bridge:tick()
     assert(unitRule and unitRule.unit_id=='BP_Monster_MoTian' and unitRule.key_spawn=='LOCK' and unitRule.key_start=='KILL')

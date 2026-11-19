@@ -15,10 +15,12 @@ Rules.THORN_COUNTERS={
 local HEADER='UnitRulesV1'
 Rules.VALUES={lock={execute=true,kill=true},phantom={off=true,keep=true},remote_reflect={keep=true,off=true},menghua_stage={keep=true,skip=true}}
 Rules.DEFAULTS={lock='execute',phantom='off',remote_reflect='keep',menghua_stage='keep'}
+Rules.VALUES.entourage={off=true,on=true}
+Rules.DEFAULTS.entourage='off'
 Rules.VALUES.execution_minions={}
 for i=0,100 do Rules.VALUES.execution_minions['on_'..i]=true;Rules.VALUES.execution_minions['off_'..i]=true end
 Rules.DEFAULTS.execution_minions='on_100'
-local LABELS={lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
+local LABELS={entourage={off='单体出战（下次召唤生效）',on='原班配合（下次召唤生效）'},lock={execute='锁血后处决',kill='锁血后打死'},phantom={off='虚化解除（下次召唤生效）',keep='虚化保持原版（下次召唤生效）'},
     remote_reflect={keep='刺盾反伤保持原版（下次召唤生效）',off='刺盾不反远程（下次召唤生效）'},
     menghua_stage={keep='保留梦华剧情联动（下次召唤生效）',skip='跳过梦华剧情联动（下次召唤生效）'}}
 
@@ -76,6 +78,7 @@ function Rules.new(options)
         if type(saved)=='string' and saved:sub(1,#HEADER+1)==HEADER..'\n' then
             for id,rule,value in saved:gmatch('\n([^\t\r\n]+)\t([^\t\r\n]+)\t([^\t\r\n]+)')do
                 if validId(id) and Rules.VALUES[rule] and Rules.VALUES[rule][value] and value~=defaultValue(id,rule)
+                    and (rule~='entourage' or require('boss_entourage').supports(id))
                     and (rule~='remote_reflect' or Rules.THORN_COUNTERS[id])
                     and (rule~='menghua_stage' or id=='BP_Monster_MengHua') then
                     rules[id]=rules[id] or {};rules[id][rule]=value
@@ -87,6 +90,7 @@ function Rules.new(options)
     function self:set(id,rule,value)
         if not validId(id) then return {ok=false,message='单位规则：单位编号不对',spawned_count=0} end
         if not Rules.VALUES[rule] or not Rules.VALUES[rule][value] then return {ok=false,message='单位规则：规则或取值不对',spawned_count=0} end
+        if rule=='entourage' and not require('boss_entourage').supports(id) then return {ok=false,message='该单位没有配合阵容',spawned_count=0} end
         if rule=='remote_reflect' and not Rules.THORN_COUNTERS[id] then return {ok=false,message='该单位没有刺盾反伤开关',spawned_count=0} end
         if rule=='menghua_stage' and id~='BP_Monster_MengHua' then return {ok=false,message='只有梦华支持剧情联动设置',spawned_count=0} end
         local copy={}

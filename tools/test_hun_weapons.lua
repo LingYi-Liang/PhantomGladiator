@@ -547,7 +547,7 @@ test('pending native slot never receives a second slot mutation, and phase state
     h.wc.current=1;h.wc.pending=nil;h:tick(.3)
     assert(h.r.wep.currentId==a.id and not h.r.wep.pendingSwitch and h:count('slot direct')==1)
 end)
-test('private motion/weapon hit configuration are checked by owner, and stop restores the original loadout',function()
+test('private weapon hit configuration preserves the existing locomotion graph and restores the original loadout',function()
     local a,b=item('Tang'),item('Long')
     local src=object('ActorConfig NPC');local cls=object('ActorConfig class')
     local originalSet=object('OriginalHitSet');src['Hitreat Anim Set']=originalSet
@@ -567,25 +567,31 @@ test('private motion/weapon hit configuration are checked by owner, and stop res
     h.actor['Hitreact Component']=hit
     local combined=object('Combined');h.assets['/PBZCombatAsset/ActorData/Players/Hun/Hit_Hun_Combined.Hit_Hun_Combined']=combined
     local mesh=object('mesh')
-    local oldClass=object('npcClass');local loco=object('locoClass')
-    h.assets[Weapons.PATHS.locomotion]=loco
-    local old=object('originalGraph');function old:GetClass()return oldClass end
-    local linked=object('linkedGraph',{WeaponType=3});function linked:GetClass()return loco end
-    function linked:TryGetPawnOwner()return h.actor end
-    local move=object('movement')
-    function move:GetOwner()return h.actor end
-    function h.actor:GetMovementComponent()return move end
+    local old=object('existing locomotion graph')
     local instance=object('anim',{graph=old})
     function instance:GetLinkedAnimGraphInstanceByTag()return self.graph end
-    function instance:LinkAnimGraphByTag(tag,class)self.graph=class==loco and linked or old end
+    function instance:LinkAnimGraphByTag()self.graph=nil end
     function mesh:GetAnimInstance()return instance end
     h.actor.Mesh=mesh
     h.r.intent={weapon_id=a.id}
     h:tick(.2);assert(hit.ActorConfig==copied and copied['Hitreat Anim Set']==combined and src['Hitreat Anim Set']==originalSet)
-    assert(instance.graph==linked and linked.CharacterMovement==move and linked.WeaponType==0)
-    h.r.intent.weapon_id=b.id;h:tick(.2);assert(linked.WeaponType==2)
+    assert(instance.graph==old)
+    h.r.intent.weapon_id=b.id;h:tick(.2);assert(instance.graph==old)
     h.mod:stop(h.r,'停止')
     assert(hit.ActorConfig==src and instance.graph==old and h.wc.current==0 and #h.wc.slots==1 and h.wc.slots[1].config==originalWeapon)
+end)
+test('a native switch settles after its target disappears, and an incomplete position cannot stop this fighter',function()
+    local a=item('Tang')
+    local h=armed({weapons={a}},nil,nil,function(f)return f.locked end)
+    h.locked=h.enemy
+    function h.wc:GetCurrentWeaponIndex(_,pending)return pending and self.pending or self.current end
+    h.utils['Change Weapon']=function(_,_,_,i)h.wc.pending=i;return true end
+    h.enemy.at={X=200};h:tick(0)
+    assert(not h.r.wep.pendingSwitch and h:logged('武器循环中断')==0,'wait for usable coordinates')
+    h.enemy.at=vec(200,0,0);h:tick(.4);assert(h.r.wep.pendingSwitch)
+    h.wc.current=1;h.wc.pending=nil;h.locked=nil;h.battle=false;h:tick(.4)
+    assert(not h.r.wep.pendingSwitch and h.r.wep.currentId==a.id,'settle an already committed switch without an opponent')
+    assert(h:count('slot direct')==1 and h:logged('武器循环中断')==0)
 end)
 test('free combat art settles only its own charge debit and isolates hand feedback from the player',function()
     local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
@@ -666,12 +672,121 @@ test('rotation waits until the live native montage releases the mesh',function()
     anim.busy=true;h:tick(1);assert(h.r.wep.currentId==nil,'do not replace layers during a live motion')
     anim.busy=false;h:tick(.4);assert(h.r.wep.currentId==a.id)
 end)
+test('a broken enemy can be punished with the equipped light attack while its heavy spec is missing',function()
+    local weapon=item('YuuBlade')
+    local light='/PBZCombatAsset/ActorData/Players/Hun/Abilities/DoubleBalde/YuuBlade/GA_Hun_YuuBlade_A.GA_Hun_YuuBlade_A_C'
+    local heavy='/PBZCombatAsset/ActorData/Players/Hun/Abilities/DoubleBalde/YuuBlade/GA_Hun_YuuBlade_B.GA_Hun_YuuBlade_B_C'
+    local h=armed({weapons={weapon}},{grants={{light,201,{'Ability.Action.Hun.Light.A.Normal'}}}})
+    h.assets[weapon.path]['Equip Abilities']={object('Class '..heavy),object('Class '..light)}
+    h.assets[Weapons.PATHS.heavy]=object('heavy input')
+    h.actor['Ability Input Component'].CanActivateExternalActionAbility=function(_,p)return p==1 or p==2 end
+    h.enemy.AbilitySystemComponent.tags['CharacterState.Stand.Break']=1
+    h:tick(0);h:tick(.25);assert(h:count('activate hun 201')==1,'missing heavy opener suppressed a verified light opener')
+    local asc=h.actor.AbilitySystemComponent
+    spec(asc,heavy,202,{'Ability.Action.Hun.Heavy.Atk01'})
+    for _,s in ipairs(asc.specs)do s.ActiveCount=0 end
+    asc.tags['Ability.Action.Hun.Light.A.Normal']=0;h:tick(1.6)
+    assert(h:count('activate hun 202')>=1 and h:count('activate hun 1')==0,'prefer heavy again once it is granted')
+end)
+test('the first unavailable combo row cannot mask a granted continuation, including after the spec array moves',function()
+    local weapon=item('YuuBlade')
+    local light='/PBZCombatAsset/ActorData/Players/Hun/Abilities/DoubleBalde/YuuBlade/GA_Hun_YuuBlade_AA.GA_Hun_YuuBlade_AA_C'
+    local cls=object('Class '..light)
+    local h=armed({weapons={weapon}},{grants={{light,211,{'Ability.Action.Hun.Light.AA'}}}})
+    h.assets[weapon.path]['Equip Abilities']={cls};h:tick(0)
+    local asc,input=h.actor.AbilitySystemComponent,h.actor['Ability Input Component']
+    asc.tags['Ability.Action.Hun.Light.AAAA']=1;asc.tags['Ability.Action.Hun.Light.A.Normal']=1
+    input.InActionPhase=true;input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+    local accepted=0
+    function input:TryActivateExternalActionAbilityByClass(c,ia,p)
+        assert(c==cls and ia==h.light and p==1);accepted=accepted+1;return asc:TryActivateAbility({Handle=211},false)
+    end
+    h:tick(.3);assert(accepted==0)
+    local anim,clip=object('Anim'),object('Hit stop montage')
+    function h.actor.Mesh:GetAnimInstance()return anim end
+    function anim:GetCurrentActiveMontage()return clip end
+    function anim:Montage_IsActive()return true end
+    local moving=false
+    function anim:Montage_IsPlaying()return moving end
+    input.ActionPhase.TagName='CharacterState.Action.Phase.Combo'
+    h:tick(.2);assert(accepted==0,'a retained combo phase during hit stop must not submit input')
+    moving=true;h:tick(.2);assert(accepted==1,'resume the same combo after hit stop')
+    for _,row in ipairs(asc.specs) do row.ActiveCount=0 end
+    asc.specs[1],asc.specs[#asc.specs]=asc.specs[#asc.specs],asc.specs[1]
+    h:tick(0);assert(accepted==2 and h:count('activate hun 1')==0)
+end)
+test('an unknown enemy HP must not start a weapon request, and a later living readback resumes',function()
+    local weapon=item('Tang');local h=armed({weapons={weapon}},nil,nil,function(f)return f.enemy end)
+    h.hp[h.enemy]=nil;h:tick(.3);assert(not h.r.wep.active)
+    h.hp[h.enemy]=100;h:tick(.3);assert(h.r.wep.currentId==weapon.id)
+end)
 test('a fully charged NPC requests an ordinary combat art against an unbroken target and pays once',function()
     local a=item('HeiMoShang');local art=Catalog.configs[a.path].art
     local h=armed({weapons={a},resources={consume_skill_resources=true}},{grants={{art,126,{}}}})
     h.stats.values.UltimateChargeCount=3;h.stats.values.UltimateChargeCount_Max=3
     h.r.intent={};h:tick(0);h:tick(.6);h:tick(5);h:tick(10)
     assert(h.stats.values.UltimateChargeCount==2 and h:logged('原因=绝技格已满')==1)
+end)
+test('an impossible HP phase cannot pin the weapon or starve the next payable phase',function()
+    local carriage=item('Tang_HorseCartCombat')
+    local sword=item('HeiMoShang')
+    assert(not Catalog.configs[carriage.path].art)
+    local art=assert(Catalog.configs[sword.path].art)
+    local phases={
+        {id='carriage',enabled=true,health_below=.5,priority=20,weapon_id=carriage.id,once=true},
+        {id='sword',enabled=true,health_below=.5,priority=10,weapon_id=sword.id,once=true},
+    }
+    local h=armed({weapons={carriage,sword},phases=phases,resources={cooldown_scale=0}},
+        {grants={{art,126,{}}}})
+    local noOp={tick=function()return false end}
+    local brain=require('hun_brain').new({now=function()return h.t end,target=function()return h.enemy end,hp=function()return 25 end,
+        stat=function(_,field)return field=='Health_Max' and 100 or h.stats.values[field] end,
+        tag=function()return 0 end,log=function()end,distance=function()return 200 end,supply=noOp,shadows=noOp})
+    brain:start(h.r);h.stats.values.UltimateChargeCount=0
+    for _=1,20 do brain:tick(h.r);h:tick(0,.25) end
+    assert(h.r.wep.switches>=2 and not h.r.intent.phaseId,'waiting on an unpayable or missing art froze ordinary weapon rotation')
+    h.stats.values.UltimateChargeCount=1
+    for _=1,16 do brain:tick(h.r);h:tick(0,.25) end
+    assert(h.r.usedPhases.sword and not h.r.usedPhases.carriage and h:count('activate hun 126')==1,'resume the payable rule exactly once')
+end)
+test('zero cooldown leaves an opening for the equipped weapon before the next weighted swap',function()
+    local a,b=item('HeiMoShang'),item('Tang')
+    local art=Catalog.configs[a.path].art
+    local h=armed({weapons={a,b},resources={cooldown_scale=0}},{grants={{art,126,{}}}})
+    h.r.intent={weapon_id=a.id};h:tick(0,.25);assert(h.r.wep.currentId==a.id)
+    h.r.intent.weapon_id=nil;h.stats.values.UltimateChargeCount=3
+    h:tick(0,.25)
+    assert(h:count('activate hun 126')==1 and h.r.wep.currentId==a.id,'the first combat decision switched instead of using the equipped art')
+    h:tick(4,.25);assert(h.r.wep.switches>1,'ordinary rotation resumes without a current weapon montage')
+end)
+test('weapon input waits through wind-up, permits the authored follow-up, and spends an art only after recovery',function()
+    local a=item('HeiMoShang');local cfg=Catalog.configs[a.path]
+    local follow='/Game/GA_TestSecond.GA_TestSecond_C'
+    local h=armed({weapons={a}},{grants={{cfg.art,125,{}},{follow,204,{'Ability.Action.Hun.Light.AA'}}}})
+    h.assets[a.path]['Equip Abilities']={object('BlueprintGeneratedClass '..follow)}
+    h:tick(0)
+    local asc=h.actor.AbilitySystemComponent;asc.tags['Ability.Action.Hun.Light.A.Normal']=1
+    local input=h.actor['Ability Input Component'];input.InActionPhase=true
+    local followClass=h.assets[a.path]['Equip Abilities'][1]
+    function input:TryActivateExternalActionAbilityByClass(cls,action,priority)
+        assert(cls==followClass and action==h.light and priority==1)
+        self.triedFollow=true
+        return asc:TryActivateAbility({Handle=204},false)
+    end
+    input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+    h.stats.values.UltimateChargeCount=3
+    h:tick(.4)
+    assert(h:count('activate hun 125')==0 and h:count('activate hun 204')==0,'arts and second strikes must not cut an active swing')
+    input.ActionPhase.TagName='CharacterState.Action.Phase.Combo';h:tick(.2)
+    assert(input.triedFollow and h:count('activate hun 204')==1 and h:count('activate hun 125')==0,'route the confirmed combo through native input')
+    input.InActionPhase=false;h:tick(.2)
+    assert(h:count('activate hun 125')==1 and h.stats.values.UltimateChargeCount==2)
+end)
+test('a freshly pressed guard protects the gap before the next brain update',function()
+    local a=item('Tang');local h=armed({weapons={a}})
+    h.r.intent={busy=false,busyUntil=1}
+    h:tick(.6);assert(not h.r.wep.active,'weapon timer ran between defensive input and the next decision')
+    h:tick(.6);assert(h.r.wep.currentId==a.id)
 end)
 test('a weapon and its opponent must each target the intended actor before a forced grab',function()
     local a=item('Tang')

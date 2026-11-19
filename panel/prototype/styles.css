@@ -1075,7 +1075,13 @@ details.advanced[open] > summary { border-bottom: 1px solid var(--border); }
 .progress-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--text-3); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
 /* ---------- About ---------- */
-.support-page { width: min(760px, 100%); margin-inline: auto; }
+.support-page { width: min(1060px, 100%); margin-inline: auto; }
+.support-channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.support-card h2 { margin: 0; font-size: 18px; }
+.support-card .support-code { aspect-ratio: 1; }
+.support-card .support-code img { width: 100%; height: 100%; object-fit: contain; }
+.support-card > .btn { margin-top: auto; }
+@media (max-width: 760px) { .support-channels { grid-template-columns: 1fr; } }
 .support-card { display: flex; align-items: center; flex-direction: column; gap: 14px; padding: 20px; margin-top: 20px; }
 .support-code { display: block; width: 100%; max-width: 520px; padding: 0; border: 0; background: #fff; cursor: zoom-in; }
 .support-code:focus-visible { outline: 3px solid #bd8a2d; outline-offset: 5px; }
@@ -1493,6 +1499,10 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .hun-tile-art img { max-width: 100%; max-height: 60px; object-fit: contain; }
 .hun-tile-name { font-size: 12.5px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hun-tile-open small { font-size: 11px; color: var(--text-3); min-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* English names and status labels need room to wrap without covering adjacent controls. */
+:lang(en) .hun-legend div { grid-template-columns: max-content minmax(0, 1fr); }
+:lang(en) .hun-grid { grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr)); }
+:lang(en) .hun-tile-name, :lang(en) .hun-tile-open small { white-space: normal; overflow-wrap: anywhere; }
 .hun-tile-check { position: absolute; top: 4px; right: 4px; cursor: pointer; }
 .hun-tile-check input { position: absolute; opacity: 0; pointer-events: none; }
 .hun-tile-check span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface); color: transparent; }

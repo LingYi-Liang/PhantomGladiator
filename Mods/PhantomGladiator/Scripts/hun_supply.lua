@@ -1,5 +1,6 @@
 -- Health flasks and native death handling for individual summoned Hun records.
 local U = require('ue_observe')
+local Vitals = require('hun_vitals')
 local Supply = {}
 local ROOT = '/PBZCombatAsset/Prototypes/GameplayEffects/'
 local HEAL = ROOT..'Medicine/GE_Medicine_Medicine_01.GE_Medicine_Medicine_01_C'
@@ -91,18 +92,32 @@ function Supply.new(o)
         return object(path(variant)) or object(path('Common'))
     end
     local function readPosition(anim,montage)
+        if not U.valid(montage) then return end
         local played,playing=call(anim,'Montage_IsPlaying',montage)
+        if not played or type(playing)~='boolean' then return end
+        if not playing then
+            local read,active=call(anim,'Montage_IsActive',montage)
+            if not read or active~=true then return end
+        end
         local ok,position=call(anim,'Montage_GetPosition',montage)
-        if played and playing==true and ok and type(position)=='number' then return position end
+        if ok and type(position)=='number' and position>=0 and position<math.huge then return position,playing end
+    end
+    local function finishDrink(r,s,drink)
+        if s.drink~=drink then return false end
+        if r.intent and r.intent.busyUntil==drink.busyUntil then r.intent.busyUntil=0 end
+        s.drink=nil
+        return false
     end
     local function advance(r,s,asc,now)
         local d=s.drink
-        local pos=readPosition(d.anim,d.montage)
-        if blocked(asc) or pos==nil or now-d.start>4 or not o.fighting(r) then
+        local _,anim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
+        local pos,playing=readPosition(d.anim,d.montage)
+        if pos~=nil and (not playing or d.lastPosition~=pos) then d.progressAt=now;d.lastPosition=pos end
+        if r.dead or blocked(asc) or U.key(anim)~=U.key(d.anim) or pos==nil or now-(d.progressAt or d.start)>4 then
             say(r,'喝药结束或被打断，已服用='..tostring(d.used)..' 余药='..s.remaining)
-            s.drink=nil
-            return false
+            return finishDrink(r,s,d)
         end
+        if not playing then return true end
         if not d.used and pos>=SIP then
             -- Mark committed before synchronous event listeners can re-enter the arena controller.
             d.used=true
@@ -118,21 +133,22 @@ function Supply.new(o)
             end
             if payload then
                 emit(r,'GameplayEvent.Medicine.PreActivate',payload)
-                if not o.current(r) or not U.valid(asc) then return false end
+                if s.drink~=d or not o.current(r) or not U.valid(asc) then return false end
                 local use=U.field(payload,'Use Count')
                 if use==0 and s.consume then s.remaining=s.remaining+1 end
             end
             local hp=o.stat(r.actor,'Health')
             if type(hp)~='number' or hp<=0 or blocked(asc) then
-                s.drink=nil;return false
+                return finishDrink(r,s,d)
             end
             local ok=apply(asc,d.heal,6)
+            if s.drink~=d or not o.current(r) then return false end
             local after=o.stat(r.actor,'Health')
             say(r,'服药读回 HP='..tostring(hp)..'→'..tostring(after)..' 调用='..tostring(ok)..' 余药='..s.remaining)
             if ok and o.current(r) then emit(r,'GameplayEvent.Medicine.PostActive') end
         end
-        if pos>=END then s.drink=nil;return false end
-        return true
+        if pos>=END then return finishDrink(r,s,d) end
+        return s.drink==d
     end
     function self:tick(r,ctx)
         if not o.current(r) or not U.valid(r.actor) then return false end
@@ -142,6 +158,9 @@ function Supply.new(o)
         if s.drink then return advance(r,s,asc,now) end
         local hp=o.stat(r.actor,'Health')
         if type(hp)~='number' or hp<=0 then return false end
+        if s.death and count(asc,'CharacterState.Dead')==0 and count(asc,REBORN)==0 and count(asc,IMMORTAL)==0 then
+            s.death=nil
+        end
         s.death=nil
         if not o.fighting(r) or s.remaining<=0 or now<(s.nextDrink or 0) or (ctx and ctx.busy)
             or (r.intent and now<(r.intent.busyUntil or 0)) then return false end
@@ -149,6 +168,7 @@ function Supply.new(o)
         local maxHP=o.stat(r.actor,'Health_Max')
         if type(maxHP)~='number' or maxHP<=0 or hp>maxHP*0.5 or blocked(asc)
             or count(asc,'CharacterState.AbilityState.Medicine.InHitCooldown')~=0 then return false end
+        if Vitals.actionState(r.actor) then return false end
         s.nextDrink=now+2
         local heal,cd,montage=object(HEAL),object(HIT_COOLDOWN),flaskAnim(asc)
         local _,anim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
@@ -191,15 +211,21 @@ function Supply.new(o)
     end
     function self:holdsDeath(r)
         if not o.current(r) then return false end
-        local asc=U.field(r.actor,'AbilitySystemComponent')
-        if not U.valid(asc) then return false end
-        local s,now=state(r),clock()
+        local now=clock()
         if type(now)~='number' then return false end
+        local s=records[r]
+        local d=s and s.death
+        local waiting=d~=nil and not d.done and now>=d.start and now-d.start<(d.activated and 6 or 1.5)
+        local asc=U.field(r.actor,'AbilitySystemComponent')
+        if not U.valid(asc) then return waiting end
         local hp=o.stat(r.actor,'Health')
-        if type(hp)~='number' or hp>0 then s.death=nil;return false end
-        local d=s.death
+        if type(hp)~='number' or hp~=hp then return waiting end
+        if hp>0 then if s then s.death=nil end;return false end
         if d and d.done then return false end
-        local active=(count(asc,REBORN) or 0)>0 or (count(asc,IMMORTAL) or 0)>0
+        local reborn,immortal=count(asc,REBORN),count(asc,IMMORTAL)
+        local active=(reborn or 0)>0 or (immortal or 0)>0
+        if not active and (reborn==nil or immortal==nil) then return waiting end
+        s=s or state(r)
         if not d then
             local ok, instance=passive(asc,r)
             if not active and (not ok or count(asc,'CharacterState.Forbid.Resurrect')~=0 or
@@ -244,18 +270,22 @@ function Supply.new(o)
     end
     function self:remaining(r) return state(r).remaining end
     function self:silence()records,assets={},{} end
-    function self:stop(r)
+    function self:interrupt(r)
         local s=records[r]
         local d=s and s.drink
-        if d and o.current(r) and readPosition(d.anim,d.montage) then
+        if not d then return end
+        finishDrink(r,s,d)
+        if o.current(r) and readPosition(d.anim,d.montage) then
             local _,ownerAnim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
             if U.key(ownerAnim)==U.key(d.anim) then
                 say(r,'即将 停止此魂未结束的喝药动作')
                 call(d.anim,'Montage_Stop',0.1,d.montage)
                 say(r,'喝药停止读回 已停止='..tostring(readPosition(d.anim,d.montage)==nil))
             end
-            if r.intent and r.intent.busyUntil==d.busyUntil then r.intent.busyUntil=0 end
         end
+    end
+    function self:stop(r)
+        self:interrupt(r)
         records[r]=nil
     end
     return self

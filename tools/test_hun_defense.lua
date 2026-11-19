@@ -34,9 +34,10 @@ local function fixture(ai,wrongOwner,resources)
             CostOfTimeEndDelay_11_85354FFE4DC3D6FB650ED1A8F9425022=0}
         function inst:GetClass() return asset end
         inst.GetAvatarActorFromActorInfo=function() return wrongOwner and player or r.actor end
-        inst['Give Perfect Window']=function() assert(not wrongOwner);inst['Perfect Window']=0.1 end
-        inst['Activate Stance Ability']=function() assert(inst['Stance Key Down']); t.presses=t.presses+1 end
-        inst['On Stance Key Release']=function() inst['Stance Key Down']=false;t.released=true end
+        inst['On Stance Key Down']=function()assert(not wrongOwner);inst['Stance Key Down']=true;t.keyDown=(t.keyDown or 0)+1 end
+        inst['Give Perfect Window']=function() assert(not wrongOwner);inst['Perfect Window']=0.1;t.windows=(t.windows or 0)+1 end
+        inst['Activate Stance Ability']=function() assert(inst['Stance Key Down']); t.presses=t.presses+1;if not t.rejectStance then asc.tags['Ability.Action.Stance']=1 end end
+        inst['On Stance Key Release']=function() inst['Stance Key Down']=false;t.released=true;asc.tags['Ability.Action.Stance']=0 end
         local specs=self.ActivatableAbilities.Items
         local spec={Handle={Handle=seq+1},Ability=obj{GetClass=function()return asset end},ActiveCount=active,
             NonReplicatedInstances={inst}}
@@ -68,6 +69,8 @@ local function fixture(ai,wrongOwner,resources)
     t.wpath='/PBZCombatAsset/ActorData/Mobs/000_Hun/Weapon/Weapon_Hun_JueYing.Weapon_Hun_JueYing'
     t.asc=asc
     t.module=Defense.new{
+        pairProtected=function(_,attacker)return t.protected~=nil and t.protected==attacker end,
+        paused=function()return t.paused==true end,
         fname=function(x)return x end,
         find=function(p) return cls(p:match('%.([^%.]+)$')) end, findAll=function()return {} end,
         current=function(x) return x==r and t.allowed end, fighting=function()t.fightChecks=(t.fightChecks or 0)+1;return t.battle end,
@@ -84,9 +87,84 @@ end
 local function frame(hit,dodge,strength)
     return {HitGameTime=hit,IsDodge=dodge,IsHit=false,DeflectStrength={TagName=strength or 'Light'}}
 end
+do
+    local h=fixture();local specs=h.asc.ActivatableAbilities.Items
+    h.asc.ActivatableAbilities.Items=nil;h.callback()
+    h.asc.ActivatableAbilities.Items=specs;h.time=5.6;h.callback()
+    assert(#specs==6,'a late spec list must not leave the default blades without their four defensive abilities')
+    h.wpath='/Game/AnotherWeapon.Config';h.asc.ActivatableAbilities.Items=nil
+    h.time=6.2;h.callback();h.asc.ActivatableAbilities.Items=specs
+    h.time=6.8;h.callback();assert(#specs==2,'finish removing the owned double-blade abilities after the list returns')
+    h.module:stop(h.r);assert(#specs==0)
+end
+do
+    local h=fixture();local give=h.asc.K2_GiveAbility
+    function h.asc:K2_GiveAbility()return {Handle=0} end
+    h.callback();assert(#h.asc.ActivatableAbilities.Items==2)
+    h.asc.K2_GiveAbility=give;h.time=5.6;h.callback()
+    assert(#h.asc.ActivatableAbilities.Items==6,'an explicitly invalid native grant must be retried')
+end
+do
+    local h=fixture();h.r.intent={}
+    local executing,enemy=obj(),obj()
+    h.protected=executing
+    local a,b=frame(5.025,false),frame(5.045,true)
+    a.SourceAction=obj{GetAvatarActor=function()return executing end}
+    b.SourceAction=obj{GetAvatarActor=function()return enemy end}
+    h.frames={a};h.callback()
+    assert(not h.r.intent.incomingUntil,'a protected source alone must not make the Hun release a charge')
+    h.frames[2]=b;h.time=5.01;h.callback()
+    assert(#h.dodges==1 and h.presses==0,'the earlier protected source cannot starve a real simultaneous attacker')
+end
+do
+    local h=fixture();local scans=0;h.paused=true
+    h.r.actor['Deflect Component'].ReceiveFrames.ForEach=function()scans=scans+1 end
+    for _=1,100 do h.callback() end
+    assert(scans==1,'unchanged world time repeated the native forecast scan '..scans..' times')
+    h.time=5.001;h.callback();assert(scans==2,'slow motion still advances the forecast sampler')
+end
+do
+    local broken=fixture()
+    broken.asc.tags['CharacterState.Stand.Break']=1
+    broken.frames[1]=frame(5.04,false);broken.callback()
+    assert(broken.presses==0,'a broken Hun cannot auto-parry an incoming hit')
+    broken.asc.tags['CharacterState.Stand.Break']=0
+    broken.time=5.3;broken.frames[2]=frame(5.34,false);broken.callback();assert(broken.presses==1)
+    broken.asc.tags['CharacterState.Stand.Break']=1
+    broken.time=5.31;broken.callback();assert(broken.stance['Stance Key Down']==false,'release an owned guard during break')
+end
+do
+    local h=fixture({deflect_chance=0})
+    h.frames[1]=frame(5.42,false);h.callback()
+    assert(h.keyDown==1 and h.presses==1 and not h.windows,'early defense must start native ordinary guard without a perfect window')
+    h.time=5.40;h.callback();assert(h.stance['Stance Key Down'],'hold past original 0.3 s cost delay')
+    h.time=5.45;h.frames[2]=frame(5.65,false);h.callback()
+    assert(h.keyDown==1 and not h.windows,'successive hits must not reset the cost timer')
+    h.time=6.4;h.callback();assert(h.released)
+end
+do
+    local h=fixture({deflect_chance=0});h.rejectStance=true
+    h.frames[1]=frame(5.45,false);h.callback();assert(h.stance['Stance Key Down'])
+    h.time=5.09;h.callback()
+    assert(h.released and not h.stance['Stance Key Down'] and (h.r.intent.busyUntil or 0)<=h.time,
+        'a void native call with no active stance must not lock the fighter for the whole hold')
+    local delayed=fixture({deflect_chance=0});delayed.rejectStance=true
+    delayed.frames[1]=frame(5.45,false);delayed.callback();delayed.asc.tags['Ability.Action.Stance']=1
+    delayed.time=5.03;delayed.callback();delayed.time=5.12;delayed.callback()
+    assert(delayed.stance['Stance Key Down'] and not delayed.released)
+end
 local f=fixture()
+do
+    local h=fixture();local input=h.r.actor['Ability Input Component']
+    input.InActionPhase=true;input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+    h.frames[42]=frame(5.059,false);h.callback()
+    assert(h.presses==0 and not h.keyDown,'a forecast cannot interrupt a committed strike')
+    h.time=5.045;input.ActionPhase.TagName='CharacterState.Action.Phase.Cancel';h.callback()
+    assert(h.presses==1,'an unspent forecast can still defend inside a native cancel window')
+end
 f.r.intent={}
 assert(f.callback and #f.asc.ActivatableAbilities.Items==2)
+f.frames[1]=frame(5.42,false);f.callback();assert(f.presses==0,'100% waits for a precise window')
 f.frames[1]=frame(5.10,false)
 f.callback();assert(f.presses==0 and #f.asc.ActivatableAbilities.Items==6)
 assert(f.r.intent.incomingUntil>=5.10,'forecast reaches the combat brain before a defensive action starts')
@@ -107,8 +185,8 @@ f.time=6.5;f.wpath='/Game/AnotherWeapon.Config';f.callback();assert(#f.asc.Activ
 f.time=6.7;f.allowed=false;f.frames[5]=frame(6.74,false);f.callback();assert(f.presses==1)
 f.allowed=true;f.module:silence();assert(f.cancelled and f.clears==6 and not f.result)
 local g=fixture({deflect_chance=0.2,red_dodge_chance=0.3})
-g.frames[1]=frame(5.04,false);g.callback();assert(g.presses==0)
-g.roll=0.01;g.time=5.01;g.callback();assert(g.presses==0) -- one trial per forecast
+g.frames[1]=frame(5.04,false);g.callback();assert(g.presses==1 and not g.windows)
+g.roll=0.01;g.time=5.01;g.callback();assert(g.presses==1 and not g.windows) -- one trial per forecast
 g.time=5.5;g.frames[2]=frame(5.55,true)
 g.battle=false;g.callback();assert(#g.dodges==0)
 g.battle=true;g.time=5.76;g.frames[2]=frame(5.80,true);g.callback();assert(g.dodges[1]=='Ability.Action.Hun.PerfectDodge')

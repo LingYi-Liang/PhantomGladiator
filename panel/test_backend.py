@@ -579,6 +579,33 @@ class BridgeTests(unittest.TestCase):
             columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
             self.assertEqual(columns[1:5], [action, "", "blue", "1"])
 
+    def test_first_person_keys_keep_weather_and_use_schema_eight(self):
+        status=self.bridge.runtime/'status.tsv'
+        status.write_text(status.read_text(encoding='utf8').replace('function_keys_schema\t4','function_keys_schema\t8'),encoding='utf8')
+        bindings={name:'UNBOUND' for name in backend.BINDING_NAMES}
+        bindings.update(eyes_player='VK_119_MOD_0',eyes_npc='VK_119_MOD_1',weather_snow='VK_120_MOD_0')
+        job=self.bridge.enqueue({'action':'configure_keys','bindings':bindings})
+        cols=self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual((len(cols),cols[-3:]),(42,['VK_119_MOD_0','VK_119_MOD_1','8']))
+        self.assertEqual(cols[5+backend.BINDING_NAMES.index('weather_snow')],'VK_120_MOD_0')
+        for action in backend.EYE_BINDING_NAMES:
+            self.assertEqual(self.bridge._validate({'action':action}),{'action':action})
+
+    def test_weather_bindings_travel_in_separate_columns_and_keep_older_schemas(self):
+        status=self.bridge.runtime/'status.tsv'
+        text=status.read_text(encoding='utf-8')
+        status.write_text(text.replace('function_keys_schema\t4','function_keys_schema\t7'),encoding='utf-8')
+        keys={n:'UNBOUND' for n in backend.BINDING_NAMES}
+        keys.update(weather_rain='VK_119_MOD_0',weather_snow='VK_119_MOD_1')
+        job=self.bridge.enqueue({'action':'configure_keys','bindings':keys})
+        wire=self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual((len(wire),wire[-1]),(40,'7'))
+        self.assertEqual(wire[5+backend.BINDING_NAMES.index('weather_snow')],'VK_119_MOD_1')
+        keys['weather_next']=keys['weather_rain']
+        with self.assertRaises(backend.ValidationError):self.bridge.enqueue({'action':'configure_keys','bindings':keys})
+        for mode in backend.WEATHER_CHOICES:
+            self.assertEqual(self.bridge._validate({'action':'set_weather','mode':mode})['mode'],mode)
+
     def test_unit_rule_travels_in_the_unit_spawn_and_start_key_columns(self):
         command = self.bridge.enqueue({"action": "set_unit_rule", "unit_id": "BP_Monster_MoTian", "rule": "lock", "value": "kill"})
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")

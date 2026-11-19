@@ -39,7 +39,9 @@ local EFFECT_AIMS={BD_ZuoShang_Skill_19={use='UE_UseTestTargetPos',pos='UE_TestT
 Aim.effectAims=EFFECT_AIMS
 Aim.paths.launch='/PBZDeflectSystem/Actions/GAA_DelayDeflectProjectileBullet.GAA_DelayDeflectProjectileBullet_C:Go go go'
 ORDER[#ORDER+1]='launch';LABEL.launch='特效目标'
-local PARTICLE_CLASS,EFFECT_MS,EFFECT_SCANS,EFFECT_SECONDS,READY,RUNNING='PBZ_ParticleBullet',50,3,15,1,2
+local PARTICLE_CLASS,EFFECT_MS,EFFECT_SECONDS,READY,RUNNING='PBZ_ParticleBullet',50,15,1,2
+-- Skill 19 launches five particle emitters at 0.62 s and its action ends at 3.97 s.
+local RAIN_SCANS={[1]=true,[2]=true,[3]=true,[8]=true,[14]=true,[20]=true,[30]=true,[50]=true,[80]=true}
 -- Skills whose bullet data plays an effect that reads CharRootPos and traces hits along its particles (read offline).
 local EFFECT_SKILLS={
     GA_ZuoShang_P2_Skill_17_C=true,                          -- 龙体左殇 BD_ZuoShang_P2_SwordRain_Burst
@@ -190,8 +192,8 @@ function Aim.new(options)
         end
         return nil
     end
-    local function opponentOf(key)
-        if companions[key] then return options.companionTargetOf(companions[key])end
+    local function opponentOf(key,castTarget,castName)
+        if companions[key] then return options.companionTargetOf(companions[key],castTarget,castName)end
         return options.opponentOf(key)
     end
     local function sameTeam(source,target)
@@ -538,7 +540,7 @@ function Aim.new(options)
             ok and '' or ' 错误='..tostring(got)))
     end
 
-    local effects,effectLoop,effectScans={},nil,0   -- bullet address -> what is being aimed; the fast loop runs only while one flies
+    local effects,rainSearch,effectLoop={},{},nil
     local effectGeneration,effectCancelAt=0,0
     local function nameOf(object)
         if not U.valid(object) then return '?'end
@@ -584,24 +586,44 @@ function Aim.new(options)
                 if status==RUNNING or status==READY then
                     local owner=U.field(bullet,'BulletOwnerAvatar')
                     local ownerKey=U.valid(owner) and U.key(owner)
-                    local data=U.field(bullet,'BulletData')
-                    local dataName=U.valid(data) and nameOf(data) or nil
-                    local spec=dataName and EFFECT_AIMS[dataName]
-                    local comp,asset
-                    if spec then comp,asset=particleComponent(bullet,spec)end
-                    if ownerKey and fighters[ownerKey] and not phaseBusy(ownerKey) and comp then
-                        effects[key]={bullet=bullet,bulletKey=key,comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0}
+                    local request=rainSearch[ownerKey]
+                    if request then
+                        local dataName=nameOf(U.field(bullet,'BulletData'))
+                        local spec=EFFECT_AIMS[dataName]
+                        if spec then
+                            local comp,asset=particleComponent(bullet,spec)
+                            if comp then
+                                effects[key]={bullet=bullet,bulletKey=key,comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0,cast=request}
+                                request.left=request.left-1
+                            end
+                        end
                     end
                 end
             end
         end
+        for owner,request in pairs(rainSearch)do if request.left<=0 then rainSearch[owner]=nil end end
     end
     local effectLines=0
     local function sayEffect(text)
         if effectLines<BULLET_LINES then effectLines=effectLines+1;say(text) end
     end
     local releaseEffect
-    local function aimEffect(item)
+    local function castSpot(owner,cast,spots)
+        if spots[cast]~=nil then return spots[cast] end
+        local ok,target=pcall(opponentOf,owner,cast.target,cast.targetName)
+        if not ok or not U.valid(target) then spots[cast]=false;return false end
+        local at=place(target)
+        local got,x,y,z=pcall(function()return at.X,at.Y,at.Z end)
+        local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
+        local result=false
+        if got and finite(x)and finite(y)and finite(z)then
+            if companions[owner] then cast.target,cast.targetName=target,objectName(target) end
+            result={target=target,spot={X=x,Y=y,Z=z}}
+        end
+        spots[cast]=result
+        return result
+    end
+    local function aimEffect(item,spots)
         local owner=U.field(item.bullet,'BulletOwnerAvatar')
         local key=U.key(owner)
         local data=U.field(item.bullet,'BulletData')
@@ -612,22 +634,20 @@ function Aim.new(options)
         if not comp then return false end
         -- Pooled bullets can change owner or component while their previous wrappers still look valid.
         if item.owner~=key or item.data~=dataName or addr(item.comp)~=addr(comp) then
-            if addr(item.comp)~=addr(comp) then releaseEffect(item) end
+            if item.switched then releaseEffect(item) end
+            if item.owner~=key or item.data~=dataName then item.cast=rainSearch[key] or {} end
             item.owner,item.data,item.spec,item.comp=key,dataName,EFFECT_AIMS[dataName],comp
             item.asset,item.compName=U.key(asset),objectName(comp)
             item.switched=nil;item.since=clock();item.writes=0
             sayEffect('刷新特效归属 读回施法者='..key..' 组件='..tostring(addr(comp))..' 数据='..dataName)
         end
-        local okTarget,target=pcall(opponentOf,item.owner)
-        if not okTarget or not U.valid(target) then return end
-        local at=place(target)
-        local okRead,x,y,z=pcall(function()return at.X,at.Y,at.Z end)
-        local function finite(n)return type(n)=='number'and n==n and math.abs(n)<math.huge end
-        if not okRead or not finite(x)or not finite(y)or not finite(z)then return end
-        local spot={X=x,Y=y,Z=z}
+        local aim=castSpot(item.owner,item.cast,spots)
+        if not aim then return end
+        local target,spot=aim.target,aim.spot
         -- Which of the two the effect declared cannot be read offline; setting the other only adds an unused value.
         local okPosition=setVariable(item.comp,'SetVariablePosition',item.spec.pos,spot)
         local okVector=setVariable(item.comp,'SetVariableVec3',item.spec.pos,spot)
+        if not okPosition and not okVector then return end
         item.writes=item.writes+1
         if not item.switched then
             local okUse=setVariable(item.comp,'SetVariableBool',item.spec.use,true)
@@ -638,11 +658,12 @@ function Aim.new(options)
             local from=place(item.bullet)
             sayEffect(string.format('特效目标改成对手 子弹=%s 招式=%s 对手=%s 开关=%s 写入=%s 坐标写入=%s/%s 发射点距对手=%s 距玩家=%s',item.data,
                 U.valid(U.field(item.bullet,'BulletSourceAbility')) and className(U.field(item.bullet,'BulletSourceAbility')) or '?',
-                className(target),item.spec.use,tostring(okUse),tostring(okPosition),tostring(okVector),metres(from,at),
+                className(target),item.spec.use,tostring(okUse),tostring(okPosition),tostring(okVector),metres(from,spot),
                 okPlayer and U.valid(player) and metres(from,place(player)) or '?'))
         end
     end
     releaseEffect=function(item)
+        if not item.switched then return end
         local ok=false
         if U.valid(item.comp)and objectName(item.comp)==item.compName then
             local got,owner=pcall(function()return item.comp:GetOwner()end)
@@ -655,37 +676,55 @@ function Aim.new(options)
     end
     local function effectTick()
         if not self.alive then stopEffectLoop();return end
-        if effectScans>0 then effectScans=effectScans-1;scanEffects() end
-        local now=clock()
+        local search=false
+        for owner,request in pairs(rainSearch)do
+            request.tick=request.tick+1
+            if not fighters[owner] or phaseBusy(owner) or request.tick>80 then rainSearch[owner]=nil
+            elseif RAIN_SCANS[request.tick] then search=true end
+        end
+        if search then scanEffects() end
+        local now,spots=clock(),{}
+        local paused=options.paused and options.paused()
         for key,item in pairs(effects)do
             local status=statusOf(item.bullet)
             if (status==RUNNING or status==READY) and now-item.since<EFFECT_SECONDS then
                 local owner=U.key(U.field(item.bullet,'BulletOwnerAvatar'))
-                if phaseBusy(owner) or not (options.paused and options.paused()) and aimEffect(item)==false then releaseEffect(item);effects[key]=nil end
+                if not fighters[owner] or phaseBusy(owner) or paused and owner~=item.owner or not paused and aimEffect(item,spots)==false then
+                    releaseEffect(item);effects[key]=nil
+                end
             else
                 releaseEffect(item);effects[key]=nil
             end
         end
-        if effectScans<=0 and not next(effects) then stopEffectLoop() end
+        if not next(rainSearch) and not next(effects) then stopEffectLoop() end
     end
-    local function launched(context)
-        if not self.alive or not next(fighters) then return nil end
-        local action=U.unwrap(context)
-        if not U.valid(action) then return nil end
-        local data=U.field(action,'Bullet Data')
-        if not U.valid(data) or not EFFECT_AIMS[nameOf(data)] then return nil end
-        local unit=unitOf(action)
-        if not unit or phaseBusy(unit) then return nil end
-        effectScans=EFFECT_SCANS
+    local function watchRain(unit,cast)
+        local request=rainSearch[unit]
+        if cast then rainSearch[unit]={tick=0,left=5,cast=true}
+        elseif request then
+            request.tick=0
+            if not request.cast then request.left=request.left+1 end
+        else rainSearch[unit]={tick=0,left=1} end
+        local volley=rainSearch[unit]
+        if companions[unit] and not volley.target then
+            local target=self:targetOf(unit)
+            volley.target,volley.targetName=target,objectName(target)
+        end
         if not effectLoop then
             effectGeneration=effectGeneration+1;local generation=effectGeneration
             local ok,handle=pcall(LoopInGameThreadWithDelay,EFFECT_MS,function()
                 if generation==effectGeneration and self.alive then effectTick()end
             end)
             if ok and handle~=nil and handle~=false then effectLoop=handle
-            else effectGeneration=effectGeneration+1;say('特效目标循环启动失败：'..tostring(handle)) end
+            else effectGeneration=effectGeneration+1;rainSearch={};say('特效目标循环启动失败：'..tostring(handle)) end
         end
-        return nil
+    end
+    local function launched(context)
+        if not self.alive or not next(fighters) then return end
+        local action=U.unwrap(context)
+        if not EFFECT_AIMS[nameOf(U.field(action,'Bullet Data'))] then return end
+        local unit=unitOf(action)
+        if unit and not phaseBusy(unit) then watchRain(unit,false) end
     end
 
     local effectSkillClass={} -- class name -> whether it or a parent is in EFFECT_SKILLS
@@ -701,6 +740,7 @@ function Aim.new(options)
             for _=1,8 do
                 if not okClass or not U.valid(class) then break end
                 local okName,parent=pcall(function()return class:GetFName():ToString()end)
+                if okName and parent=='GA_ZuoShang_Skill_19_C' then found='rain';break end
                 if okName and EFFECT_SKILLS[parent] then found=true;break end
                 okClass,class=pcall(function()return class:GetSuperStruct()end)
             end
@@ -709,7 +749,8 @@ function Aim.new(options)
         if not effectSkillClass[name] then return nil end
         local unit=unitOf(ability)
         if not unit or phaseBusy(unit) then return nil end
-        if self.effects then
+        if effectSkillClass[name]=='rain' then watchRain(unit,true)
+        elseif self.effects then
             self.effects:arm()
             self.counts.skillStart=self.counts.skillStart+1;self.window.skillStart=self.window.skillStart+1
         end
@@ -758,7 +799,7 @@ function Aim.new(options)
             if clock()<uninstallAt then return end
             uninstallAt=clock()+1
         end
-        stopEffectLoop(force);effectScans=0
+        stopEffectLoop(force);rainSearch={}
         for key,item in pairs(effects)do
             if restore~=false then releaseEffect(item) end
             effects[key]=nil

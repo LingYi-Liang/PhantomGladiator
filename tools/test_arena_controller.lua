@@ -187,6 +187,14 @@ local summons=fixture()
 assert(summons.arena:spawn('/Catalog/BP_Owner.BP_Owner_C','blue',1).ok)
 assert(summons.arena:spawn('/Catalog/BP_Enemy.BP_Enemy_C','red',1).ok)
 assert(summons.arena:start().ok)
+do
+    local f=fixture();assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok and f.arena:start().ok)
+    local helper={alive=true,name='native combat minion',hp=100}
+    assert(f.arena:adoptSummon(helper,f.actors[1],'/Catalog/BP_Combat.BP_Combat_C','confirmed native parent').ok)
+    f.actors[1].hp=0
+    assert(f.arena:status().blue_count==1 and f.arena:status().battle_active,'combat minion keeps the side alive')
+    helper.hp=0;assert(f.arena:status().blue_count==0)
+end
 local pet={alive=true,name='summon',hp=100}
 assert(not summons.arena:adoptSummon(pet,{alive=true},'/Catalog/BP_Pet.BP_Pet_C','fixture').ok,'unowned summoner must never claim a map actor')
 assert(summons.arena:adoptSummon(pet,summons.actors[1],'/Catalog/BP_Pet.BP_Pet_C','fixture').ok)
@@ -812,6 +820,18 @@ local packResult=pack.arena:spawn(TAMER,'red',1)
 assert(packResult.ok and packResult.spawned_count==1 and packResult.escort_count==2 and packResult.failure_count==0,packResult.message)
 assert(packResult.message:find('随行单位 2/2',1,true))
 assert(stageCount(pack,'spawn')==1 and stageCount(pack,'spawn_escort')==2 and stageCount(pack,'resolve_escort')==1)
+do
+    local enabled=true
+    local f=escortFixture({formationEnabled=function()return enabled end,escortsFor=function(_,on)
+        if on then return {{path=DOG,count=6,formation=true}} end end})
+    assert(f.arena:spawn(TAMER,'red',1).ok)
+    enabled=false;assert(f.arena:spawn(TAMER,'blue',1).ok)
+    local units=f.arena:members();assert(#units==8 and units[1].formation and units[8].formation==false)
+    for i=2,7 do assert(units[i].formationGroup==units[1].formationGroup and not units[i].summoner) end
+    assert(f.arena:start().ok);f.actors[1].hp=0
+    assert(f.arena:status().red_count==6 and f.arena:status().battle_active)
+    assert(f.arena:stop().ok)
+end
 local tamer=pack.actors[1]
 assert(pack.leaders[tamer]==false and pack.leaders[pack.actors[2]]==tamer and pack.leaders[pack.actors[3]]==tamer,'escorts finish with the tamer as leader')
 assert(not pack.activated[1].escort and pack.activated[2].escort and pack.activated[3].escort and pack.activated[2].path==DOG)

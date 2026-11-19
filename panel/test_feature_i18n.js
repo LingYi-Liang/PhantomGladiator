@@ -44,7 +44,7 @@ for (const lang of ["zh", "en", "ja", "fr", "de", "es"]) {
   assert(context.betaDialogHTML().includes(i18n.t("beta.checkTitle")), lang);
   const support = context.supportHTML();
   assert(support.includes(i18n.t("nav.support")) && support.includes(i18n.t("support.scan")), lang);
-  assert(support.includes('src="support-wechat.png"') && !support.includes("https://"), lang);
+  assert(support.indexOf('src="support-wechat.png"') >= 0 && support.indexOf('src="support-patreon.png"') > support.indexOf('src="support-wechat.png"') && support.includes('href="https://www.patreon.com/cw/lingyi01"') && context.supportImageHTML(true).includes('src="support-patreon.png"'), lang);
   assert(context.supportImageHTML().includes('data-action="dialog-close"'), lang);
   if (lang !== "zh") assert(!page.includes("每只各自从池里随机") && !queue.includes("待游戏接收"), lang);
 }

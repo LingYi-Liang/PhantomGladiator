@@ -6,6 +6,7 @@ const requests = [];
 const c = { window: {}, S: { battleMusic: { supported: true, mode: 'NATIVE', track: 'MOYUAN_P1', message: '原版读回', state: 'native' } },
   ui: { busy: new Set() }, RT: { online: () => online }, esc: String, $: key => nodes[key],
   run: async (action, options) => { requests.push({ action, payload: options.payload }); return { status: 'succeeded' }; } };
+c.I18N=require('./test_i18n_runtime')();c.I18N.set('zh');c.t=c.I18N.t;
 vm.createContext(c);vm.runInContext(fs.readFileSync(__dirname + '/prototype/battle-music.js', 'utf8'), c);
 const first = source.indexOf('  function battleMusicHTML()'), last = source.indexOf('  function settingsHTML()', first);
 vm.runInContext(source.slice(first, last), c);

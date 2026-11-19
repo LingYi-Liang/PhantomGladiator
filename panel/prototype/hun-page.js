@@ -2,18 +2,19 @@
 // The 粪怪 page: the Hun's profile and its summon controls. The summon buttons, count and hotkeys stay in a
 // side panel; the profile is one page of folding sections, each marked with what the game applies today.
 window.PGHun = (() => {
+  const t = (key, params) => I18N.t(key, params);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   const clone = x => JSON.parse(JSON.stringify(x));
-  const CATEGORIES = {main_weapon:'主武器', shadow_armament:'影之武装', accessory:'饰品', special:'特殊装备'};
-  const SECTIONS = {equipment:'装备', attributes:'角色属性', strategy:'战斗策略', resources:'资源与生存', phases:'阶段套路'};
+  function categories() { return {main_weapon:t("hun.mainWeapon"), shadow_armament:t("hun.shadow"), accessory:t("hun.accessory"), special:t("hun.special")}; }
+  function sections() { return {equipment:t("hun.equipment"), attributes:t("hun.attributes"), strategy:t("hun.strategy"), resources:t("hun.resources"), phases:t("hun.phases")}; }
   // team, button label, function key (function_keybinds.lua), button class
-  const TEAMS = [['blue','召唤到蓝方','hun_blue','btn-blue'], ['red','召唤到红方','hun_red','btn-red'], ['companion','召为随从','hun_companion','btn-companion'], ['neutral','与我对战','hun_neutral','btn-neutral']];
+  function teams() { return [['blue',t("hun.blue"),'hun_blue','btn-blue'], ['red',t("hun.red"),'hun_red','btn-red'], ['companion',t("hun.companion"),'hun_companion','btn-companion'], ['neutral',t("hun.neutral"),'hun_neutral','btn-neutral']]; }
   // What the game side does with each part of the profile in this build (hun_body.lua, hun_loadout.lua).
-  const WIRING = {
-    on: ['已接入', '会作用到之后召唤的魂。还没在游戏里验证过。'],
-    trial: ['部分接入', '已接入的规则随召唤生效，实际动作和消耗待实机验证。'],
-    off: ['还没接上', '可以先配好并保存，现在不会影响召出来的魂。'],
-  };
+  function wiring() { return {
+    on: [t("hun.wired"), t("hun.wiredHint")],
+    trial: [t("hun.partial"), t("hun.partialHint")],
+    off: [t("hun.unwired"), t("hun.unwiredHint")],
+  }; }
   const SECTION_WIRING = {attributes:'on', strategy:'on', resources:'trial', phases:'on'};
   const CATEGORY_WIRING = {main_weapon:'on', shadow_armament:'on', accessory:'on', special:'on'};
   let data, draft, baseline, undo, busy = false, epoch = 0, serial = 0, category = 'main_weapon', query = '', onlyOn = false;
@@ -22,61 +23,66 @@ window.PGHun = (() => {
   const open = new Set(['equipment', 'attributes']);
   const failedImages = new Set();
   const root = () => document.querySelector('#hun-page'), rt = () => window.PGRuntime;
+  const noticeText = () => typeof notice === 'function' ? notice() : I18N.combatMessage(notice);
   const changed = () => draft && JSON.stringify(draft) !== baseline;
   const inCategory = (row, key = category) => key === 'special' ? row.source === 'resource_only' : row.kind === key && row.source !== 'resource_only';
   const rowsOf = key => data.catalog.items.filter(row => inCategory(row, key));
   const active = rows => rows.filter(row => draft.items[row.id].enabled).length;
-  const displayName = row => row.name + (row.variant ? ' · ' + row.variant : '');
+  const item = row => I18N.lang === 'en' && row.en ? row.en : row;
+  const displayName = row => [item(row).name, item(row).variant].filter(Boolean).join(' · ');
+  const profileName = name => name === '满配魂' ? t('hun.defaultProfile') : name;
+  const phaseName = name => name === '黑魔伤保命' ? t('hun.defaultPhase') : name;
   const paths = {sword:'M5 19l4-4m-3-3 6 6m-3-3L18 6l2-3-3 2-9 9M4 20l1-1', plus:'M12 5v14M5 12h14', check:'M5 12l4 4L19 6', search:'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0', down:'M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5', up:'M12 16V4m-5 5 5-5 5 5M5 16v5h14v-5', reset:'M4 10a8 8 0 1 1 1 8M4 4v6h6', close:'m6 6 12 12M6 18 18 6', chevron:'m6 9 6 6 6-6'};
   const icon = name => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.sword}"/></svg>`;
-  const badge = state => `<span class="hun-wiring is-${state}" title="${esc(WIRING[state][1])}">${WIRING[state][0]}</span>`;
+  const badge = state => `<span class="hun-wiring is-${state}" title="${esc(wiring()[state][1])}">${wiring()[state][0]}</span>`;
 
   function imageURL(id) { return rt()?.state?.icons?.[id] || data?.images?.[id] || ''; }
   function art(id, label, portrait = false) {
     const src = imageURL(id);
     return src && !failedImages.has(src)
       ? `<img src="${esc(src)}" alt="${esc(label)}" loading="${portrait ? 'eager' : 'lazy'}" decoding="async" draggable="false" data-hun-image="${id}">`
-      : `<span class="hun-art-empty" data-hun-image-slot="${id}" aria-label="${esc(label)}图片待载入">${portrait ? '魂' : icon('sword')}</span>`;
+      : `<span class="hun-art-empty" data-hun-image-slot="${id}" aria-label="${esc(label)}${t("hun.imagePending")}">${portrait ? t("hun.soul") : icon('sword')}</span>`;
   }
-  function html() { return '<div id="hun-page" class="hun-page"><div class="hun-loading">正在载入魂的角色方案…</div></div>'; }
+  function html() { return `<div id="hun-page" class="hun-page"><div class="hun-loading">${t("hun.loading")}</div></div>`; }
   function receipt(job) {
-    if (job.status === 'pending') return '召唤已提交，等待游戏确认。';
-    if (job.message) return job.message;
-    if (job.status === 'succeeded' && job.spawned > 0) return '已召唤 ' + job.spawned + ' 只魂。';
-    return job.status === 'succeeded' ? '游戏已接收指令。' : '召唤未确认，请查看操作记录。';
+    if (job.status === 'pending') return t("hun.pending");
+    if (job.message && (I18N.lang !== 'en' || !/[\u3400-\u9fff]/u.test(job.message))) return job.message;
+    if (job.message && ['failed', 'uncertain'].includes(job.status)) return I18N.combatMessage(job.message);
+    if (job.status === 'succeeded' && job.spawned > 0) return t('hun.summonedCount', {n:job.spawned});
+    return job.status === 'succeeded' ? t("hun.accepted") : t("hun.uncertain");
   }
   function canSummon() { return !busy && !pendingJob && !!rt()?.ready?.() && (rt()?.state?.hunBodySupported ?? data?.probe_supported); }
   function availability() {
-    if (!rt()?.ready?.()) return '进入游戏地图后即可召唤';
-    if (pendingJob) return '正在召唤，等待游戏确认';
-    if (!(rt()?.state?.hunBodySupported ?? data?.probe_supported)) return '游戏中的模组需要更新并重载';
-    if (rt()?.state?.summonQueue?.on) return '已连接 · 将按当前方案加入召唤队列';
-    return '已连接 · 可以召唤';
+    if (!rt()?.ready?.()) return t("hun.enterGame");
+    if (pendingJob) return t("hun.waiting");
+    if (!(rt()?.state?.hunBodySupported ?? data?.probe_supported)) return t("hun.updateMod");
+    if (rt()?.state?.summonQueue?.on) return t("hun.connectedQueue");
+    return t("hun.connected");
   }
 
   // ---------- side panel ----------
   function summonRows() {
-    return TEAMS.map(([team, label, action, cls]) => {
+    return teams().map(([team, label, action, cls]) => {
       const key = window.PGHunKeys?.html(action) || {control: '', message: ''};
       return `<div class="hun-summon-row"><button type="button" class="btn ${cls}" data-hun-action="summon" data-hun-team="${team}" ${canSummon() ? '' : 'disabled'}>${label}</button><span class="hun-key-slot">${key.control}</span>${key.message}</div>`;
-    }).join('') + (window.PGHunKeys?.html('hun_blue').needsUpdate ? '<p class="hun-hint is-warn">更新并重载游戏内模组后才能设置快捷键。</p>' : '');
+    }).join('') + (window.PGHunKeys?.html('hun_blue').needsUpdate ? `<p class="hun-hint is-warn">${t("hun.updateKeys")}</p>` : '');
   }
   function side() {
     renderedKeys = summonRows();
     return `<aside class="hun-side card">
-      <div class="hun-id"><div class="hun-portrait">${art('HunCharacter', '魂', true)}</div><div><p class="hun-eyebrow">粪怪 · 自定义角色</p><h1>魂</h1><span class="hun-connection" data-hun-connection>${esc(availability())}</span></div></div>
-      <label class="hun-count"><span>每次召唤</span><input type="number" min="1" max="100" step="1" data-hun-path="count" value="${draft.count}" aria-label="召唤数量"><span>个</span></label>
+      <div class="hun-id"><div class="hun-portrait">${art('HunCharacter', t("hun.soul"), true)}</div><div><p class="hun-eyebrow">${t("hun.subtitle")}</p><h1>${t("hun.soul")}</h1><span class="hun-connection" data-hun-connection>${esc(availability())}</span></div></div>
+      <label class="hun-count"><span>${t("hun.count")}</span><input type="number" min="1" max="100" step="1" data-hun-path="count" value="${draft.count}" aria-label="${t("hun.quantity")}"><span>${t("hun.countUnit")}</span></label>
       <div class="hun-summon" data-hun-keys>${renderedKeys}</div>
-      <p class="hun-hint">点按钮会先保存当前方案再召唤。快捷键按最近一次保存的方案和数量召唤。</p>
+      <p class="hun-hint">${t("hun.summonHint")}</p>
       <div class="hun-profile">
-        <label class="hun-profile-name"><span>方案名称</span><input maxlength="60" data-hun-path="name" aria-label="方案名称" value="${esc(draft.name)}"></label>
-        <div class="hun-save-row"><button class="btn btn-primary" data-hun-action="save">${icon('check')}保存方案</button><button class="btn btn-secondary" data-hun-action="undo" ${undo ? '' : 'disabled'}>撤销</button></div>
-        <p class="hun-dirty" data-hun-dirty>${changed() ? '有未保存的调整' : '当前方案已保存'}</p>
-        <p id="hun-message" role="status" class="${noticeKind === 'error' ? 'is-error' : ''}">${esc(notice)}</p>
-        ${noticeKind === 'error' ? '<button class="btn btn-secondary btn-sm" data-hun-action="reload">重新载入方案</button>' : ''}
-        <div class="hun-profile-tools"><button class="btn btn-secondary btn-sm" data-hun-action="export">${icon('down')}导出</button><label class="btn btn-secondary btn-sm hun-import">${icon('up')}导入<input type="file" data-hun-import accept=".json,application/json" aria-label="导入魂方案"></label><button class="btn btn-secondary btn-sm" data-hun-action="reset">${icon('reset')}恢复顶配</button></div>
+        <label class="hun-profile-name"><span>${t("hun.profileName")}</span><input maxlength="60" data-hun-path="name" aria-label="${t("hun.profileName")}" value="${esc(profileName(draft.name))}"></label>
+        <div class="hun-save-row"><button class="btn btn-primary" data-hun-action="save">${icon('check')}${t("hun.saveProfile")}</button><button class="btn btn-secondary" data-hun-action="undo" ${undo ? '' : 'disabled'}>${t("hun.undo")}</button></div>
+        <p class="hun-dirty" data-hun-dirty>${changed() ? t("hun.unsaved") : t("hun.savedState")}</p>
+        <p id="hun-message" role="status" class="${noticeKind === 'error' ? 'is-error' : ''}">${esc(noticeText())}</p>
+        ${noticeKind === 'error' ? `<button class="btn btn-secondary btn-sm" data-hun-action="reload">${t("hun.reloadProfile")}</button>` : ''}
+        <div class="hun-profile-tools"><button class="btn btn-secondary btn-sm" data-hun-action="export">${icon('down')}${t("hun.export")}</button><label class="btn btn-secondary btn-sm hun-import">${icon('up')}${t("hun.import")}<input type="file" data-hun-import accept=".json,application/json" aria-label="${t("hun.importProfile")}"></label><button class="btn btn-secondary btn-sm" data-hun-action="reset">${icon('reset')}${t("hun.reset")}</button></div>
       </div>
-      <div class="hun-legend"><p>各部分现在的状态</p>${Object.entries(WIRING).map(([state, [, tip]]) => `<div>${badge(state)}<span>${esc(tip)}</span></div>`).join('')}</div>
+      <div class="hun-legend"><p>${t("hun.coverage")}</p>${Object.entries(wiring()).map(([state, [, tip]]) => `<div>${badge(state)}<span>${esc(tip)}</span></div>`).join('')}</div>
     </aside>`;
   }
 
@@ -84,60 +90,67 @@ window.PGHun = (() => {
   function levelText(row) {
     const value = draft.items[row.id];
     if (!row.level_max) return '';
-    return value.level === 'max' ? (row.kind === 'accessory' ? '满精炼' : '满级') : (row.kind === 'accessory' ? '精炼 ' : 'Lv ') + value.level;
+    return value.level === 'max' ? (row.kind === 'accessory' ? t("hun.maxRefine") : t("hun.maxLevel")) : (row.kind === 'accessory' ? `${t("hun.refinement")} ` : 'Lv ') + value.level;
   }
   function tile(row) {
-    const value = draft.items[row.id], meta = [levelText(row), value.soul ? '铸魂' : ''].filter(Boolean).join(' · ');
+    const value = draft.items[row.id], meta = [levelText(row), value.soul ? t("hun.tempered") : ''].filter(Boolean).join(' · ');
     return `<div class="hun-tile ${value.enabled ? 'is-enabled' : ''}" data-hun-id="${row.id}">
-      <button type="button" class="hun-tile-open" data-hun-action="item-info" title="${esc(displayName(row))}：点开设置${row.kind === 'accessory' ? '精炼' : '等级'}和查看说明"><span class="hun-tile-art">${art(row.id, row.name)}</span><span class="hun-tile-name">${esc(row.name)}</span><small data-hun-tile-meta>${esc(row.variant || meta)}</small></button>
-      <label class="hun-tile-check" title="启用或关闭${esc(row.name)}"><input type="checkbox" data-hun-item-field="enabled" ${value.enabled ? 'checked' : ''} aria-label="启用${esc(displayName(row))}"><span>${icon('check')}</span></label>
+      <button type="button" class="hun-tile-open" data-hun-action="item-info" title="${esc(displayName(row))}${t("hun.editItem")}${row.kind === 'accessory' ? t("hun.refinement") : t("hun.level")}${t("hun.readDetails")}"><span class="hun-tile-art">${art(row.id, item(row).name)}</span><span class="hun-tile-name">${esc(item(row).name)}</span><small data-hun-tile-meta>${esc(item(row).variant || meta)}</small></button>
+      <label class="hun-tile-check" title="${t("hun.toggleItem")}${esc(item(row).name)}"><input type="checkbox" data-hun-item-field="enabled" ${value.enabled ? 'checked' : ''} aria-label="${t("hun.enable")}${esc(displayName(row))}"><span>${icon('check')}</span></label>
     </div>`;
   }
   function tiles() {
-    const found = rowsOf(category).filter(row => (!onlyOn || draft.items[row.id].enabled) && (!query || (displayName(row) + ' ' + row.description).includes(query)));
-    return found.length ? found.map(tile).join('') : '<div class="hun-empty"><h3>没有符合条件的装备</h3><button class="btn btn-secondary btn-sm" data-hun-action="clear-search">清除筛选</button></div>';
+    const found = rowsOf(category).filter(row => (!onlyOn || draft.items[row.id].enabled) && (!query || (displayName(row) + ' ' + item(row).description + ' ' + row.name).toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+    return found.length ? found.map(tile).join('') : `<div class="hun-empty"><h3>${t("hun.empty")}</h3><button class="btn btn-secondary btn-sm" data-hun-action="clear-search">${t("hun.clearFilters")}</button></div>`;
   }
-  function equipmentSummary() { return Object.keys(CATEGORIES).map(key => `${CATEGORIES[key]} ${active(rowsOf(key))}/${rowsOf(key).length}`).join(' · '); }
+  function equipmentSummary() { return Object.keys(categories()).map(key => `${categories()[key]} ${active(rowsOf(key))}/${rowsOf(key).length}`).join(' · '); }
   function equipment() {
     const rows = rowsOf(category), state = CATEGORY_WIRING[category];
     const trial = category === 'accessory'
-      ? `<label class="hun-setting-toggle hun-trial"><span><strong>启用所选饰品效果</strong><small>魂出生后逐条施加并读回，结果写在游戏日志里。实际触发效果待实战确认。</small></span><input type="checkbox" data-hun-path="experimental.accessory_effects" ${draft.experimental.accessory_effects ? 'checked' : ''}></label>` : '';
-    return `<div class="hun-categories" role="tablist" aria-label="装备种类">${Object.entries(CATEGORIES).map(([key, label]) => `<button role="tab" aria-selected="${key === category}" data-hun-action="category" data-hun-category="${key}" class="${key === category ? 'is-active' : ''}">${label}<span data-hun-count="${key}">${active(rowsOf(key))}/${rowsOf(key).length}</span>${badge(CATEGORY_WIRING[key])}</button>`).join('')}</div>
-      <p class="hun-note">${esc(WIRING[state][1])}${category === 'special' ? '机关变体使用对应的战斗招式；头颅受拾取和桩位条件限制。' : ''}</p>${trial}
-      <div class="hun-filter-row"><label class="hun-search">${icon('search')}<input type="search" data-hun-search value="${esc(query)}" placeholder="搜索名称或效果" aria-label="搜索装备"></label><label class="hun-only-on"><input type="checkbox" data-hun-only-on ${onlyOn ? 'checked' : ''}>只看已启用</label><span class="hun-bulk"><button data-hun-action="all-on">本类全开</button><button data-hun-action="all-off">本类全关</button></span><span class="hun-grid-count"><strong data-hun-category-count>${active(rows)} / ${rows.length}</strong> 已启用</span></div>
+      ? `<label class="hun-setting-toggle hun-trial"><span><strong>${t("hun.accessoryEffects")}</strong><small>${t("hun.effectHint")}</small></span><input type="checkbox" data-hun-path="experimental.accessory_effects" ${draft.experimental.accessory_effects ? 'checked' : ''}></label>` : '';
+    return `<div class="hun-categories" role="tablist" aria-label="${t("hun.categories")}">${Object.entries(categories()).map(([key, label]) => `<button role="tab" aria-selected="${key === category}" data-hun-action="category" data-hun-category="${key}" class="${key === category ? 'is-active' : ''}">${label}<span data-hun-count="${key}">${active(rowsOf(key))}/${rowsOf(key).length}</span>${badge(CATEGORY_WIRING[key])}</button>`).join('')}</div>
+      <p class="hun-note">${esc(wiring()[state][1])}${category === 'special' ? t("hun.specialHint") : ''}</p>${trial}
+      <div class="hun-filter-row"><label class="hun-search">${icon('search')}<input type="search" data-hun-search value="${esc(query)}" placeholder="${t("hun.searchHint")}" aria-label="${t("hun.search")}"></label><label class="hun-only-on"><input type="checkbox" data-hun-only-on ${onlyOn ? 'checked' : ''}>${t("hun.onlyEnabled")}</label><span class="hun-bulk"><button data-hun-action="all-on">${t("hun.enableAll")}</button><button data-hun-action="all-off">${t("hun.disableAll")}</button></span><span class="hun-grid-count"><strong data-hun-category-count>${active(rows)} / ${rows.length}</strong> ${t("hun.enabled")}</span></div>
       <div class="hun-grid" data-hun-grid>${tiles()}</div>`;
   }
 
   // ---------- the other sections ----------
   function number(label, path, value, opts = {}) { return `<label class="hun-field"><span>${esc(label)}</span><span class="hun-number"><input type="number" data-hun-path="${path}" value="${value ?? ''}" min="${opts.min ?? 0}" max="${opts.max ?? 1000}" step="${opts.step ?? 1}" ${opts.placeholder ? `placeholder="${esc(opts.placeholder)}"` : ''} ${opts.scale ? `data-hun-scale="${opts.scale}"` : ''}>${opts.unit ? `<span>${opts.unit}</span>` : ''}</span>${opts.tip ? `<small>${opts.tip}</small>` : ''}</label>`; }
   const toggle = (label, path, value, tip = '') => `<label class="hun-setting-toggle"><span><strong>${label}</strong>${tip ? `<small>${tip}</small>` : ''}</span><input type="checkbox" data-hun-path="${path}" ${value ? 'checked' : ''}></label>`;
-  function statLabel(field) { return window.PGStatLabels?.label(field) || ({Health_Max:'血量上限', Shachi_Max:'杀气上限', Attack:'攻击力', ShachiAttack:'杀气攻击'}[field] || field); }
+  function statLabel(field) { return window.PGStatLabels?.label(field) || ({Health_Max:t("hun.maxHp"), Shachi_Max:t("hun.maxSha"), Attack:t("hun.attack"), ShachiAttack:t("hun.shaDamage")}[field] || field); }
   function overrideRows(group, fields, labels, placeholder) { return `<div class="hun-parameter-grid">${fields.map(field => number(labels(field), group + '.' + field, draft[group][field], {min: group === 'ai_parameters' && data.ai_parameters[field] !== 'float' ? 0 : -1e9, max: group === 'ai_parameters' && data.ai_parameters[field] === 'bool' ? 1 : 1e9, step: group === 'ai_parameters' && data.ai_parameters[field] !== 'float' ? 1 : 'any', placeholder})).join('')}</div>`; }
   function attributes() {
     const core = ['Health_Max', 'Shachi_Max', 'Attack', 'ShachiAttack'];
-    return `<p class="hun-note">填了的数值会在魂出生后写入并读回，未填写的基础战力按主角永久成长计算，再叠加饰品。只影响之后召唤的魂。</p><div class="hun-panel"><h3>基础战力</h3>${overrideRows('attributes', core, statLabel, '游戏原值')}</div>${(window.PGStatLabels?.groups || []).map(g => { const fields = g.fields.filter(f => data.attributes.includes(f) && !core.includes(f)); return fields.length ? `<details class="hun-parameter-group"><summary>${esc(window.PGStatLabels.heading(g))}<span>${fields.filter(f => Object.hasOwn(draft.attributes, f)).length} 项已填</span></summary>${overrideRows('attributes', fields, statLabel, '游戏原值')}</details>` : ''; }).join('')}`;
+    return `<p class="hun-note">${t("hun.attributesHint")}</p><div class="hun-panel"><h3>${t("hun.baseStats")}</h3>${overrideRows('attributes', core, statLabel, t("hun.nativeValue"))}</div>${(window.PGStatLabels?.groups || []).map(g => { const fields = g.fields.filter(f => data.attributes.includes(f) && !core.includes(f)); return fields.length ? `<details class="hun-parameter-group"><summary>${esc(window.PGStatLabels.heading(g))}<span>${fields.filter(f => Object.hasOwn(draft.attributes, f)).length} ${t("hun.overrides")}</span></summary>${overrideRows('attributes', fields, statLabel, t("hun.nativeValue"))}</details>` : ''; }).join('')}`;
   }
   function strategy() {
-    const params = window.PG_AI_PARAMS || [], labels = f => params.find(p => p.name === f)?.label?.zh || f;
-    return `<p class="hun-note">${esc(WIRING.on[1])}</p><div class="hun-panel"><h3>防御与反击</h3><div class="hun-parameter-grid">${[['精防尝试概率', 'deflect_chance'], ['红光闪避概率', 'red_dodge_chance'], ['闪避后反击倾向', 'counter_chance']].map(([label, key]) => number(label, 'ai.' + key, 100 * draft.ai[key], {max: 100, scale: 100, unit: '%'})).join('')}</div></div><div class="hun-panel"><h3>出招与武器切换</h3>${toggle('优先考虑后期武器', 'ai.late_weapon_bias', draft.ai.late_weapon_bias, '在目标、资源与动作条件合适时，提高后期武器的选择权重。')}<label class="hun-field"><span>重复出招</span><select data-hun-path="ai.repeat_policy"><option value="soft" ${draft.ai.repeat_policy === 'soft' ? 'selected' : ''}>尽量避免重复，紧急情况允许</option><option value="none" ${draft.ai.repeat_policy === 'none' ? 'selected' : ''}>不限制重复</option></select></label>${number('连招长度上限', 'ai.combo_limit', draft.ai.combo_limit, {max: 100, tip: '0 表示交给角色自行判断。'})}</div><details class="hun-parameter-group"><summary>行为参数<span>${Object.keys(draft.ai_parameters).length} 项已填</span></summary>${overrideRows('ai_parameters', Object.keys(data.ai_parameters), labels, '游戏原值')}</details>`;
+    const params = window.PG_AI_PARAMS || [], labels = f => params.find(p => p.name === f)?.label?.[I18N.lang] || f;
+    return `<p class="hun-note">${esc(wiring().on[1])}</p><div class="hun-panel"><h3>${t("hun.defense")}</h3><div class="hun-parameter-grid">${[[t("hun.parry"), 'deflect_chance'], [t("hun.dodge"), 'red_dodge_chance'], [t("hun.counter"), 'counter_chance']].map(([label, key]) => number(label, 'ai.' + key, 100 * draft.ai[key], {max: 100, scale: 100, unit: '%'})).join('')}</div></div><div class="hun-panel"><h3>${t("hun.rotation")}</h3>${toggle(t("hun.lateWeapons"), 'ai.late_weapon_bias', draft.ai.late_weapon_bias, t("hun.lateHint"))}<label class="hun-field"><span>${t("hun.repeats")}</span><select data-hun-path="ai.repeat_policy"><option value="soft" ${draft.ai.repeat_policy === 'soft' ? 'selected' : ''}>${t("hun.avoidRepeats")}</option><option value="none" ${draft.ai.repeat_policy === 'none' ? 'selected' : ''}>${t("hun.allowRepeats")}</option></select></label>${number(t("hun.comboLimit"), 'ai.combo_limit', draft.ai.combo_limit, {max: 100, tip: `0 ${t("hun.autoCombo")}`})}</div><details class="hun-parameter-group"><summary>${t("hun.ai")}<span>${Object.keys(draft.ai_parameters).length} ${t("hun.overrides")}</span></summary>${overrideRows('ai_parameters', Object.keys(data.ai_parameters), labels, t("hun.nativeValue"))}</details>`;
   }
-  function resources() { return `<p class="hun-note">血药与影之武装使用各自的资源规则。免疫选项的原生招式覆盖范围仍待实测。</p><div class="hun-panel"><h3>血药与技能</h3><div class="hun-parameter-grid">${number('血药携带量', 'resources.medicine_count', draft.resources.medicine_count === 'native_max' ? '' : draft.resources.medicine_count, {max: 10000, placeholder: '原版最高携带量'})}${number('技能冷却倍率', 'resources.cooldown_scale', draft.resources.cooldown_scale, {max: 10, step: .1, unit: '倍', tip: '1 倍为原版冷却。'})}</div>${toggle('血药正常消耗', 'resources.consume_medicine', draft.resources.consume_medicine)}${toggle('技能资源正常消耗', 'resources.consume_skill_resources', draft.resources.consume_skill_resources)}</div><div class="hun-panel"><h3>受击与致死规则</h3><div class="hun-parameter-grid">${[['grab', '能否被抓取'], ['execution', '能否被处决'], ['lethal', '原版致死招式']].map(([key, label]) => `<label class="hun-field"><span>${label}</span><select data-hun-path="survival.${key}"><option value="native" ${draft.survival[key] === 'native' ? 'selected' : ''}>遵循原版</option><option value="immune" ${draft.survival[key] === 'immune' ? 'selected' : ''}>免疫</option></select></label>`).join('')}</div></div>`; }
-  function phases() { return `<p class="hun-note">${esc(WIRING.on[1])}在指定血线优先切换武器并尝试原生技能；条件不满足时跳过。</p><div class="hun-phases">${draft.phases.map((p, i) => `<section class="hun-panel hun-phase" data-hun-phase="${i}"><div class="hun-phase-head"><span class="hun-phase-number">${String(i + 1).padStart(2, '0')}</span><input class="hun-phase-name" data-hun-path="phases.${i}.name" value="${esc(p.name)}" maxlength="60" aria-label="阶段名称"><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.enabled" ${p.enabled ? 'checked' : ''}>启用</label><button class="hun-icon-button" data-hun-action="phase-remove" data-hun-index="${i}" aria-label="删除${esc(p.name)}">${icon('close')}</button></div><div class="hun-parameter-grid">${number('剩余血量不高于', 'phases.' + i + '.health_below', p.health_below * 100, {min: 1, max: 100, scale: 100, unit: '%'})}<label class="hun-field"><span>优先武器</span><select data-hun-path="phases.${i}.weapon_id">${data.catalog.items.filter(r => r.kind === 'main_weapon').map(r => `<option value="${r.id}" ${p.weapon_id === r.id ? 'selected' : ''}>${esc(displayName(r))}</option>`).join('')}</select></label>${number('优先级', 'phases.' + i + '.priority', p.priority, {max: 1000})}</div><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.once" ${p.once ? 'checked' : ''}>每只魂只触发一次</label></section>`).join('')}</div><button class="btn btn-secondary btn-sm" data-hun-action="phase-add" ${draft.phases.length >= 16 ? 'disabled' : ''}>${icon('plus')}添加阶段</button>`; }
+  function resources() { return `<p class="hun-note">${t("hun.resourceHint")}</p><div class="hun-panel"><h3>${t("hun.medicineSkills")}</h3><div class="hun-parameter-grid">${number(t("hun.medicine"), 'resources.medicine_count', draft.resources.medicine_count === 'native_max' ? '' : draft.resources.medicine_count, {max: 10000, placeholder: t("hun.nativeMedicine")})}${number(t("hun.cooldown"), 'resources.cooldown_scale', draft.resources.cooldown_scale, {max: 10, step: .1, unit: t("hun.multiplier"), tip: `1 ${t("hun.nativeCooldown")}`})}</div>${toggle(t("hun.consumeMedicine"), 'resources.consume_medicine', draft.resources.consume_medicine)}${toggle(t("hun.consumeSkill"), 'resources.consume_skill_resources', draft.resources.consume_skill_resources)}</div><div class="hun-panel"><h3>${t("hun.survival")}</h3><div class="hun-parameter-grid">${[['grab', t("hun.canGrab")], ['execution', t("hun.canExecute")], ['lethal', t("hun.lethals")]].map(([key, label]) => `<label class="hun-field"><span>${label}</span><select data-hun-path="survival.${key}"><option value="native" ${draft.survival[key] === 'native' ? 'selected' : ''}>${t("hun.native")}</option><option value="immune" ${draft.survival[key] === 'immune' ? 'selected' : ''}>${t("hun.immune")}</option></select></label>`).join('')}</div></div>`; }
+  function phaseWeaponOptions(selected) {
+    return data.catalog.items.filter(row => row.kind === 'main_weapon').map(row => {
+      const disabled = row.has_combat_art === false;
+      const label = disabled ? displayName(row) + ' · ' + t('hun.noCombatArt') : displayName(row);
+      return `<option value="${row.id}" ${selected === row.id ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${esc(label)}</option>`;
+    }).join('');
+  }
+  function phases() { return `<p class="hun-note">${esc(wiring().on[1])}${t("hun.phaseHint")}</p><div class="hun-phases">${draft.phases.map((p, i) => `<section class="hun-panel hun-phase" data-hun-phase="${i}"><div class="hun-phase-head"><span class="hun-phase-number">${String(i + 1).padStart(2, '0')}</span><input class="hun-phase-name" data-hun-path="phases.${i}.name" value="${esc(phaseName(p.name))}" maxlength="60" aria-label="${t("hun.phaseName")}"><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.enabled" ${p.enabled ? 'checked' : ''}>${t("hun.enable")}</label><button class="hun-icon-button" data-hun-action="phase-remove" data-hun-index="${i}" aria-label="${t("hun.removePhase")}${esc(phaseName(p.name))}">${icon('close')}</button></div><div class="hun-parameter-grid">${number(t("hun.hpThreshold"), 'phases.' + i + '.health_below', p.health_below * 100, {min: 1, max: 100, scale: 100, unit: '%'})}<label class="hun-field"><span>${t("hun.phaseWeapon")}</span><select data-hun-path="phases.${i}.weapon_id">${phaseWeaponOptions(p.weapon_id)}</select></label>${number(t("hun.priority"), 'phases.' + i + '.priority', p.priority, {max: 1000})}</div><label class="hun-inline-toggle"><input type="checkbox" data-hun-path="phases.${i}.once" ${p.once ? 'checked' : ''}>${t("hun.once")}</label></section>`).join('')}</div><button class="btn btn-secondary btn-sm" data-hun-action="phase-add" ${draft.phases.length >= 16 ? 'disabled' : ''}>${icon('plus')}${t("hun.addPhase")}</button>`; }
   const BODIES = {equipment, attributes, strategy, resources, phases};
   function summary(key) {
     if (key === 'equipment') return equipmentSummary();
-    if (key === 'attributes') return Object.keys(draft.attributes).length ? Object.keys(draft.attributes).length + ' 项已填' : '全部用游戏原值';
-    if (key === 'strategy') return `精防 ${Math.round(draft.ai.deflect_chance * 100)}% · 闪避 ${Math.round(draft.ai.red_dodge_chance * 100)}%`;
-    if (key === 'resources') return draft.resources.medicine_count === 'native_max' ? '血药按原版' : '血药 ' + draft.resources.medicine_count;
-    return draft.phases.filter(p => p.enabled).length + ' 个阶段启用';
+    if (key === 'attributes') return Object.keys(draft.attributes).length ? Object.keys(draft.attributes).length + ` ${t("hun.overrides")}` : t("hun.allNative");
+    if (key === 'strategy') return `${t("hun.parryShort")} ${Math.round(draft.ai.deflect_chance * 100)}% ${t("hun.dodgeShort")} ${Math.round(draft.ai.red_dodge_chance * 100)}%`;
+    if (key === 'resources') return draft.resources.medicine_count === 'native_max' ? t("hun.nativeSupply") : `${t("hun.medicineShort")} ` + draft.resources.medicine_count;
+    return draft.phases.filter(p => p.enabled).length + ` ${t("hun.activePhases")}`;
   }
   function section(key) {
     const shown = open.has(key);
-    return `<section class="hun-section card ${shown ? 'is-open' : ''}" data-hun-section="${key}"><button type="button" class="hun-section-head" data-hun-action="section" data-hun-section-key="${key}" aria-expanded="${shown}"><span class="hun-chevron">${icon('chevron')}</span><h2>${SECTIONS[key]}</h2><span class="hun-section-summary" data-hun-summary="${key}">${esc(summary(key))}</span>${SECTION_WIRING[key] ? badge(SECTION_WIRING[key]) : ''}</button>${shown ? `<div class="hun-section-body">${BODIES[key]()}</div>` : ''}</section>`;
+    return `<section class="hun-section card ${shown ? 'is-open' : ''}" data-hun-section="${key}"><button type="button" class="hun-section-head" data-hun-action="section" data-hun-section-key="${key}" aria-expanded="${shown}"><span class="hun-chevron">${icon('chevron')}</span><h2>${sections()[key]}</h2><span class="hun-section-summary" data-hun-summary="${key}">${esc(summary(key))}</span>${SECTION_WIRING[key] ? badge(SECTION_WIRING[key]) : ''}</button>${shown ? `<div class="hun-section-body">${BODIES[key]()}</div>` : ''}</section>`;
   }
   function render() {
     const el = root(); if (!el || !draft) return;
-    el.innerHTML = `${side()}<div class="hun-main">${Object.keys(SECTIONS).map(section).join('')}</div><dialog class="hun-detail-dialog" aria-label="装备设置"></dialog>`;
+    el.innerHTML = `${side()}<div class="hun-main">${Object.keys(sections()).map(section).join('')}</div><dialog class="hun-detail-dialog" aria-label="${t("hun.itemSettings")}"></dialog>`;
     iconCache = rt()?.state?.icons;
     if (busy) for (const field of el.querySelectorAll('input,select,button')) field.disabled = true;
     el.setAttribute('aria-busy', String(busy));
@@ -156,13 +169,16 @@ window.PGHun = (() => {
     if (iconCache !== rt()?.state?.icons) {
       iconCache = rt()?.state?.icons;
       for (const slot of el.querySelectorAll('[data-hun-image-slot]')) {
-        const id = slot.dataset.hunImageSlot; if (imageURL(id)) slot.outerHTML = art(id, id === 'HunCharacter' ? '魂' : data.catalog.items.find(r => r.id === id)?.name || '装备', id === 'HunCharacter');
+        const id = slot.dataset.hunImageSlot;
+        if (!imageURL(id)) continue;
+        const row = data.catalog.items.find(r => r.id === id);
+        slot.outerHTML = art(id, row ? displayName(row) : t("hun.soul"), id === 'HunCharacter');
       }
     }
   }
   function changedView() {
     const el = root(); if (!el) return;
-    el.querySelector('[data-hun-dirty]').textContent = changed() ? '有未保存的调整' : '当前方案已保存';
+    el.querySelector('[data-hun-dirty]').textContent = changed() ? t("hun.unsaved") : t("hun.savedState");
     for (const label of el.querySelectorAll('[data-hun-summary]')) label.textContent = summary(label.dataset.hunSummary);
     for (const label of el.querySelectorAll('[data-hun-count]')) { const rows = rowsOf(label.dataset.hunCount); label.textContent = active(rows) + '/' + rows.length; }
     const categoryCount = el.querySelector('[data-hun-category-count]'); if (categoryCount) { const rows = rowsOf(category); categoryCount.textContent = active(rows) + ' / ' + rows.length; }
@@ -172,41 +188,54 @@ window.PGHun = (() => {
     const value = draft.items[id];
     box.classList.toggle('is-enabled', value.enabled);
     box.querySelector('input[data-hun-item-field="enabled"]').checked = value.enabled;
-    if (!row.variant) box.querySelector('[data-hun-tile-meta]').textContent = [levelText(row), value.soul ? '铸魂' : ''].filter(Boolean).join(' · ');
+    if (!item(row).variant) box.querySelector('[data-hun-tile-meta]').textContent = [levelText(row), value.soul ? t("hun.tempered") : ''].filter(Boolean).join(' · ');
   }
   async function mount() {
     if (!subscribed && rt()?.subscribe) { subscribed = true; rt().subscribe(event => {
       if (event.type === 'job') {
         const job = event.job;
         if (job.id !== lastJob || job.status === 'pending') return;
-        pendingJob = null; showNotice(receipt(job), job.status === 'succeeded' ? 'ok' : 'error');
+        pendingJob = null; showNotice(() => receipt(job), job.status === 'succeeded' ? 'ok' : 'error');
       } else if (event.type === 'state' && event.parts && !event.parts.has('hun') && !event.parts.has('keys') && iconCache === rt()?.state?.icons) return;
       stateChanged();
     }); }
     if (data) { render(); return; }
     const token = ++epoch; busy = true;
-    if (root()) root().innerHTML = '<div class="hun-loading" role="status">正在读取角色方案…</div>';
+    if (root()) root().innerHTML = `<div class="hun-loading" role="status">${t("hun.reading")}</div>`;
     try { const reply = await rt().hun.load(); if (token !== epoch) return; data = reply; draft = clone(reply.profile); baseline = JSON.stringify(draft); notice = reply.error || ''; noticeKind = reply.error ? 'error' : ''; }
-    catch (error) { if (root()) root().innerHTML = `<div class="hun-loading"><h2>方案未能载入</h2><p>${esc(error.message || '请检查助手连接。')}</p><button class="btn btn-secondary" data-hun-action="reload">重新载入</button></div>`; }
+    catch (error) { if (root()) root().innerHTML = `<div class="hun-loading"><h2>${t("hun.loadFailed")}</h2><p>${esc(I18N.combatMessage(error.message) || t("hun.connectionError"))}</p><button class="btn btn-secondary" data-hun-action="reload">${t("hun.reload")}</button></div>`; }
     finally { if (token === epoch) { busy = false; render(); } }
   }
-  function showNotice(message, kind = '') { notice = message; noticeKind = kind; const box = root()?.querySelector('#hun-message'); if (box) { box.textContent = message; box.classList.toggle('is-error', kind === 'error'); } }
-  function checkInputs() { const invalid = root()?.querySelector('input:invalid,select:invalid'); if (invalid) { invalid.reportValidity(); throw new Error('请检查标出的输入值。'); } }
+  function showNotice(message, kind = '') { notice = message; noticeKind = kind; const box = root()?.querySelector('#hun-message'); if (box) { box.textContent = noticeText(); box.classList.toggle('is-error', kind === 'error'); } }
+  function checkInputs() {
+    for (const [field, value] of Object.entries(draft.attributes)) {
+      const error = window.PGStatLabels?.valueError?.(field, value);
+      if (!error) continue;
+      if (!open.has('attributes')) { open.add('attributes'); render(); }
+      const input = root()?.querySelector(`[data-hun-path="attributes.${CSS.escape(field)}"]`);
+      const group = input?.closest('details');
+      if (group) group.open = true;
+      input?.focus();
+      throw new Error(error);
+    }
+    const invalid = root()?.querySelector('input:invalid,select:invalid');
+    if (invalid) { invalid.reportValidity(); throw new Error(t("hun.invalid")); }
+  }
   async function save() { const reply = await rt().hun.save({revision: data.revision, profile: clone(draft)}); data = {...data, ...reply}; draft = clone(reply.profile); baseline = JSON.stringify(draft); }
   // One item's settings: on or off, level or refinement, soul-forged form, pick weight, and what it does.
   function inspect(id) {
     const row = data.catalog.items.find(r => r.id === id); if (!row) return;
     const value = draft.items[id], accessory = row.kind === 'accessory', weighted = row.kind === 'main_weapon' || row.kind === 'shadow_armament';
     const dialog = root().querySelector('dialog');
-    dialog.innerHTML = `<button class="hun-icon-button hun-dialog-close" data-hun-action="close-dialog" aria-label="关闭">${icon('close')}</button>
-      <div class="hun-dialog-top"><div class="hun-dialog-art">${art(id, row.name)}</div><div><h2>${esc(displayName(row))}</h2><p>${esc(row.description || (row.source === 'resource_only' ? '独立保留的剧情或交互配置。' : '当前条目没有正式装备说明。'))}</p></div></div>
+    dialog.innerHTML = `<button class="hun-icon-button hun-dialog-close" data-hun-action="close-dialog" aria-label="${t("hun.close")}">${icon('close')}</button>
+      <div class="hun-dialog-top"><div class="hun-dialog-art">${art(id, item(row).name)}</div><div><h2>${esc(displayName(row))}</h2><p>${esc(item(row).description || (row.source === 'resource_only' ? t("hun.storyItem") : t("hun.noDescription")))}</p></div></div>
       <div class="hun-dialog-controls" data-hun-id="${id}">
-        <label class="hun-setting-toggle"><span><strong>启用</strong></span><input type="checkbox" data-hun-item-field="enabled" ${value.enabled ? 'checked' : ''}></label>
-        <label class="hun-field"><span>${accessory ? '精炼' : '等级'}</span><span class="hun-number"><input type="number" data-hun-item-field="level" value="${value.level === 'max' ? '' : value.level}" min="${accessory ? 0 : 1}" max="${row.level_max || 1}" placeholder="${row.level_max ? '最高（' + row.level_max + '）' : '未确认'}" ${row.level_max ? '' : 'disabled'}></span></label>
-        ${row.soul_option ? `<label class="hun-setting-toggle"><span><strong>铸魂形态</strong></span><input type="checkbox" data-hun-item-field="soul" ${value.soul ? 'checked' : ''}></label>` : ''}
-        ${weighted ? `<label class="hun-field"><span>出场权重</span><span class="hun-number"><input type="number" data-hun-item-field="weight" value="${value.weight}" min="0" max="1000" step="0.1"></span><small>越大越常被选用；0 表示不主动选用。</small></label>` : ''}
+        <label class="hun-setting-toggle"><span><strong>${t("hun.enable")}</strong></span><input type="checkbox" data-hun-item-field="enabled" ${value.enabled ? 'checked' : ''}></label>
+        <label class="hun-field"><span>${accessory ? t("hun.refinement") : t("hun.level")}</span><span class="hun-number"><input type="number" data-hun-item-field="level" value="${value.level === 'max' ? '' : value.level}" min="${accessory ? 0 : 1}" max="${row.level_max || 1}" placeholder="${row.level_max ? t('hun.maxLabel', {n:row.level_max}) : t("hun.unknown")}" ${row.level_max ? '' : 'disabled'}></span></label>
+        ${row.soul_option ? `<label class="hun-setting-toggle"><span><strong>${t("hun.soulForm")}</strong></span><input type="checkbox" data-hun-item-field="soul" ${value.soul ? 'checked' : ''}></label>` : ''}
+        ${weighted ? `<label class="hun-field"><span>${t("hun.weight")}</span><span class="hun-number"><input type="number" data-hun-item-field="weight" value="${value.weight}" min="0" max="1000" step="0.1"></span><small>${t("hun.weightHint")}</small></label>` : ''}
       </div>
-      <dl><div><dt>来源</dt><dd>${row.source === 'resource_only' ? '剧情或交互配置' : '游戏装备资料'}</dd></div><div><dt>现在的状态</dt><dd>${WIRING[CATEGORY_WIRING[row.source === 'resource_only' ? 'special' : row.kind]][0]}</dd></div></dl>`;
+      <dl><div><dt>${t("hun.source")}</dt><dd>${row.source === 'resource_only' ? t("hun.storySource") : t("hun.gameSource")}</dd></div><div><dt>${t("hun.status")}</dt><dd>${wiring()[CATEGORY_WIRING[row.source === 'resource_only' ? 'special' : row.kind]][0]}</dd></div></dl>`;
     dialog.showModal();
   }
   async function action(name, button) {
@@ -221,24 +250,24 @@ window.PGHun = (() => {
       if (['reset', 'all-on', 'all-off', 'undo'].includes(name)) {
         if (name === 'undo') { if (undo) { const previous = draft; draft = undo; undo = previous; } }
         else { undo = clone(draft); if (name === 'reset') draft = clone(data.defaults); else for (const item of rowsOf(category)) draft.items[item.id].enabled = name === 'all-on'; }
-        notice = '调整尚未保存，可继续编辑或撤销。'; noticeKind = ''; render(); return;
+        notice = () => t("hun.draftHint"); noticeKind = ''; render(); return;
       }
-      if (name === 'phase-add') { if (draft.phases.length >= 16) return; let id; do { id = 'phase_' + Date.now().toString(36) + '_' + (++serial); } while (draft.phases.some(p => p.id === id)); draft.phases.push({...clone(data.defaults.phases[0]), id, name: '阶段 ' + (draft.phases.length + 1), health_below: .5}); render(); return; }
+      if (name === 'phase-add') { if (draft.phases.length >= 16) return; let id; do { id = 'phase_' + Date.now().toString(36) + '_' + (++serial); } while (draft.phases.some(p => p.id === id)); draft.phases.push({...clone(data.defaults.phases[0]), id, name: `${t("hun.phase")} ` + (draft.phases.length + 1), health_below: .5}); render(); return; }
       if (name === 'phase-remove') { undo = clone(draft); draft.phases.splice(Number(button.dataset.hunIndex), 1); render(); return; }
       checkInputs();
       if (name === 'export') {
         const blob = new Blob([JSON.stringify({format: 'PhantomGladiatorHunProfile', version: 1, profile: draft}, null, 2)], {type: 'application/json'}), url = URL.createObjectURL(blob), link = document.createElement('a');
-        link.href = url; link.download = (draft.name.replace(/[\\/:*?"<>|]/g, '_') || '魂角色方案') + '.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showNotice('方案已导出。'); return;
+        link.href = url; link.download = (draft.name.replace(/[\\/:*?"<>|]/g, '_') || t("hun.defaultFile")) + '.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showNotice(() => t("hun.exported")); return;
       }
-      if (name === 'summon' && !canSummon()) { showNotice(availability(), 'error'); return; }
-      busy = true; notice = name === 'summon' ? '正在保存并提交召唤…' : '正在保存方案…'; noticeKind = ''; render();
-      if (name === 'save') { await save(); notice = '方案已保存。'; }
+      if (name === 'summon' && !canSummon()) { showNotice(availability, 'error'); return; }
+      busy = true; notice = () => name === 'summon' ? t("hun.submitting") : t("hun.saving"); noticeKind = ''; render();
+      if (name === 'save') { await save(); notice = () => t("hun.saved"); }
       else if (name === 'summon') {
         if (changed()) await save();
         const job = await rt().command('hun_body_probe', {team: button.dataset.hunTeam, count: draft.count, profile_revision: data.revision}); lastJob = job.id; pendingJob = job.status === 'pending' ? job.id : null;
-        notice = receipt(job); noticeKind = ['pending', 'succeeded'].includes(job.status) ? '' : 'error';
+        notice = () => receipt(job); noticeKind = ['pending', 'succeeded'].includes(job.status) ? '' : 'error';
       }
-    } catch (error) { showNotice(error.message || '操作未完成，请重试。', 'error'); }
+    } catch (error) { showNotice(error.message || t("hun.retry"), 'error'); }
     finally { if (busy) { busy = false; render(); } }
   }
   function edit(el) {
@@ -248,7 +277,7 @@ window.PGHun = (() => {
     if (el.dataset.hunItemField) {
       const id = el.closest('[data-hun-id]').dataset.hunId, key = el.dataset.hunItemField;
       draft.items[id][key] = el.type === 'checkbox' ? el.checked : el.value === '' && key === 'level' ? 'max' : Number(el.value);
-      if (key === 'enabled' && onlyOn && !el.closest('dialog')) root().querySelector('[data-hun-grid]').innerHTML = tiles(); else refreshTile(id);
+      if (key === 'enabled' && onlyOn) root().querySelector('[data-hun-grid]').innerHTML = tiles(); else refreshTile(id);
     } else if (el.dataset.hunPath) {
       const parts = el.dataset.hunPath.split('.'), key = parts.pop(); let obj = draft; for (const part of parts) obj = obj[part];
       if (el.type === 'checkbox') obj[key] = el.checked;
@@ -267,9 +296,9 @@ window.PGHun = (() => {
     if (el.tagName === 'SELECT') { edit(el); return; }
     if (!el.matches('[data-hun-import]') || !el.files[0]) return;
     try {
-      const file = el.files[0]; if (file.size > 262144) throw new Error('方案文件过大，请使用导出的角色方案。'); busy = true; render();
-      const reply = await rt().hun.save({revision: data.revision, import_text: await file.text()}); undo = clone(draft); data = {...data, ...reply}; draft = clone(reply.profile); baseline = JSON.stringify(draft); notice = '方案已导入并保存，场上角色保持原状。'; noticeKind = '';
-    } catch (error) { notice = error.message || '导入失败，原方案已保留。'; noticeKind = 'error'; }
+      const file = el.files[0]; if (file.size > 262144) throw new Error(t("hun.oversize")); busy = true; render();
+      const reply = await rt().hun.save({revision: data.revision, import_text: await file.text()}); undo = clone(draft); data = {...data, ...reply}; draft = clone(reply.profile); baseline = JSON.stringify(draft); notice = () => t("hun.imported"); noticeKind = '';
+    } catch (error) { notice = error.message || t("hun.importFailed"); noticeKind = 'error'; }
     finally { busy = false; render(); }
   });
   document.addEventListener('error', event => { const img = event.target; if (!img?.matches?.('[data-hun-image]') || !root()?.contains(img)) return; failedImages.add(img.getAttribute('src')); img.outerHTML = '<span class="hun-art-empty">' + icon('sword') + '</span>'; }, true);

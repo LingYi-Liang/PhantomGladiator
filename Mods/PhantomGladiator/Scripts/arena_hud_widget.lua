@@ -115,6 +115,8 @@ function Renderer.new(options)
             local value=displayNumber(hp)..' / '..displayNumber(maximum)
             if vitals and type(vitals.shachi)=='number' and type(vitals.shachiMax)=='number' then
                 value=value..'   杀气 '..displayNumber(vitals.shachi)..' / '..displayNumber(vitals.shachiMax)
+                local drop=require('hun_vitals').recentLoss(record,vitals.shachi,vitals.shachiMax,os.clock())
+                if drop then value=value..' (↓'..displayNumber(drop)..')' end
             end
             if readText(numeric)~=value then call(numeric,'SetText',makeText(value))end
             actual=U.field(bar,'CurPercent')

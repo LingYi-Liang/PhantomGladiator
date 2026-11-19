@@ -38,27 +38,34 @@ function Role.new(o)
         if not onGameThread() or not o.stat or not rawEffect then return end
         local a=U.unwrap(context)
         local r=bodies[U.key(a) or '']
-        if not r or (r.playerHitLines or 0)>=28 or not o.current(r) then return end
+        if not r or ((r.playerHitLines or 0)>=28 and (r.duelDamageLines or 0)>=24) or not o.current(r) then return end
         local effect=U.unwrap(rawEffect)
         if not effect then return end
         if not U.valid(effectLib) then effectLib=o.find('/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary') end
         local player=o.player();local key=U.key(player)
-        if not key then return end
+        local function identify(source)
+            local k=U.key(source);if not k or k==U.key(a) then return end
+            if k==key then return '玩家' end
+            local other=bodies[k];if other and o.current(other) then return other.team..'魂' end
+        end
         local _,source=call(effectLib,'EffectContextGetOriginalInstigatorActor',effect)
-        if U.key(source)~=key then _,source=call(effectLib,'EffectContextGetInstigatorActor',effect) end
-        if U.key(source)~=key then _,source=call(effectLib,'EffectContextGetEffectCauser',effect) end
-        if U.key(source)~=key then return end
-        r.playerHitLines=(r.playerHitLines or 0)+1
+        local who=identify(source)
+        if not who then _,source=call(effectLib,'EffectContextGetInstigatorActor',effect);who=identify(source) end
+        if not who then _,source=call(effectLib,'EffectContextGetEffectCauser',effect);who=identify(source) end
+        if not who then return end
+        local field=who=='玩家' and 'playerHitLines' or 'duelDamageLines'
+        if (r[field] or 0)>=(who=='玩家' and 28 or 24) then return end
+        r[field]=(r[field] or 0)+1
         local before=r.lastHudSample or {}
-        local _,fromPlayer=call(U.field(player,'Faction Component'),'GetFactionRelation',a)
-        local _,toPlayer=call(U.field(a,'Faction Component'),'GetFactionRelation',player)
-        o.log('[HunPlayerHit] '..r.team..' '..r.name..' 玩家命中 回调伤害='..tostring(U.unwrap(amount))..
+        local _,fromSource=call(U.field(source,'Faction Component'),'GetFactionRelation',a)
+        local _,toSource=call(U.field(a,'Faction Component'),'GetFactionRelation',source)
+        o.log((who=='玩家' and '[HunPlayerHit] ' or '[HunDuelHit] ')..r.team..' '..r.name..' '..who..'命中 回调伤害='..tostring(U.unwrap(amount))..
             ' 上次界面采样 HP='..tostring(before.hp)..' 杀气='..tostring(before.shachi)..
             ' 命中回调 HP='..tostring(o.stat(a,'Health'))..' 杀气='..tostring(o.stat(a,'Shachi'))..
             ' 下限='..tostring(o.stat(a,'Shachi_Min'))..' 上限='..tostring(o.stat(a,'Shachi_Max'))..
-            ' 受击杀气抗性='..tostring(o.stat(a,'Resistance_ImpactShachi'))..' 玩家对魂/魂对玩家='..
-            tostring(fromPlayer)..'/'..tostring(toPlayer))
-        r.awaitHitSample=true
+            ' 受击杀气抗性='..tostring(o.stat(a,'Resistance_ImpactShachi'))..' 攻击方对魂/魂对攻击方='..
+            tostring(fromSource)..'/'..tostring(toSource))
+        r.awaitHitSample=who
     end
     -- This native event has five arguments. Copy only numeric values for player -> registered team Hun hits.
     -- Unlike an area-wide damage trace this does not read combat maps or attach to the player's health functions.
@@ -69,30 +76,38 @@ function Role.new(o)
         local target=U.unwrap(select(n==6 and 2 or 1,...))
         local targetKey=U.key(target)
         local r=bodies[targetKey or '']
-        if not r or (r.bulletHitLines or 0)>=24 then return end
+        if not r then return end
         local module=U.unwrap(context);local source=U.field(module,'LastOwnerAvatar')
         local player=o.player();local playerKey=U.key(player)
         local moduleKey=U.key(module)
-        if not playerKey or U.key(source)~=playerKey or not moduleKey or not o.current(r) then return end
+        local sourceKey=U.key(source)
+        if not sourceKey or sourceKey==targetKey or not moduleKey or not o.current(r) then return end
+        local isPlayer=sourceKey==playerKey
+        local sourceRecord=bodies[sourceKey]
+        if not isPlayer and (not sourceRecord or not o.current(sourceRecord)) then return end
+        local counter=isPlayer and 'bulletHitLines' or 'duelHitLines'
+        if (r[counter] or 0)>=24 then return end
         local key=moduleKey..'/'..targetKey
         if not post then
             if pending>=32 then return end
             local stack=samples[key] or {};samples[key]=stack
-            stack[#stack+1]={hp=o.stat(target,'Health'),shachi=o.stat(target,'Shachi'),r=r,at=os.clock()}
+            stack[#stack+1]={source=sourceKey,hp=o.stat(target,'Health'),shachi=o.stat(target,'Shachi'),r=r,at=os.clock()}
             pending=pending+1
             return
         end
         local stack=samples[key];local old=stack and table.remove(stack)
         if old then pending=pending-1 end
         if stack and #stack==0 then samples[key]=nil end
-        if not old or old.r~=r then return end
-        r.bulletHitLines=(r.bulletHitLines or 0)+1
-        local _,fromPlayer=call(U.field(player,'Faction Component'),'GetFactionRelation',target)
-        o.log('[HunPlayerHit] 玩家→'..r.team..' '..r.name..' 原生命中调用前后 HP='..tostring(old.hp)..'→'..tostring(o.stat(target,'Health'))..
+        if not old or old.r~=r or old.source~=sourceKey then return end
+        r[counter]=(r[counter] or 0)+1
+        local asc=U.field(target,'AbilitySystemComponent')
+        local function count(name)local _,v=call(asc,'GetGameplayTagCount',{TagName=o.fname(name)});return tostring(v)end
+        local _,relation=call(U.field(source,'Faction Component'),'GetFactionRelation',target)
+        o.log((isPlayer and '[HunPlayerHit] 玩家→' or '[HunDuelHit] '..sourceRecord.team..'→')..r.team..' '..r.name..' 原生命中调用前后 HP='..tostring(old.hp)..'→'..tostring(o.stat(target,'Health'))..
             ' 杀气='..tostring(old.shachi)..'→'..tostring(o.stat(target,'Shachi'))..
             ' 下限/上限='..tostring(o.stat(target,'Shachi_Min'))..'/'..tostring(o.stat(target,'Shachi_Max'))..
-            ' 玩家对魂关系='..tostring(fromPlayer))
-        r.awaitHitSample=true
+            ' 攻击方对魂关系='..tostring(relation)..' 破防='..count('CharacterState.Stand.Break')..' 死亡='..count('CharacterState.Dead')..' 重生保护='..count('CharacterState.Immortal.HeiMoShang'))
+        r.awaitHitSample=isPlayer and '玩家' or '魂'
     end
     local function beforeBullet(...)bulletEvent(false,...)end
     local function afterBullet(...)bulletEvent(true,...)end
@@ -114,8 +129,16 @@ function Role.new(o)
         local ok,pre,after=pcall(register,key,fn,post or function()end)
         if ok and type(pre)=='number' and type(after)=='number' then hooks[key]={pre,after};o.log('[HunRole] 已登记 '..key)end
     end
+    local function observeHits(r)
+        local key=U.key(r.actor);if not key then return end
+        r.roleKey=key;bodies[key]=r
+        install(HIT,onDamage)
+        install(BULLET_HIT,beforeBullet,afterBullet)
+        install(CHECK_TARGET,function()end,rejectedTarget)
+    end
     function self:prepare(r)
         if not r or r.team=='companion' or not o.current(r) then return end
+        if r.team=='neutral' then observeHits(r) end
         local ai=o.aiOf and o.aiOf(r.actor)
         if not U.valid(ai) or U.key(U.field(ai,'Pawn'))~=U.key(r.actor) then return end
         local _,tree=call(ai,'GetStateTreeConfig')
@@ -153,10 +176,7 @@ function Role.new(o)
             r.managerKey=hmKey;managers[hmKey]=r
             install(CAN_HATE,canHate)
         end
-        r.roleKey=U.key(r.actor);bodies[r.roleKey]=r
-        install(HIT,onDamage)
-        install(BULLET_HIT,beforeBullet,afterBullet)
-        install(CHECK_TARGET,function()end,rejectedTarget)
+        observeHits(r)
         local list=U.array(U.field(hm,'HatredList')) or {}
         for _,actor in ipairs(list)do
             if U.key(actor)==U.key(player) then

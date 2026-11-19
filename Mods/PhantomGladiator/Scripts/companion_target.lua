@@ -26,7 +26,7 @@ function Targets.new(options)
         owned=current
         for key in pairs(seen)do if not owned[key]then seen[key]=nil end end
     end
-    function self:current(actor)
+    function self:current(actor,castTarget,castName)
         local key=U.key(actor);local record=key and owned[key]
         if not record or record.name~=nameOf(actor) or not alive(options,actor) then return nil end
         if options.stillOwned and options.stillOwned(actor)~=true then return nil end
@@ -37,17 +37,16 @@ function Targets.new(options)
         if not U.valid(targeting) then return nil end
         local called,owner=pcall(function()return targeting:GetOwner()end)
         if not called or U.key(U.unwrap(owner))~=key then return nil end
+        local bb=options.boardOf(actor);local boardKey=U.key(bb)
+        if not boardKey then return nil end
         local handler=U.field(targeting,'DefaultTargetHandler')
-        local bb=U.field(handler,'Blackboard')
-        local expected=options.boardOf(actor)
-        if not U.valid(bb) or not U.valid(expected) or U.key(bb)~=U.key(expected) then return nil end
+        if U.key(U.field(handler,'Blackboard'))~=boardKey or U.field(handler,'Target Key')==nil then
+            handler=options.boundHandler and options.boundHandler(actor,bb)
+            if U.key(U.field(handler,'Blackboard'))~=boardKey then return nil end
+        end
         local faction=U.field(actor,'Faction Component')
         if not U.valid(faction) then return nil end
-        for _,field in ipairs({'Target Key','LastSensedActorKey'})do
-            local targetKey,known=U.field(handler,field)
-            if not known or targetKey==nil then return nil end
-            local ok,target=pcall(function()return U.unwrap(bb:GetValueAsObject(targetKey))end)
-            if not ok then return nil end
+        local function hostile(target,field)
             local targetId=U.key(target)
             if targetId and targetId~=key and targetId~=playerKey and not owned[targetId]
                 and U.inWorld(target,world) and alive(options,target) and U.npcPath(target) then
@@ -62,7 +61,16 @@ function Targets.new(options)
                 end
             end
         end
-        return nil
+        for _,field in ipairs({'Target Key','LastSensedActorKey'})do
+            local targetKey,known=U.field(handler,field)
+            if not known or targetKey==nil then return nil end
+            local ok,target=pcall(function()return U.unwrap(bb:GetValueAsObject(targetKey))end)
+            if not ok then return nil end
+            local enemy=hostile(target,field)
+            if enemy then return enemy end
+        end
+        -- An already launched volley may outlast the AI's target key. Revalidate its own enemy.
+        if castName and castName==nameOf(castTarget) then return hostile(castTarget,'本次剑雨起手目标') end
     end
     return self
 end

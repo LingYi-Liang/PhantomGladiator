@@ -354,7 +354,7 @@ test('an effect that reads the player position by itself follows the opponent wh
     redAt={X=300,Y=0,Z=0};loop()
     assert(sets.UE_TestTargetPos.X==300,'follows the opponent')
     loop();loop()
-    assert(scans==3,'looks only a few times')
+    assert(scans==1,'a launch that already found its particle needs no more world scans')
     local replacement=bullet(red,rain,2)
     mine.BulletOwnerAvatar=red;mine.ParticleComponent=replacement.ParticleComponent
     mine.ParticleComponent.GetOwner=function()return mine end

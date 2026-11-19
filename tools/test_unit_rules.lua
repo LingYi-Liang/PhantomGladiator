@@ -24,6 +24,14 @@ local function actor(class)
         return {IsValid=function()return true end,GetFName=function()return {ToString=function()return class end}end}
     end}
 end
+do
+    local fs=filesystem();local rules=new(fs)
+    for _,id in ipairs({'BP_Monster_HuaShan_Blue','BP_Monster_HuaShan_RedTroop_BigBro','BP_Monster_JadeMaskMan','BP_Monster_FemaleVessel_YuZan','BP_Monster_XiaoXue','BP_Monster_Danghui','BP_Monster_CanQu_BiHai'})do
+        assert(rules:get(id,'entourage')=='off' and rules:set(id,'entourage','on').ok)
+        assert(new(fs):get(id,'entourage')=='on' and rules:set(id,'entourage','off').ok)
+    end
+    assert(not rules:set('BP_Monster_Dog','entourage','on').ok)
+end
 -- Defaults, a choice saved and read back, the default again takes the row away.
 do
     local fs,lines=filesystem(),{}

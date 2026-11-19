@@ -130,13 +130,17 @@ function Body.new(o)
         end
         if mine~='blue'and mine~='red'then return {}end
         local player=U.key(o.player())
-        local target=o.target and o.target(r.actor,mine)
-        local targetKey=U.key(target)
-        if targetKey and targetKey~=key and targetKey~=player and U.inWorld(target,o.world()) then return {target} end
+        if o.target then
+            local target=o.target(r.actor,mine)
+            local targetKey=U.key(target)
+            if targetKey and targetKey~=key and targetKey~=player and U.inWorld(target,o.world()) then return {target} end
+            return {}
+        end
         local list={}
         for _,m in ipairs(lastMembers)do
             local k=U.key(m.actor)
-            if k and k~=key and k~=player and(m.team=='blue'or m.team=='red')and m.team~=mine then list[#list+1]=m.actor end
+            if k and k~=key and k~=player and not m.stand and not m.reserve and not m.aid
+                and (m.team=='blue' or m.team=='red') and m.team~=mine then list[#list+1]=m.actor end
         end
         return list
     end
@@ -173,7 +177,16 @@ function Body.new(o)
         local ok,why=pcall(fn,module,...)
         if not ok then say(method..' 中断：'..tostring(why))end
     end
-    -- Reads both tags on this instance, sets a non-zero one to zero and reads it again.
+    local function mayRevealAfterSpawn(asc)
+        for _,tag in ipairs({'Ability.Executed','Ability.Action.Execution','CharacterState.HitReact.State.Executing',
+            'Ability.Action.Hun.HeiMoShang.Reborn','CharacterState.Immortal.HeiMoShang','CharacterState.Vanish',
+            'CharacterState.Unselectable.Force.Perform','CharacterState.Dead'}) do
+            local got,count=call(asc,'GetGameplayTagCount',{TagName=fname(tag)})
+            if not got or count~=0 then return false end
+        end
+        return true
+    end
+    -- Reads both tags on this instance, sets a non-zero spawn tag to zero and reads it again.
     -- Returns whether both read zero afterwards, plus one text with every value read.
     local function clear(r)
         local asc=U.field(r.actor,'AbilitySystemComponent')
@@ -185,6 +198,7 @@ function Body.new(o)
             before=got and type(before)=='number'and before or nil
             local wrote,after='未写',before
             if before and before>0 then
+                if r.phase=='observed' and not mayRevealAfterSpawn(asc) then return false,'等待原生动作可见状态' end
                 if lib==nil then local found,object=pcall(find,ABILITY_UTILS);lib=found and U.valid(object)and object or false end
                 if not lib then wrote='找不到AbilityUtils'
                 elseif not current(r.actor,r)then wrote='实例已变化'
@@ -309,7 +323,8 @@ function Body.new(o)
         say('处决免疫 '..r.name..' 标签 '..tostring(before)..'→'..tostring(after))
     end
     local kitOptions={log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,current=owned,stats=getStats,stat=stat,
-        hp=o.hp,aiOf=o.aiOf,nativeTarget=o.nativeTarget,fighting=fighting,now=gameNow,clock=gameNow,loop=o.loop,cancel=o.cancel}
+        hp=o.hp,aiOf=o.aiOf,nativeTarget=o.nativeTarget,pairProtected=o.pairProtected,fighting=fighting,now=gameNow,clock=gameNow,
+        paused=o.paused,loop=o.loop,cancel=o.cancel}
     local defense=o.defense or require('hun_defense').new(kitOptions)
     local grabGuard=o.grabGuard or require('hun_grab_guard').new(kitOptions)
     local supply=o.supply or require('hun_supply').new(kitOptions)
@@ -652,7 +667,11 @@ function Body.new(o)
                     local again,after=call(asc,'GetGameplayEffectCount',cls,nil,true)
                     if sent and again and type(after)=='number' and after>before then
                         applied=applied+1
-                        if handle~=nil then r.accessoryHandles[#r.accessoryHandles+1]={handle=handle,cls=cls,label=effect.label,asc=asc}end
+                        if handle~=nil then
+                            local id=U.struct(handle,'Handle')
+                            local saved=type(id)=='number' and {Handle=id,bPassedFiltersAndWasExecuted=true} or handle
+                            r.accessoryHandles[#r.accessoryHandles+1]={handle=saved,cls=cls,label=effect.label,asc=asc,effect=effect}
+                        end
                     else
                         unconfirmed[#unconfirmed+1]=effect.label..'（调用='..tostring(sent==true)..' 层数'..tostring(before)..'→'..tostring(again and after)..'）'
                         if sent and handle and current(r.actor,r) then
@@ -668,6 +687,27 @@ function Body.new(o)
         say(category..'：实例='..r.name..'；方案启用'..#effects..'条；效果层数增加'..applied..'条'
             ..(#unconfirmed>0 and'；未确认：'..table.concat(unconfirmed,'、',1,math.min(#unconfirmed,12))..(#unconfirmed>12 and' 等'..#unconfirmed..'条'or'')or''))
         return applied
+    end
+    local regenPrefix='/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Regen_Lv'
+    local function suspendRegen(r)
+        if not r.accessoryHandles or not current(r.actor,r) then return end
+        local asc=U.field(r.actor,'AbilitySystemComponent')
+        local own=U.key(asc);if not own then return end
+        for i=#r.accessoryHandles,1,-1 do
+            local entry=r.accessoryHandles[i];local fx=entry.effect
+            if fx and (fx.path==regenPrefix..'1.GE_Accessory_Regen_Lv1_C' or fx.path==regenPrefix..'2.GE_Accessory_Regen_Lv2_C')
+                and U.key(entry.asc)==own then
+                local got,before=call(asc,'GetGameplayEffectCount',entry.cls,nil,true)
+                if got and type(before)=='number' and before>0 then
+                    local sent,result=call(asc,'RemoveActiveGameplayEffect',entry.handle,1)
+                    local read,after=call(asc,'GetGameplayEffectCount',entry.cls,nil,true)
+                    say('死亡停用周期回血 '..r.name..' 层数='..tostring(before)..'→'..tostring(after))
+                    if sent and result~=false and read and after==before-1 then
+                        table.remove(r.accessoryHandles,i);r.suspendedRegen=fx
+                    end
+                end
+            end
+        end
     end
     local function equip(r)
         local profile=r.loadout
@@ -733,10 +773,12 @@ function Body.new(o)
             return {ok=false,message='方案已变更，请重新召唤',spawned_count=0}
         end
         context={team=team,world=U.key(world),revision=revision,epoch=epoch,batch=batch,loadout=read and type(loadout)=='table'and loadout or nil}
-        local ok,result=pcall(arena.spawn,arena,Body.path,team,count)
+        local ok,result=pcall(arena.spawn,arena,Body.path,team,count,true)
         context=nil
         if not ok then return {ok=false,uncertain=true,message='魂本体生成未确认，停止继续尝试并先清理',spawned_count='unknown'}end
-        if type(result)=='table'then result.message=(result.message or'')..'；魂按召唤时的方案出战'end
+        if type(result)=='table' and (result.ok or (type(result.spawned_count)=='number' and result.spawned_count>0)) then
+            result.message=(result.message or'')..'；魂按召唤时的方案出战'
+        end
         return result
     end
     local function stopKit(r,why)
@@ -806,15 +848,17 @@ function Body.new(o)
     end
     function self:confirmedDead(actor)
         local r=records[U.key(actor) or '']
-        return r~=nil and r.dead==true and current(actor,r)
+        if not r or not r.dead or not current(actor,r) then return false end
+        -- Arena and HUD readers can run before the next support update.
+        return tagCount(actor,'CharacterState.Dead')~=0 or (hpOf(actor) or 0)<=0
     end
     function self:hudVitals(unit)
-        if not self:teamBarName(unit) then return end
+        if unit.class_path~=Body.path or not self:owns(unit.actor) then return end
         local r=records[U.key(unit.actor)]
         local v=Vitals.read(unit.actor,stat)
         if r.awaitHitSample then
-            r.awaitHitSample=nil
-            say('玩家命中后下一拍 '..r.team..' '..r.name..' HP='..tostring(v.hp)..' 杀气='..tostring(v.shachi)..'/'..tostring(v.shachiMax))
+            local who=type(r.awaitHitSample)=='string' and r.awaitHitSample or '玩家';r.awaitHitSample=nil
+            say(who..'命中后下一拍 '..r.team..' '..r.name..' HP='..tostring(v.hp)..' 杀气='..tostring(v.shachi)..'/'..tostring(v.shachiMax))
         end
         r.lastHudSample=v
         if self:confirmedDead(unit.actor) then v.hp=0 end
@@ -827,6 +871,7 @@ function Body.new(o)
         if next(dying)then tickDeaths()end
     end
     function self:follow(members)
+        local motionTime
         local owned={};for _,m in ipairs(members or{})do local key=U.key(m.actor);if key then owned[key]=true end end
         for key,r in pairs(records)do
             if not owned[key]or not current(r.actor,r)then
@@ -841,18 +886,31 @@ function Body.new(o)
                 if r.dead or (r.loadout and r.loadout.kit) or (hp and hp<=0) then
                     dead=tagCount(r.actor,'CharacterState.Dead')
                 end
-                if dead and dead>0 then r.sawDead=true end
                 if not r.dead and ((hp and hp<=0) or (dead and dead>0)) and not self:holdsDeath(r.actor)
                     and (tagCount(r.actor,'Ability.Action.Hun.HeiMoShang.Reborn') or 0)==0
                     and (tagCount(r.actor,'CharacterState.Immortal.HeiMoShang') or 0)==0 then
-                    r.dead=true;watchDeath(key,r)
-                elseif r.dead and r.sawDead and dead==0 and hp and hp>0 then
-                    r.dead,r.sawDead,r.deathWatched=false,false,false
+                    r.dead=true
+                    optional(supply,'interrupt',r);optional(shadows,'interrupt',r)
+                    r.supplyBusy,r.shadowBusy=false,false
+                    if r.intent then r.intent.busy=false;r.intent.busyUntil=nil;r.intent.incomingUntil=nil end
+                    watchDeath(key,r)
+                elseif r.dead and dead==0 and hp and hp>0 then
+                    r.dead,r.deathWatched=false,false
                     if dying[key] then endDeath(key,dying[key],'死亡标签已解除且生命为正') end
+                    optional(look,'restoreDeathVisibility',r)
+                    if r.suspendedRegen then
+                        local fx=r.suspendedRegen;r.suspendedRegen=nil;applyEffects(r,{fx},'重生恢复周期回血')
+                    end
+                    r.regenDeathChecked=nil
                     if r.intent then startBrain(r) end
                 end
+                if r.dead and dead and dead>0 and not r.regenDeathChecked and not self:holdsDeath(r.actor)
+                    and tagCount(r.actor,'Ability.Action.Hun.HeiMoShang.Reborn')==0
+                    and tagCount(r.actor,'CharacterState.Immortal.HeiMoShang')==0 then
+                    r.regenDeathChecked=true;suspendRegen(r)
+                end
             end
-            if records[key]==r and(r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
+            if records[key]==r and not r.dead and (r.phase=='finished'or r.phase=='observed')and r.checks<WATCH then
                 r.checks=r.checks+1
                 local zero,text_=clear(r)
                 if text_~=r.tags then say('标签变化（第'..r.checks..'次复查）：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero))end
@@ -877,7 +935,7 @@ function Body.new(o)
                     probe(r,'改后')
                     startSampler(key,r)
                     r.phase='observed'
-                elseif r.streak>=2 and hidden(r.actor)==true and not r.shown then
+                elseif r.streak>=2 and not r.shown and hidden(r.actor)==true and mayRevealAfterSpawn(U.field(r.actor,'AbilitySystemComponent')) then
                     -- The tags have read zero for two cycles in a row and the game still keeps the actor hidden.
                     r.shown=true
                     local wrote=call(r.actor,'SetActorHiddenInGame',false)
@@ -904,6 +962,10 @@ function Body.new(o)
                     say('复查结束：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
                     self.message=zero and'魂标签持续为0；外观和战斗表现以画面为准'or'魂的隐藏或不可仇恨标签没能保持为0，见日志'
                 end
+            end
+            if records[key]==r and r.phase=='observed' and not r.dead and r.motion then
+                motionTime=motionTime or gameNow()
+                if motionTime and motionTime>=r.motion.nextCheck then optional(look,'maintainMotion',r,motionTime) end
             end
             if records[key]==r and (r.team=='blue' or r.team=='red') and r.phase=='observed' and not r.dead then
                 local t=gameNow()

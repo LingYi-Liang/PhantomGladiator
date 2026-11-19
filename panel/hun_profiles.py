@@ -25,6 +25,10 @@ def clean_name(value):
     if not isinstance(value,str)or not 1<=len(value.strip())<=60 or any(ord(c)<32 for c in value):raise ValueError('方案名称需要1～60个可见字符')
     return value.strip()
 
+def stat_range_error(field,value,positive,non_negative):
+    if field in positive and value<=0:return field+' 必须大于 0'
+    if field in non_negative and value<0:return field+' 不能是负数'
+
 def default_profile():
     return {'schema':VERSION,'name':'满配魂','items':{key:{'enabled':True,'level':'max','soul':row['soul_option'],'weight':1.0}for key,row in ITEMS.items()},
         'growth':'native_max','attributes':{},'ai_parameters':{},
@@ -72,7 +76,7 @@ def loadout_text(revision,profile,positive=(),non_negative=()):
             append('phase',phase['id'],phase['health_below'],phase['weapon_id'],phase['priority'],phase['once'])
     for field in sorted(profile['attributes']):
         value=float(profile['attributes'][field])
-        if (field in positive and value<=0)or(field in non_negative and value<0):continue
+        if stat_range_error(field,value,positive,non_negative):continue
         lines.append('attr\t%s\t%s'%(field,format(value,'.10g')))
     lines.append('accessories\t'+('on'if profile['experimental']['accessory_effects']else'off'))
     seen=set()
@@ -179,6 +183,9 @@ class Store:
                 payload=decode(self.path.read_text(encoding='utf-8'))
                 exact(payload,('revision','profile'),'保存记录');integer(payload['revision'],1,2147483646,'版本')
                 profile=validate(payload['profile'],self.stat_fields,self.ai_fields);revision=payload['revision']
+                # Older versions saved these values in JSON but omitted them from the game copy.
+                profile['attributes']={field:value for field,value in profile['attributes'].items()
+                                       if not stat_range_error(field,value,self.positive,self.non_negative)}
             else:profile,revision=default_profile(),0
         except (OSError,UnicodeError,ValueError,TypeError) as err:
             self.error=str(err)
@@ -207,6 +214,9 @@ class Store:
         exact(request,('revision','profile'),'保存请求')
         integer(request['revision'],0,2147483645,'版本')
         profile=validate(request['profile'],self.stat_fields,self.ai_fields)
+        for field,value in profile['attributes'].items():
+            error=stat_range_error(field,value,self.positive,self.non_negative)
+            if error:raise ValueError(error)
         with self.lock:
             if self.resync:
                 self._load()

@@ -12,6 +12,7 @@
 -- four ChaosClothComponents. The head goes first and the body is swapped only after the head reads back, since
 -- Hun_Body_Simple has no head.
 local U=require('ue_observe')
+local Vitals=require('hun_vitals')
 local Look={}
 -- Switches of this build's Hun body steps. hun_body, arena_executions and arena_grabs read the ones that concern them.
 -- The weapon steps have their own table, hun_weapons.lua Weapons.STEPS.
@@ -196,7 +197,8 @@ function Look.new(o)
         if type(a)~='table'and type(a)~='userdata'then return nil end
         local ax,ay,az=U.struct(a,'X'),U.struct(a,'Y'),U.struct(a,'Z')
         local bx,by,bz=U.struct(b,'X'),U.struct(b,'Y'),U.struct(b,'Z')
-        for _,v in ipairs({ax,ay,az,bx,by,bz})do if type(v)~='number'then return nil end end
+        if type(ax)~='number' or type(ay)~='number' or type(az)~='number' or
+            type(bx)~='number' or type(by)~='number' or type(bz)~='number' then return nil end
         return math.sqrt((ax-bx)^2+(ay-by)^2+(az-bz)^2)
     end
     -- How far the head part's head socket is from the body's (cm), or nil when either cannot be read.
@@ -526,7 +528,11 @@ function Look.new(o)
         say('换动画类 读回 实例='..r.name..' 调用='..tostring(called==true)..' 动画实例='..current..' ABP_MM_Monster='..tostring(mmOK)..'（'..mmHow..'）'
             ..' ABP_Item_Hun_Summon='..tostring(itemOK)..'（'..itemHow..'） 武器挂接=['..sockets..']'..(sockets==before and''or'（原=['..before..']）')
             ..' verified='..tostring(verified))
-        if verified then r.appliedAnim=cls;return true end
+        if verified then
+            r.appliedAnim=cls
+            r.motion={class=mm,nextCheck=0,failures=0}
+            return true
+        end
         if still()then
             say('即将 还原动画类 实例='..r.name..' SetAnimInstanceClass('..short(old)..') + LinkDefaultAnimLayers')
             local back=call(mesh,'SetAnimInstanceClass',old)
@@ -535,6 +541,83 @@ function Look.new(o)
             say('还原动画类 实例='..r.name..' 调用='..tostring(back==true)..' 读回动画实例='..now..' 已还原='..tostring(now==short(old)))
         else say('还原动画类 实例='..r.name..'；实例已变化，不写')end
         return false
+    end
+    -- The native template can lose its locomotion layer while its item layer stays
+    -- linked. Only replace the observed default layout on the same NPC main instance.
+    local defaultLayers={ABP_Empty_C=true,ABP_RelayBlending_BPOnly_C=true,ABP_Item_Hun_Summon_C=true}
+    local function horizontalSpeed(component)
+        local velocity=U.field(component,'Velocity')
+        local x,y=U.struct(velocity,'X'),U.struct(velocity,'Y')
+        if type(x)=='number' and type(y)=='number' then return math.sqrt(x*x+y*y) end
+    end
+    function self:maintainMotion(r,now)
+        local state=r.motion
+        if not state or r.dead or type(now)~='number' or now<state.nextCheck then return end
+        state.nextCheck=now+1
+        local actor=r.actor
+        local key=U.key(actor)
+        local mesh=U.field(actor,'Mesh')
+        local _,main=call(mesh,'GetAnimInstance')
+        local _,cls=call(main,'GetClass')
+        local _,pawn=call(main,'TryGetPawnOwner')
+        local _,owner=call(mesh,'GetOwner')
+        if not key or U.key(pawn)~=key or U.key(owner)~=key or not U.valid(state.class)
+            or not U.valid(cls) or U.key(cls)~=U.key(r.appliedAnim) then return end
+        local read,graph=call(mesh,'GetLinkedAnimLayerInstanceByClass',state.class)
+        if not read then return end
+        local _,move=call(actor,'GetMovementComponent')
+        local _,moveOwner=call(move,'GetOwner')
+        if U.key(moveOwner)~=key then return end
+        local function ownGraph()
+            local _,graphOwner=call(graph,'TryGetPawnOwner')
+            local _,graphClass=call(graph,'GetClass')
+            return U.key(graphOwner)==key and U.key(graphClass)==U.key(state.class)
+        end
+        local function ready()
+            return U.key(U.field(graph,'RenewalHun'))==key and U.key(U.field(graph,'CharacterMovement'))==U.key(move)
+        end
+        if U.valid(graph) then
+            if not ownGraph() then return end
+            if ready() then
+                state.failures=0
+                if (state.movementSamples or 0)>0 then
+                    state.movementSamples=state.movementSamples-1
+                    local speed=horizontalSpeed(move)
+                    if speed and speed>5 then
+                        say('恢复后移动读回 实例='..r.name..' 水平速度='..math.floor(speed)..' 动画层速度='..tostring(horizontalSpeed(graph))
+                            ..' HasVelocity='..tostring(U.field(graph,'HasVelocity')))
+                        state.movementSamples=0
+                    end
+                end
+                return
+            end
+        end
+        if (r.intent and (r.intent.busy or (r.intent.busyUntil or 0)>now)) or r.supplyBusy
+            or (r.shadowState and r.shadowState.running) or (r.wep and (r.wep.draw or r.wep.pendingSwitch))
+            or Vitals.actionState(actor) or not r.still() then return end
+        if not U.valid(graph) then
+            local linked=U.array(U.field(mesh,'LinkedInstances'))
+            if not linked or #linked==0 then return end
+            for _,other in ipairs(linked) do
+                if not defaultLayers[U.className(other) or ''] then return end
+            end
+            say('即将 补回本体缺失的原生走跑层 实例='..r.name)
+            call(main,'LinkAnimClassLayers',state.class)
+            _,graph=call(mesh,'GetLinkedAnimLayerInstanceByClass',state.class)
+        end
+        local own=ownGraph()
+        if own and not ready() and r.still() then
+            local movement,character=U.field(graph,'CharacterMovement'),U.field(graph,'RenewalHun')
+            if (not U.valid(movement) or U.key(movement)==U.key(move)) and (not U.valid(character) or U.key(character)==key) then
+                say('即将 通过原生走跑层初始化本体移动引用 实例='..r.name)
+                call(graph,'SetReferences')
+            end
+        end
+        local verified=own and ready()
+        if verified then state.movementSamples=5 end
+        state.failures=verified and 0 or math.min(state.failures+1,5)
+        state.nextCheck=now+2^state.failures
+        say('走跑层恢复读回 实例='..r.name..' 层归属='..tostring(own)..' 本体和移动组件一致='..tostring(verified))
     end
     -- Look first (full, falling back to Hun_Clone), then anim class. still(): the body's identity is unchanged.
     function self:apply(r,still)
@@ -613,17 +696,37 @@ function Look.new(o)
             if not self.off.look then r.lookResult.look=run('look',r,function()return meshStep(r,mesh,still,r.socketsBefore or'')end)end
         end
     end
-    -- 2-3, used only with Look.STEPS.deathHide: every added part hidden, read back.
+    local function partVisible(comp)
+        local localFlag=U.field(comp,'bVisible')
+        if type(localFlag)=='boolean' then return localFlag end
+        if localFlag==0 or localFlag==1 then return localFlag==1 end
+        local read,visible=call(comp,'IsVisible')
+        if read and type(visible)=='boolean' then return visible end
+    end
     function self:hideParts(r)
         local list={}
         for _,part in ipairs(r.parts or{})do
-            if not part.gone and ownsPart(part)then
+            if not part.gone and ownsPart(part) and partVisible(part.comp)==true then
                 local called=call(part.comp,'SetVisibility',false,false)
-                local _,v=call(part.comp,'IsVisible')
+                local v=partVisible(part.comp)
+                if called and v==false then part.hiddenOnDeath=true end
                 list[#list+1]=part.name..'=调用'..tostring(called==true)..'/可见'..tostring(v)
             end
         end
         if #list>0 then say('死亡隐藏部件 实例='..r.name..' '..table.concat(list,' '))end
+    end
+    function self:restoreDeathVisibility(r)
+        local restored={}
+        for _,part in ipairs(r.parts or {}) do
+            if part.hiddenOnDeath then
+                part.hiddenOnDeath=nil
+                if not part.gone and ownsPart(part) and partVisible(part.comp)==false then
+                    call(part.comp,'SetVisibility',true,false)
+                    restored[#restored+1]=part.name..'='..tostring(partVisible(part.comp))
+                end
+            end
+        end
+        if #restored>0 then say('重生部件可见读回 实例='..r.name..' '..table.concat(restored,' ')) end
     end
     -- The body left the arena or its death readback ended: every part still registered is destroyed and read back.
     function self:cleanup(r,why)

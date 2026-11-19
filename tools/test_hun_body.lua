@@ -128,6 +128,14 @@ test('a body still hidden after the tags read zero is shown once',function()
     h:tick(1);assert(h.shown==1 and h.actor.bHidden==false and h:logged('解除隐藏')==1)
     h.actor.bHidden=true;h:tick(5);assert(h.shown==1,'the game hiding it again is left alone')
 end)
+test('the birth visibility watch waits through an execution or native rebirth',function()
+    for _,tag in ipairs({'Ability.Executed','Ability.Action.Hun.HeiMoShang.Reborn'}) do
+        local h=fixture();assert(h:run().ok);h:tick(2)
+        h.counts[tag]=1;h.actor.bHidden=true;h.counts[HIDE]=1;h.counts[HATE]=1;h:tick(3)
+        assert(h.counts[HIDE]==1 and h.counts[HATE]==1 and h.actor.bHidden,'native presentation lost its protection during '..tag)
+        h.counts[tag]=0;h:tick(3);assert(h.counts[HIDE]==0 and not h.actor.bHidden)
+    end
+end)
 test('the look probe lists the body and the player once per request and writes nothing',function()
     local h=fixture()
     -- The player carries a head with its own animation class, hung on the body mesh at a socket.
@@ -217,6 +225,19 @@ local function loadoutFixture(accessories)
     h.mod=Body.new(h.options)
     return h
 end
+test('confirmed death suspends only the owned periodic heal, native revival restores it once',function()
+    local h=loadoutFixture(true);local fx=h.loadout.effects[1]
+    local cls=h.effects[fx.path];fx.path='/PBZCombatAsset/Prototypes/GameplayEffects/Accessories/New/GE_Accessory_Regen_Lv2.GE_Accessory_Regen_Lv2_C';h.effects[fx.path]=cls
+    local handles,added={},0
+    function h.asc:BP_ApplyGameplayEffectToSelf(c)added=added+1;handles[added]=c;h.applied[c]=(h.applied[c] or 0)+1;return {Handle=added}end
+    function h.asc:RemoveActiveGameplayEffect(handle,n)local c=handles[handle.Handle];assert(c and n==1);h.applied[c]=h.applied[c]-1;handles[handle.Handle]=nil;return true end
+    local hp=100;h.options.hp=function()return hp end
+    assert(h:run().ok);h:tick(2);assert(added==2 and h.applied[cls]==1)
+    hp=0;h:tick();h.counts['CharacterState.Dead']=1;h:tick(3)
+    assert(h.applied[cls]==0 and handles[2] and added==2,'dead bodies must not retain their periodic heal')
+    hp=50;h:tick();assert(added==2)
+    h.counts['CharacterState.Dead']=0;h:tick(3);assert(h.applied[cls]==1 and added==3)
+end)
 test('each body keeps the attribute values of the profile it was summoned with',function()
     local h=loadoutFixture(false);assert(h:run().ok)
     local values=h.mod:attributes(h.actor);assert(values.Health_Max==5000 and values.Attack==77)
@@ -425,6 +446,18 @@ test('weapons are equipped at the second support cycle, once; a body leaving ali
     h.mod:tick({})
     assert(h:has('stop NPC Hun 1 实例离场') and h:has('look cleanup NPC Hun 1 实例离场') and h:has('weapons cleanup NPC Hun 1 实例离场'))
 end)
+test('motion checks continue after spawn checks end and stop when the registered fighter leaves',function()
+    local h=scheduleFixture();local t,calls=0,0
+    h.options.now=function()return t end
+    h.options.look.apply=function(_,r)r.motion={nextCheck=0};return {} end
+    h.options.look.maintainMotion=function(_,r,now)
+        assert(h.mod:owns(r.actor));calls=calls+1;r.motion.nextCheck=now+1
+    end
+    h.mod=Body.new(h.options);assert(h:run().ok)
+    h:tick(24);assert(calls==1)
+    t=10;h:tick(3);assert(calls==2)
+    t=11;h.mod:tick({});t=12;h.mod:tick({});assert(calls==2)
+end)
 test('a body that died and left is cleaned only when its death readback ends; the readback lists the parts',function()
     local h=scheduleFixture();assert(h:run().ok);h:tick(2)
     h.hpValue=0;h:tick(1)
@@ -471,9 +504,39 @@ test('the weapon module gets the battle flag, the opponents without the player o
     h.mod:tick(members,true);assert(captured.battle()==true)
     local r={actor=h.actor,name='NPC Hun 1'}
     local list=captured.opponents(r);assert(#list==1 and list[1]==enemy,'only the other fighting team, never the player')
+    h.options.target=function()return nil end
+    assert(#captured.opponents(r)==0,'an authoritative empty assignment must not reselect an opponent from the raw roster')
+    h.options.target=function()return enemy end;assert(captured.opponents(r)[1]==enemy)
     h.mod:tick(members,false);assert(captured.battle()==false)
     assert(captured.current({actor=h.actor})==false,'a record that is not the followed one is not current')
     h.mod:tick({},true);assert(captured.battle()==true)
+end)
+test('a custom Hun spawn leaves the arena card, team and count intact, including on failure',function()
+    local args=arg;arg={nil,'fixture'}
+    local makeArena=assert(loadfile('tools/test_arena_controller.lua'))();arg=args
+    local f=makeArena();local h=probeFixture();local boss='/Catalog/BP_Chosen.BP_Chosen_C'
+    assert(f.arena:select(boss,'red',2).ok)
+    local entry={path=Body.path,isNPC=true};local fail=false
+    function f.catalog:resolvePath(path)
+        assert(path==Body.path)
+        if fail then return nil,'unavailable',entry end
+        return f.cls,nil,entry
+    end
+    local spawn=f.options.spawnClass;local seen=0
+    f.options.spawnClass=function(cls,transform,world,metadata)
+        local path,team,count=f.arena:selection()
+        assert(path==boss and team=='red' and count==2 and f.catalog.selectedPath==boss)
+        if seen==0 then assert(metadata==entry,'the spawn route needs the resolved Hun metadata') end
+        seen=seen+1;return spawn(cls,transform,world,metadata)
+    end
+    local profile={kit=true,count=1,revision=1}
+    assert(h.mod:spawn(f.arena,'blue',1,'1',profile).ok and seen==1)
+    assert(f.arena:members()[1].class_path==Body.path and f.arena:members()[1].team=='blue')
+    fail=true;local refused=h.mod:spawn(f.arena,'companion',3,'1',profile)
+    assert(not refused.ok and refused.spawned_count==0 and not refused.message:find('方案出战',1,true))
+    local path,team,count=f.arena:selection()
+    assert(path==boss and team=='red' and count==2 and f.catalog.selectedPath==boss)
+    assert(f.arena:spawn().ok and seen==3 and f.arena:members()[2].class_path==boss)
 end)
 test('the ability probe counts the double blades of specs that hold the class default object',function()
     local h=probeFixture()
@@ -505,9 +568,10 @@ end
 do
     local h=fixture()
     local now,callback,spawns=0,nil,0
-    local weapon='main_weapon_1111111111111111'
+    local mainWeapon=require('hun_weapon_catalog').rows[1]
+    local weapon=mainWeapon.id
     local saved={kit=true,revision=8,ai={},attributes={},resources={},survival={},shadows={},
-        weapons={{id=weapon,weight=1}},phases={{id='phase',priority=10,health_below=.5,weapon_id=weapon}}}
+        weapons={{id=weapon,path=mainWeapon.path,weight=1}},phases={{id='phase',priority=10,health_below=.5,weapon_id=weapon}}}
     local r,defender,shadowTarget
     h.options.now=function()return now end
     h.options.steps={probe=false,anim=false,look=false}
@@ -552,4 +616,22 @@ do
     h.counts['CharacterState.Dead']=0;h:tick(1)
     assert(not h.mod:confirmedDead(h.actor),'positive HP with the native death tag removed can return to the fight')
     print('PASS a dead-tagged body remains out while an accessory raises its raw HP')
+end
+do
+    local h=scheduleFixture();local restores,interrupts=0,0
+    h.options.look.restoreDeathVisibility=function()restores=restores+1 end
+    h.options.shadows={interrupt=function()interrupts=interrupts+1 end}
+    h.options.steps={probe=false,deathWatch=true,deathHide='follow'};h.mod=Body.new(h.options)
+    assert(h:run().ok);h:tick(2)
+    h.hpValue=0;h.counts['CharacterState.Dead']=0;h:tick(1)
+    h.hpValue=45
+    assert(not h.mod:confirmedDead(h.actor),'the arena may ask before the next Hun update following a transient zero')
+    h:tick(1);assert(not h.mod:confirmedDead(h.actor))
+    h.hpValue=0;h.actor.bHidden=true;h.counts['CharacterState.Dead']=1;h.counts[HIDE]=1;h.t=4;h:tick(2)
+    assert(h.counts[HIDE]==1 and h.actor.bHidden and h:has('hide NPC Hun 1'),'spawn checks must not undo native death visibility')
+    h.hpValue=34;h:tick(1);assert(h.mod:confirmedDead(h.actor))
+    local before=restores
+    h.counts['CharacterState.Dead']=0;h.actor.bHidden=false;h.counts[HIDE]=0
+    h.t=24;h:tick(3)
+    assert(restores==before+1 and interrupts==2 and not h.mod:confirmedDead(h.actor))
 end

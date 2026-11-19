@@ -13,13 +13,13 @@ local KEEP_COMMANDS = 500
 local JOURNAL, COMPACT = "command-journal.tsv", "command-journal.compact.tsv"
 -- Status entries per write. The panel reports about 120 today; v0.36.0 went past the old cap of 100
 -- and each Lua state dropped a random few (the battle clock, fun_supported, current_count...).
-local MAX_STATUS = 256
+local MAX_STATUS = 288
 local MAX_COUNT = 100   -- units per summon, as arena_controller.lua MAX_BATCH
 local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, configure_summon_queue=true,cancel_summon_queue = true, start = true, stop = true, refresh_catalog = true, set_unit_rule = true,
     hun_body_probe=true,
     toggle_track = true, track_pick = true, track_next = true, set_camera_track = true, set_offcombat_regen = true, set_battle_music = true,
     configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
-    toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
+    eyes_player=true,eyes_npc=true,set_weather=true,toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
 local ACK_STATUS = { ok = true, error = true, uncertain = true }
 
 local function clean(value, limit)
@@ -72,9 +72,9 @@ local function parseInbox(content)
     if #content > MAX_INBOX then return nil, "invalid payload: inbox too long", id end
     -- configure_keys: schema 2 carries eight keys in 14 columns, schema 3 ten in 16 (recall_companions and
     -- toggle_time_stop, v0.38.2), schema 4 thirteen in 19; schema 5 adds dismiss_companions in 20;
-    -- schema 6 adds the four Hun summon keys in 24.
-    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3') or (#fields==19 and fields[19]=='4') or (#fields==20 and fields[20]=='5') or (#fields==24 and fields[24]=='6'))
-    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14, 16, 19, 20 or 24 columns", id end
+    -- Schema 6 adds four Hun keys (24 columns); schema 7 adds sixteen weather keys (40 columns).
+    local extended=fields[2]=='configure_keys' and ((#fields==14 and fields[14]=='2') or (#fields==16 and fields[16]=='3') or (#fields==19 and fields[19]=='4') or (#fields==20 and fields[20]=='5') or (#fields==24 and fields[24]=='6') or (#fields==40 and fields[40]=='7') or (#fields==42 and fields[42]=='8'))
+    if line:find("[\r\n]") or (not extended and #fields~=10) then return nil, "invalid payload: expected one line with 10, 14, 16, 19, 20, 24, 40 or 42 columns", id end
     if not id then return nil, "invalid payload: command id", nil end
     if not ACTIONS[fields[2]] then return nil, "invalid payload: unknown action", id end
     if #fields[3] > 512 or fields[3]:find("%c") then return nil, "invalid payload: unit_id", id end
@@ -105,7 +105,11 @@ local function parseInbox(content)
         if #fields>=16 then command.key_recall_companions=fields[14];command.key_toggle_time_stop=fields[15] end
         if #fields>=19 then command.key_toggle_track=fields[16];command.key_track_pick=fields[17];command.key_track_next=fields[18] end
         if #fields>=20 then command.key_dismiss_companions=fields[19] end
-        if #fields==24 then
+        if #fields==42 then command.key_eyes_player=fields[40];command.key_eyes_npc=fields[41] end
+        if #fields>=40 then
+            for i,id in ipairs(require("map_weather").commands)do command["key_weather_"..id]=fields[23+i] end
+        end
+        if #fields>=24 then
             command.key_hun_blue=fields[20];command.key_hun_red=fields[21]
             command.key_hun_companion=fields[22];command.key_hun_neutral=fields[23]
         end

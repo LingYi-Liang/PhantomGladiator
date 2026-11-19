@@ -23,18 +23,14 @@ function Runtime.new(options)
         begin=function()return options.arena:start()end,
         pending=function(enabled,blue,red,epoch)if options.arena.setRelayPending then options.arena:setRelayPending(enabled,blue,red,epoch)end end,
         spawn=function(path,team,count,profile)
-            if profile then
-                local body=options.support and options.support.hunBody
-                if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0} end
-                return body:spawn(options.arena,team,count,tostring(profile.revision),profile)
-            end
+            if profile then return self:requestHun(team,count,nil,nil,profile) end
             return self:summon(path,team,count)
         end})
     -- Monster pool keys while the summon queue above is off: every press is kept here instead of being dropped as a
     -- held key would be (queueSummon). It is always on, and takes turns with the other summon shortcuts.
     self.poolQueue=SummonQueue.new({log=function(line)self.log((line:gsub('^%[SummonQueue%]','[PoolQueue]')))end,
         session=function()return options.session and options.session:status() end,
-        spawn=function(path,team,count)return self:summon(path,team,count)end})
+        spawn=function(path,team,count,profile)return self:summon(path,team,count,profile)end})
     self.poolQueue.enabled=true
     self.router=options.router or KeyRouter.new({log=self.log})
     local function unitOwner(vk,mask)
@@ -80,27 +76,12 @@ function Runtime.new(options)
         local entered=options.camera:toggle()
         if not entered or entered.ok~=true then return entered or {ok=false,message='自由观战没有打开',spawned_count=0} end
     end
-    local function queueHun(team,count,epoch,profile)
-        self.summonQueue:sync(options.session and options.session:status())
-        if not profile or not profile.kit then return {ok=false,message='魂方案未读回，请打开本版助手',spawned_count=0} end
-        local queue=self.summonQueue
-        local result=queue:enqueue(require('hun_body').path,team,count,epoch,profile)
-        if result.ok then
-            local role='等待按间隔生成'
-            if queue:isRelay() then role=(team=='blue' or team=='red') and '蓝红接力候补' or '随从及挑战按队列间隔生成，不占接力席位' end
-            result.message='魂已入队 '..count..' 只，方案版本 '..profile.revision..'；'..role
-        end
-        return result
-    end
     -- A Hun summon key: the same entry as the app's summon buttons, with the saved count.
     local function hunKey(team)
         return function()
             local why=readyError();if why then return {ok=false,message=why,spawned_count=0}end
-            local body=options.support and options.support.hunBody
-            if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0}end
-            local loadout=options.hunLoadout and options.hunLoadout()or{}
-            if self.summonQueue.enabled then return queueHun(team,loadout.count or 1,self.summonQueue:epoch(),loadout) end
-            return body:spawn(options.arena,team,loadout.count or 1,tostring(loadout.revision or 0))
+            local queue=self.summonQueue.enabled and self.summonQueue
+            return self:requestHun(team,nil,queue,queue and queue:epoch())
         end
     end
     self.handlers={
@@ -124,7 +105,7 @@ function Runtime.new(options)
                 if not profile or tostring(profile.revision)~=command.key_spawn then
                     return {ok=false,message='此批魂的方案快照未读回',spawned_count=0}
                 end
-                return queueHun(command.team,command.count,epoch,profile)
+                return self:requestHun(command.team,command.count,self.summonQueue,epoch,profile)
             end
             if self.summonQueue.enabled then return {ok=false,message='排队状态已变更，请重新召唤魂',spawned_count=0} end
             return body:spawn(options.arena,command.team,command.count,command.key_spawn)
@@ -136,7 +117,7 @@ function Runtime.new(options)
         end,
         queue_spawn=function(command)
             self.summonQueue:sync(options.session and options.session:status())
-            return self.summonQueue:enqueue(command.unit_id,command.team,command.count,command.key_spawn)
+            return self:enqueueUnit(self.summonQueue,command.unit_id,command.team,command.count,command.key_spawn)
         end,
         set_summon_queue=function(command)
             if command.key_start~='ON' and command.key_start~='OFF' then return {ok=false,message='无效的排队召唤设置'} end
@@ -356,6 +337,27 @@ function Runtime.new(options)
             return options.unitKeys:configure(command.unit_id,key,mask)
         end,
     }
+    local function weather(id)
+        local why=readyError();if why then return {ok=false,message=why} end
+        local module=options.support and options.support.weather
+        if not module then return {ok=false,message='weather.unavailable'} end
+        return module:set(id)
+    end
+    local function eyes(who)
+        local why=readyError();if why then return {ok=false,message=why} end
+        if not options.track or not options.track.firstPerson or not options.camera then return {ok=false,message='eyes.noCamera'} end
+        local wasActive=options.camera:status().active
+        local failed=openCamera();if failed then return failed end
+        local ok,result=pcall(options.track.firstPerson,options.track,who)
+        if (not ok or not result or not result.ok) and not wasActive then options.camera:exit() end
+        return ok and result or {ok=false,message='eyes.noTarget'}
+    end
+    self.handlers.eyes_player=function()return eyes('player')end
+    self.handlers.eyes_npc=function()return eyes('npc')end
+    self.handlers.set_weather=function(cmd)return weather((cmd.key_spawn or ''):lower())end
+    for _,id in ipairs(require('map_weather').commands)do
+        self.handlers['weather_'..id]=function()return weather(id)end
+    end
     self.bridge=Bridge.new({path=options.path,log=self.log,handlers=self.handlers,
         session=function() return options.session and options.session:status() or {} end,status=function()
         local arena=options.arena:status()
@@ -545,6 +547,7 @@ function Runtime.new(options)
         out.battle_local_ready=music.local_ready==true
         out.battle_local_supported=true
         out.execution_minions_rule_supported=true
+        out.entourage_rule_supported=true
         local body=options.support and options.support.hunBody
         out.hun_body_probe_supported=body~=nil
         out.fun_supported=not not options.funFeatures
@@ -594,8 +597,11 @@ function Runtime.new(options)
         out.spectator_message=spectator.message
         out.spectator_read_failures=spectator.readFailures
         local functions=self.functionKeys:status()
-        -- 6: eighteen function keys; the four Hun summon keys follow dismiss_companions.
-        out.function_keys_schema=6;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
+        -- Schema 7 extends the previous eighteen keys with preset, cycle and restore bindings.
+        out.weather_supported=options.support~=nil and options.support.weather~=nil
+        out.weather_choice=out.weather_supported and options.support.weather:status() or 'map'
+        out.first_person_supported=options.track~=nil and type(options.track.firstPerson)=='function'
+        out.function_keys_schema=8;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
         return out
     end})
@@ -651,8 +657,36 @@ function Runtime:setSummonQueue(enabled)
 end
 
 
-function Runtime:summon(path,team,count)
-    local result=self.options.arena:spawn(path,team,count)
+function Runtime:requestHun(team,count,queue,epoch,profile)
+    local body=self.options.support and self.options.support.hunBody
+    if not body then return {ok=false,message='魂本体模块未加载',spawned_count=0} end
+    profile=profile or (self.options.hunLoadout and self.options.hunLoadout())
+    if not profile or not profile.kit then return {ok=false,message='魂方案未读回，请打开本版助手',spawned_count=0} end
+    count=count or profile.count
+    if not queue then return body:spawn(self.options.arena,team,count,tostring(profile.revision),profile) end
+    if queue==self.summonQueue then queue:sync(self.options.session and self.options.session:status()) end
+    local result=queue:enqueue(require('hun_body').path,team,count,epoch,profile)
+    if queue==self.summonQueue and result.ok then
+        local role='等待按间隔生成'
+        if queue:isRelay() then role=(team=='blue' or team=='red') and '蓝红接力候补' or '随从及挑战按队列间隔生成，不占接力席位' end
+        result.message='魂已入队 '..count..' 只，方案版本 '..profile.revision..'；'..role
+    end
+    return result
+end
+
+function Runtime:enqueueUnit(queue,path,team,count,epoch)
+    if path==require('hun_body').path then return self:requestHun(team,count,queue,epoch) end
+    return queue:enqueue(path,team,count,epoch)
+end
+
+function Runtime:summon(path,team,count,profile)
+    local arena=self.options.arena
+    local selected,defaultTeam,defaultCount
+    if (not path or not team or not count) and arena.selection then selected,defaultTeam,defaultCount=arena:selection() end
+    local result
+    if (path or selected)==require('hun_body').path then
+        result=self:requestHun(team or defaultTeam,count or defaultCount,nil,nil,profile)
+    else result=arena:spawn(path,team,count) end
     self.nextSummonAt=os.clock()+0.25
     return result
 end
@@ -719,7 +753,7 @@ function Runtime:queueSummon(callback,path,team,count)
     if not self.alive then return end
     if self.summonQueue.enabled then
         local selected,defaultTeam,defaultCount=self.options.arena:selection()
-        return self.summonQueue:enqueue(path or selected,team or defaultTeam,count or defaultCount)
+        return self:enqueueUnit(self.summonQueue,path or selected,team or defaultTeam,count or defaultCount)
     end
     if self.summonPending or (self.nextSummonAt and os.clock()<self.nextSummonAt) then
         self.summonSkipped=(self.summonSkipped or 0)+1
@@ -752,10 +786,10 @@ end
 -- summon at a time from the game thread: at once when nothing is in the way, then from the panel pump.
 function Runtime:queuePoolSummon(path,team,count)
     if not self.alive then return end
-    if self.summonQueue.enabled then return self.summonQueue:enqueue(path,team,count) end
+    if self.summonQueue.enabled then return self:enqueueUnit(self.summonQueue,path,team,count) end
     -- The status pump keeps poolQueue's session current and tick() reads it again before each summon.
     local queue=self.poolQueue
-    local result=queue:enqueue(path,team,count)
+    local result=self:enqueueUnit(queue,path,team,count)
     if result.ok and #queue.jobs==1 and not self.poolKick then
         self.poolKick=true
         local queued=pcall(ExecuteInGameThread,function()

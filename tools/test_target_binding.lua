@@ -8,10 +8,12 @@ handler.Blackboard=bb;handler['Target Key']='target';component.DefaultTargetHand
 ai.BlackboardComponent=bb;ai.CurrentStateTag={TagName='AI.State.Combat'}
 ai.ForceIntoCombat=function()end
 local current,deny,scans=nil,false,0
+local world=object(7)
 bb.GetValueAsObject=function()return current end;bb.SetValueAsObject=function(_,key,value)if not deny then current=value end end;bb.ClearValue=function()current=nil end
 local env=setmetatable({arenaSupport={},UEObserve=U,safeValid=U.valid,engineValid=U.valid,checked=function(v)assert(U.valid(v))end,
     SetFactionRelation=function()return true end,AddHatred=function()return true,'verified'end,GetAIComp=function()return ai end,
     FindAllOf=function(name)assert(name=='PBZ_TargetingHandler_AI_C');scans=scans+1;return {handler}end,
+    GetCurrentWorld=function()return world end,GameSeconds=function()return 1 end,
     FNameToString=tostring,objectName=function(v)return tostring(U.key(v))end,log=function()end,HOSTILE=2,
     battle={remember=function()end}},{__index=_G})
 local send=assert(load(text:sub(first,last-1)..'\nreturn ForceAttack','production target assignment','t',env))()
@@ -20,6 +22,7 @@ print('100 production target assignments: global scans='..scans)
 assert(scans==0,'a bound private target handler should not require a global scan')
 deny=true;current=nil;assert(not send(actor,target),'a denied target write cannot be reported as confirmed');assert(scans==0)
 deny=false;component.DefaultTargetHandler=nil;assert(send(actor,target) and scans==1,'missing private handler keeps validated fallback')
+world=nil;current=nil;assert(send(actor,target) and current==target and scans==2,'an explicit write can still confirm its board without reusing a world cache')
 ai.BlackboardComponent=nil;ai.CurrentStateTag={TagName='AI.State.Idle'}
 assert(not send(actor,target),'an idle unit with no target binding cannot confirm an assignment')
 ai.CurrentStateTag={TagName='AI.State.Combat'}

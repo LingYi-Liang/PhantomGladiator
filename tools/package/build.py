@@ -49,7 +49,7 @@ MANIFESTS = [
     f"mirror|https://fastly.jsdelivr.net/gh/{REPO}@main/release/safe/latest.json",
     f"github|https://raw.githubusercontent.com/{REPO}/main/release/safe/latest.json",
 ]
-UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "battle-music.js", "local-audio.js", "hun-page.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png"]
+UI_FILES = ["styles.css", "i18n.js", "i18n-more.js", "i18n-runtime14.js", "language-support.js", "combat-i18n.js", "battle-music.js", "local-audio.js", "hun-page.js", "units.js", "changelog.js", "ai-params.js", "real-runtime.js", "app.js", "support-wechat.png", "support-patreon.png"]
 BACKEND_FILES = ["backend.py", "catalog_labels.py", "catalog_taxonomy.py", "local_audio.py", "audio_process.py", "hun_profiles.py", "hun-catalog.json", "hun-accessory-effects.json", "unit_validation.json", "battle-music.json", "local-bosses.json"]
 SEED_FILES = ["catalog.tsv", "codex.tsv", "codex-locations.tsv", "inventory-report.json"]
 CSC = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")

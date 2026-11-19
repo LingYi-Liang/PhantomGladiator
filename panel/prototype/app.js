@@ -58,7 +58,8 @@
   const fromNexus = () => S.channel === "nexus";
   // Function keys accepted by backend.py (BINDING_NAMES); all of them start unbound.
   const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", hun_blue: "user-plus", hun_red: "user-plus", hun_companion: "shield", hun_neutral: "swords", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
-  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]];
+  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["eyes_player","eyes_npc","toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]];
+  KEY_GROUPS.push(["weather", I18N.weatherKeys]);
   const NO_KEYS = Object.fromEntries(Object.keys(KEY_ICONS).map(action => [action, null]));
   const VK_CODES = { Space: 32, Pause: 19, CapsLock: 20, NumLock: 144, ScrollLock: 145, Backquote: 192, NumpadEnter: 13, Tab: 9, Enter: 13, Backspace: 8, Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Minus: 189, Equal: 187, BracketLeft: 219, BracketRight: 221, Backslash: 220, Semicolon: 186, Quote: 222, Comma: 188, Period: 190, Slash: 191, NumpadAdd: 107, NumpadSubtract: 109, NumpadMultiply: 106, NumpadDivide: 111, NumpadDecimal: 110 };
   const VK_NAMES = { 8: "Backspace", 9: "Tab", 13: "Enter", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "←", 38: "↑", 39: "→", 40: "↓", 45: "Insert", 46: "Delete", 106: "Num*", 107: "Num+", 109: "Num-", 110: "Num.", 111: "Num/", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 219: "[", 220: "\\", 221: "]", 222: "'" };
@@ -73,8 +74,9 @@
     const clean = tail.replace(/[“”"「」『』（）()\s—\-，,]/g, "");
     return (clean || name).charAt(0);
   }
-  const UNITS = PG_UNITS.map(u => ({ ...u, zhName: u.name, zhMap: u.map, zhChName: u.chName, initial: initialOf(u.name), search: u.name.toLowerCase() }));
+  const UNITS = PG_UNITS.map(u => ({ ...u, zhName: u.name, zhSource: u.source, zhMap: u.map, zhChName: u.chName, initial: initialOf(u.name), search: u.name.toLowerCase() }));
   const byId = new Map(UNITS.map(u => [u.id, u]));
+  window.PGUnitName = id => byId.get(id)?.name;
   const buildChapters = () => [...new Map(UNITS.map(u => [u.ch, { ch: u.ch, name: u.chName, map: u.map }])).values()].sort((a, b) => a.ch - b.ch);
   let CHAPTERS = buildChapters();
   // Names from the player's own game, in its language (codex_catalog_export.lua via /api/unit-names), over the
@@ -82,15 +84,19 @@
   // (Zuo Shang in the prologue and at the end), so those also show their map, as team lists show only the name.
   let namesKey = "";
   function applyNames(data) {
-    const key = data ? JSON.stringify(data) : "";
+    const english = I18N.lang === "en";
+    const sameLanguage = english ? /^en(?:[-_]|$)/i.test(data?.lang || "") : /^zh(?:[-_]|$)/i.test(data?.lang || "");
+    const key = I18N.lang + "|" + (sameLanguage ? JSON.stringify(data.units) : "");
     if (key === namesKey) return;
     namesKey = key;
     const uses = new Map();
+    const label = (value, fallback) => value && !(english && /[\u3400-\u9fff]/u.test(value)) ? value : fallback;
     for (const u of UNITS) {
-      const n = data?.units?.[u.id];
-      u.name = n?.name || u.zhName;
-      u.map = n?.map || u.zhMap;
-      u.chName = n?.chapter || u.zhChName;
+      const n = sameLanguage ? data.units?.[u.id] : null;
+      u.name = label(n?.name, english ? u.enName : u.zhName);
+      u.map = label(n?.map, english ? u.enMap : u.zhMap);
+      u.chName = label(n?.chapter, english ? u.enChapter || "" : u.zhChName);
+      u.source = english ? u.enSource || u.zhSource : u.zhSource;
       u.initial = initialOf(u.name);
       uses.set(u.name, (uses.get(u.name) || 0) + 1);
     }
@@ -153,6 +159,7 @@
   ui.lang = PGLanguageSupport.resolve(requestedLanguage);
   ui.languageNotice = PGLanguageSupport.notices[requestedLanguage] && store.get("languageSupportNotice", "") !== PGLanguageSupport.version ? requestedLanguage : null;
   I18N.set(ui.lang);
+  applyNames(S.unitNames);
   if (!byId.has(ui.selectedId)) ui.selectedId = null;
   if (RT.demo) {
     if (ui.onboarding) S.game = "offline";
@@ -177,7 +184,7 @@
   const speciesName = sp => t("species." + sp);
   const chapterName = ch => (ch === 0 ? t("chapter.prologue") : t("chapter.n", { n: ch }));
   const unitMeta = u => [speciesName(u.species), (u.sourceKey ? t(u.sourceKey) : u.source) || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
-  const langName = id => I18N.LANGS.find(l => l.id === id)?.name || id;
+  const langName = id => id === "zh" && I18N.lang === "en" ? "Simplified Chinese" : I18N.LANGS.find(l => l.id === id)?.name || id;
 
   // ---------- Keys ----------
   function vkFromEvent(e) {
@@ -411,7 +418,7 @@
     if (ui.demoOpen) renderDemo();
     if (dlg?.kind === "update") setDialog(updateHTML());
     if (dlg?.kind === "history") setDialog(historyHTML());
-    if (dlg?.kind === "support-image") setDialog(supportImageHTML());
+    if (dlg?.kind === "support-image" || dlg?.kind === "patreon-image") setDialog(supportImageHTML(dlg.kind === "patreon-image"));
   }
   function go(page) {
     if (ui.capture) cancelCapture();
@@ -506,7 +513,8 @@
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
     BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom", BP_Monster_MengHua: "menghua_stage",
   };
-  const UNIT_RULE_VALUES = { lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"], menghua_stage: ["keep", "skip"] };
+  const ENTOURAGE_UNITS = new Set(["BP_Monster_HuaShan_Blue", "BP_Monster_HuaShan_RedTroop_BigBro", "BP_Monster_JadeMaskMan", "BP_Monster_FemaleVessel_YuZan", "BP_Monster_CanQu_BiHai", "BP_Monster_Danghui", "BP_Monster_XiaoXue"]);
+  const UNIT_RULE_VALUES = { entourage: ["off","on"], lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"], menghua_stage: ["keep", "skip"] };
   const REMOTE_REFLECT_NATIVE = {
     BP_Monster_JingYe: "shieldReflect.native.jingye",
     BP_Monster_MaleThug_Club_Yellow_Shield: "shieldReflect.native.thug",
@@ -521,7 +529,7 @@
   const xianzhePhantomRule = (id, rule) => id === "BP_Monster_XianZhe" && rule === "phantom";
   const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
-  const unitRuleLabel = (id, rule, value) => rule === "execution_minions" ? (value.startsWith("off_") ? "关闭自动处决小怪" : `自动处决小怪 ${Number(value.split("_")[1])}%`)
+  const unitRuleLabel = (id, rule, value) => rule === "execution_minions" ? (value.startsWith("off_") ? t("minionRule.noExecute") : `${t("minionRule.autoExecute")} ${Number(value.split("_")[1])}%`)
     : xianzhePhantomRule(id, rule) ? t("xianzhePhantom." + (value === "off" ? "off" : "keep"))
     : rule === "menghua_stage" ? t("menghuaStage." + (value === "skip" ? "skip" : "keep"))
     : rule === "remote_reflect" ? t("shieldReflect." + value) : xukongDodgeRule(id, rule)
@@ -553,23 +561,27 @@
       const busy = ui.busy.has("set_unit_rule");
       html += `<button class="card-rule card-reflect${off ? " is-changed" : ""}" type="button" tabindex="${u.id === ui.selectedId ? 0 : -1}" role="switch" aria-checked="${off}" aria-busy="${busy}" data-action="unit-rule" data-id="${u.id}" data-rule="remote_reflect" title="${esc(remoteReflectTip(u.id))}" aria-label="${esc(t("shieldReflect.label", { name: u.name }))}" ${busy ? "disabled" : ""}><span>${esc(unitRuleLabel(u.id, "remote_reflect", off ? "off" : "keep"))}</span><span class="card-reflect-knob" aria-hidden="true"></span></button>`;
     }
+    if (ENTOURAGE_UNITS.has(u.id) && (!RT.online() || S.entourageSupported)) {
+      const value = unitRuleValue(u.id, "entourage"), on = value === "on";
+      html += `<button type="button" class="card-rule card-reflect${on ? " is-changed" : ""}" role="switch" aria-checked="${on}" tabindex="${u.id===ui.selectedId ? 0 : -1}" data-action="unit-rule" data-id="${esc(u.id)}" data-rule="entourage" ${RT.online() && !ui.busy.has("set_unit_rule") ? "" : "disabled"} title="${esc(t("unitRule.entourage.tip"))}">${esc(t("unitRule.entourage." + value))}</button>`;
+    }
     if (u.boss && (!RT.online() || S.executionMinionsSupported)) {
       const value=S.unitRules?.[u.id]?.execution_minions || "on_100";
-      const label=value.startsWith("off_") ? "处决小怪：关闭" : `处决小怪：${Number(value.split("_")[1])}%`;
-      html += `<button class="card-rule${value!=="on_100" ? " is-changed" : ""}" type="button" tabindex="${u.id===ui.selectedId ? 0 : -1}" data-action="execution-options" data-id="${esc(u.id)}" title="设置这个 BOSS 自动处决小怪的开关和概率；不影响投技、反制、BOSS阶段或主角处决">${esc(label)}</button>`;
+      const label=value.startsWith("off_") ? t("minionRule.executeOff") : `${t("minionRule.executeChance")}${Number(value.split("_")[1])}%`;
+      html += `<button class="card-rule${value!=="on_100" ? " is-changed" : ""}" type="button" tabindex="${u.id===ui.selectedId ? 0 : -1}" data-action="execution-options" data-id="${esc(u.id)}" title="${t("minionRule.executeTip")}">${esc(label)}</button>`;
     }
     return html;
   }
   function openExecutionOptions(id) {
     const unit=byId.get(id);if(!unit?.boss)return;
     const value=S.unitRules?.[id]?.execution_minions || "on_100", chance=Number(value.split("_")[1]);
-    openDialog("execution-options",`<div class="dialog-head"><h2>${esc(unit.name)} · 自动处决小怪</h2><button class="icon-btn" data-action="dialog-close" aria-label="关闭">×</button></div><div class="dialog-body"><label class="row"><span>允许自动处决小怪</span><input id="execution-minions-on" type="checkbox" ${value.startsWith("on_") ? "checked" : ""}></label><label class="row"><span>处决概率（0～100%）</span><input class="input" id="execution-minions-chance" type="number" min="0" max="100" step="1" value="${chance}"></label><p class="muted">每个 BOSS 对每个小怪固定抽签，条件满足后才可能处决。50% 表示平均约一半获准，并非保证每场恰好一半。仅影响尚未开始的自动收尾，已开始的动作完整结束；投技、反制、BOSS阶段和主角处决保留。</p></div><div class="dialog-foot"><button class="btn btn-primary" data-action="execution-options-save" data-id="${esc(id)}">保存设置</button></div>`);
+    openDialog("execution-options",`<div class="dialog-head"><h2>${esc(unit.name)} ${t("minionRule.executeTitle")}</h2><button class="icon-btn" data-action="dialog-close" aria-label="${t("hun.close")}">×</button></div><div class="dialog-body"><label class="row"><span>${t("minionRule.executeAllow")}</span><input id="execution-minions-on" type="checkbox" ${value.startsWith("on_") ? "checked" : ""}></label><label class="row"><span>${t("minionRule.chance")}</span><input class="input" id="execution-minions-chance" type="number" min="0" max="100" step="1" value="${chance}"></label><p class="muted">${t("minionRule.chanceHint")}</p></div><div class="dialog-foot"><button class="btn btn-primary" data-action="execution-options-save" data-id="${esc(id)}">${t("minionRule.save")}</button></div>`);
   }
   async function saveExecutionOptions(id) {
     const chance=$("#execution-minions-chance")?.value;
     if(!/^\d{1,3}$/.test(chance || "") || Number(chance)>100 || ui.busy.has("set_unit_rule"))return;
     const value=($("#execution-minions-on").checked ? "on_" : "off_")+Number(chance);
-    await run("set_unit_rule",{payload:{unit:id,rule:"execution_minions",value},ok:()=>"自动处决小怪设置已保存"});
+    await run("set_unit_rule",{payload:{unit:id,rule:"execution_minions",value},ok:()=>t("minionRule.saved")});
     renderGrid();
   }
   async function toggleUnitRule(id, rule) {
@@ -756,7 +768,7 @@
   function statusNote(u) {
     const map = { verified: ["verified", "check-circle"], spawn: ["spawn", "info"], experimental: ["experimental", "flask"], special: ["special", "alert"] };
     const [cls, ic] = map[u.status];
-    const note = [u.sourceKey ? t(u.sourceKey) : u.source, u.noteKey ? t(u.noteKey) : u.note || t("status." + u.status)].filter(Boolean).join("。");
+    const note = [u.sourceKey ? t(u.sourceKey) : u.source, u.noteKey ? t(u.noteKey) : (I18N.lang === "en" ? u.enNote : u.note) || t("status." + u.status)].filter(Boolean).join("。");
     return `<div class="status-note status-${cls}">${icon(ic)}<span>${esc(note)}</span></div>`;
   }
   function renderSelection() {
@@ -1111,7 +1123,13 @@
     if (!own) return field;
     return head ? t(head) + " · " + t(own) : t(own);
   }
-  window.PGStatLabels = {label: statLabel, groups: STAT_GROUPS, heading: g => t(groupHeading(g))};
+  function statValueError(field, n) {
+    if (!Number.isFinite(n) || Math.abs(n) > 1e9) return t("stats.invalid", {name: statLabel(field)});
+    if (["Health", "Health_Max", "Shachi_Max", "Attack"].includes(field) && n <= 0) return t("stats.positive", {name: statLabel(field)});
+    if (["Shachi", "ShachiAttack"].includes(field) && n < 0) return t("stats.nonneg", {name: statLabel(field)});
+    return "";
+  }
+  window.PGStatLabels = {label: statLabel, groups: STAT_GROUPS, heading: g => t(groupHeading(g)), valueError: statValueError};
   // In its own family's group a row needs only the multiplier's name.
   const rowLabel = (field, g) => { const [head, own] = STAT_META.get(field); return head && head === groupHeading(g) ? t(own) : statLabel(field); };
   // Two sets of spawn stats share this form: the arena's, and the companions' own.
@@ -1135,9 +1153,8 @@
       const raw = String(text).trim();
       if (!raw) continue;
       const n = Number(raw);
-      if (!Number.isFinite(n) || Math.abs(n) > 1e9) return [null, t("stats.invalid", { name: statLabel(field) })];
-      if (["Health", "Health_Max", "Shachi_Max", "Attack"].includes(field) && n <= 0) return [null, t("stats.positive", { name: statLabel(field) })];
-      if (["Shachi", "ShachiAttack"].includes(field) && n < 0) return [null, t("stats.nonneg", { name: statLabel(field) })];
+      const error = statValueError(field, n);
+      if (error) return [null, error];
       values[field] = n;
     }
     return Object.keys(values).length ? [values] : [null, t("stats.empty")];
@@ -1495,8 +1512,10 @@
   function trackRow() {
     const h = S.track, busy = ui.busy.has("toggle_track"), usable = (S.freeCam ? RT.online() : RT.ready()) && h.supported && !busy;
     const desc = !h.supported && RT.online() ? t("fun.old")
+      : h.on && h.framing==="eyes" ? t("eyes.watching",{name:h.targets.some(u=>u.key===h.target && u.team==="player") ? t("eyes.player") : trackUnitName(h.targetClass)})
       : h.on ? t("view.track.on", { name: trackUnitName(h.targetClass), other: h.otherClass ? trackUnitName(h.otherClass) : t("view.track.noOther") }) : t("view.track.desc");
     const save = usable || (h.supported && RT.online());
+    const targetName = u => u.team === "player" ? t("eyes.player") : trackUnitName(u.cls) + " · " + teamName(u.team);
     const list = h.targets.some(u => u.key === h.target) ? h.targets : [];
     return `<div class="control-row${h.on ? " is-on" : ""}">
           <span class="control-icon">${icon("target")}</span>
@@ -1505,8 +1524,10 @@
         </div>
         <details class="cam-settings track-settings"${ui.trackSettingsOpen || h.on ? " open" : ""}><summary>${icon("sliders", "icon-sm")}<span>${esc(t("view.track.title"))}</span>${icon("chevron-down", "icon-sm cam-chevron")}</summary>
         <div class="cam-settings-body">
-          ${h.on && list.length ? `<label class="cam-setting"><span>${esc(t("view.track.target"))}</span><span></span><select class="select track-select" id="track-target" aria-label="${esc(t("view.track.target"))}">${list.map(u => `<option value="${esc(u.key)}"${u.key === h.target ? " selected" : ""}>${esc(trackUnitName(u.cls))} · ${esc(teamName(u.team))}</option>`).join("")}</select></label>` : ""}
-          <label class="cam-setting"><span>${esc(t("view.track.framing"))}</span><span></span><select class="select track-select" id="track-framing" aria-label="${esc(t("view.track.framing"))}" ${save ? "" : "disabled"}>${TRACK_FRAMINGS.map(v => `<option value="${v}"${v === h.framing ? " selected" : ""}>${esc(t("view.track.framing." + v))}</option>`).join("")}</select></label>
+          ${h.on && list.length ? `<label class="cam-setting"><span>${esc(t("view.track.target"))}</span><span></span><select class="select track-select" id="track-target" aria-label="${esc(t("view.track.target"))}">${list.map(u => `<option value="${esc(u.key)}"${u.key === h.target ? " selected" : ""}>${esc(targetName(u))}</option>`).join("")}</select></label>` : ""}
+          <label class="cam-setting"><span>${esc(t("view.track.framing"))}</span><span></span><select class="select track-select" id="track-framing" aria-label="${esc(t("view.track.framing"))}" ${save ? "" : "disabled"}>${(h.eyesSupported ? [...TRACK_FRAMINGS,"eyes"] : TRACK_FRAMINGS).map(v => `<option value="${v}"${v === h.framing ? " selected" : ""}>${esc(t("view.track.framing." + v))}</option>`).join("")}</select></label>
+          ${h.eyesSupported || !RT.online() ? `<div class="cam-settings-foot"><span>${esc(t("eyes.hint"))}</span></div>
+          <div class="stat-actions">${["eyes_player","eyes_npc"].map(action => `<button type="button" class="btn btn-secondary btn-sm" data-action="${action}" ${usable ? "" : "disabled"}>${esc(t("keys.action."+action))}</button>`).join("")}</div>` : ""}
           <label class="cam-setting"><span>${esc(t("view.track.resume"))}</span><output id="track-resume-value">${esc(trackResumeText(h.resume))}</output>
             <input class="cam-range" type="range" id="track-resume" min="0" max="10" step="1" value="${h.resume}" ${save ? "" : "disabled"} aria-label="${esc(t("view.track.resume"))}"></label>
           <div class="cam-settings-foot"><span>${esc(t("view.track.hint"))}</span></div>
@@ -1599,11 +1620,12 @@
   }
   // Translated text for known codes; otherwise the game's or backend's own answer, which is Chinese.
   function reasonText(code, detail = "") {
+    if (/^(?:weather|eyes)\.[A-Za-z]+$/.test(detail)) return t(detail);
     const translatedDetail = PGLanguageSupport.message(detail);
     if (translatedDetail !== detail) return translatedDetail;
     const queueDetail = queueSettingsMessage(detail);
     if (queueDetail !== detail) return queueDetail;
-    if (detail && (!code || code === "rejected" || code === "host" || code === "submissionUnknown")) return detail;
+    if (detail && (!code || code === "rejected" || code === "host" || code === "submissionUnknown")) return I18N.combatMessage(detail);
     return t("reason." + (code || "unknown"));
   }
   async function summon(id = ui.selectedId, team = ui.team, count = ui.count) {
@@ -1857,8 +1879,8 @@
           <button class="btn btn-secondary btn-sm" type="button" data-action="key-capture" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"}>${esc(t(S.keys[action] ? "keys.change" : "keys.set"))}</button>
           ${S.keys[action] ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
     return `<div class="row key-row${capturing ? " is-capturing" : ""}${note?.type === "conflict" || (capturing && note?.type === "err") ? " has-error" : ""}">
-      <span class="row-icon">${icon(KEY_ICONS[action])}</span>
-      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${RT.online() && keyNeedsUpdate(action) ? `<div class="key-note err">${esc(t(action === "dismiss_companions" ? "keys.dismiss.update" : "keys.hun.update"))}</div>` : ""}${noteHTML}</div>
+      <span class="row-icon">${icon(KEY_ICONS[action] || "keyboard")}</span>
+      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${RT.online() && keyNeedsUpdate(action) ? `<div class="key-note err">${esc(t(action.startsWith("eyes_") ? "eyes.update" : action.startsWith("weather_") ? "weather.update" : action === "dismiss_companions" ? "keys.dismiss.update" : "keys.hun.update"))}</div>` : ""}${noteHTML}</div>
       <div class="row-side">${side}</div>
     </div>`;
   }
@@ -1872,14 +1894,14 @@
     let control;
     if (capturing) control = `<span class="capture-box">${icon("keyboard", "icon-sm")}${esc(t("keys.capture"))}</span><button class="btn-link" type="button" data-action="key-cancel">${esc(t("common.cancel"))}</button>`;
     else if (note?.type === "saving") control = `<span class="spinner"></span>`;
-    else control = `<button class="hun-key${key ? " is-set" : ""}" type="button" data-action="key-capture" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} title="${esc(needsUpdate ? t("keys.hun.update") : t(key ? "keys.change" : "keys.set"))}">${key ? keyCap(key) : `${icon("keyboard", "icon-sm")}<span>快捷键</span>`}</button>${key ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
+    else control = `<button class="hun-key${key ? " is-set" : ""}" type="button" data-action="key-capture" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} title="${esc(needsUpdate ? t("keys.hun.update") : t(key ? "keys.change" : "keys.set"))}">${key ? keyCap(key) : `${icon("keyboard", "icon-sm")}<span>${t("minionRule.hotkey")}</span>`}</button>${key ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" data-key-host="hun" ${usable ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
     let message = "";
     if (note?.type === "conflict") message = `<div class="key-note err">${esc(note.text)} <button class="btn-link" type="button" data-action="key-swap">${icon("swap", "icon-sm")} ${esc(t(key ? "keys.swap" : "keys.take"))}</button></div>`;
     else if (note?.type === "err") message = `<div class="key-note err">${esc(note.text)}</div>`;
     return { control, message, needsUpdate: RT.online() && needsUpdate };
   }
   // A function key the game in use cannot take yet: only a newer mod knows these actions.
-  function keyNeedsUpdate(action) { return (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
+  function keyNeedsUpdate(action) { return (action.startsWith("eyes_") && !S.eyesKeysSupported) || (action.startsWith("weather_") && !S.weatherKeysSupported) || (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
   function hotkeysHTML() {
     const unitKeys = Object.entries(S.unitKeys), bound = Object.values(S.keys).filter(Boolean).length;
     return `<div class="stack">
@@ -1921,6 +1943,23 @@
     const n = feature === "DEFLECT" ? f.deflects : f.dodges;
     return n ? ["green", t(feature === "DEFLECT" ? "fun.state.deflects" : "fun.state.dodges", { n })] : ["", t("fun.state.waiting")];
   }
+  function weatherHTML() {
+    const state = S.weather || {}, selected = ui.weatherDraft || "clear_skies";
+    const usable = RT.ready() && state.supported && !ui.busy.has("set_weather");
+    const binding = S.keys["weather_" + selected];
+    return `<section class="card"><div class="card-head"><h2 class="card-title">${esc(t("weather.title"))}</h2></div><div class="card-body">
+      <p class="muted">${esc(t(!RT.ready() ? "weather.noWorld" : !state.supported ? "weather.update" : "weather.hint"))}</p>
+      <div class="music-controls"><select class="select" id="weather-mode" aria-label="${esc(t("weather.title"))}">${I18N.weatherPresets.map(id => `<option value="${id}" ${id === selected ? "selected" : ""}>${esc(t("weather."+id))}</option>`).join("")}</select>
+      <button class="btn btn-primary btn-sm" data-action="weather-apply" ${usable ? "" : "disabled"}>${esc(t("weather.apply"))}</button>
+      <button class="btn btn-secondary btn-sm" data-action="weather-bind" ${RT.online() && S.weatherKeysSupported ? "" : "disabled"}>${esc(t("weather.bind"))} ${binding ? keyCap(binding) : ""}</button>
+      <button class="btn btn-ghost btn-sm" data-action="weather-restore" ${usable && state.choice && state.choice !== "map" ? "" : "disabled"}>${esc(t("weather.restore"))}</button></div>
+      <p class="muted">${esc(t("weather.status", {name:t("weather."+(state.choice || "map"))}))}</p></div></section>`;
+  }
+  async function setWeather(mode) {
+    const request = run("set_weather", {payload:{mode}, ok:() => t(mode === "restore" ? "weather.map" : "weather.applied")});
+    if (ui.page === "fun") renderPage();
+    try { await request; } finally { if (ui.page === "fun") renderPage(); }
+  }
   function funHTML() {
     const f = S.fun, online = RT.online(), usable = online && f.supported;
     const callout = !online ? ["info", "fun.offline"] : !f.supported ? ["alert", "fun.old"] : null;
@@ -1936,6 +1975,7 @@
       <div class="page-head"><div><h1 class="page-title">${esc(t("fun.title"))}</h1><p class="page-sub">${esc(t("fun.subtitle"))}</p></div></div>
       ${callout ? `<div class="callout${callout[0] === "alert" ? " callout-amber" : ""}">${icon(callout[0])}<div class="callout-body"><span>${esc(t(callout[1]))}</span></div></div>` : ""}
       <section class="card"><div class="rows">${rows}</div></section>
+      ${weatherHTML()}
       <p class="muted" style="font-size:12.5px">${esc(t("fun.note"))}</p>
     </div>`;
   }
@@ -2166,8 +2206,8 @@
       return `<div class="pool-member${u?.boss ? " is-boss" : ""}"><span class="avatar sp-${u?.species || "GuaiMian"}${u ? artClass(u) : ""}">${u ? avatarArt(u) : ""}<span class="avatar-initial">${esc(u?.initial || "?")}</span></span>
         <span class="pool-member-name" title="${esc(u?.name || id)}">${esc(u?.name || id)}</span>
         <button class="icon-btn icon-btn-sm" type="button" data-action="pool-remove" data-id="${esc(member)}" aria-label="${esc(t("pool.remove"))} ${esc(u?.name || id)}" title="${esc(t("pool.remove"))}" ${disabled}>${icon("x", "icon-sm")}</button>
-        <div class="pool-member-actions"><label class="pool-member-count">数量<input type="number" min="1" max="100" step="1" data-pool-member-count="${esc(id)}" value="${poolMemberOverride(pool, id) ?? ""}" placeholder="随池 ${pool.count}" aria-label="${esc(u?.name || id)} 单独召唤数量，留空随池" ${disabled}></label>
-        <button class="btn btn-secondary btn-sm" type="button" data-action="pool-member-summon" data-id="${esc(id)}" data-pool-id="${esc(pool.id)}" data-pool-scope="${esc(poolCountScope())}" title="只召唤这张卡的单位，沿用本池阵营；数量可单独设置，留空随池，受该怪单次上限约束" disabled>${count ? `召唤 ×${count}` : "单独召唤"}</button></div></div>`;
+        <div class="pool-member-actions"><label class="pool-member-count">数量<input type="number" min="1" max="100" step="1" data-pool-member-count="${esc(id)}" value="${poolMemberOverride(pool, id) ?? ""}" placeholder="${t("poolCard.poolDefault")} ${pool.count}" aria-label="${esc(u?.name || id)} ${t("poolCard.countHint")}" ${disabled}></label>
+        <button class="btn btn-secondary btn-sm" type="button" data-action="pool-member-summon" data-id="${esc(id)}" data-pool-id="${esc(pool.id)}" data-pool-scope="${esc(poolCountScope())}" title="${t("poolCard.oneTip")}" disabled>${count ? `${t("poolCard.summon")} ×${count}` : t("poolCard.summonOne")}</button></div></div>`;
     }).join("")}</div>`;
   }
 
@@ -2259,7 +2299,7 @@
       : cleanupBlocker() || (ui.busy.has("spawn") || ui.busy.has("pool-summon") ? t("pool.working") : !choices.length ? t("pool.noneAllowed") : "");
   }
   function poolMemberBlocker(pool, id) {
-    if (!pool || !poolMemberIds(pool).includes(id)) return "该单位已不在当前怪物池";
+    if (!pool || !poolMemberIds(pool).includes(id)) return t("poolCard.missing");
     return poolSummonBlocker(pool, poolCandidates(pool).filter(member => member === id));
   }
 
@@ -2279,8 +2319,8 @@
       const id = single.dataset.id, input = single.closest(".pool-member")?.querySelector("[data-pool-member-count]");
       const count = pool && poolMemberCount(pool, id);
       single.disabled = !pool || !!poolMemberBlocker(pool, id) || input?.getAttribute("aria-invalid") === "true";
-      single.textContent = count ? `召唤 ×${count}` : "单独召唤";
-      if (input && pool) input.placeholder = `随池 ${pool.count}`;
+      single.textContent = count ? `${t("poolCard.summon")} ×${count}` : t("poolCard.summonOne");
+      if (input && pool) input.placeholder = `${t("poolCard.poolDefault")} ${pool.count}`;
     }
     if (!button) return;
     const reason = poolSummonBlocker(pool, poolCandidates(pool));
@@ -2578,17 +2618,20 @@
   function battleMusicHTML() {
     const saved = S.battleMusic || { mode: "NATIVE", track: "MOYUAN_P1" }, draft = ui.musicDraft || saved;
     const usable = RT.online() && saved.supported && !ui.busy.has("set_battle_music");
-    return `<section class="card"><div class="card-head"><h2 class="card-title">战斗音乐（测试）</h2></div><div class="card-body">
-      <p class="muted">默认保留原版。自动模式只为蓝红对战中有默认配乐的存活单位选择主题；也可指定游戏自带曲目。来源死亡、离场或停止对战后停止对应曲目，并交还原版音乐。阶段曲可手动指定，不叠加多首。</p>
-      <div class="music-controls"><label>播放方式<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE","保留原版"],["AUTO","自动选择参战主题"],["TRACK","手动指定曲目"],["LOCAL","本地替换指定 BOSS"]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
-      <label>曲目<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${(window.PG_MUSIC_TRACKS || []).map(row => `<option value="${esc(row.id)}" ${draft.track === row.id ? "selected" : ""}>${esc(row.label)}</option>`).join("")}</select></label>
-      <button class="btn btn-secondary" type="button" id="battle-music-save" data-action="battle-music-save" ${usable ? "" : "disabled"}>保存音乐设置</button></div>
+    return `<section class="card"><div class="card-head"><h2 class="card-title">${t("arenaMusic.music")}</h2></div><div class="card-body">
+      <p class="muted">${t("arenaMusic.musicHint")}</p>
+      <div class="music-controls"><label>${t("arenaMusic.mode")}<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE",t("arenaMusic.native")],["AUTO",t("arenaMusic.auto")],["TRACK",t("arenaMusic.track")],["LOCAL",`${t("arenaMusic.local")} BOSS`]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
+      <label>${t("arenaMusic.trackLabel")}<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${(window.PG_MUSIC_TRACKS || []).map(row => `<option value="${esc(row.id)}" ${draft.track === row.id ? "selected" : ""}>${esc(musicName(row))}</option>`).join("")}</select></label>
+      <button class="btn btn-secondary" type="button" id="battle-music-save" data-action="battle-music-save" ${usable ? "" : "disabled"}>${t("arenaMusic.saveMusic")}</button></div>
       <p id="battle-music-status" class="muted" aria-live="polite"></p>${window.PGLocalAudio?.html() || ""}</div></section>`;
+  }
+  function musicName(row) {
+    return I18N.lang === "en" ? t("musicTrack." + row.id) : row.label;
   }
   function renderBattleMusicState() {
     const status = $("#battle-music-status"); if (!status) return;
     const music = S.battleMusic || {}, usable = RT.online() && music.supported && !ui.busy.has("set_battle_music");
-    status.textContent = !RT.online() ? "连接游戏后可设置。" : !music.supported ? "请更新并重载支持战斗音乐的游戏内模组。" : music.message || "设置由游戏读回，尚未开始播放。";
+    status.textContent = !RT.online() ? t("arenaMusic.offline") : !music.supported ? t("arenaMusic.update") : I18N.combatMessage(music.message) || t("arenaMusic.idle");
     for (const id of ["#battle-music-mode", "#battle-music-save"]) if ($(id)) $(id).disabled = !usable;
     if ($("#battle-music-track")) $("#battle-music-track").disabled = !usable || $("#battle-music-mode").value !== "TRACK";
     window.PGLocalAudio?.render();
@@ -2598,7 +2641,7 @@
     const mode = $("#battle-music-mode")?.value, track = $("#battle-music-track")?.value;
     if (!["NATIVE", "AUTO", "TRACK", "LOCAL"].includes(mode) || !(window.PG_MUSIC_TRACKS || []).some(row => row.id === track)) return;
     ui.musicDraft = { mode, track };
-    const result = run("set_battle_music", { payload: { mode, track }, ok: () => "音乐设置已保存，播放状态以游戏读回为准" });
+    const result = run("set_battle_music", { payload: { mode, track }, ok: () => t("arenaMusic.savedMusic") });
     renderBattleMusicState();
     try { await result; } finally { renderBattleMusicState(); }
   }
@@ -2614,7 +2657,7 @@
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.language"))}</h2></div>
         <div class="card-body"><div class="option-list" role="radiogroup" aria-label="${esc(t("settings.language"))}">
           ${opt("set-lang", "auto", ui.langMode === "auto", esc(t("settings.language.auto")), esc(t("settings.language.detected", { tz: detected.tz || "—", lang: langName(detected.lang) })), "option-wide")}
-          ${I18N.ACTIVE_LANGS.map(l => opt("set-lang", l.id, ui.langMode === "manual" && ui.lang === l.id, `<span lang="${l.html}">${esc(l.name)}</span>`)).join("")}
+          ${I18N.ACTIVE_LANGS.map(l => opt("set-lang", l.id, ui.langMode === "manual" && ui.lang === l.id, `<span lang="${l.html}">${esc(langName(l.id))}</span>`)).join("")}
         </div><p class="muted" style="font-size:12.5px;margin-top:10px">${esc(t("settings.language.unitNote"))}</p>${languageSupportHTML()}</div></section>
       ${battleMusicHTML()}
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.appearance"))}</h2></div>
@@ -2657,18 +2700,26 @@
     return `<div class="support-page">
       <div class="page-head"><div><h1 class="page-title">${esc(t("nav.support"))}</h1>
         <p class="page-sub">${esc(t("support.description"))}</p></div></div>
-      <section class="card support-card">
+      <div class="support-channels"><section class="card support-card">
+        <h2>${esc(t("support.wechat"))}</h2>
         <button class="support-code" type="button" data-action="support-enlarge" aria-label="${esc(t("support.enlarge"))}">
           <img src="support-wechat.png" width="1152" height="1152" alt="${esc(t("support.imageAlt"))}">
         </button>
         <p class="support-hint">${esc(t("support.scan"))}</p>
         <button class="btn btn-secondary btn-sm" type="button" data-action="support-enlarge">${esc(t("support.enlarge"))}</button>
-      </section></div>`;
+      </section>
+      <section class="card support-card">
+        <h2>${esc(t("support.international"))}</h2>
+        <button class="support-code support-art" type="button" data-action="patreon-enlarge" aria-label="${esc(t("support.patreonImage"))}">
+          <img src="support-patreon.png" alt="${esc(t("support.patreonImage"))}">
+        </button>
+        <a class="btn btn-primary" href="https://www.patreon.com/cw/lingyi01" target="_blank" rel="noopener noreferrer">${esc(t("support.openPatreon"))}</a>
+      </section></div></div>`;
   }
-  function supportImageHTML() {
+  function supportImageHTML(patreon = false) {
     return `<div class="dialog-head"><h2 id="dlg-title">${esc(t("nav.support"))}</h2>
       <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
-      <div class="dialog-body support-large"><img src="support-wechat.png" width="1152" height="1152" alt="${esc(t("support.imageAlt"))}"></div>`;
+      <div class="dialog-body support-large"><img src="${patreon ? "support-patreon.png" : "support-wechat.png"}" alt="${esc(t(patreon ? "support.patreonImage" : "support.imageAlt"))}"></div>`;
   }
 
   function aboutHTML() {
@@ -2929,10 +2980,12 @@
       case "set_team_immortal": return t("action.set_team_immortal", { team: teamName(p.team), state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_clock_hud": return t("action.set_clock_hud", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_offcombat_regen": return t(p.enabled ? "offcombatRegen.history.on" : "offcombatRegen.history.off");
-      case "set_battle_music": return "设置战斗音乐：" + (p.mode === "NATIVE" ? "原版" : p.mode === "AUTO" ? "自动" : p.mode === "LOCAL" ? "本地替换" : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track);
-      case 'hun_body_probe': return '魂 · 本体验证 ×'+(p.count || 1);
+      case "set_weather": return t("weather.title") + " · " + t("weather." + p.mode);
+      case "set_battle_music": return t("arenaMusic.history") + (p.mode === "NATIVE" ? t("arenaMusic.game") : p.mode === "AUTO" ? t("arenaMusic.automatic") : p.mode === "LOCAL" ? t("arenaMusic.localMode") : (I18N.lang === "en" ? t("musicTrack." + p.track) : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track));
+      case 'hun_body_probe': return `${t("arenaMusic.summonHistory")} ×`+(p.count || 1);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "eyes_player": case "eyes_npc": return t("keys.action."+job.action);
       case "set_camera_track": return t("action.set_camera_track");
       case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : ["menghua_stage","execution_minions"].includes(p.rule) ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
@@ -3009,7 +3062,7 @@
     return `<div class="menu-label">${esc(t("settings.language"))}</div>
       <button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "auto"}" data-action="set-lang" data-value="auto">${icon("globe")}<span>${esc(t("settings.language.auto"))}</span><small>${esc(langName(detected.lang))}</small>${check(ui.langMode === "auto")}</button>
       <div class="menu-sep"></div>
-      ${I18N.ACTIVE_LANGS.map(l => `<button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "manual" && ui.lang === l.id}" data-action="set-lang" data-value="${l.id}" lang="${l.html}"><span style="width:18px"></span><span>${esc(l.name)}</span>${check(ui.langMode === "manual" && ui.lang === l.id)}</button>`).join("")}
+      ${I18N.ACTIVE_LANGS.map(l => `<button class="menu-item" type="button" role="menuitemradio" aria-checked="${ui.langMode === "manual" && ui.lang === l.id}" data-action="set-lang" data-value="${l.id}" lang="${l.html}"><span style="width:18px"></span><span>${esc(langName(l.id))}</span>${check(ui.langMode === "manual" && ui.lang === l.id)}</button>`).join("")}
       <div class="menu-sep"></div><button class="menu-item" type="button" role="menuitem" data-action="language-support-settings">${esc(t("languageSupport.menu"))}</button>`;
   }
   function helpMenuHTML() {
@@ -3063,7 +3116,7 @@
     const steps = labels.map((k, i) => `${i ? '<span class="onb-step-line"></span>' : ""}<span class="onb-step${i === step ? " is-current" : i < step ? " is-done" : ""}"><i>${i < step ? icon("check", "icon-sm") : i + 1}</i>${esc(t(k))}</span>`).join("");
     let body = "", foot = "";
     if (step === 0) {
-      const options = [`<option value="auto" ${ui.langMode === "auto" ? "selected" : ""}>${esc(t("settings.language.auto"))} · ${esc(langName(detected.lang))}</option>`, ...I18N.ACTIVE_LANGS.map(l => `<option value="${l.id}" ${ui.langMode === "manual" && ui.lang === l.id ? "selected" : ""}>${esc(l.name)}</option>`)].join("");
+      const options = [`<option value="auto" ${ui.langMode === "auto" ? "selected" : ""}>${esc(t("settings.language.auto"))} · ${esc(langName(detected.lang))}</option>`, ...I18N.ACTIVE_LANGS.map(l => `<option value="${l.id}" ${ui.langMode === "manual" && ui.lang === l.id ? "selected" : ""}>${esc(langName(l.id))}</option>`)].join("");
       body = `<div class="onb-hero"><span class="seal seal-xl" aria-hidden="true">斗</span><h1 id="onb-title">${esc(t("onb.welcome.title"))}</h1><p>${esc(t("onb.welcome.body"))}</p></div>
         <div class="onb-features">${[["grid", 1], ["user-plus", 2], ["swords", 3]].map(([ic, n]) => `<div class="feature"><span class="feature-icon">${icon(ic)}</span><div class="feature-num">${esc(t("onb.stepN", { n }))}</div><h3>${esc(t("onb.f" + n))}</h3><p>${esc(t("onb.f" + n + ".desc"))}</p></div>`).join("")}</div>
         <div class="onb-lang">${icon("globe", "icon-sm")}<span>${esc(t("onb.language"))}</span><select class="select" id="onb-lang" style="height:32px" aria-label="${esc(t("settings.language"))}">${options}</select></div>`;
@@ -3199,6 +3252,7 @@
     store.set("langMode", ui.langMode);
     store.set("lang", ui.lang);
     I18N.set(ui.lang);
+    applyNames(S.unitNames);
     closePopover();
     renderAll();
   }
@@ -3249,6 +3303,7 @@
     "queue-settings-save": () => saveQueueSettings(),
     "cancel-summon-queue": () => changeSummonQueue("cancel_summon_queue"),
     nav: el => { closePopover(); closeDialog(false); go(el.dataset.page); },
+    "patreon-enlarge": () => openDialog("patreon-image", supportImageHTML(true), "dialog-wide"),
     "support-enlarge": () => openDialog("support-image", supportImageHTML(), "dialog-wide"),
     "conn-popover": el => (pop?.anchor === el ? closePopover() : openPopover(el, connPopoverHTML(), { align: "center", role: "dialog" })),
     "lang-menu": el => (pop?.anchor === el ? closePopover() : openPopover(el, langMenuHTML(), { align: "end" })),
@@ -3260,6 +3315,8 @@
     "open-update": () => { closePopover(); openUpdate(); },
     "open-history": el => { if (el.dataset.toastId) dismissToast(el.dataset.toastId); openHistory(); },
     "clear-queue": () => clearQueue(),
+    eyes_player: () => run("eyes_player", {ok:() => t("eyes.started")}),
+    eyes_npc: () => run("eyes_npc", {ok:() => t("eyes.started")}),
     "track-toggle": () => run("toggle_track", { ok: j => t(/关闭/.test(j.message || "") ? "toast.track.off" : "toast.track.on") }),
     "time-stop": () => run("toggle_time_stop", { ok: j => t(/解除/.test(j.message || "") ? "toast.timeStop.off" : "toast.timeStop.on") }),
     "cam-reset": () => {
@@ -3318,6 +3375,13 @@
     spectator: () => run("toggle_spectator", { busyKey: "toggle_spectator", ok: () => t(S.spectator ? "toast.spectator.on" : "toast.spectator.restoring") }),
     "match-toggle": () => run("toggle_stat_match", { ok: () => (S.statMatch.enabled ? { title: t("toast.match.on"), body: t("toast.match.on.body") } : { title: t("toast.match.off"), body: t("toast.match.off.body") }) }),
     "match-rules": () => matchRulesDialog(),
+    "weather-apply": () => setWeather($("#weather-mode").value),
+    "weather-restore": () => setWeather("restore"),
+    "weather-bind": () => {
+      const action = "weather_" + $("#weather-mode").value;
+      go("hotkeys"); startCapture({kind:"global",action});
+      $(".capture-box")?.scrollIntoView({block:"center"});
+    },
     "fun-toggle": el => toggleFun(el.dataset.feature),
     "immortal-toggle": el => toggleImmortal(el.dataset.team),
     "ai-open": async () => { if (!ui.aiLoaded) await loadAiValues(); ui.aiDraft = null; aiDialog(); },
@@ -3487,7 +3551,7 @@
     if (e.target.dataset.poolMemberCount) {
       const saved = savePoolMemberCount(selectedPool(), e.target.dataset.poolMemberCount, e.target.value);
       e.target.setAttribute("aria-invalid", String(!saved));
-      e.target.title = saved ? "留空随池；单独召唤受该怪单次上限约束" : "请输入1–100，或留空随池；无法保存时请重试";
+      e.target.title = saved ? t("poolCard.memberHint") : t("poolCard.invalidCount");
       renderPoolSummon();
       return;
     }
@@ -3550,6 +3614,7 @@
       ui.musicDraft = { mode: $("#battle-music-mode").value, track: $("#battle-music-track").value };
       renderBattleMusicState();
     }
+    if (e.target.id === "weather-mode") { ui.weatherDraft = e.target.value; renderPage(); }
     if (e.target.id === "pool-pick-chapter") { ui.poolPick.chapter = e.target.value; refreshPoolPick(); }
     if (e.target.id === "pool-count") {
       e.target.value = selectedPool()?.count || 1;

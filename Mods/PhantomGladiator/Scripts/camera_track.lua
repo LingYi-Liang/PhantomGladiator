@@ -7,7 +7,7 @@
 local U=require('ue_observe')
 local Track={}
 Track.DEFAULTS={framing='side',resume=3}
-Track.FRAMINGS={side=true,shoulder=true,orbit=true}
+Track.FRAMINGS={side=true,shoulder=true,orbit=true,eyes=true}
 Track.RESUME_MAX=10
 local HEADER='CameraTrackV1'
 local MAIN_SHARE=0.65          -- how much of the look point is the followed unit
@@ -51,6 +51,7 @@ local TARGETS_MAX=24
 local function wrap(a)return (a+180)%360-180 end
 local function ease(dt,tau)return tau>0 and 1-math.exp(-dt/tau) or 1 end
 local function clamp(v,low,high)return math.max(low,math.min(high,v)) end
+local function finite(v)return type(v)=='number' and v==v and math.abs(v)<math.huge end
 local function vec(v)
     local ok,x,y,z=pcall(function()return v.X,v.Y,v.Z end)
     if ok and type(x)=='number' and type(y)=='number' and type(z)=='number' then return {X=x,Y=y,Z=z} end
@@ -126,6 +127,10 @@ function Track.new(options)
             if a.boss~=b.boss then return a.boss end
             return a.order<b.order
         end)
+        if self.framing=='eyes' and options.player then
+            local player=options.player();local key=U.key(player)
+            if key and alive(player) and not present[key] then table.insert(list,1,{actor=player,key=key,team='player'})end
+        end
         return list
     end
     local function located(actor)
@@ -157,6 +162,9 @@ function Track.new(options)
     end
     local function setTarget(r,actor,why)
         r.target,r.targetKey=actor,U.key(actor)
+        local named,identity=pcall(function()return actor:GetFullName()end)
+        r.eyeIdentity=named and identity or nil
+        r.eyeSocket,r.eyeMesh,r.eyeCheck,r.eyeTraceAt=nil,nil,nil,nil
         r.targetRadius,r.targetHalf=capsule(actor)
         r.lostAt=nil
         r.lastAt=nil
@@ -199,6 +207,7 @@ function Track.new(options)
         local list=candidates()
         local chosen
         for _,entry in ipairs(list)do if entry.key==targetKey then chosen=entry end end
+        if self.framing=='eyes' and targetKey and targetKey~='' and not chosen then return answer(false,'eyes.noTarget') end
         chosen=chosen or inView(list,position,rotation)
         if not chosen then return answer(false,'场上没有可跟踪的单位，先召唤') end
         if run then
@@ -256,7 +265,11 @@ function Track.new(options)
             end)
             log(string.format('[CameraTrack] 设置 构图=%s 回归=%d秒 保存读回=%s',framing,resume,tostring(saved)))
             if not saved then return answer(false,'镜头跟踪设置保存未确认，仍用原来的设置') end
+            if run and self.framing=='eyes' and framing~='eyes' and options.player and U.key(options.player())==run.targetKey then
+                self:stop('离开玩家第一人称')
+            end
             self.framing,self.resume=framing,resume
+            if run then run.eyeCheck=nil end
         end
         if targetKey and targetKey~='' then
             if not run then return self:start(targetKey) end
@@ -270,6 +283,33 @@ function Track.new(options)
         end
         return answer(true,'镜头跟踪设置已保存')
     end
+    local eyeFrame
+    function self:firstPerson(who)
+        local position,rotation=options.view()
+        if not position or not rotation then return answer(false,'eyes.noCamera') end
+        local actor
+        if who=='player' then actor=options.player and options.player()
+        else
+            local npcs={}
+            for _,entry in ipairs(candidates())do
+                if entry.team~='player' then
+                    npcs[#npcs+1]=entry
+                    if run and run.targetKey==entry.key then actor=entry.actor end
+                end
+            end
+            local chosen=not actor and inView(npcs,position,rotation)
+            actor=actor or (chosen and chosen.actor)
+        end
+        if not actor or not alive(actor) or not located(actor) then return answer(false,'eyes.noTarget') end
+        local named,name=pcall(function()return actor:GetFullName()end)
+        local radius,half=capsule(actor)
+        local probe={target=actor,targetKey=U.key(actor),eyeIdentity=named and name,targetRadius=radius,targetHalf=half}
+        if not options.world or not eyeFrame(probe,0,options.world()) then return answer(false,'eyes.noTarget') end
+        local saved=self:set('eyes',self.resume)
+        if not saved.ok then return saved end
+        if run then retarget(actor,'第一人称') else begin(actor,position,rotation,'第一人称') end
+        return answer(true,'eyes.started')
+    end
     function self:status()
         local r=run
         return {on=r~=nil,framing=self.framing,resume=self.resume,target=r and r.targetKey or '',
@@ -278,7 +318,13 @@ function Track.new(options)
     -- For the app's list: key:class:team;...
     function self:targets()
         local parts={}
-        for i,entry in ipairs(candidates())do
+        local list=candidates()
+        if run and #list>TARGETS_MAX then
+            for i=TARGETS_MAX+1,#list do
+                if list[i].key==run.targetKey then list[TARGETS_MAX]=list[i];break end
+            end
+        end
+        for i,entry in ipairs(list)do
             if i>TARGETS_MAX then break end
             parts[#parts+1]=entry.key..':'..className(entry.actor)..':'..tostring(entry.team)
         end
@@ -303,9 +349,85 @@ function Track.new(options)
     end
     -- One frame: where the camera goes. nil once there is nothing to follow.
     -- input: mx, my, wheel, forward, right, up, fast, turn, speed, smooth, world.
+    eyeFrame=function(r,now,world)
+        local a=r.target
+        if not U.valid(a) then return end
+        if not r.eyeCheck or now>=r.eyeCheck then
+            r.eyeCheck=now+.20
+            local ok,name=pcall(function()return a:GetFullName()end)
+            if not ok or not r.eyeIdentity or name~=r.eyeIdentity or U.key(a)~=r.targetKey
+                or not U.inWorld(a,world) or not alive(a) then return end
+            local player=options.player and options.player()
+            local present=U.key(player)==r.targetKey
+            local eyeHeight=U.field(a,'BaseEyeHeight')
+            r.checkEyeOrigin=not present and (type(eyeHeight)~='number' or eyeHeight<=0)
+            if not present then
+                for _,m in ipairs(options.members() or {})do
+                    if not m.stand and not m.reserve and U.key(m.actor)==r.targetKey then present=true;break end
+                end
+            end
+            if not present then return end
+        end
+        local pos,angles={},{}
+        local ok=pcall(function()a:GetActorEyesViewPoint(pos,angles)end)
+        local at=ok and vec(pos)
+        if not ok or type(angles.Yaw)~='number' or type(angles.Pitch)~='number' then
+            local read,rotation=pcall(function()return a:K2_GetActorRotation()end)
+            if not read or not rotation then return end
+            angles=rotation
+        end
+        if at and r.checkEyeOrigin then
+            local root=located(a)
+            if root and math.abs(at.X-root.X)+math.abs(at.Y-root.Y)+math.abs(at.Z-root.Z)<1 then at=nil end
+        end
+        if not at then
+            -- A character that does not expose the out-vector still has a head socket or capsule.
+            local mesh=U.field(a,'Mesh')
+            if U.valid(mesh) then
+                local key=U.key(mesh)
+                if key~=r.eyeMesh then
+                    r.eyeMesh=key;r.eyeSocket=false
+                    for _,socket in ipairs({'eyes','head'}) do
+                        local found,value=pcall(function()local n=FName(socket);return mesh:DoesSocketExist(n) and n end)
+                        if found and value then r.eyeSocket=value;break end
+                    end
+                end
+                if r.eyeSocket then
+                    local got,v=pcall(function()return mesh:GetSocketLocation(r.eyeSocket)end)
+                    at=got and vec(v)
+                    if at and not (finite(at.X) and finite(at.Y) and finite(at.Z)) then at=nil end
+                end
+            end
+            if not at then
+                at=located(a);if not at then return end
+                local height=U.field(a,'BaseEyeHeight')
+                at.Z=at.Z+(type(height)=='number' and height>0 and height or r.targetHalf*.8)
+            end
+        end
+        local yaw,pitch=angles.Yaw,angles.Pitch
+        if not (finite(yaw) and finite(pitch) and finite(at.X) and finite(at.Y) and finite(at.Z)) then return end
+        local forward=direction(yaw,0);local offset=clamp(r.targetRadius*.3,4,18)
+        if options.trace and (not r.eyeTraceAt or now-r.eyeTraceAt>=TRACE_EVERY) then
+            r.eyeTraceAt=now
+            local goal={X=at.X+forward.X*offset,Y=at.Y+forward.Y*offset,Z=at.Z}
+            local hit=options.trace(world,at,goal,CAMERA_CHANNEL,a)
+            r.eyeRoom=offset
+            if hit and hit.inside then r.eyeRoom=0
+            elseif hit and hit.at then
+                r.eyeRoom=clamp((hit.at.X-at.X)*forward.X+(hit.at.Y-at.Y)*forward.Y-2,0,offset)
+            end
+        end
+        offset=r.eyeRoom or offset
+        return {X=at.X+forward.X*offset,Y=at.Y+forward.Y*offset,Z=at.Z},{Yaw=yaw,Pitch=clamp(wrap(pitch),-89,89),Roll=0}
+    end
     function self:frame(dt,now,input)
         local r=run
         if not r then return nil end
+        if self.framing=='eyes' then
+            local at,rot=eyeFrame(r,now,input.world)
+            if not at then self:stop('第一人称目标已失效');return nil end
+            return at,rot
+        end
         if not r.checkedAt or now-r.checkedAt>=CHECK_EVERY then
             r.checkedAt=now
             if r.slowUntil==math.huge then r.slowUntil=now+RETARGET_SECONDS end

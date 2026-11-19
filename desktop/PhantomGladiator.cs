@@ -1334,7 +1334,8 @@ namespace PhantomGladiator
             }
             catch (WebView2RuntimeNotFoundException)
             {
-                if (MessageBox.Show("需要先安装微软的 WebView2 运行库（Windows 10/11 一般自带）。\n点“确定”打开微软官方下载页。", "斗蛐蛐", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
+                bool english = !System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("zh", StringComparison.OrdinalIgnoreCase);
+                if (MessageBox.Show(english ? "Microsoft WebView2 Runtime is required. Select OK to open the official download page." : "需要先安装微软的 WebView2 运行库（Windows 10/11 一般自带）。\n点“确定”打开微软官方下载页。", english ? "Phantom Gladiator" : "斗蛐蛐", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK)
                     OpenExternal("https://go.microsoft.com/fwlink/p/?LinkId=2124703");
                 Close();
                 return;
@@ -1477,10 +1478,11 @@ namespace PhantomGladiator
                     return GameDict(found);
                 }
                 case "pickFolder":
-                    using (var dialog = new FolderBrowserDialog { Description = "选择《影之刃零》的安装文件夹（里面有 platform\\steam\\PBZ.exe）", ShowNewFolderButton = false })
+                    using (var dialog = new FolderBrowserDialog { Description = p.ContainsKey("lang") && string.Equals(p["lang"] as string, "en", StringComparison.OrdinalIgnoreCase) ? "Select the Phantom Blade Zero installation folder (the one containing platform\\steam\\PBZ.exe)." : "选择《影之刃零》的安装文件夹（里面有 platform\\steam\\PBZ.exe）", ShowNewFolderButton = false })
                         return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedPath : null;
                 case "pickAudio":
-                    using(var dialog=new OpenFileDialog { Title="选择 BOSS 本地音乐",Filter="音频文件|*.mp3;*.wav;*.flac;*.aac;*.m4a;*.ogg;*.opus;*.wma;*.aiff;*.ape;*.alac;*.mka;*.ac3;*.amr|所有文件|*.*",CheckFileExists=true,Multiselect=false })
+                    bool englishAudio = p.ContainsKey("lang") && string.Equals(p["lang"] as string, "en", StringComparison.OrdinalIgnoreCase);
+                    using(var dialog=new OpenFileDialog { Title=englishAudio ? "Choose local boss music" : "选择 BOSS 本地音乐",Filter=(englishAudio ? "Audio files" : "音频文件")+"|*.mp3;*.wav;*.flac;*.aac;*.m4a;*.ogg;*.opus;*.wma;*.aiff;*.ape;*.alac;*.mka;*.ac3;*.amr|"+(englishAudio ? "All files" : "所有文件")+"|*.*",CheckFileExists=true,Multiselect=false })
                         return dialog.ShowDialog(this)==DialogResult.OK ? dialog.FileName : null;
                 case "setGamePath":
                 {

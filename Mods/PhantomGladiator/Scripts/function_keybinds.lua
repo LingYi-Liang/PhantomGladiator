@@ -12,6 +12,17 @@ Keys.labels={spawn='召唤所选单位',start='开始交战',stop='停止并清�
 -- (otherwise a save from before would count as invalid and every key would come up unbound).
 Keys.added={recall_companions=true,toggle_time_stop=true,toggle_track=true,track_pick=true,track_next=true,dismiss_companions=true,
     hun_blue=true,hun_red=true,hun_companion=true,hun_neutral=true}
+for _,id in ipairs(require('map_weather').commands)do
+    local action='weather_'..id
+    Keys.actions[#Keys.actions+1]=action
+    Keys.labels[action]='天气：'..id
+    Keys.added[action]=true
+end
+for _,action in ipairs({'eyes_player','eyes_npc'})do
+    Keys.actions[#Keys.actions+1]=action
+    Keys.labels[action]=action=='eyes_player' and '玩家第一人称观战' or 'NPC第一人称观战'
+    Keys.added[action]=true
+end
 local function read(fs,path)
     local f=fs.open(path,'rb');if not f then return nil end
     local value=f:read(65537);f:close();return value and #value<=65536 and value or nil

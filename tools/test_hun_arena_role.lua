@@ -56,3 +56,18 @@ for _,team in ipairs({'blue','red','companion','neutral'})do
     assert(values.Enemy==enemy and hatred.HatredList[1]==enemy)
 end
 print('PASS independent arena and challenge AI, companion follow, one-way player exclusion and preserved opponent')
+
+do
+    local blue,red,player,outsider=object('blue'),object('red'),object('player'),object('outsider')
+    local a,b={actor=blue,team='neutral',name='A'},{actor=red,team='neutral',name='B'}
+    local lib=object('effects');function lib:EffectContextGetOriginalInstigatorActor(effect)return effect.source end
+    local hooks,logs={},{}
+    local role=Role.new({current=function(r)return r==a or r==b end,player=function()return player end,
+        find=function()return lib end,gameThread=function()return true end,stat=function()return 100 end,
+        register=function(key,pre)hooks[key]=pre;return 1,2 end,log=function(s)logs[#logs+1]=s end})
+    role:prepare(a);role:prepare(b)
+    local hit=hooks['/Script/ProjectPBZ.PBZCharacter:OnDamage']
+    hit(red,19,nil,{source=blue});assert(logs[#logs]:find('[HunDuelHit]',1,true) and b.awaitHitSample=='neutral魂')
+    local n=#logs;hit(red,19,nil,{source=outsider});assert(#logs==n)
+    hit(red,21,nil,{source=player});assert(logs[#logs]:find('[HunPlayerHit]',1,true) and b.awaitHitSample=='玩家')
+end

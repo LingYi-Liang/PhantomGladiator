@@ -4,6 +4,7 @@ const requests=[],dialogs=[];
 const nodes={'#execution-minions-chance':{value:'50'},'#execution-minions-on':{checked:true}};
 const c={S:{unitRules:{}},byId:new Map([['BOSS',{id:'BOSS',name:'Test',boss:true}],['MOB',{id:'MOB',boss:false}]]),ui:{busy:new Set()},
  esc:String,$:s=>nodes[s],openDialog:(kind,html)=>dialogs.push(html),renderGrid:()=>{},run:async(a,o)=>requests.push({a,p:o.payload})};
+c.I18N=require('./test_i18n_runtime')();c.I18N.set('zh');c.t=c.I18N.t;
 vm.createContext(c);
 const begin=source.indexOf('  function openExecutionOptions('),end=source.indexOf('  async function toggleUnitRule(',begin);
 vm.runInContext(source.slice(begin,end),c);

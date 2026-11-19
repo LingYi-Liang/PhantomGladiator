@@ -108,7 +108,7 @@ local function harness(saved,withSpectator,withCodex)
         if name=='panel_bridge'then return Bridge end
         if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
         if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
-        assert(name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys')
+        assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -666,7 +666,7 @@ test("recall goes to the companions from the app and from its function key; keys
     h.runtime:start()
     h.inbox={action='recall_companions'};h:tick()
     assert(recalls==1 and h.result.ok and h.result.message=='已召回 2/2 个随从到身边')
-    assert(h.reported.function_keys_schema==6 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
+    assert(h.reported.function_keys_schema==8 and h.reported.key_recall_companions=='' and h.reported.companion_stuck_teleports==1)
     h.inbox={action='configure_keys',key_spawn='UNBOUND',key_start='UNBOUND',key_stop='UNBOUND',key_refresh_catalog='UNBOUND',
         key_toggle_camera='UNBOUND',key_exit_camera='UNBOUND',key_cycle_team='UNBOUND',key_toggle_spectator='UNBOUND',key_recall_companions='F5'}
     h:tick();assert(h.result.ok,h.result.message)
@@ -870,6 +870,33 @@ test('battle music commands report native readback and stop cannot hide pending 
     pending=true;h.inbox={action='stop'};h:tick();assert(not h.result.ok and h.result.message:find('music restore pending',1,true))
     pending=false;h.inbox={action='stop'};h:tick();assert(h.result.ok)
 end)
+test('first-person hotkeys use the observation camera and unwind only their own failed entry',function()
+    local h=harness();local active=false;local seen={}
+    local camera={status=function()return {active=active}end,toggle=function()active=not active;return {ok=true}end,
+        exit=function()active=false;return {ok=true}end}
+    local track={firstPerson=function(_,who)seen[#seen+1]=who;return {ok=who=='player'} end,status=function()return {} end,targets=function()return ''end}
+    h.runtime=h.new({camera=camera,track=track});h.runtime:start();h:tick()
+    local keys={};for k,v in pairs(h.runtime.functionKeys.entries)do keys[k]=v end
+    keys.eyes_player='VK_119_MOD_0';keys.eyes_npc='VK_119_MOD_1'
+    h:run(function()assert(h.runtime:configure(keys).ok)end)
+    h.keys['F8:1']();h:drain();assert(not active and seen[1]=='npc')
+    h.keys.F8();h:drain();assert(active and seen[2]=='player')
+    h.keys['F8:1']();h:drain();assert(active and seen[3]=='npc')
+end)
+test('weather hotkeys directly dispatch different presets and all three navigation actions',function()
+    local h=harness();local seen={}
+    local weather={status=function()return 'map' end,set=function(_,id)seen[#seen+1]=id;return {ok=true,message='weather.applied'}end}
+    h.runtime=h.new({support={weather=weather}});h.runtime:start();h:tick()
+    local proposal={};for k,v in pairs(h.runtime.functionKeys.entries)do proposal[k]=v end
+    for i,id in ipairs({'rain','snow','next','previous','restore'})do
+        proposal['weather_'..id]='VK_119_MOD_'..(i-1)
+    end
+    h:run(function()assert(h.runtime:configure(proposal).ok)end)
+    for i,id in ipairs({'rain','snow','next','previous','restore'})do
+        h.keys[i==1 and 'F8' or 'F8:'..(i-1)]();h:drain();assert(seen[i]==id)
+    end
+    h:run(function()assert(h.runtime.handlers.set_weather({key_spawn='FOGGY'}).ok)end);assert(seen[6]=='foggy')
+end)
 test('a Hun summon key uses the Hun entry with the saved count and respects the queue',function()
     local h=harness();local summons,frozen={},{}
     local profile={kit=true,count=3,revision=7,resources={medicine_count=2}}
@@ -884,6 +911,8 @@ test('a Hun summon key uses the Hun entry with the saved count and respects the 
     proposal.hun_blue='VK_119_MOD_0';proposal.hun_neutral='VK_119_MOD_1'
     h:run(function()assert(h.runtime:configure(proposal).ok)end)
     h.keys.F8();assert(#summons==0);h:drain();assert(#summons==1 and summons[1]=='blue:3:7',summons[1])
+    assert(frozen[1] and frozen[1].revision==7 and frozen[1].resources.medicine_count==2,
+        'the immediate key must pass the loadout it used for the revision and count')
     h.keys['F8:1']();h:drain();assert(summons[2]=='neutral:3:7')
     local queue=h.runtime.summonQueue
     queue.enabled=true;h.keys.F8();h:drain()
@@ -903,5 +932,39 @@ test('a Hun summon key uses the Hun entry with the saved count and respects the 
     assert(not submit().ok and #queue.jobs==0,'expired epoch must never run')
     h.keys.F8();h:run(function()queue:cancel('cancel between keypress and game-thread callback')end)
     h:drain();assert(#queue.jobs==0 and #summons==4,'stale Hun key must not rejoin after cancellation')
+end)
+test('a profile save between the hotkey read and direct spawn cannot cancel the accepted batch',function()
+    local oldPath=package.path;package.path='Mods/PhantomGladiator/Scripts/?.lua;'..oldPath
+    local Body=require('hun_body')
+    local h=harness();local reads=0
+    local function loadout()
+        reads=reads+1
+        return reads==1 and {kit=true,count=3,revision=7} or {kit=true,count=1,revision=8}
+    end
+    local world={IsValid=function()return true end,GetAddress=function()return 35 end}
+    local body=Body.new({world=function()return world end,loadout=loadout,requireProfile=true})
+    local arena={spawn=function(_,path,team,count)
+        assert(path==Body.path and team=='red');return {ok=true,spawned_count=count}
+    end}
+    h.runtime=h.new({arena=arena,support={hunBody=body},hunLoadout=loadout})
+    local result=h:run(function()return h.runtime.handlers.hun_red({})end)
+    package.path=oldPath
+    assert(result.ok and result.spawned_count==3 and reads==1,'a single key press must use one complete saved profile')
+end)
+test('a legacy Hun selection uses the saved kit through both the regular key and its queued copy',function()
+    local h=harness();local seen={}
+    local profile={kit=true,count=5,revision=4,resources={medicine_count=2}}
+    h.selection={'/Game/FixtureHun.FixtureHun_C','red',2}
+    local body={spawn=function(_,arena,team,count,revision,snapshot)
+        assert(team=='red' and count==2 and revision=='4' and snapshot.resources.medicine_count==2)
+        seen[#seen+1]=snapshot;return {ok=true,spawned_count=count}
+    end,status=function()return {}end}
+    h.runtime=h.new({support={hunBody=body},hunLoadout=function()return profile end})
+    h.runtime:start();h:tick()
+    h:run(function()assert(h.runtime:dispatch('spawn',{}).ok)end);assert(#seen==1 and count(h,'spawn')==0)
+    local queue=h.runtime.summonQueue;queue.enabled=true
+    h:run(function()assert(h.runtime:queueSummon(function()error('must use queue')end).ok)end)
+    profile.revision=5;profile.resources.medicine_count=9
+    h:run(function()queue:tick()end);assert(#seen==2 and count(h,'spawn')==0)
 end)
 print("panel_runtime: PASS ("..passed.." real-module control regressions; no game accessed)")
