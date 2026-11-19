@@ -557,6 +557,25 @@ class BridgeTests(unittest.TestCase):
             with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
                 self.bridge.enqueue(bad)
 
+    def test_companion_minion_executions_travels_in_the_start_key_column(self):
+        for enabled, token in ((True, "ON"), (False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_companion_minion_executions", "enabled": enabled})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip(chr(10)).split(chr(9))
+            self.assertEqual(columns[1:8], ["set_companion_minion_executions", "", "blue", "1", "", token, ""])
+        for bad in ({"action": "set_companion_minion_executions"}, {"action": "set_companion_minion_executions", "enabled": "ON"}):
+            with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(bad)
+
+    def test_companion_passage_travels_in_the_start_key_column(self):
+        for enabled, token in ((True, "ON"), (False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_companion_passage", "enabled": enabled})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip(chr(10)).split(chr(9))
+            self.assertEqual(columns[1:8], ["set_companion_passage", "", "blue", "1", "", token, ""])
+        for bad in ({"action": "set_companion_passage"}, {"action": "set_companion_passage", "enabled": 1},
+                    {"action": "set_companion_passage", "enabled": False, "unit_id": "BP_Monster_MoTian"}):
+            with self.subTest(request=bad), self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue(bad)
+
     def test_camera_track_travels_in_the_unit_spawn_and_start_key_columns(self):
         command = self.bridge.enqueue({"action": "set_camera_track", "framing": "shoulder", "resume": 5, "unit_id": "2147468727"})
         columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")

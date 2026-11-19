@@ -55,7 +55,8 @@ local function harness()
             companionTargetOf=function(actor,target,name)
                 if h.companionTarget then return h.companionTarget(actor,target,name) end
                 return h.targets[tostring(actor:GetAddress())]
-            end})
+            end,
+            companionLastEnemyOf=function(actor)return h.lastEnemy and h.lastEnemy(actor) end})
     end
     function h.all()return table.concat(h.lines,'\n')end
     return h
@@ -88,6 +89,19 @@ if not only or only=='handoff' then test('a shared action changes avatar to the 
     assert(h.ask('pawn',action)==red)
     avatar=h.player
     assert(h.ask('pawn',action)==h.player,'same-frame shared template reuse must not redirect player skills')
+end)end
+if not only or only=='walk' then test('the force-walk action of a big move falls on the caster, never on the real player',function()
+    local h=harness();local aim=h.new();local buddy=h.unit('companion');local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.fighting=true;aim:tick()
+    local avatar=buddy
+    local action=object('GAA_ForcePlayerWalk_C',{GetAvatarActor=function()return avatar end})
+    assert(h.ask('character',action)==buddy,'a companion with no enemy at all: still not the player')
+    assert(h.all():find('改写 取玩家角色 调用方=GAA_ForcePlayerWalk_C → 施法者自己',1,true),h.all())
+    h.targets[key(buddy)]=object('BP_Monster_MapEnemy_C')
+    assert(h.ask('character',action)==buddy,'begin and end get the same actor whatever the enemy is by then')
+    avatar=blue;assert(h.ask('character',action)==blue,'an arena fighter too')
+    avatar=h.player;assert(h.ask('character',action)==h.player,'the own use of the player is left alone')
+    avatar=object('BP_Monster_Stranger_C');assert(h.ask('character',action)==h.player,'a map boss that is not ours keeps the native behaviour')
 end)end
 if not only or only=='effects' then test('companion particle skills arm isolated effects while player and native phase skills stay untouched',function()
     local h=harness();h.phaseBusyKey=function(k)return h.busy==k end
@@ -156,6 +170,52 @@ if not only or only=='rain' then test('silver-haired companion sword rain acquir
     for i=1,5 do list[i].BulletStatus=3 end
     step(3);assert(not loop and playerShot.ParticleComponent.use==nil)
     done=scans;list={};fire(first);step(120);assert(not loop and scans-done<=9,'an absent volley must retire its bounded search')
+    local skill=h.hooks[Aim.paths.skillStart]
+    done=scans;list={bullet(second)};list[1].BulletStatus=3
+    skill(object('GA_ZuoShang_Skill_19_C',{GetAvatarActorFromActorInfo=function()return first end}));step(120)
+    assert(h.all():find('剑雨起手（招式起手） 招式=GA_ZuoShang_Skill_19_C 施法者是随从=true',1,true),h.all())
+    assert(h.all():find('剑雨发射器没找全：还差5个；搜索9轮（读不到列表0轮） 属于施法者的特效子弹=0 其中在运行=0 数据对得上=0 组件对得上=0',1,true),h.all())
+    -- The skill's own GetPlayerPawn starts the search too, when neither blueprint hook was seen for this cast.
+    h.now=h.now+10;list={};done=scans
+    local third=object('GA_ZuoShang_Skill_19_C',{GetAvatarActorFromActorInfo=function()return second end})
+    assert(h.ask('pawn',third)==h.player,'the call itself keeps the player')
+    assert(loop and h.all():find('剑雨起手（取玩家调用） 招式=GA_ZuoShang_Skill_19_C 施法者是随从=true',1,true),h.all())
+    local starts=select(2,h.all():gsub('剑雨起手（取玩家调用）',''))
+    h.ask('pawn',third);h.ask('pawn',third)
+    assert(select(2,h.all():gsub('剑雨起手（取玩家调用）',''))==starts,'one cast starts once however often it asks')
+    step(13);list={bullet(second),bullet(second),bullet(second),bullet(second),bullet(second)};step(2)
+    for i=1,5 do assert(list[i].ParticleComponent.x==900,'emitters found from the call alone')end
+    -- The AI target key is empty during the rain: the enemy of a moment ago is used.
+    local kept=h.targets[key(second)];h.targets[key(second)]=nil
+    h.companionTarget=function()return nil end
+    local moved=object('BP_MapBoss_C',{K2_GetActorLocation=function()return {X=1234,Y=0,Z=0}end})
+    h.lastEnemy=function(actor)assert(actor==second);return moved end
+    step(1);for i=1,5 do assert(list[i].ParticleComponent.x==1234,'the remembered enemy keeps the rain off the player')end
+    h.lastEnemy=function()return nil end
+    step(1);for i=1,5 do assert(list[i].ParticleComponent.x==1234,'no enemy at all: nothing new is written')end
+    assert(h.all():find('特效目标没改 子弹=BD_ZuoShang_Skill_19：此刻读不到施法者的对手',1,true),h.all())
+    for i=1,5 do list[i].BulletStatus=3 end;step(120)
     LoopInGameThreadWithDelay,CancelDelayedAction,FindAllOf=nil,nil,nil
+end)end
+if not only or only=='lock' then test('万剑归宗 of a companion whose AI target is empty locks the enemy of a moment ago, not the player',function()
+    FName=function(text)return {name=text} end
+    local h=harness();local aim=h.new();local buddy=h.unit('companion');local enemy=object('BP_Monster_MapEnemy_C')
+    enemy.RootComponent=object('EnemyCapsule');aim:tick()
+    local playerRoot=object('PlayerCapsule',{GetOwner=function()return h.player end})
+    local function cast()
+        return object('GA_ZuoShang_CA_02_C',{GetAvatarActorFromActorInfo=function()return buddy end,['Lock Target']={Component=playerRoot},['Lock Target Selected']=true})
+    end
+    local ability=cast()
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=ability}))==false,'no enemy now, none remembered')
+    assert(ability['Lock Target'].Component==playerRoot and h.all():find('招式锁定没改：GA_ZuoShang_CA_02_C 没有对手；游戏自己选的锁定=玩家',1,true),h.all())
+    local asked
+    h.lastEnemy=function(actor)asked=actor;return enemy end
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=ability}))==true and asked==buddy,'the next weapon of the same cast')
+    assert(ability['Lock Target'].Component==enemy.RootComponent and ability['Lock Target Selected']==true)
+    assert(h.all():find('-> BP_Monster_MapEnemy_C（AI 目标暂时为空，用刚才的敌人） 写入=true 读回=生效',1,true),h.all())
+    h.lastEnemy=function()error('must not be asked')end
+    h.targets[key(buddy)]=enemy;ability=cast()
+    assert(aim:lockAbilityOf(object('BP_ZuoShang_GroundWeapon_Base_C',{['Source Ability']=ability}))==true,'a current enemy is used as before')
+    FName=nil
 end)end
 print('companion_aim: PASS (ordinary view and actual player isolation)')

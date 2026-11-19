@@ -46,4 +46,18 @@ test('a file of another kind or format means off',function()
         assert(Setting.new({path='memory',io=memory({[FILE]=text})}).on==false,text)
     end
 end)
+test('the minion switch is a second, independent switch in the same file, and an older file means off',function()
+    local files={}
+    local s=Setting.new({path='memory',io=memory(files)})
+    assert(s.minions==false and s:status().minions==false,'off by default')
+    local r=s:setMinions('ON')
+    assert(r.ok and r.message=='随从处决小怪已开启' and s.minions==true and s.on==false and files[FILE]=='CompanionExecutionsV1'..string.char(9)..'on=0'..string.char(9)..'minions=1'..string.char(10))
+    assert(s:set('ON').ok and s.on==true and s.minions==true and files[FILE]=='CompanionExecutionsV1'..string.char(9)..'on=1'..string.char(9)..'minions=1'..string.char(10),'the boss switch keeps the minion one')
+    local again=Setting.new({path='memory',io=memory(files)});assert(again.on==true and again.minions==true,'both after a restart')
+    assert(s:setMinions('OFF').ok and s.minions==false and s.on==true and files[FILE]=='CompanionExecutionsV1'..string.char(9)..'on=1'..string.char(10),'off: the file is in its old form again')
+    assert(Setting.new({path='memory',io=memory({[FILE]='CompanionExecutionsV1'..string.char(9)..'on=1'..string.char(10)})}).minions==false,'a file from before the switch')
+    for _,bad in ipairs({'',nil,'on',1,true})do assert(not s:setMinions(bad).ok and s.minions==false)end
+    local failing=Setting.new({path='memory',io=memory({},true)})
+    r=failing:setMinions('ON');assert(not r.ok and failing.minions==false and r.message=='随从处决小怪的设置没有保存')
+end)
 print('companion_executions: '..passed..' tests passed')

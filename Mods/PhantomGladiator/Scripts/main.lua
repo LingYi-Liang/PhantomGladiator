@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.17"
+local BUILD = "v0.40.18"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -2334,6 +2334,7 @@ arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWo
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     prepareMembers=function(members)companionTargets:sync(members)end,
     companionTargetOf=function(actor,target,name)return companionTargets:current(actor,target,name)end,
+    companionLastEnemyOf=function(actor)return companionTargets:lastEnemy(actor)end,
     boundaryCharacter=function(context,index)return arenaSupport.yubiArena:character(context,index)end,
     boundaryPending=function()return arenaSupport.yubiArena:hasPending()end,
     phaseBusyKey=function(key)return arenaSupport.menghuaPhase:busyKey(key)end,
@@ -2365,6 +2366,9 @@ aiParams=require('ai_params').new({path=Config.RuntimePath,log=log,members=Arena
 executionCamera=ExecutionCamera.new({log=log,path=Config.RuntimePath,getController=GetRealPlayerController,
     getWorld=GetCurrentWorld,getPlayer=GetPlayerPawn,freeCamera=freeCamera})
 arenaSupport.companionExecutions=require('companion_executions').new({log=log,path=Config.RuntimePath})
+-- 玩家可以穿过随从 (companion_passage.lua): companions' capsules ignore the player's collision channel.
+arenaSupport.companionPassage=require('companion_passage').new({log=log,path=Config.RuntimePath,members=ArenaMembers,player=GetPlayerPawn,
+    mount=function(actor)return UEObserve.field(UEObserve.field(actor,'BP_SGameDriverComponent'),'DrivingVehicle')end})
 -- What a unit's card says (unit_rules.lua), and 琴女's 虚化, which nothing an NPC does can break (phantom_break.lua).
 arenaSupport.entourage=require('boss_entourage').new({adopt=function(child,parent,path)
     local result=arena:adoptSummon(child,parent,path,'原生召唤完成回调')
@@ -2376,6 +2380,24 @@ arenaSupport.xianzhePhantom=require('xianzhe_phantom').new({log=log,members=Aren
     rule=function(id)return arenaSupport.unitRules:get(id,'phantom')end})
 arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end})
+-- Teleport (experimental, teleport.lua): the game's own PBZSaveLoadSubsystem:TeleportTo with the level name
+-- GetCurrentLevelName gives, as the game's teleporter device does.
+arenaSupport.teleport=require('teleport').new({log=log,player=GetPlayerPawn,
+    loop=function(ms,fn)return LoopInGameThreadWithDelay(ms,fn)end,cancel=function(handle)return CancelDelayedAction(handle)end,
+    worldName=function()
+        local world=GetCurrentWorld()
+        if not safeValid(world) then return nil end
+        local lib=GetGameplayStatics()
+        if safeValid(lib) then
+            local ok,name=pcall(function()return lib:GetCurrentLevelName(world,true):ToString()end)
+            if ok and type(name)=='string' and name~='' then return name end
+        end
+        local ok,full=pcall(function()return world:GetFullName()end)
+        return ok and type(full)=='string' and full:match('%.([%w_]+)$') or nil
+    end,
+    blocked=function()
+        if freeCamera:isActive() then return '自由观战中不能传送，请先退出观战' end
+    end})
 arenaSupport.weather=require('map_weather').new({world=GetCurrentWorld,findAll=FindAllOf,load=LoadAsset,log=log,
     mapActor=function(world)
         local cls=StaticFindObject('/Weather/UltraDynamicSky/Blueprints/Ultra_Dynamic_Weather.Ultra_Dynamic_Weather_C')
@@ -2413,7 +2435,7 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     executionPolicyConfigured=function()return arenaSupport.unitRules:hasExecutionOverrides()end,
     executionPolicy=function(id)return arenaSupport.unitRules:get(id,'execution_minions')end,
     phaseBusy=function(actor)return arenaSupport.menghuaPhase:busy(actor)end,
-    companions=function()return arenaSupport.companionExecutions.on end,isStand=require('arena_stands').isStand,
+    companions=function()return arenaSupport.companionExecutions.on end,companionMinions=function()return arenaSupport.companionExecutions.minions end,isStand=require('arena_stands').isStand,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,camera=executionCamera,
     onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
@@ -2471,6 +2493,7 @@ local function supportSteps(self)
     end)
     step('aiDifficulty',function()aiDifficulty:tick()end)
     step('companions',function()companions:tick()end)
+    step('companionPassage',function()self.companionPassage:tick()end)
     step('fun',function()funFeatures:tick()end)
     step('freeCamera',function()freeCamera:recover()end)
     if grabStudy then step('grabStudy',function()grabStudy:tick()end) end
@@ -2484,6 +2507,7 @@ local function supportSteps(self)
     step('remoteReflect',function()self.remoteReflect:tick()end)
     step('xianzhePhantom',function()self.xianzhePhantom:tick()end)
     step('offCombatRegen',function()self.offCombatRegen:tick()end)
+    if self.teleport and self.teleport:busy() then step('teleport',function()self.teleport:tick()end) end
     step('battleMusic',function()
         local now=os.clock()
         if not self.musicNext or now>=self.musicNext then self.musicNext=now+0.25;self.battleMusic:tick()end
@@ -2623,11 +2647,13 @@ if ModRef then
         arenaSupport.xianzhePhantom:silence()
         arenaSupport.menghuaPhase:silence()
         arenaSupport.offCombatRegen:silence()
+        if arenaSupport.teleport then arenaSupport.teleport:silence() end
         arenaSupport.battleMusic:silence()
         if arenaSupport.grabProbe then arenaSupport.grabProbe:silence() end
         local checkedThread,onGameThread=pcall(IsInGameThread)
         local restoreNative=checkedThread and onGameThread==true
         arenaSupport.weather:silence(restoreNative)
+        arenaSupport.companionPassage:silence(restoreNative)
         arenaSupport.entourage:silence(restoreNative)
         arenaSupport.aggroGuard:silence(restoreNative)
         arenaSupport.yubiArena:silence(restoreNative)

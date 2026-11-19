@@ -303,7 +303,7 @@ do
         h.tags[boss]={['CharacterState.CanWeakExecute.Weak']=1}
         h.fighting=false
         h.members={{actor=mate,team='companion'}}
-        local exec=h.new({companions=function()return on end,isStand=opts.isStand,phaseBusy=opts.phaseBusy})
+        local exec=h.new({companions=function()return on end,companionMinions=opts.minions and function()return true end or nil,isStand=opts.isStand,phaseBusy=opts.phaseBusy})
         return h,exec,boss,mate,function(value)on=value end
     end
     regression('the switch off: a boss a companion is after is left to the player',function()
@@ -345,6 +345,20 @@ do
         local h,exec=companionCase({boss={rank='Elite'}})
         h.run(exec,2);assert(exec:status().started==0,h.all())
         exec:stop('regression')
+    end)
+    regression('the minion switch: a minion a companion is after is executed by it, the boss switch on or off; never one the player has taken',function()
+        for _,on in ipairs({true,false})do
+            local h,exec,minion,mate=companionCase({boss={rank='Elite'},minions=true,on=on})
+            h.run(exec,0.5);assert(exec:status().started==1 and exec:executing(mate),h.all())
+            exec:stop('regression')
+        end
+        local h,exec,minion=companionCase({boss={rank='Elite'},minions=true,on=false})
+        minion['Execution Component'].CurrentExecutionInfo={Executor=h.player,Target=minion,IsTarget=true}
+        h.run(exec,2);assert(exec:status().started==0,'the player has it')
+        exec:stop('regression')
+        local h2,exec2=companionCase({minions=true,on=false})
+        h2.run(exec2,2);assert(exec2:status().started==0,'the minion switch does not take bosses')
+        exec2:stop('regression')
     end)
     regression('a boss the player is executing stays the player\'s',function()
         local h,exec,boss=companionCase()
@@ -1354,5 +1368,302 @@ do
     assert(e2:startGuillotineHold(v2,function()return true end));require('hun_look').STEPS.guillotineSelf=saved
     assert(#h2.components==1 and not h2.has('montage play Hun_EXD_ByMBoss_Start_Montage stopAll=true'),'switch off: the borrowed body as before')
     print('PASS a Hun victim whose own montage does not read back falls back to the borrowed body, as does the switch off')
+end
+-- 随从魂: a Hun body summoned as a companion finishes what the player could, minions too, with the BOSS switch off.
+local function companionHunCase(rank)
+    local h=harness()
+    local foe=h.boss('BP_Foe',100,0,{rank=rank or 'Elite'})
+    local hun=h.enemy({X=300,Y=0,Z=0},{class='BP_Monster_Hun'})
+    local other=h.enemy({X=100,Y=0,Z=0})
+    other.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={foe}})
+    h.tags[foe]={['CharacterState.CanWeakExecute.Weak']=1}
+    h.fighting=false
+    h.members={{actor=hun,team='companion'},{actor=other,team='companion'}}
+    return h,foe,hun,other
+end
+do
+    local h,foe,hun,other=companionHunCase('Elite')
+    local exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun) and not exec:executing(other),'the Hun, not the nearer companion: '..h.all())
+    exec:stop('regression')
+    h,foe,hun,other=companionHunCase('UltimateBoss')
+    exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,0.5);assert(exec:status().started==1 and exec:executing(hun),'a boss too, with the switch off: '..h.all())
+    exec:stop('regression')
+    print('PASS a companion Hun executes a minion and a boss the player could execute, with the companion-boss switch off')
+end
+do
+    local h,foe,hun=companionHunCase('Elite')
+    foe['Execution Component'].CurrentExecutionInfo={Executor=h.player,Target=foe,IsTarget=true}
+    local exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,2);assert(exec:status().started==0,'the player has it: left alone')
+    exec:stop('regression')
+    h,foe,hun=companionHunCase('Elite')
+    exec=h.new({companions=function()return false end,isHun=function()return false end})
+    h.run(exec,2);assert(exec:status().started==0,'no Hun among the companions: minions stay with the player')
+    exec:stop('regression')
+    h,foe,hun=companionHunCase('Elite');h.tags[foe]={}
+    exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,2);assert(exec:status().started==0,'a foe that cannot be executed is not')
+    exec:stop('regression')
+    h,foe,hun=companionHunCase('Elite')
+    h.members={{actor=hun,team='companion',reserve=true}}
+    hun.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={foe}})
+    exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,2);assert(exec:status().started==0,'a Hun in reserve is not in the field')
+    exec:stop('regression')
+    local saved=require('hun_look').STEPS.companionExecutions
+    require('hun_look').STEPS.companionExecutions=false
+    h,foe,hun=companionHunCase('Elite')
+    exec=h.new({companions=function()return false end,isHun=function(actor)return actor==hun end})
+    h.run(exec,2);require('hun_look').STEPS.companionExecutions=saved
+    assert(exec:status().started==0,'the step switch off')
+    exec:stop('regression')
+    print('PASS a companion Hun leaves alone what the player has taken, what cannot be executed, and everything when it is absent or switched off')
+end
+do
+    local h,exec,target,hun,nearer=weaponPairCase('thug')
+    hun.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={target}})
+    h.fighting=false
+    h.members={{actor=hun,team='companion'},{actor=nearer,team='companion'}}
+    exec=h.new({isHun=function(actor)return actor==hun end,companions=function()return false end})
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun) and not exec:executing(nearer),'the weapon pair for a foe with no pair: '..h.all())
+    assert(lines(h,'来源=魂武器通用处决对')==1,h.all())
+    exec:stop('regression')
+    print('PASS a companion Hun uses its weapon pair on a foe with no pair of its own')
+end
+-- 随从的处决对: a companion Hun takes the pair of the weapon it holds, then the generic one, then the foe's own (a boss
+-- its own first); a companion that is no Hun finishes a minion with no pair with the generic one, on a borrowed body.
+local WEAPON='/PBZCombatAsset/ActorData/Players/Hun/Weapon/YanYueDao/Weapon_Hun_YanYueDao.Weapon_Hun_YanYueDao'
+local WEAPON_PAIRS=require('hun_weapon_execution_data').forConfig(WEAPON)
+assert(#WEAPON_PAIRS>0 and WEAPON_PAIRS[1].victim_skeleton=='MaleThug_Skeleton','the fixture weapon has a thug pair')
+local WEAPON_GA=WEAPON_PAIRS[1].execution:match('%.([^%.]+)$')
+local WEAPON_GD=WEAPON_PAIRS[1].executed:match('%.([^%.]+)$')
+assert(WEAPON_GA~='GA_Hun_BEx_JueYing_M_01_C')
+-- The wooden sword's own pairs are all for another skeleton.
+local WOODEN='/PBZCombatAsset/ActorData/Players/Hun/Weapon/WoodenSword/Weapon_Hun_WoodenSword.Weapon_Hun_WoodenSword'
+local WOODEN_PAIRS=require('hun_weapon_execution_data').forConfig(WOODEN)
+assert(#WOODEN_PAIRS>0)
+for _,entry in ipairs(WOODEN_PAIRS)do assert(entry.victim_skeleton~='MaleThug_Skeleton')end
+local function known(h,list,thug)
+    local skeleton=h.found[HUN_SKELETON_PATH].Skeleton
+    for _,entry in ipairs(list)do
+        h.found[entry.execution]=class(entry.execution:match('%.([^%.]+)$'))
+        h.found[entry.executed]=class(entry.executed:match('%.([^%.]+)$'))
+        h.found[entry.victim]=object(entry.victim:match('%.([^%.]+)$'),{Skeleton=entry.victim_skeleton=='MaleThug_Skeleton' and thug or object(entry.victim_skeleton)})
+        h.found[entry.timing.clip]=object(entry.timing.clip:match('%.([^%.]+)$'),{Skeleton=skeleton})
+    end
+end
+-- A thug with no pair of its own that two companions are after: a Hun body 5 m away and a nearer one that is no Hun.
+local function companionPairCase(options,weaponKnown)
+    local h,_,target,hun,nearer=weaponPairCase('thug')
+    if weaponKnown then known(h,weaponKnown,target.Mesh.GetSkeletalMeshAsset().Skeleton) end
+    nearer.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={target}})
+    h.fighting=false
+    h.members={{actor=hun,team='companion'},{actor=nearer,team='companion'}}
+    local extra={companions=function()return false end,isHun=function(actor)return actor==hun end}
+    for k,v in pairs(options or {})do extra[k]=v end
+    return h,h.new(extra),target,hun,nearer
+end
+do
+    local h,exec,target,hun,nearer=companionPairCase({hunWeapon=function()return WEAPON end},WEAPON_PAIRS)
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun),h.all())
+    assert(h.has('play '..WEAPON_GA..' + '..WEAPON_GD..' on BP_Monster_MaleThug_0 at 0.0'),h.all())
+    assert(lines(h,'来源=魂手持武器的处决对')==1 and lines(h,'来源=魂武器通用处决对')==0,h.all())
+    assert(lines(h,'技能对='..WEAPON_GA..' 采用=true 来自=手持武器')==1 and lines(h,'技能对=GA_Hun_BEx_JueYing_M_01_C 采用=true 来自=通用')==1,'both lists are looked at, the weapon first: '..h.all())
+    exec:stop('regression')
+    print('PASS a companion Hun finishes a foe with the pair of the weapon it holds')
+end
+do
+    -- The held weapon has no pair made for this skeleton: the generic pair.
+    local h,exec,target,hun=companionPairCase({hunWeapon=function()return WOODEN end},WOODEN_PAIRS)
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun),h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Monster_MaleThug_0 at 0.0'),table.concat(h.calls,' | '))
+    assert(lines(h,'来源=魂武器通用处决对')==1 and lines(h,'采用=false 来自=手持武器')==#WOODEN_PAIRS,h.all())
+    exec:stop('regression')
+    -- In the arena a Hun holding a weapon keeps to that weapon's pairs, as before.
+    local h2,_,target2,hun2=weaponPairCase('thug')
+    known(h2,WOODEN_PAIRS,target2.Mesh.GetSkeletalMeshAsset().Skeleton)
+    local exec2=h2.new({isHun=function(actor)return actor==hun2 end,hunWeapon=function()return WOODEN end})
+    h2.run(exec2,2)
+    assert(exec2:status().started==0 and lines(h2,'来自=通用')==0 and lines(h2,'来自=手持武器')==#WOODEN_PAIRS,'the arena does not fall back: '..h2.all())
+    print('PASS a companion Hun whose weapon has no fitting pair uses the generic pair; an arena Hun does not')
+end
+-- A minion that has its own pair, on the thug skeleton, with the generic pairs there.
+local function ownPairCase(rank,options)
+    local h,foe,hun,other=companionHunCase(rank)
+    local thug=object('MaleThug_Skeleton')
+    foe.Mesh.GetSkeletalMeshAsset=function()return object('MaleThug',{Skeleton=thug})end
+    known(h,HUN_PAIRS,thug)
+    local extra={companions=function()return false end,isHun=function(actor)return actor==hun end}
+    for k,v in pairs(options or {})do extra[k]=v end
+    return h,h.new(extra),foe,hun,other
+end
+do
+    local h,exec,foe,hun=ownPairCase('Elite')
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun),h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Foe_0 at 0.0') and lines(h,'来源=魂武器通用处决对')==1,'the Hun pair before the minion own pair: '..h.all())
+    exec:stop('regression')
+    h,exec,foe,hun=ownPairCase('UltimateBoss')
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Foe_0 at 0.0') and lines(h,'魂武器处决对')==0,'a boss keeps its own pair: '..h.all())
+    exec:stop('regression')
+    local saved=require('hun_look').STEPS.companionWeaponFirst
+    require('hun_look').STEPS.companionWeaponFirst=false
+    h,exec,foe,hun=ownPairCase('Elite')
+    h.run(exec,0.5);require('hun_look').STEPS.companionWeaponFirst=saved
+    assert(exec:status().started==1 and h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Foe_0 at 0.0') and lines(h,'魂武器处决对')==0,'the step switch off: the minion own pair, as before: '..h.all())
+    exec:stop('regression')
+    -- A skeleton no Hun pair fits: the minion's own pair.
+    h,exec,foe,hun=ownPairCase('Elite')
+    foe.Mesh.GetSkeletalMeshAsset=function()return object('Doll',{Skeleton=object('Doll_Skeleton')})end
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Foe_0 at 0.0') and lines(h,'采用=true')==0,h.all())
+    exec:stop('regression')
+    print('PASS a companion Hun prefers its Hun pair on a minion that has its own, and falls back to the own pair; a boss keeps its own')
+end
+do
+    -- A minion that outlives a Hun pair still has its own pair afterwards.
+    local h,exec,foe,hun=ownPairCase('Elite',{immune=function(_,kind)return kind=='lethal' end})
+    h.run(exec,0.5);assert(exec:status().started==1 and lines(h,'来源=魂武器通用处决对')==1,h.all())
+    h.run(exec,HUN_PAIRS[1].timing.executor+1)
+    assert(not exec:status().active and h.attrs[foe].Health>0,'it is still standing: '..h.all())
+    local saved=require('hun_look').STEPS.companionWeaponFirst
+    require('hun_look').STEPS.companionWeaponFirst=false
+    h.run(exec,16);require('hun_look').STEPS.companionWeaponFirst=saved
+    assert(exec:status().started==2 and h.has('play GA_Hun_BEx_MoYuan_C + GA_Hun_BEd_MoYuan_C on BP_Foe_0 at 0.0'),'its own pair is still its own: '..h.all())
+    exec:stop('regression')
+    print('PASS a minion that survives a Hun pair keeps its own pair')
+end
+do
+    -- No Hun among the companions, 随从处决小怪 on: the nearest companion borrows a body for the generic pair.
+    local h,exec,target,hun,nearer=companionPairCase({isHun=function()return false end,companionMinions=function()return true end})
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(nearer) and not exec:executing(hun),h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Monster_MaleThug_0 at 0.0') and lines(h,'来源=魂武器通用处决对')==1,table.concat(h.calls,' | '))
+    assert(#h.components==1 and lines(h,'同骨架，直接用本体')==0,'it is no Hun body: it borrows one: '..h.all())
+    exec:stop('regression')
+    h,exec=companionPairCase({isHun=function()return false end})
+    h.run(exec,2);assert(exec:status().started==0 and lines(h,'魂武器处决对')==0,'the switch off: left to the player')
+    exec:stop('regression')
+    h,exec,target=companionPairCase({isHun=function()return false end,companionMinions=function()return true end})
+    target['Execution Component'].CurrentExecutionInfo={Executor=h.player,Target=target,IsTarget=true}
+    h.run(exec,2);assert(exec:status().started==0,'the player has it: left alone')
+    exec:stop('regression')
+    h,exec,target=companionPairCase({isHun=function()return false end,companionMinions=function()return true end})
+    target.Mesh.GetSkeletalMeshAsset=function()return object('Doll',{Skeleton=object('Doll_Skeleton')})end
+    h.run(exec,2);assert(exec:status().started==0 and lines(h,'采用=true')==0,'a skeleton the generic pair was not made for is not executed')
+    exec:stop('regression')
+    local saved=require('hun_look').STEPS.weaponPairs
+    require('hun_look').STEPS.weaponPairs=false
+    h,exec=companionPairCase({isHun=function()return false end,companionMinions=function()return true end})
+    h.run(exec,2);require('hun_look').STEPS.weaponPairs=saved
+    assert(exec:status().started==0,'the Hun pair step switch off')
+    exec:stop('regression')
+    print('PASS with the minion switch on a companion that is no Hun finishes a minion with no pair by the generic Hun pair, on a borrowed body')
+end
+-- 随从魂谁都能处决: a foe on a skeleton no Hun pair was made for, with no pair of its own.
+local function anyoneCase(rank,options,silent)
+    local h,_,target,hun,nearer=weaponPairCase('GuiChai_Skeleton')
+    if rank then
+        target['Actor Config']['Difficulty Tag']={TagName={ToString=function()return 'CharacterType.Difficulty.'..rank end}}
+    end
+    local brain=object('BrainComponent',{IsPaused=function(self)return self.paused==true end})
+    target.Controller=object('AIController',{BrainComponent=brain})
+    target.brain=brain
+    if silent then
+        -- The game does not show the being-executed montage on this skeleton.
+        local component=hun['Execution Component']
+        local play=component.PlayExactExecution
+        function component:PlayExactExecution(data,victim,startTime)
+            local before=victim.anim.montage
+            play(self,data,victim,startTime)
+            victim.anim.montage=before
+        end
+    end
+    hun.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={target}})
+    h.fighting=false
+    h.members={{actor=hun,team='companion'},{actor=nearer,team='companion'}}
+    local extra={companions=function()return false end,isHun=function(actor)return actor==hun end}
+    for k,v in pairs(options or {})do extra[k]=v end
+    return h,h.new(extra),target,hun,nearer
+end
+do
+    local h,exec,target,hun,nearer=anyoneCase()
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun) and not exec:executing(nearer),h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Monster_MaleThug_0 at 0.0'),table.concat(h.calls,' | '))
+    assert(lines(h,'来源=魂武器通用处决对（不是给目标骨架做的）')==1 and lines(h,'采用=true')==0,h.all())
+    assert(lines(h,'魂处决对里没有给 BP_Monster_MaleThug 的骨架（GuiChai_Skeleton）做的：随从魂照样处决，可用 '..#HUN_PAIRS..' 对')==1,h.all())
+    h.run(exec,HUN_PAIRS[1].timing.executor+1)
+    assert(not exec:status().active and exec:status().kills==1 and exec:status().failures==0 and h.has('apply GE_Kill_C level=0.0 context=table'),'a minion is ended as after any execution: '..h.all())
+    assert(lines(h,'处决对不是给目标骨架做的')==0 and not target.brain.paused,'its montage showed: it is not held')
+    print('PASS a companion Hun executes a foe on a skeleton no Hun pair was made for')
+end
+do
+    local h,exec,target,hun=anyoneCase(nil,nil,true)
+    h.run(exec,0.5);assert(exec:status().started==1,h.all())
+    h.run(exec,2)
+    assert(exec:status().active and exec:executing(hun),'no being-executed montage in 1.5 s does not end it: '..h.all())
+    assert(target.brain.paused and lines(h,'处决对不是给目标骨架做的')==1 and lines(h,'目标没有播被处决动作')==1,'the target is held where it stands, said once: '..h.all())
+    h.run(exec,HUN_PAIRS[1].timing.executor+1)
+    assert(not exec:status().active and exec:status().failures==0 and exec:status().kills==1 and h.has('apply GE_Kill_C level=0.0 context=table'),h.all())
+    assert(not target.brain.paused and lines(h,'目标恢复AI=true')==1,'its AI is given back at the end: '..h.all())
+    print('PASS a foe that shows no being-executed montage is held, the Hun plays its half out, and the foe is ended as usual')
+end
+do
+    -- A boss with no pair of its own stays after the Hun's half, as after any execution off its lock.
+    local h,exec,target,hun=anyoneCase('UltimateBoss')
+    h.run(exec,0.5);assert(exec:status().started==1,h.all())
+    h.run(exec,HUN_PAIRS[1].timing.executor+1)
+    assert(not exec:status().active and h.attrs[target].Health>0 and not h.has('apply GE_Kill_C level=0.0 context=table'),h.all())
+    exec:stop('regression')
+    -- The player has it; the step switch off; no Hun among the companions.
+    h,exec,target=anyoneCase()
+    target['Execution Component'].CurrentExecutionInfo={Executor=h.player,Target=target,IsTarget=true}
+    h.run(exec,2);assert(exec:status().started==0,'the player has it: left alone')
+    exec:stop('regression')
+    local saved=require('hun_look').STEPS.companionAnyone
+    require('hun_look').STEPS.companionAnyone=false
+    h,exec=anyoneCase()
+    h.run(exec,2);require('hun_look').STEPS.companionAnyone=saved
+    assert(exec:status().started==0 and lines(h,'魂处决对里没有给')==0,'the step switch off: only pairs made for the skeleton')
+    exec:stop('regression')
+    h,exec=anyoneCase(nil,{isHun=function()return false end,companionMinions=function()return true end})
+    h.run(exec,2);assert(exec:status().started==0,'a companion that is no Hun keeps to pairs made for the skeleton')
+    exec:stop('regression')
+    print('PASS a boss with no pair stays standing after it; the player hold, the step switch and other companions are respected')
+end
+do
+    -- A foe whose own pair cannot be used now (its tag condition is not met), on a skeleton that cannot be read.
+    local function conditionCase(rank)
+        local own=pair('Execution.Type.Combat','GA_Hun_BEx_MoYuan_C','GA_Hun_BEd_MoYuan_C')
+        own.TargetRequiredTags={'CharacterState.NotCarried'}
+        local h=harness()
+        local foe=h.boss('BP_Foe',100,0,{rank=rank,pairs={own}})
+        local hun=h.enemy({X=300,Y=0,Z=0},{class='BP_Monster_Hun'})
+        hun.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={foe}})
+        h.tags[foe]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.fighting=false
+        h.members={{actor=hun,team='companion'}}
+        known(h,HUN_PAIRS,object('MaleThug_Skeleton'))
+        return h,h.new({companions=function()return false end,isHun=function(actor)return actor==hun end}),foe,hun
+    end
+    local h,exec,foe,hun=conditionCase('Elite')
+    h.run(exec,0.5)
+    assert(exec:status().started==1 and exec:executing(hun),h.all())
+    assert(h.has('play GA_Hun_BEx_JueYing_M_01_C + GA_Hun_BEd_JueYing_M_01_C on BP_Foe_0 at 0.0') and lines(h,'（不是给目标骨架做的）')==1,'a minion whose own pair is closed gets the Hun pair: '..h.all())
+    assert(lines(h,'的骨架（读不到）做的')==1,h.all())
+    exec:stop('regression')
+    h,exec=conditionCase('UltimateBoss')
+    h.run(exec,2)
+    assert(exec:status().started==0 and lines(h,'魂处决对里没有给')==0,'a boss that has its own pair is executed with that pair or not at all: '..h.all())
+    exec:stop('regression')
+    print('PASS a minion whose own pair is closed is still executed by a companion Hun; a boss that has its own pair is not')
 end
 print('arena_executions ok')

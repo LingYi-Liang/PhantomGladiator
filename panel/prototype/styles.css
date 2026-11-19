@@ -1556,3 +1556,38 @@ body.has-dock.has-dialog .toasts { right: 20px; }
   .hun-page { grid-template-columns: minmax(0, 1fr); }
   .hun-side { position: static; max-height: none; }
 }
+
+/* 传送 page (teleport-page.js) */
+.tp-page { display: flex; flex-direction: column; gap: 14px; }
+.tp-loading { padding: 40px 0; text-align: center; color: var(--text-2); }
+.tp-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; color: var(--text); }
+.tp-status .tp-state { font-weight: 600; }
+.tp-status.is-warn .tp-state { color: var(--red-strong); }
+.tp-status.is-busy .tp-state { color: var(--text-2); }
+.tp-back { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.tp-notice { color: var(--text-2); }
+.tp-notice.is-error { color: var(--red-strong); }
+.tp-tools { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.tp-search { max-width: 360px; flex: 1 1 240px; }
+.tp-only { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.tp-search input { padding-left: 12px; }
+#tp-groups { display: flex; flex-direction: column; gap: 12px; }
+.tp-group { padding: 14px 16px; }
+.tp-group-title { margin: 0 0 10px; font-size: 15px; display: flex; align-items: baseline; gap: 10px; }
+.tp-group-count { font-size: 12px; font-weight: 400; color: var(--text-3); }
+.tp-places { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.tp-item { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.tp-place { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); color: var(--text); font: inherit; }
+.tp-place:hover:not(:disabled) { border-color: var(--focus); }
+.tp-place:disabled { opacity: .55; cursor: not-allowed; }
+.tp-key { flex: none; min-width: 44px; max-width: 150px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--text-3); cursor: pointer;
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--r-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-key:hover:not(:disabled) { border-color: var(--focus); color: var(--text); }
+.tp-key:disabled { opacity: .55; cursor: not-allowed; }
+.tp-key.is-set { border-style: solid; color: var(--text); font-weight: 600; }
+.tp-key.is-off { color: var(--red-strong); border-color: var(--red-strong); }
+.tp-key.is-capturing { max-width: none; border-style: solid; border-color: var(--focus); color: var(--text); box-shadow: 0 0 0 3px rgba(47, 111, 222, .16); }
+.tp-name { font-size: 13.5px; line-height: 1.35; }
+.tp-tag { font-size: 11.5px; color: var(--text-3); }
+.tp-empty { color: var(--text-2); }

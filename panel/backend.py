@@ -39,10 +39,14 @@ DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platf
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
-ACTIONS.update(('hun_body_probe','set_weather','eyes_player','eyes_npc'))
+ACTIONS.update(('hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
+# Places the player can be sent to (tools/build_teleport_places.py). The game gets a place code only and looks the
+# coordinates up in its own copy of the table (teleport_places.lua).
+TELEPORT_PLACES = json.loads(Path(__file__).with_name("teleport-places.json").read_text(encoding="utf-8"))
+TELEPORT_CODES = {place["code"] for group in TELEPORT_PLACES["groups"] for place in group["places"]}
 MUSIC_TRACK_IDS = {row["id"] for row in json.loads(Path(__file__).with_name("battle-music.json").read_text(encoding="utf-8"))["tracks"]}
 # FOLLOW keeps the game difficulty; the others are the game's own four levels (spawn_difficulty.lua).
 SPAWN_DIFFICULTIES = ("FOLLOW", "EASY", "NORMAL", "HARD", "NIGHTMARE")
@@ -217,7 +221,7 @@ MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
 POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"eyes_player", "eyes_npc", "set_weather", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
+READY_ACTIONS = {"eyes_player", "eyes_npc", "set_weather", "teleport", "teleport_back", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -469,7 +473,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
+        if name not in {"teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -1136,6 +1140,19 @@ class Bridge:
                 if type(value) is not int or not low <= value <= high:
                     raise ValidationError('%s must be a whole number from %d to %d' % (field, low, high))
                 payload[field] = value
+        elif action == 'configure_teleport_key':
+            # place: a place code or BACK (the return key); key_code 0 removes the key.
+            allowed|={'place','key_code','modifiers'};place=request.get('place')
+            if not isinstance(place,str) or (place!='BACK' and place not in TELEPORT_CODES):raise ValidationError('Unknown teleport place')
+            vk=request.get('key_code');mods=request.get('modifiers',0)
+            if type(vk) is not int or not 0<=vk<=255 or type(mods) is not int or not 0<=mods<=7:raise ValidationError('invalid key or modifiers')
+            blocked=binding_system_owner(vk,mods)
+            if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
+            payload.update(place=place,key_code=vk,modifiers=mods)
+        elif action == 'teleport':
+            allowed.add('place');place=request.get('place')
+            if not isinstance(place,str) or place not in TELEPORT_CODES:raise ValidationError('Unknown teleport place')
+            payload['place']=place
         elif action == 'set_weather':
             allowed.add('mode');mode=request.get('mode')
             if mode not in WEATHER_CHOICES:raise ValidationError('Invalid weather preset')
@@ -1177,7 +1194,7 @@ class Bridge:
             if self.game_status().get('values', {}).get('summon_queue_settings_schema') != '1':
                 raise ValidationError('请更新并重载支持接力的游戏内Mod')
             payload.update(mode=mode, interval_ms=interval, blue_slots=blue, red_slots=red)
-        elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions', 'set_summon_queue', 'set_offcombat_regen'):
+        elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions', 'set_companion_passage', 'set_companion_minion_executions', 'set_summon_queue', 'set_offcombat_regen'):
             allowed.add('enabled')
             enabled = request.get('enabled')
             if type(enabled) is not bool:
@@ -1337,7 +1354,7 @@ class Bridge:
             bindings={'spawn':payload['level_mode'],'start':'' if payload.get('level') is None else str(payload['level'])}
         elif payload['action']=='set_free_camera':
             bindings={'spawn':str(payload['speed']),'start':str(payload['turn']),'stop':str(payload['smooth'])}
-        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions','set_summon_queue','set_offcombat_regen'):
+        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions','set_companion_passage','set_companion_minion_executions','set_summon_queue','set_offcombat_regen'):
             bindings={'start':'ON' if payload['enabled'] else 'OFF'}
         elif payload['action']=='configure_summon_queue':
             bindings={'spawn':payload['mode'],'start':str(payload['interval_ms']),'stop':str(payload['blue_slots']),'refresh_catalog':str(payload['red_slots'])}
@@ -1349,6 +1366,10 @@ class Bridge:
             bindings={'spawn':str(payload['profile_revision']),'start':payload.get('queue_epoch','')}
         elif payload['action']=='set_unit_rule':
             bindings={'spawn':payload['rule'].upper(),'start':payload['value'].upper()}
+        elif payload['action']=='teleport':
+            bindings={'spawn':payload['place']}
+        elif payload['action']=='configure_teleport_key':
+            bindings={'spawn':payload['place'],'start':'VK_'+str(payload['key_code']) if payload['key_code'] else 'UNBOUND','stop':'MOD_'+str(payload['modifiers'])}
         elif payload['action']=='set_weather':
             bindings={'spawn':payload['mode'].upper()}
         elif payload['action']=='set_camera_track':
@@ -1573,6 +1594,22 @@ class Bridge:
                     self._publish(pending, session)
             except (OSError, UnicodeError, ValueError, sqlite3.Error) as error:
                 self._problem("error", str(error))
+
+    # The teleport keys the game holds now (teleport_keys.lua writes this file): place code or BACK -> key, whether it
+    # is live in the game, and why not.
+    def teleport_keys(self):
+        try:
+            text=bounded_read(self._path('teleport-keybinds-state.tsv'),256*1024)
+            if not text:return {}
+            rows=tsv_rows(text);meta=next(rows,[])
+            if len(meta)!=3 or meta[0]!='TeleportKeyStateV1':return {}
+            result={}
+            for row in rows:
+                if len(row)!=5 or not (row[0]=='BACK' or row[0] in TELEPORT_CODES) or row[3] not in ('0','1'):continue
+                vk,mod=int(row[1]),int(row[2])
+                if 1<=vk<=255 and 0<=mod<=7:result[row[0]]={'key_code':vk,'modifiers':mod,'active':row[3]=='1','message':row[4]}
+            return result
+        except (OSError,UnicodeError,ValueError,TypeError):return {}
 
     def function_keybinds(self, game=None):
         game=self.game_status()if game is None else game;values=game.get('values',{})
@@ -1992,6 +2029,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.keybinds()
             elif path == "/api/monster-pools":
                 result = self.server.bridge.monster_pools()
+            elif path == '/api/teleport-places':
+                result = {**TELEPORT_PLACES, 'keys': self.server.bridge.teleport_keys()}
             elif path == '/api/hun':
                 bridge=self.server.bridge
                 snapshot=bridge.hun_profiles.snapshot()if bridge.hun_profiles else {'revision':0,'profile':_hun_module.default_profile(),'error':bridge.hun_profile_error}

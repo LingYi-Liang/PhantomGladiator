@@ -439,11 +439,12 @@
       renderDock();
       return;
     }
-    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML, hun: () => window.PGHun.html() }[ui.page]();
+    const html = { hotkeys: hotkeysHTML, fun: funHTML, settings: settingsHTML, about: aboutHTML, pool: poolPageHTML, support: supportHTML, hun: () => window.PGHun.html(), teleport: () => window.PGTeleport.html() }[ui.page]();
     content.innerHTML = `<div class="page page-scroll scroll">${html}</div>`;
     if (ui.page === "pool") renderPoolSummon();
     if (ui.page === "settings") renderBattleMusicState();
     if (ui.page === "hun") window.PGHun.mount();
+    if (ui.page === "teleport") window.PGTeleport.mount();
   }
 
   // ---------- Arena: catalog ----------
@@ -906,7 +907,9 @@
            <div class="solo-stats">${esc(t("companion.stats", { alive: fmtNum(alive), down: fmtNum(down) }))}</div>`
         : `<p class="solo-desc">${esc(t("companion.desc"))}</p>`}
       ${warn}
+      ${companionPassRow()}
       ${companionExecRow()}
+      ${companionMinionExecRow()}
       ${companionStatsBlock()}
       <div class="solo-actions">${use}${guardHTML("companion")}
         ${held ? `<button class="btn btn-secondary btn-sm" type="button" data-action="recall-companions" ${online && alive && !recalling ? "" : "disabled"}>${recalling ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("zap", "icon-sm")}<span>${esc(t("companion.recall"))}</span>${keyCap(S.keys.recall_companions)}</button>` : ""}
@@ -940,6 +943,34 @@
           <div class="control-main"><div class="control-title">${esc(t("companion.exec"))}</div><div class="control-desc">${esc(desc)}</div></div>
           <button class="switch" type="button" role="switch" aria-checked="${h.on}" aria-busy="${busy}" data-action="companion-executions" aria-label="${esc(t("companion.exec"))}" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button>
         </div>`;
+  }
+  // Whether the player walks through companions (set_companion_passage, companion_passage.lua); off, they block as in the game.
+  function companionPassRow() {
+    const h = S.companionPass || { supported: false, on: false }, busy = ui.busy.has("set_companion_passage"), shown = h.on && h.supported;
+    const desc = !h.supported && RT.online() ? t("fun.old") : t(h.on ? "companion.pass.on" : "companion.pass.desc");
+    return `<div class="control-row${shown ? " is-on" : ""}">
+          <span class="control-icon">${icon("users")}</span>
+          <div class="control-main"><div class="control-title">${esc(t("companion.pass"))}</div><div class="control-desc">${esc(desc)}</div></div>
+          <button class="switch" type="button" role="switch" aria-checked="${h.on}" aria-busy="${busy}" data-action="companion-passage" aria-label="${esc(t("companion.pass"))}" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button>
+        </div>`;
+  }
+  function toggleCompanionPass() {
+    const enabled = !(S.companionPass && S.companionPass.on);
+    run("set_companion_passage", { payload: { enabled }, ok: () => t(enabled ? "toast.companionPass.on" : "toast.companionPass.off") });
+  }
+  // Whether companions also execute minions (set_companion_minion_executions, companion_executions.lua); off, minions stay the player's.
+  function companionMinionExecRow() {
+    const h = S.companionMinionExec || { supported: false, on: false }, busy = ui.busy.has("set_companion_minion_executions"), shown = h.on && h.supported;
+    const desc = !h.supported && RT.online() ? t("fun.old") : t(h.on ? "companion.minionExec.on" : "companion.minionExec.desc");
+    return `<div class="control-row${shown ? " is-on" : ""}">
+          <span class="control-icon">${icon("swords")}</span>
+          <div class="control-main"><div class="control-title">${esc(t("companion.minionExec"))}</div><div class="control-desc">${esc(desc)}</div></div>
+          <button class="switch" type="button" role="switch" aria-checked="${h.on}" aria-busy="${busy}" data-action="companion-minion-executions" aria-label="${esc(t("companion.minionExec"))}" ${RT.online() && h.supported && !busy ? "" : "disabled"}></button>
+        </div>`;
+  }
+  function toggleCompanionMinionExec() {
+    const enabled = !(S.companionMinionExec && S.companionMinionExec.on);
+    run("set_companion_minion_executions", { payload: { enabled }, ok: () => t(enabled ? "toast.companionMinionExec.on" : "toast.companionMinionExec.off") });
   }
   function toggleCompanionExec() {
     const enabled = !S.companionExec.on;
@@ -2985,6 +3016,8 @@
       case 'hun_body_probe': return `${t("arenaMusic.summonHistory")} ×`+(p.count || 1);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_companion_passage": return t("action.set_companion_passage", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_companion_minion_executions": return t("action.set_companion_minion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "eyes_player": case "eyes_npc": return t("keys.action."+job.action);
       case "set_camera_track": return t("action.set_camera_track");
       case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : ["menghua_stage","execution_minions"].includes(p.rule) ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
@@ -3405,6 +3438,8 @@
     "clock-hud": () => toggleClockHud(),
     "execution-camera": () => toggleExecutionCamera(),
     "companion-executions": () => toggleCompanionExec(),
+    "companion-passage": () => toggleCompanionPass(),
+    "companion-minion-executions": () => toggleCompanionMinionExec(),
     "match-focus": () => { const el = $("#dock-match"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); el?.querySelector(".switch")?.focus({ preventScroll: true }); },
     "companion-stats-focus": () => { const el = $(".companion-stats"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); (el?.querySelector(".stat-input") || el?.querySelector(".seg-btn"))?.focus({ preventScroll: true }); },
     "launch-game": () => { closePopover(); RT.launchGame(); toast({ kind: "info", title: t("toast.launching"), body: t("toast.launching.body") }); },

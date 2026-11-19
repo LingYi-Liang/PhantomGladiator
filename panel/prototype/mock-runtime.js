@@ -98,6 +98,8 @@ const MockRuntime = (() => {
     clockHud: { supported: true, on: savedClockHud, state: savedClockHud ? "waiting" : "off" },  // off | waiting | shown | failed
     executionCamera: { supported: true, on: savedExecCam, state: savedExecCam ? "waiting" : "off" },  // off | waiting | running
     companionExec: { supported: true, on: savedCompanionExec },
+    companionPass: { supported: true, on: true },
+    companionMinionExec: { supported: true, on: false },
     offCombatRegen: { supported: true, on: false, state: "off", failures: 0 },
     companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     eyesKeysSupported:true,
@@ -113,7 +115,7 @@ const MockRuntime = (() => {
     stopOutcome: "ok",          // ok | partial (next cleanup leaves one restore record) | stuck (every cleanup does)
     // The eight function keys (BINDING_NAMES in backend.py) start unbound; each is null or { code, mods }.
     dismissKeySupported: true,
-    weatherKeysSupported:true,weather:{supported:true,choice:"map"},
+    weatherKeysSupported:true,weather:{supported:true,choice:"map"},teleport:{supported:true,pending:false,canReturn:false,message:"",keysRevision:0,keys:{}},
     hunKeysSupported: true,
     battleMusic: { supported: true, mode: "NATIVE", track: "MOYUAN_P1", state: "native", message: "保留原版音乐", playing: 0 },
     keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, dismiss_companions: null, hun_blue: null, hun_red: null, hun_companion: null, hun_neutral: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
@@ -297,6 +299,11 @@ const MockRuntime = (() => {
         return;
       case "set_boss_combos": s.combo = { supported: true, on: p.enabled }; return;
       case "set_weather": s.weather.choice=p.mode==="restore"?"map":p.mode;return;
+      case "teleport": Object.assign(s.teleport,{canReturn:true,message:"已到达"});return;
+      case "teleport_back": Object.assign(s.teleport,{canReturn:true,message:"传送前的位置：已到达"});return;
+      case "configure_teleport_key":
+        if (p.key_code) s.teleport.keys[p.place]={key_code:p.key_code,modifiers:p.modifiers||0,active:true,message:""}; else delete s.teleport.keys[p.place];
+        s.teleport.keysRevision++;return;
       case "set_battle_music": Object.assign(s.battleMusic, p, { state: p.mode === "NATIVE" ? "native" : "waiting", message: "设置已保存，进入蓝红对战后生效" }); return;
       case "set_fun_feature": {
         const f = s.fun;
@@ -332,6 +339,8 @@ const MockRuntime = (() => {
         s.executionCamera = { supported: true, on: p.enabled, state: p.enabled ? "waiting" : "off" };
         try { localStorage.setItem(EXEC_CAM_KEY, String(p.enabled)); } catch { /* ignore */ }
         return;
+      case "set_companion_passage": s.companionPass = { supported: true, on: p.enabled }; return;
+      case "set_companion_minion_executions": s.companionMinionExec = { supported: true, on: p.enabled }; return;
       case "set_companion_executions":
         s.companionExec = { supported: true, on: p.enabled };
         try { localStorage.setItem(COMPANION_EXEC_KEY, String(p.enabled)); } catch { /* ignore */ }
@@ -622,6 +631,10 @@ const MockRuntime = (() => {
     toggleFreeCam,
     update,
     setup,
+    teleport: { async load() { await wait(150); return { version: 1, keys: { ...s.teleport.keys }, groups: [
+      { world: "PBZ_Zhengdaodaying_WP", name: "陆家村 · 正道大营", en: "Village of Lu · Mandate Encampment", places: [
+        { code: "TDEMO000001", kind: "dev", name: "圣母娘娘庙", en: "Temple of the Merciful Lady" }, { code: "TDEMO000002", kind: "boss", name: "组织少主：沐小葵", en: "Mu Xiaokui, Young Mistress of the Order", level: 9 }] },
+      { world: "PBZ_Duanhun_WP", name: "断魂山", en: "Mount Soulrend", places: [{ code: "TDEMO000003", kind: "boss", name: "龙体左殇", en: "Zuo Shang (Dragon Form)", level: 25 }] }] }; } },
     async aiParams() { await wait(150); return { values: { ...(s.aiParamValues || {}) } }; },
     async statSettings() { await wait(150); return { mode: s.statMatch.mode, values: { ...s.statMatch.values } }; },
     async companionStats() { await wait(150); return { mode: s.companionStats.mode, values: { ...s.companionStats.values } }; },

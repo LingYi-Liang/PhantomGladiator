@@ -472,6 +472,10 @@ const RealRuntime = (() => {
       s.clockHud = { supported: yes("clock_hud_supported"), on: yes("clock_hud"), state: v.clock_hud_state || "off" };
       s.executionCamera = { supported: yes("execution_camera_supported"), on: yes("execution_camera"), state: v.execution_camera_state || "off" };
       s.companionExec = { supported: yes("companion_executions_supported"), on: yes("companion_executions") };
+      // companion_minion_executions*: whether companions also execute minions (companion_executions.lua).
+      s.companionMinionExec = { supported: yes("companion_minion_executions_supported"), on: yes("companion_minion_executions") };
+      // companion_passage*: whether the player walks through companions (companion_passage.lua).
+      s.companionPass = { supported: yes("companion_passage_supported"), on: yes("companion_passage") };
       Object.assign(s.companionStats, { supported: yes("companion_stats_supported"), mode: v.companion_stats_mode === "custom" ? "custom" : "game", customCount: num("companion_stats_count"),
         customized: num("companion_stats_customized"), failures: num("companion_stats_failures"), rejectedCount: num("companion_stats_rejected"),
         rejected: String(v.companion_stats_rejected_fields || "").split(",").filter(Boolean) });
@@ -508,6 +512,7 @@ const RealRuntime = (() => {
     const bindings = data.function_keys?.bindings || {};
     s.dismissKeySupported = online && data.function_keys?.dismiss_supported === true;
     s.weather = {supported: online && yes("weather_supported"), choice: v.weather_choice || "map"};
+    s.teleport = {supported: online && yes("teleport_supported"), pending: yes("teleport_pending"), canReturn: yes("teleport_can_return"), message: v.teleport_message || "", keysRevision: num("teleport_keys_revision")};
     s.eyesKeysSupported = online && data.function_keys?.eyes_supported === true;
     s.weatherKeysSupported = online && data.function_keys?.weather_supported === true;
     s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
@@ -647,10 +652,14 @@ const RealRuntime = (() => {
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
     else if (action === "set_weather") body = {action, mode:payload.mode};
+    else if (action === "teleport") body = { action, place: payload.place };
+    else if (action === "configure_teleport_key") body = { action, place: payload.place, key_code: payload.key_code, modifiers: payload.modifiers };
     else if (action === "set_battle_music") body = { action, mode: payload.mode, track: payload.track };
     else if (action === 'hun_body_probe') body = { action, team: payload.team, count: payload.count, profile_revision: payload.profile_revision };
     else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
+    else if (action === "set_companion_passage") body = { action, enabled: payload.enabled };
+    else if (action === "set_companion_minion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_unit_rule") body = { action, unit_id: payload.unit, rule: payload.rule, value: payload.value };
     else if (action === "set_camera_track") { body = { action, framing: payload.framing, resume: payload.resume }; if (payload.target) body.unit_id = payload.target; }
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
@@ -713,6 +722,8 @@ const RealRuntime = (() => {
     if (action === "set_offcombat_regen" && done.status === "succeeded") Object.assign(s.offCombatRegen, { on: payload.enabled, state: payload.enabled ? "waiting" : "off" });
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
     if (action === "set_companion_executions" && done.status === "succeeded") s.companionExec.on = payload.enabled;
+    if (action === "set_companion_passage" && done.status === "succeeded") s.companionPass.on = payload.enabled;
+    if (action === "set_companion_minion_executions" && done.status === "succeeded") s.companionMinionExec.on = payload.enabled;
     if (action === "set_unit_rule" && done.status === "succeeded") (s.unitRules[payload.unit] ||= {})[payload.rule] = payload.value;
     if (action === "set_camera_track" && done.status === "succeeded") Object.assign(s.track, { framing: payload.framing, resume: payload.resume }, payload.target ? { target: payload.target } : {});
     if (action === "set_free_camera" && done.status === "succeeded") Object.assign(s.camSettings, { speed: payload.speed, turn: payload.turn, smooth: payload.smooth });
@@ -812,6 +823,13 @@ const RealRuntime = (() => {
         return data;
       },
       save: request => submitCommand('/api/hun-profile',request),
+    },
+    teleport: {
+      async load() {
+        const {response,data}=await readJSON('/api/teleport-places');
+        if(!response.ok)throw fail('rejected',data.error || '地点清单读取失败');
+        return data;
+      },
     },
     localAudio: {
       pick: () => host("pickAudio", { lang: document.documentElement.lang }),

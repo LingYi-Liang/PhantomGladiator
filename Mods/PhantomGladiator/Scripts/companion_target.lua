@@ -1,6 +1,8 @@
 -- Read a companion's own current enemy; never select the player or mutate AI state.
 local U=require('ue_observe')
 local Targets={}
+-- How long the enemy a companion was last read fighting may stand in for an AI target key that is empty for a moment.
+Targets.MEMORY_SECONDS=20
 local function nameOf(object)
     if not U.valid(object) then return nil end
     local ok,name=pcall(function()return object:GetFullName()end)
@@ -12,7 +14,8 @@ local function alive(options,actor)
     return ok and type(hp)=='number' and hp==hp and hp>0 and hp<math.huge
 end
 function Targets.new(options)
-    local owned,seen={},{}
+    local owned,seen,last={},{},{}
+    local clock=options.clock or os.clock
     local log=options.log or function()end
     local self={}
     function self:sync(members)
@@ -25,6 +28,7 @@ function Targets.new(options)
         end
         owned=current
         for key in pairs(seen)do if not owned[key]then seen[key]=nil end end
+        for key in pairs(last)do if not owned[key]then last[key]=nil end end
     end
     function self:current(actor,castTarget,castName)
         local key=U.key(actor);local record=key and owned[key]
@@ -46,7 +50,7 @@ function Targets.new(options)
         end
         local faction=U.field(actor,'Faction Component')
         if not U.valid(faction) then return nil end
-        local function hostile(target,field)
+        local function hostile(target,field,remember)
             local targetId=U.key(target)
             if targetId and targetId~=key and targetId~=playerKey and not owned[targetId]
                 and U.inWorld(target,world) and alive(options,target) and U.npcPath(target) then
@@ -57,6 +61,7 @@ function Targets.new(options)
                         seen[key]=enemyName
                         log('[CompanionTarget] 当前敌人读回 '..record.name..' -> '..enemyName..'；来源='..field..'；敌对=2')
                     end
+                    if remember then last[key]={target=target,name=enemyName or nameOf(target),at=clock()}end
                     return target
                 end
             end
@@ -66,11 +71,22 @@ function Targets.new(options)
             if not known or targetKey==nil then return nil end
             local ok,target=pcall(function()return U.unwrap(bb:GetValueAsObject(targetKey))end)
             if not ok then return nil end
-            local enemy=hostile(target,field)
+            local enemy=hostile(target,field,true)
             if enemy then return enemy end
         end
         -- An already launched volley may outlast the AI's target key. Revalidate its own enemy.
-        if castName and castName==nameOf(castTarget) then return hostile(castTarget,'本次剑雨起手目标') end
+        if castName and castName==nameOf(castTarget) then return hostile(castTarget,'本次施法或刚才的敌人') end
+    end
+    -- For a skill that takes its own lock while the AI's target key is empty for a moment (左殇's 万剑归宗 keeps the
+    -- first target it selects, and the game's own choice then can be the player): the current enemy, else the enemy
+    -- this companion was read fighting within MEMORY_SECONDS, checked again now as any target is (alive, hostile,
+    -- in this world, never the player or a companion). The memory is only what current() read from the AI itself.
+    function self:lastEnemy(actor)
+        local enemy=self:current(actor)
+        if enemy then return enemy end
+        local key=U.key(actor);local memory=key and last[key]
+        if not memory or clock()-memory.at>Targets.MEMORY_SECONDS then return nil end
+        return self:current(actor,memory.target,memory.name)
     end
     return self
 end

@@ -42,6 +42,7 @@ ORDER[#ORDER+1]='launch';LABEL.launch='特效目标'
 local PARTICLE_CLASS,EFFECT_MS,EFFECT_SECONDS,READY,RUNNING='PBZ_ParticleBullet',50,15,1,2
 -- Skill 19 launches five particle emitters at 0.62 s and its action ends at 3.97 s.
 local RAIN_SCANS={[1]=true,[2]=true,[3]=true,[8]=true,[14]=true,[20]=true,[30]=true,[50]=true,[80]=true}
+local RAIN_AGAIN=5        -- seconds within which a second start is the same cast (the skill runs 3.97 s, cools down 80 s)
 -- Skills whose bullet data plays an effect that reads CharRootPos and traces hits along its particles (read offline).
 local EFFECT_SKILLS={
     GA_ZuoShang_P2_Skill_17_C=true,                          -- 龙体左殇 BD_ZuoShang_P2_SwordRain_Burst
@@ -77,11 +78,18 @@ for _,name in ipairs({
     'GA_XuKong_Skill_04_C',                                                               -- 虚空
     'GA_DangHui_SwitchSelf_C',                                                            -- 荡秽's swap dodge
     'GAA_ForceLockTarget_C',                                                              -- the shared "force lock target" action
+    'GAA_ForcePlayerWalk_C',                                                              -- the shared "force the player to walk" action (SELF below)
     'BP_YuBi_CA02_Arena_C',                                                              -- boundary actor and ASC cache
     'BP_Bullet_LengTu_StickyWire_C',                                                     -- rope user skeletal-mesh target
     'BP_QiShu_Bing_Icicle_C',                                                            -- in-range frost victim comparison and application
 })do AIMS[name]=true end
 Aim.aims=AIMS
+-- Actions that do something to "the player" as the one a boss performs for, not as a target: GAA_ForcePlayerWalk puts
+-- the force-walk attitude and input-mode tags on GetPlayerCharacter when it begins and takes them off when it ends
+-- (银发左殇's GA_ZuoShang_CA_01 uses it). Cast by one of this mod's units the real player must not be slowed, and the
+-- opponent may change between the two calls and keep the tags; the caster itself stands in for both calls.
+local SELF={GAA_ForcePlayerWalk_C=true}
+Aim.self=SELF
 
 local function addr(object)
     return U.key(object)
@@ -196,6 +204,16 @@ function Aim.new(options)
         if companions[key] then return options.companionTargetOf(companions[key],castTarget,castName)end
         return options.opponentOf(key)
     end
+    -- A companion's enemy of a moment ago (companion_target.lua lastEnemy), for a skill lock taken while its AI
+    -- target key is empty; nil for blue and red, whose opponent is the arena's.
+    local function lastEnemyOf(key)
+        if companions[key] and type(options.companionLastEnemyOf)=='function' then return options.companionLastEnemyOf(companions[key]) end
+        return nil
+    end
+    local function isPlayerActor(actor)
+        local ok,player=pcall(function()return options.player and options.player()end)
+        return ok and U.valid(player) and addr(player)==addr(actor)
+    end
     local function sameTeam(source,target)
         return source==target or teams[source]~=nil and teams[source]==teams[target]
     end
@@ -263,6 +281,8 @@ function Aim.new(options)
     -- A caller outside the list that acts for a fighting unit keeps the player; it is named once in the log, so a skill
     -- that still goes for the player can be found. A few tries per class, since the first object may act for nobody.
     local unlistedTries,unlistedLines={},0
+    -- Set further down: a get-player call made by a sword-rain skill starts the search for its emitters as well.
+    local rainByCall
     local function noteUnlisted(object,cls,name)
         local tries=unlistedTries[cls] or 0
         if tries>=3 or unlistedLines>=UNLISTED_LINES then return end
@@ -294,10 +314,24 @@ function Aim.new(options)
                 local key=found and U.key(U.unwrap(avatar))
                 if key and fighters[key]==true then unit=key end
             else
-                if cls~=probe and not aims(object,cls) then noteUnlisted(object,cls,name);return nil end
+                if cls~=probe and not aims(object,cls) then
+                    if name=='pawn' and rainByCall then rainByCall(object,cls) end
+                    noteUnlisted(object,cls,name);return nil
+                end
                 unit=unitOf(object)
             end
             if not unit or phaseBusy(unit) or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+            if SELF[cls] then
+                local got,caster=pcall(function()return options.actorOf and options.actorOf(unit)end)
+                if not got or not U.valid(caster) or U.key(caster)~=unit then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
+                self.redirected=self.redirected+1
+                self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
+                if lines<LINES and not seenLines[name..cls] then
+                    seenLines[name..cls]=true;lines=lines+1
+                    say(string.format('改写 %s 调用方=%s → 施法者自己 %s（不作用于玩家） 累计=%d',LABEL[name],cls,className(caster),self.counts[name]))
+                end
+                return caster
+            end
             local ok,target=pcall(opponentOf,unit)
             if not ok or not U.valid(target) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             if warning and not U.npcPath(target) then return nil end
@@ -354,12 +388,23 @@ function Aim.new(options)
         if not U.valid(ability) then return false end
         local unit=unitOf(ability)
         if not unit or phaseBusy(unit) then return false end
-        local okTarget,target=pcall(opponentOf,unit)
-        if not okTarget or not U.valid(target) then say('招式锁定没改：'..className(ability)..' 没有对手');return false end
-        local root=U.field(target,'RootComponent')
-        if not U.valid(root) then say('招式锁定没改：'..className(target)..' 没有根组件');return false end
         local beforeLock=U.field(ability,'Lock Target')
         local before=beforeLock and U.struct(beforeLock,'Component')
+        local okTarget,target=pcall(opponentOf,unit)
+        local remembered=false
+        if not okTarget or not U.valid(target) then
+            -- A companion whose AI target key is empty at this moment: the enemy it was fighting just now, revalidated.
+            okTarget,target=pcall(lastEnemyOf,unit)
+            remembered=okTarget and U.valid(target)
+        end
+        if not okTarget or not U.valid(target) then
+            local okOwner,owner=pcall(function()return before:GetOwner()end)
+            say('招式锁定没改：'..className(ability)..' 没有对手；游戏自己选的锁定='
+                ..(U.valid(before) and (okOwner and U.valid(owner) and (isPlayerActor(owner) and '玩家' or className(owner)) or '?') or '空'))
+            return false
+        end
+        local root=U.field(target,'RootComponent')
+        if not U.valid(root) then say('招式锁定没改：'..className(target)..' 没有根组件');return false end
         if addr(before)==addr(root) and U.field(ability,'Lock Target Selected')==true then return true end
         local beforeOwner=U.valid(before) and (function()local ok,o=pcall(function()return before:GetOwner()end);return ok and U.valid(o) and className(o) or '?' end)() or '空'
         local okSet,err=pcall(function()
@@ -371,7 +416,7 @@ function Aim.new(options)
         local good=addr(back)==addr(root) and U.field(ability,'Lock Target Selected')==true
         if lockWrites<LINES then
             lockWrites=lockWrites+1
-            say(string.format('招式锁定 %s：原目标=%s -> %s 写入=%s%s 读回=%s',className(ability),beforeOwner,className(target),tostring(okSet),okSet and '' or '('..tostring(err)..')',good and '生效' or '没生效'))
+            say(string.format('招式锁定 %s：原目标=%s -> %s%s 写入=%s%s 读回=%s',className(ability),beforeOwner,className(target),remembered and '（AI 目标暂时为空，用刚才的敌人）' or '',tostring(okSet),okSet and '' or '('..tostring(err)..')',good and '生效' or '没生效'))
         end
         return good
     end
@@ -400,6 +445,7 @@ function Aim.new(options)
         local onAlly=sameTeam(unit,U.key(owner))
         if not onStand and not onAlly and not isPlayer(owner) then return nil end
         local okTarget,target=pcall(opponentOf,unit)
+        if not okTarget or not U.valid(target) then okTarget,target=pcall(lastEnemyOf,unit) end
         if not okTarget or not U.valid(target) then return nil end
         local root=U.field(target,'RootComponent')
         if not U.valid(root) then return nil end
@@ -576,13 +622,18 @@ function Aim.new(options)
     local function statusOf(bullet)
         return U.valid(bullet) and U.unwrap(U.field(bullet,'BulletStatus')) or nil
     end
+    -- What each search saw, kept on its request, so a volley that was never found says where it stopped.
+    local function seen(request,field)request.seen=request.seen or {};request.seen[field]=(request.seen[field] or 0)+1 end
     local function scanEffects()
         local ok,list=pcall(FindAllOf,PARTICLE_CLASS)
+        for _,request in pairs(rainSearch)do seen(request,'scans');if not ok or type(list)~='table' then seen(request,'empty') end end
         if not ok or type(list)~='table' then return end
         for _,bullet in ipairs(list)do
             local key=addr(bullet)
             if key and not effects[key] then
                 local status=statusOf(bullet)
+                local mine=rainSearch[U.key(U.field(bullet,'BulletOwnerAvatar')) or '']
+                if mine then seen(mine,'owned');if status==RUNNING or status==READY then seen(mine,'live')end end
                 if status==RUNNING or status==READY then
                     local owner=U.field(bullet,'BulletOwnerAvatar')
                     local ownerKey=U.valid(owner) and U.key(owner)
@@ -590,8 +641,10 @@ function Aim.new(options)
                     if request then
                         local dataName=nameOf(U.field(bullet,'BulletData'))
                         local spec=EFFECT_AIMS[dataName]
+                        if spec then seen(request,'data')else request.otherData=dataName end
                         if spec then
                             local comp,asset=particleComponent(bullet,spec)
+                            if comp then seen(request,'adopted')end
                             if comp then
                                 effects[key]={bullet=bullet,bulletKey=key,comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0,cast=request}
                                 request.left=request.left-1
@@ -611,6 +664,8 @@ function Aim.new(options)
     local function castSpot(owner,cast,spots)
         if spots[cast]~=nil then return spots[cast] end
         local ok,target=pcall(opponentOf,owner,cast.target,cast.targetName)
+        -- A companion whose AI target key is empty during the rain: the enemy it was fighting a moment ago.
+        if not ok or not U.valid(target) then ok,target=pcall(lastEnemyOf,owner) end
         if not ok or not U.valid(target) then spots[cast]=false;return false end
         local at=place(target)
         local got,x,y,z=pcall(function()return at.X,at.Y,at.Z end)
@@ -642,7 +697,10 @@ function Aim.new(options)
             sayEffect('刷新特效归属 读回施法者='..key..' 组件='..tostring(addr(comp))..' 数据='..dataName)
         end
         local aim=castSpot(item.owner,item.cast,spots)
-        if not aim then return end
+        if not aim then
+            if not item.noTarget then item.noTarget=true;sayEffect('特效目标没改 子弹='..tostring(item.data)..'：此刻读不到施法者的对手，保持游戏自己的目标') end
+            return
+        end
         local target,spot=aim.target,aim.spot
         -- Which of the two the effect declared cannot be read offline; setting the other only adds an unused value.
         local okPosition=setVariable(item.comp,'SetVariablePosition',item.spec.pos,spot)
@@ -679,7 +737,16 @@ function Aim.new(options)
         local search=false
         for owner,request in pairs(rainSearch)do
             request.tick=request.tick+1
-            if not fighters[owner] or phaseBusy(owner) or request.tick>80 then rainSearch[owner]=nil
+            if not fighters[owner] or phaseBusy(owner) or request.tick>80 then
+                -- A cast whose emitters were not all found: what the searches saw (the rain then keeps the game's own target).
+                if request.cast and request.left>0 then
+                    local s=request.seen or {}
+                    sayEffect(string.format('剑雨发射器没找全：还差%d个；搜索%d轮（读不到列表%d轮） 属于施法者的特效子弹=%d 其中在运行=%d 数据对得上=%d 组件对得上=%d%s%s',
+                        request.left,s.scans or 0,s.empty or 0,s.owned or 0,s.live or 0,s.data or 0,s.adopted or 0,
+                        request.otherData and(' 见到别的数据='..tostring(request.otherData))or'',
+                        not fighters[owner] and' 施法者已不在名单'or phaseBusy(owner)and' 施法者在转阶段'or''))
+                end
+                rainSearch[owner]=nil
             elseif RAIN_SCANS[request.tick] then search=true end
         end
         if search then scanEffects() end
@@ -728,11 +795,7 @@ function Aim.new(options)
     end
 
     local effectSkillClass={} -- class name -> whether it or a parent is in EFFECT_SKILLS
-    local function skillStarted(context)
-        if not self.alive or not next(fighters) then return nil end
-        local ability=U.unwrap(context)
-        if not U.valid(ability) then return nil end
-        local name=className(ability)
+    local function skillKind(ability,name)
         if effectSkillClass[name]==nil then
             -- A skill's subclasses play the same effect (GA_ZuoShang_P2_Skill_17_NoCD, ..._Sword_2Hit_A_FastCancel).
             local found=false
@@ -746,10 +809,35 @@ function Aim.new(options)
             end
             effectSkillClass[name]=found
         end
-        if not effectSkillClass[name] then return nil end
+        return effectSkillClass[name]
+    end
+    -- One cast of the rain, whichever of its two starts is seen first: the skill's own activation (a blueprint hook on
+    -- the base class's K2_ActivateAbility) or the first GetPlayerPawn the skill makes (a native hook, seen in a
+    -- tester's log for this very skill while no emitter was ever found). RAIN_AGAIN keeps one cast from starting twice.
+    local rainStarted={}
+    local function startRain(unit,name,how)
+        local now=clock()
+        if rainSearch[unit] and rainSearch[unit].cast and rainStarted[unit] and now-rainStarted[unit]<RAIN_AGAIN then return end
+        rainStarted[unit]=now
+        watchRain(unit,true)
+        local volley=rainSearch[unit]
+        sayEffect('剑雨起手（'..how..'） 招式='..name..' 施法者是随从='..tostring(companions[unit]~=nil)..' 记下的敌人='..(volley and U.valid(volley.target) and className(volley.target) or '无'))
+    end
+    rainByCall=function(object,cls)
+        if not cls:find('^GA_') or skillKind(object,cls)~='rain' then return end
+        local unit=unitOf(object)
+        if unit and not phaseBusy(unit) and not(rainStarted[unit] and clock()-rainStarted[unit]<RAIN_AGAIN) then startRain(unit,cls,'取玩家调用') end
+    end
+    local function skillStarted(context)
+        if not self.alive or not next(fighters) then return nil end
+        local ability=U.unwrap(context)
+        if not U.valid(ability) then return nil end
+        local name=className(ability)
+        local kind=skillKind(ability,name)
+        if not kind then return nil end
         local unit=unitOf(ability)
         if not unit or phaseBusy(unit) then return nil end
-        if effectSkillClass[name]=='rain' then watchRain(unit,true)
+        if kind=='rain' then startRain(unit,name,'招式起手')
         elseif self.effects then
             self.effects:arm()
             self.counts.skillStart=self.counts.skillStart+1;self.window.skillStart=self.window.skillStart+1

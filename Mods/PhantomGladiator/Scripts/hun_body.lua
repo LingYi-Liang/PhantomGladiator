@@ -100,7 +100,8 @@ function Body.new(o)
     local clock=o.clock or os.clock
     local stats=o.stats
     local function say(s)(o.log or function()end)('[HunBody] '..s)end
-    local look=o.look or Look.new({log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,steps=steps})
+    -- hun_look reads what the real player wears (read only) when its follow switch is on.
+    local look=o.look or Look.new({log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,steps=steps,player=o.player})
     local function current(actor,record)
         if not self.alive then return false end
         local world=o.world();local player=o.player()

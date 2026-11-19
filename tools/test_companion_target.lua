@@ -33,7 +33,8 @@ local function fixture()
     h.actor['Faction Component']=faction
     h.members={{actor=h.actor,team='companion'},{actor=h.ally,team='companion'}}
     h.options={hp=function(actor)assert(actor.live);return actor.hp end,world=function()return h.world end,player=function()return h.player end,
-        stillOwned=function()return h.owned end,boardOf=function()return h.ownBoard or h.bb end,log=function(s)h.logs[#h.logs+1]=s end}
+        stillOwned=function()return h.owned end,boardOf=function()return h.ownBoard or h.bb end,log=function(s)h.logs[#h.logs+1]=s end,
+        clock=function()return h.clock or 0 end}
     h.reader=Targets.new(h.options);h.reader:sync(h.members)
     return h
 end
@@ -142,5 +143,23 @@ test('retired sources and identity changes stop being trusted immediately',funct
     local h=fixture();h.values.target=h.enemy;h.owned=false;assert(h.reader:current(h.actor)==nil)
     h.owned=true;h.actor.label='Recycled';assert(h.reader:current(h.actor)==nil)
     h.reader:sync({});assert(h.reader:current(h.actor)==nil)
+end)
+test('a skill lock may fall back to the enemy of a moment ago, checked again, never to the player or a stale one',function()
+    local h=fixture()
+    assert(h.reader:lastEnemy(h.actor)==nil,'nothing was ever read')
+    h.values.target=h.enemy;h.clock=10;assert(h.reader:lastEnemy(h.actor)==h.enemy,'the current enemy first')
+    h.values.target=nil;h.clock=12
+    assert(h.reader:current(h.actor)==nil,'the ordinary reader still says there is no enemy')
+    assert(h.reader:lastEnemy(h.actor)==h.enemy,'the AI key is empty for a moment: the enemy read two seconds ago')
+    h.values.target=h.player;assert(h.reader:current(h.actor)==nil and h.reader:lastEnemy(h.actor)==h.enemy,'the key holds the player: still the enemy')
+    h.clock=25;assert(h.reader:lastEnemy(h.actor)==h.enemy,'falling back does not renew the memory')
+    h.clock=31;assert(h.reader:lastEnemy(h.actor)==nil,'older than MEMORY_SECONDS')
+    h.values.target=h.enemy;h.clock=40;assert(h.reader:current(h.actor)==h.enemy);h.values.target=nil
+    h.enemy.hp=0;assert(h.reader:lastEnemy(h.actor)==nil,'dead');h.enemy.hp=100
+    h.relation=1;assert(h.reader:lastEnemy(h.actor)==nil,'no longer hostile');h.relation=2
+    h.enemy.label='Recycled';assert(h.reader:lastEnemy(h.actor)==nil,'the address now names another actor');h.enemy.label='Enemy'
+    assert(h.reader:lastEnemy(h.actor)==h.enemy)
+    h.reader:sync({});assert(h.reader:lastEnemy(h.actor)==nil)
+    h.reader:sync(h.members);assert(h.reader:lastEnemy(h.actor)==nil,'a companion that left takes its memory with it')
 end)
 print('companion_target: PASS ('..n..' live-target and ownership checks; no game accessed)')

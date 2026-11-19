@@ -30,13 +30,15 @@ local function vec(x,y,z)return {X=x,Y=y,Z=z}end
 local function fixture(opts)
     opts=opts or {}
     local h={logs={},calls={},layers={},loaded={},broken={}}
-    h.skin=object('SkeletalMesh /Game/Hun_Skin.Hun_Skin')
+    h.nativePhysics=object('PhysicsAsset '..P.physics)
+    h.skin=object('SkeletalMesh /Game/Hun_Skin.Hun_Skin',{PhysicsAsset=not opts.skinNoPhysics and h.nativePhysics or nil})
+    h.skeleton=object('Skeleton /Game/Hun_Skin_Skeleton.Hun_Skin_Skeleton');h.skin.Skeleton=h.skeleton
     h.clone=object('SkeletalMesh '..P.clone)
     h.player=class('/HuaShira/Characters/Hero/Hero_Hun/Animation/PBZ_ABP_Hun_Base.PBZ_ABP_Hun_Base_C')
     h.npc=class(P.anim);h.mm=class(P.mm);h.item=class(P.item)
     h.assets={[P.clone]=h.clone,[P.anim]=h.npc,[P.mm]=h.mm,[P.item]=h.item}
     if opts.full~=false then
-        h.body_=object('SkeletalMesh '..P.body)
+        h.body_=object('SkeletalMesh '..P.body,{PhysicsAsset=not opts.bodyNoPhysics and object('PhysicsAsset /Game/PA_Hun.PA_Hun') or nil})
         h.copyPose=class(P.copyPose);h.meshClass=class(P.meshClass);h.clothClass=class(P.clothClass)
         h.assets[P.body]=h.body_;h.assets[P.copyPose]=h.copyPose;h.assets[P.meshClass]=h.meshClass;h.assets[P.clothClass]=h.clothClass
         for _,spec in ipairs({Look.HEAD,table.unpack(Look.PARTS)})do h.assets[spec.asset]=object('SkeletalMesh '..spec.asset)end
@@ -52,6 +54,10 @@ local function fixture(opts)
     local mesh=object('SkeletalMeshComponent /Game/Map.Hun:CharacterMesh0')
     mesh.asset=h.skin;mesh.AnimClass=h.player;mesh.anim=instance(h.player,h)
     function mesh:GetSkeletalMeshAsset()return self.asset end
+    function mesh:SetPhysicsAsset(asset,force)
+        assert(force==false);h.calls[#h.calls+1]='physics '..asset.label;h.logAt['physics']=#h.logs
+        if not opts.physicsIgnored then self.PhysicsAssetOverride=asset end
+    end
     function mesh:SetSkeletalMeshAsset(asset)
         h.calls[#h.calls+1]='mesh '..asset.label;h.logAt=h.logAt or {};h.logAt['mesh '..asset.label]=#h.logs
         if not opts.meshIgnored and not(opts.bodyIgnored and asset==h.body_)then self.asset=asset end
@@ -139,7 +145,7 @@ local function fixture(opts)
     end
     h:body(opts)
     h.still=true
-    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,steps=opts.steps or CLONE,
+    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,steps=opts.steps or CLONE,player=function()return h.wearer end,
         find=function(path)return h.loaded[path]end,
         load=function(path)local a=h.assets[path];h.loaded[path]=a;return a end,
         findAll=function(kind)
@@ -228,11 +234,11 @@ test('the mesh becomes Hun_Clone and the anim class the NPC Hun class, each anno
     local h=fixture();local result=h:apply()
     assert(result.look==true and result.anim==true)
     assert(h.mesh.asset==h.clone and h.mesh.AnimClass==h.npc and h.layers[h.mm] and h.layers[h.item])
-    assert(h.calls[1]=='mesh '..h.clone.label and h.calls[2]=='class '..h.npc.label and h.calls[3]=='default layers','mesh first, then class, then layers')
+    assert(h.calls[1]=='mesh '..h.clone.label and h.calls[2]=='physics '..h.nativePhysics.label and h.calls[3]=='class '..h.npc.label and h.calls[4]=='default layers','mesh first, then collision, class, layers')
     local announced=h:firstLog('[HunLook] 即将 换网格');assert(announced and announced<=h.logAt['mesh '..h.clone.label],'the 即将 line is written before the native call')
     announced=h:firstLog('[HunLook] 即将 换动画类');assert(announced and announced<=h.logAt['class '..h.npc.label])
     assert(h:logged('换网格 读回 实例=Hun_1 调用=true 网格=Hun_Clone 材质=[MI_ZeroHun_Head_b|MI_Hun_Haircard_Healthfade] hatSocket=true')==1)
-    assert(h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2 and h:logged('verified=true')==2)
+    assert(h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2 and h:logged('verified=true')==3)
     assert(h:logged('ABP_MM_Monster=true（动画类自己的 BlueprintBeginPlay）')==1 and h:logged('ABP_Item_Hun_Summon=true（武器组件 LinkDefaultAnimLayers 调用=true）')==1)
     assert(h.r.undo.mesh==h.skin and h.r.undo.anim==h.player)
     h.look:recheck(h.r);assert(h:logged('复读 实例=Hun_1 网格=Hun_Clone 动画实例=PBZ_ABP_Base_MonsterHun_C ABP_MM_Monster=true ABP_Item_Hun_Summon=true')==1)
@@ -318,7 +324,7 @@ test('full look: the head reads back before the body is swapped, then the parts;
     assert(h:logged('布料备选 RefreshClothComponents 本版不做')==1)
     assert(h:logged('部件 读回 实例=Hun_1 meshhead')==1 and h:logged('头骨距离=0.00cm')==1)
     assert(h:logged('武器挂接=[Weapon Mesh@weapon_l,Weapon Mesh@weapon_r]')>=2,'the added parts are not taken for weapons')
-    assert(h:logged('完整外观 头和身体=true 其余部件：meshBrowLashCard=true meshBand=true meshScarf=true Hun_Hat=true')==1)
+    assert(h:logged('完整外观（默认） 头和身体=true 其余部件：meshBrowLashCard=true meshBand=true meshScarf=true Hun_Hat=true')==1)
     -- Every native add and the cloth asset are announced first.
     for i=0,#h.parts-1 do assert(h.logAt['add '..i] and h.logs[h.logAt['add '..i]]:find('即将 新建部件',1,true),'即将 before AddComponentByClass '..i)end
     assert(h.logs[h.logAt['cloth CA_Hun_Hair']]:find('即将 布料 CA_Hun_Hair',1,true))
@@ -415,5 +421,145 @@ test('the clone switch never adds parts, and a missing full-look asset falls bac
     local h=fixture();h:apply();assert(#h.parts==0 and h.mesh.asset==h.clone)
     h=fixture({steps=FULL,full=false});local result=h:apply()
     assert(result.full==false and result.look==true and #h.parts==0 and h:logged('完整外观 实例=Hun_1；没载入：meshClass、copyPose、body，不做')==1)
+end)
+test('a body mesh with no physics asset gets the native body asset, announced first and read back',function()
+    local h=fixture();h:apply()
+    assert(h.mesh.asset==h.clone and h.mesh.PhysicsAssetOverride==h.nativePhysics and h:count('physics '..h.nativePhysics.label)==1)
+    assert(h.r.physicsPatched==true and h:logged('补受击碰撞 读回 实例=Hun_1 调用=true')==1 and h:logged('verified=true；能否被打中以实战掉血为准')==1)
+    assert(h.logs[h.logAt.physics]:find('即将 补受击碰撞（换外观后） 实例=Hun_1 网格 Hun_Clone 没有物理资产',1,true),'the announcement is the last line before the call')
+    assert(h:position('physics '..h.nativePhysics.label)<h:position('class '..h.npc.label),'collision before the anim class')
+    h=fixture({steps=FULL});h:apply()
+    assert(h.mesh.asset==h.body_ and h.mesh.PhysicsAssetOverride==nil and h:logged('补受击碰撞')==0,'a mesh with its own asset is left alone')
+    h=fixture({steps=FULL,bodyNoPhysics=true});h:apply()
+    assert(h.mesh.asset==h.body_ and h.mesh.PhysicsAssetOverride==h.nativePhysics,'a replaced player body with no asset is patched too')
+    h=fixture({physicsIgnored=true});h:apply()
+    assert(h.r.physicsPatched==false and h:logged('verified=false')>=1 and h.mesh.asset==h.clone,'an unread write is reported, the look stands')
+    h=fixture({skinNoPhysics=true});h.assets[P.physics]=h.nativePhysics;h:apply()
+    assert(h.mesh.PhysicsAssetOverride==h.nativePhysics,'falls back to the asset path when the native mesh had none')
+    h=fixture({skinNoPhysics=true});h:apply()
+    assert(h.mesh.PhysicsAssetOverride==nil and h:logged('原生的也没载入，没补，可能打不中')==1)
+    h=fixture();h.still=false;h:apply();assert(h:count('physics '..h.nativePhysics.label)==0,'a changed instance is not written')
+    h=fixture({steps={look='clone',anim=true,physics=false}});h:apply();assert(h.mesh.PhysicsAssetOverride==nil and h:logged('受击碰撞')==0)
+end)
+test('a head that stops following falls back to Hun_Clone at the recheck and still gets collision',function()
+    local h=fixture({steps=FULL});h:apply();assert(h.mesh.PhysicsAssetOverride==nil)
+    h.headGap=5;h.look:recheck(h.r)
+    assert(h.mesh.asset==h.clone and h.mesh.PhysicsAssetOverride==h.nativePhysics and h:logged('即将 补受击碰撞（复读退回后）')==1)
+end)
+
+-- The real player as readOutfit reads it: CharacterMesh0 with an attach tree of the player's own components.
+local FOLLOW={look='full',cloth=true,anim=true,follow=true}
+local function wearer(h,opts)
+    opts=opts or {}
+    local p=object('BP_Renewal_Hun_C /Game/Map.Player')
+    local w={actor=p,assets={}}
+    local function asset(kind,name,fields)
+        local a=object(kind..' /Game/Outfit/'..name..'.'..name,fields);w.assets[name]=a;return a
+    end
+    local function comp(kind,name,assetObject,parent,fields)
+        local c=object(kind..' /Game/Map.Player:'..name,fields or {})
+        c.SkinnedAsset=assetObject;c.AttachChildren={};c.ComponentTags=c.ComponentTags or {}
+        function c:GetOwner()return self.owner or p end
+        function c:IsA(cls)return(cls==h.meshClass and kind=='SkeletalMeshComponent')or(cls==h.clothClass and kind=='ChaosClothComponent')end
+        function c:IsVisible()return not self.bHiddenInGame end
+        function c:GetAttachSocketName()return {ToString=function()return c.socket or'None'end}end
+        function c:GetAnimInstance()return self.inst end
+        function c:GetNumMaterials()return #(self.mats or {})end
+        function c:GetMaterial(i)return self.mats[i+1]end
+        if parent then parent.AttachChildren[#parent.AttachChildren+1]=c end
+        w[name]=c;return c
+    end
+    local body=asset('SkeletalMesh',opts.bodyName or'Hun_MoTian_Body_Simple',{Skeleton=opts.skeleton or h.skeleton,PhysicsAsset=object('PhysicsAsset /Game/PA.PA')})
+    local mesh=comp('SkeletalMeshComponent','CharacterMesh0',body)
+    p.Mesh=mesh
+    if not opts.wholeModel then
+        local pose=function()return instance(h.copyPose,h)end
+        local head=comp('SkeletalMeshComponent','meshhead',opts.headAsset or asset('SkeletalMesh','Hun_Head_Mod'),mesh,{inst=pose(),AnimClass=h.copyPose,ComponentTags={'GhostTrailMesh','SlicedUpperBody'}})
+        comp('SkeletalMeshComponent','Hun_Hat01',nil,head,{bHiddenInGame=true})
+        comp('SkeletalMeshComponent','meshBrowLashCard',asset('SkeletalMesh','Brow_Mod'),head,{inst=pose(),AnimClass=h.copyPose})
+        comp('SkeletalMeshComponent','meshScarf',nil,mesh,{inst=pose(),AnimClass=h.copyPose})
+        comp('SkeletalMeshComponent','meshBand',asset('SkeletalMesh','Hun_MoTian_Hair_Band'),mesh,{inst=pose(),AnimClass=h.copyPose,ComponentTags={'PBZ.AllowLegacyClothLeaderPose'}})
+        comp('SkeletalMeshComponent','Hun_Hat',asset('SkeletalMesh','Hun_Hat_MoTian'),mesh,{socket='hatSocket',bHiddenInGame=not opts.hatShown,AnimClass=h.copyPose})
+        comp('SkeletalMeshComponent','Knife',asset('SkeletalMesh','Hun_Knife'),mesh,{socket='Pt_Knife_Back_Socket'})
+        comp('StaticMeshComponent','SwitchKey',nil,mesh)
+        comp('NiagaraComponent','Shachi Loop',nil,mesh)
+        comp('GroomComponent','Hair_Bangs',nil,head).GetClass=function()return class('/Script/HairStrandsCore.GroomComponent')end
+        local weapon=comp('SkeletalMeshComponent','Weapon Mesh',asset('SkeletalMesh','Hun_BaiYing'),mesh)
+        weapon.owner=object('BP_Weapon_Hun_BaiYing_C')
+        comp('ChaosClothComponent','CA_Hun_Hair',opts.hairAsset or asset('ChaosClothAsset','CA_MoTian_Hair'),head)
+        for _,name in ipairs({'CA_Hun_UpperCloth','CA_Hun_Skirt','CA_Hun_Cape'})do comp('ChaosClothComponent',name,asset('ChaosClothAsset',name..'_MoTian'),mesh)end
+    end
+    h.wearer=p
+    return w
+end
+local function partOf(h,a)for _,c in ipairs(h.parts)do if c.asset==a or c.clothAsset==a then return c end end end
+test('follow: the body takes what the player wears now, read only; hidden, empty and non-outfit parts are left out',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h);local result=h:apply()
+    assert(result.full==true and result.follow==true and result.look==nil and result.anim==true)
+    assert(h.mesh.asset==w.assets.Hun_MoTian_Body_Simple and h:count('mesh '..h.body_.label)==0,'the player body, not the default one')
+    assert(#h.parts==7,'head, brow card, band and four cloth parts: '..#h.parts)
+    local head=partOf(h,w.assets.Hun_Head_Mod)
+    assert(head.parent==h.mesh and head.anim:GetClass()==h.copyPose and #head.ComponentTags==2 and h.r.headName=='meshhead')
+    assert(partOf(h,w.assets.Brow_Mod).parent==head and partOf(h,w.assets.CA_MoTian_Hair).parent==head)
+    assert(partOf(h,w.assets.Hun_MoTian_Hair_Band).ComponentTags[1]=='PBZ.AllowLegacyClothLeaderPose')
+    assert(partOf(h,w.assets.CA_Hun_Skirt_MoTian).parent==h.mesh and partOf(h,w.assets.CA_Hun_Skirt_MoTian).sim==true)
+    assert(not partOf(h,w.assets.Hun_Knife)and not partOf(h,w.assets.Hun_BaiYing)and not partOf(h,w.assets.Hun_Hat_MoTian))
+    assert(h:logged('没抄=[meshScarf（空）,Hun_Hat（隐藏）,Hun_Hat01（空）,Hair_Bangs（发丝，本版不抄）]')==1)
+    assert(h:logged('跟随玩家外观 实例=Hun_1 只读玩家：身体=Hun_MoTian_Body_Simple 头=Hun_Head_Mod')==1)
+    assert(h:logged('完整外观（玩家当前） 头和身体=true 其余部件：meshBand=true meshBrowLashCard=true')==1 and h:logged('4 件，照玩家当前')==1)
+    assert(h.look.streak.follow==0 and h.mesh.PhysicsAssetOverride==nil,'the player body brings its own physics asset')
+    for name,c in pairs(w)do if type(c)=='table'and c.AttachChildren then assert(c.asset==nil and c.parent==nil,'the player is only read: '..name)end end
+    h.look:recheck(h.r);assert(h.mesh.asset==w.assets.Hun_MoTian_Body_Simple and h:logged('跟随=true')==1)
+    h.look:cleanup(h.r,'实例离场');assert(h.mesh.asset==h.skin,'leaving restores the native body')
+end)
+test('follow: a shown hat is copied as a static part at its socket',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h,{hatShown=true});h:apply()
+    local hat=partOf(h,w.assets.Hun_Hat_MoTian)
+    assert(hat and hat.parent==h.mesh and hat.socket=='hatSocket'and hat.mode==2 and hat.animOn==false and hat.anim==nil)
+end)
+test('follow: a whole-model replacement with no separate head or parts stands, and nothing checks a head',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h,{wholeModel=true,bodyName='Other_Character_Full'});local result=h:apply()
+    assert(result.full==true and result.follow==true and #h.parts==0 and h.mesh.asset==w.assets.Other_Character_Full and h.r.headName==nil)
+    assert(h:logged('完整外观（玩家当前） 身体（没有单独的头）=true')==1)
+    h.look:recheck(h.r);assert(h.mesh.asset==w.assets.Other_Character_Full and h:logged('这套外观没有单独的头，不查头部跟随')==1)
+end)
+test('follow: a player that cannot be followed gives the default look and does not count against the breaker',function()
+    local h=fixture({steps=FOLLOW});local result=h:apply()
+    assert(result.full==true and result.follow==nil and h.mesh.asset==h.body_ and h:logged('跟随玩家外观 实例=Hun_1；玩家不可读，改用默认外观')==1)
+    h=fixture({steps=FOLLOW});wearer(h,{skeleton=object('Skeleton /Game/Other.Other_Skeleton')});result=h:apply()
+    assert(result.full==true and result.follow==nil and h.mesh.asset==h.body_ and h:logged('的骨架（Other_Skeleton）和魂的（Hun_Skin_Skeleton）不同，改用默认外观')==1)
+    h=fixture({steps=FOLLOW});local w=wearer(h);w.CharacterMesh0.bHiddenInGame=true;result=h:apply()
+    assert(result.follow==nil and h.mesh.asset==h.body_ and h:logged('玩家身体当前不可见')==1 and(h.look.streak.follow or 0)==0)
+    h=fixture({steps=FOLLOW});w=wearer(h);w.meshhead.bHiddenInGame=true;result=h:apply()
+    assert(result.follow==nil and result.full==true and h.mesh.asset==h.body_ and h:logged('玩家的头当前被隐藏')==1,'never a headless body')
+    h=fixture({steps=FULL});wearer(h);h:apply();assert(h.mesh.asset==h.body_ and h:logged('跟随玩家外观')==0,'the switch is off unless set')
+end)
+test('follow: an outfit that fails is undone to the default list, then Hun_Clone; two bodies in a row switch it off',function()
+    local h=fixture({steps=FOLLOW});wearer(h,{hairAsset=h.assets[Look.CLOTH[1].asset]})
+    h.broken.CA_Hun_Hair='anyAsset'
+    local result=h:apply()
+    assert(result.follow==false and result.full==false and result.look==true and h.mesh.asset==h.clone,'player, default, then clone')
+    assert(h:logged('头发布料没读回，没有头发，改用默认外观')==1 and h:logged('跟随玩家外观 没成 实例=Hun_1，改用默认外观')==1)
+    assert(h.look.streak.follow==1 and h.mesh.PhysicsAssetOverride==h.nativePhysics)
+    for _,c in ipairs(h.parts)do assert(c.destroying==true,'every part of both attempts is destroyed')end
+    h:body();h:apply();assert(h.look.off.follow==true and h:logged('已停用 跟随玩家外观：连续 2 只魂失败')==1)
+    h.broken={};h:body();local reads=h:logged('只读玩家：');result=h:apply()
+    assert(h:logged('只读玩家：')==reads and h:logged('跟随玩家外观 本次加载已停用，之后的魂都用默认外观（实例=Hun_3）')==1)
+end)
+test('follow: materials that differ are taken from the player, a dynamic one by its parent, never the phantom one',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h,{wholeModel=true})
+    local m1,m2=object('MaterialInstanceConstant /Game/M.MI_Mod_A'),object('MaterialInstanceConstant /Game/M.MI_Mod_B')
+    local dynamic=object('MaterialInstanceDynamic /Engine/Transient.MID_1',{Parent=m1})
+    function dynamic:GetClass()return class('/Script/Engine.MaterialInstanceDynamic')end
+    w.CharacterMesh0.mats={dynamic,m2,object('MaterialInstanceConstant /Game/M.MI_FX_PhantomMode_Hun_Cloth')}
+    h.mesh.slots={};local base=h.mesh.GetMaterial
+    function h.mesh:SetMaterial(i,m)self.slots[i]=m end
+    function h.mesh:GetMaterial(i)return self.slots[i]or base(self,i)end
+    function h.mesh:GetNumMaterials()return 2 end
+    h:apply()
+    assert(h.mesh.slots[0]==m1 and h.mesh.slots[1]==m2 and h.mesh.slots[2]==nil)
+    assert(h:logged('即将 抄材质 实例=Hun_1 身体 SetMaterial')==1 and h:logged('抄材质 读回 实例=Hun_1 身体 写入=2 没读回=0')==1)
+    h=fixture({steps={look='full',cloth=true,anim=true,follow=true,materials=false}});w=wearer(h,{wholeModel=true});w.CharacterMesh0.mats={m1}
+    h:apply();assert(h:logged('抄材质')==0)
 end)
 print('hun look: PASS '..n..' mesh/anim-class/full-look/cloth/readback/undo/breaker checks; native gameplay remains unverified')

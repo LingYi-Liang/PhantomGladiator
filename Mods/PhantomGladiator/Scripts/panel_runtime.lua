@@ -39,7 +39,8 @@ function Runtime.new(options)
     end
     local function sessionStatus()return self:sessionStatus() end
     self.functionKeys=FunctionKeys.new({path=options.path,router=self.router,log=self.log,
-        unitOwner=unitOwner,poolOwner=function(vk,mask)return self.poolKeys:owner(vk,mask)end,
+        unitOwner=function(vk,mask)return unitOwner(vk,mask) or (self.teleportKeys and self.teleportKeys:owner(vk,mask))end,
+        poolOwner=function(vk,mask)return self.poolKeys:owner(vk,mask)end,
         queueSpawn=function(callback)self:queueSummon(callback)end,
         queue=function(callback,action)self:queueAction(callback,action)end,
         dispatch=function(action)self:dispatch(action,{})end})
@@ -49,6 +50,8 @@ function Runtime.new(options)
             if label then return '功能「'..label..'」' end
             local unit=unitOwner(vk,mask)
             if unit then return '单位「'..unit..'」' end
+            local place=self.teleportKeys and self.teleportKeys:owner(vk,mask)
+            if place then return '「'..place..'」' end
         end,
         -- How many of this unit one summon may hold; 0 when it cannot be summoned.
         capacity=function(path)
@@ -61,6 +64,7 @@ function Runtime.new(options)
     self.router.dispatch=function(vk,mask)
         if not self.alive or self.functionKeys:press(vk,mask) then return end
         if options.unitKeys and options.unitKeys:dispatch(vk,mask) then return end
+        if self.teleportKeys and self.teleportKeys:dispatch(vk,mask) then return end
         self.poolKeys:dispatch(vk,mask)
     end
     local function readyError()
@@ -251,6 +255,16 @@ function Runtime.new(options)
             return options.unitRules:set(command.unit_id,command.key_spawn:lower(),command.key_start:lower())
         end,
         -- ON or OFF in key_start (companion_executions.lua).
+        -- 玩家可以穿过随从 (companion_passage.lua): ON or OFF in the key_start column.
+        set_companion_passage=function(command)
+            local module=options.support and options.support.companionPassage
+            if not module then return {ok=false,message='穿过随从模块未加载',spawned_count=0} end
+            return module:set(command.key_start)
+        end,
+        set_companion_minion_executions=function(command)
+            if not options.companionExecutions or not options.companionExecutions.setMinions then return {ok=false,message='随从处决模块未加载',spawned_count=0} end
+            return options.companionExecutions:setMinions(command.key_start)
+        end,
         set_companion_executions=function(command)
             if not options.companionExecutions then return {ok=false,message='随从处决模块未加载',spawned_count=0} end
             return options.companionExecutions:set(command.key_start)
@@ -355,6 +369,56 @@ function Runtime.new(options)
     self.handlers.eyes_player=function()return eyes('player')end
     self.handlers.eyes_npc=function()return eyes('npc')end
     self.handlers.set_weather=function(cmd)return weather((cmd.key_spawn or ''):lower())end
+    -- Teleport (experimental). The app sends a place code; the coordinates come from this mod's own table
+    -- (teleport_places.lua), never from the command. nil = back to where the player stood before the last teleport.
+    local function teleport(code)
+        local why=readyError();if why then return {ok=false,message=why,spawned_count=0} end
+        local module=options.support and options.support.teleport
+        if not module then return {ok=false,message='传送模块未加载',spawned_count=0} end
+        local result
+        if code==nil then result=module:goBack()
+        else
+            local loaded,places=pcall(require,'teleport_places')
+            local place=loaded and type(places)=='table' and places[code] or nil
+            if not place then return {ok=false,message='这个地点不在本版模组的地点表里，请先更新游戏内的模组',spawned_count=0} end
+            result=module:go(place)
+        end
+        return {ok=result.ok==true,message=tostring(result.message or ''),spawned_count=0}
+    end
+    self.handlers.teleport=function(cmd)return teleport(cmd.key_spawn or '')end
+    self.handlers.teleport_back=function()return teleport(nil)end
+    -- Teleport keys (teleport_keys.lua): one per place and one for the return; a press teleports at once.
+    if options.support and options.support.teleport then
+        local TeleportKeys=require('teleport_keys')
+        self.teleportKeys=TeleportKeys.new({path=options.path,router=self.router,log=self.log,
+            valid=function(target)
+                local loaded,places=pcall(require,'teleport_places')
+                local place=loaded and type(places)=='table' and places[target]
+                return place and place.name or nil
+            end,
+            go=function(target)
+                if target==TeleportKeys.BACK then return teleport(nil) end
+                return teleport(target)
+            end,
+            ready=function()local why=readyError();return why==nil,why end,
+            reserved=function(vk,mask)
+                local _,label=self.functionKeys:owner(vk,mask)
+                if label then return '功能「'..label..'」' end
+                local unit=unitOwner(vk,mask)
+                if unit then return '单位「'..unit..'」' end
+                local pool=self.poolKeys:owner(vk,mask)
+                if pool then return '怪物池「'..pool..'」' end
+            end,
+            queue=function(callback)self:queueAction(callback,'teleport')end})
+    end
+    -- key_spawn: the place code or BACK; key_start: VK_<n> or UNBOUND; key_stop: MOD_<mask>.
+    self.handlers.configure_teleport_key=function(cmd)
+        if not self.teleportKeys then return {ok=false,message='传送模块未加载',spawned_count=0} end
+        self.poolKeys:refresh(self.poolKeys.session)
+        local key=cmd.key_start=='UNBOUND' and 0 or tonumber((cmd.key_start or ''):match('^VK_(%d+)$'))
+        local mask=tonumber((cmd.key_stop or ''):match('^MOD_(%d+)$'))
+        return self.teleportKeys:configure(cmd.key_spawn,key,mask)
+    end
     for _,id in ipairs(require('map_weather').commands)do
         self.handlers['weather_'..id]=function()return weather(id)end
     end
@@ -433,7 +497,15 @@ function Runtime.new(options)
         out.execution_camera=executionCamera.on==true
         out.execution_camera_state=executionCamera.state or 'off'
         out.execution_camera_failures=executionCamera.failures or 0
+        if options.support and options.support.companionPassage then
+            out.companion_passage_supported=true
+            out.companion_passage=options.support.companionPassage:status().on==true
+        end
         out.companion_executions_supported=not not options.companionExecutions
+        if options.companionExecutions and options.companionExecutions.setMinions then
+            out.companion_minion_executions_supported=true
+            out.companion_minion_executions=options.companionExecutions:status().minions==true
+        end
         out.companion_executions=options.companionExecutions and options.companionExecutions:status().on==true or false
         local track=options.track and options.track:status() or nil
         out.track_supported=track~=nil
@@ -600,6 +672,14 @@ function Runtime.new(options)
         -- Schema 7 extends the previous eighteen keys with preset, cycle and restore bindings.
         out.weather_supported=options.support~=nil and options.support.weather~=nil
         out.weather_choice=out.weather_supported and options.support.weather:status() or 'map'
+        out.teleport_supported=options.support~=nil and options.support.teleport~=nil
+        if out.teleport_supported then
+            local state=options.support.teleport:status()
+            out.teleport_pending=state.pending==true
+            out.teleport_can_return=state.can_return==true
+            out.teleport_message=state.last and ((state.last.place~='' and state.last.place..'：' or '')..tostring(state.last.message)) or ''
+            out.teleport_keys_revision=self.teleportKeys and self.teleportKeys:status().revision or 0
+        end
         out.first_person_supported=options.track~=nil and type(options.track.firstPerson)=='function'
         out.function_keys_schema=8;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
@@ -610,7 +690,7 @@ end
 function Runtime:unitKeyReserved(vk,mask)
     local _,label=self.functionKeys:owner(vk,mask)
     local pool=self.poolKeys:owner(vk,mask)
-    return label or (pool and ('怪物池：'..pool))
+    return label or (pool and ('怪物池：'..pool)) or (self.teleportKeys and self.teleportKeys:owner(vk,mask))
 end
 function Runtime:unitKeyShared(vk)
     return self.router.installed[vk..':0']~=nil
@@ -619,6 +699,7 @@ function Runtime:configure(proposal)
     self.poolKeys:refresh(self.poolKeys.session)
     local result=self.functionKeys:configure(proposal)
     if result.ok and self.options.unitKeys then self.options.unitKeys:refresh()end
+    if result.ok and self.teleportKeys then self.teleportKeys:refresh()end
     return result
 end
 function Runtime:setSummonQueue(enabled)
@@ -820,6 +901,7 @@ function Runtime:start()
     self.started=true
     self.functionKeys:start()
     if self.options.unitKeys then self.options.unitKeys:start() end
+    if self.teleportKeys then self.teleportKeys:start() end
     if type(LoopInGameThreadWithDelay)~="function" or type(CancelDelayedAction)~="function" then
         self.log("面板轮询未启动：缺少LoopInGameThreadWithDelay或CancelDelayedAction；未回退异步排队循环")
         return false
@@ -916,6 +998,7 @@ function Runtime:silence()
     self.alive=false
     if self.summonQueue.enabled then self:setSummonQueue(false) end
     self.poolQueue.enabled=false;self.poolQueue.jobs={}
+    if self.teleportKeys then self.teleportKeys:silence() end
     self.functionKeys:silence();self.router:silence()
     if self.options.unitKeys then self.options.unitKeys:silence() end
     self.pumpReady=false

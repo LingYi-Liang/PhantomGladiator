@@ -26,6 +26,21 @@
 -- finale once the executed side has moved to its own.
 -- 随从处决 BOSS (the app switch, companion_executions.lua): outside the arena's teams, a boss on a companion's hatred list,
 -- summoned with no team or of the map, can be executed the same way by the nearest companion. Minions stay the player's.
+-- 随从处决小怪 (a second app switch, same file): a minion on a companion's hatred list that the player could execute is
+-- executed by the nearest companion too, with the minion's own pair; one the player has taken stays the player's.
+-- A minion with no pair of its own is finished with the Hun's generic pair (hun_execution_pairs.lua), the executor
+-- borrowing the player's body for it as it does for a boss's pair, when the minion's skeleton is that pair's.
+-- 随从魂 (a Hun body summoned as a companion) finishes what the player could finish, whatever that switch says: a
+-- minion as well as a boss on a companion's hatred list. For a minion it takes the pair of the weapon it holds now,
+-- then the generic pair, then the minion's own (Look.STEPS.companionWeaponFirst=false: the minion's own first, as
+-- before); a boss keeps its own pair (made for the player's skeleton, which the Hun body shares, so it plays on the
+-- Hun's own mesh; it carries the boss's lock handling), and one with none gets the weapon's, then the generic one.
+-- 随从魂谁都能处决: when no pair was made for the foe's skeleton (and the foe's own pair, if it has one, cannot be
+-- used), the Hun still plays the first pair of its weapon, or the generic one. The foe's half is then the game's to
+-- play on a skeleton it was not made for; when the foe shows no being-executed montage in 1.5 s the run goes on all
+-- the same: the foe's AI is paused where it stands, the Hun's clip plays out, and the end is the usual one (a minion
+-- dies, a boss stays unless it was on its lock). Off with Look.STEPS.companionAnyone=false.
+-- A target the player is executing or has executed stays the player's. Off with Look.STEPS.companionExecutions=false.
 local U=require('ue_observe')
 local Stats=require('character_stats')
 local PoseProbe=require('execution_pose_probe')
@@ -1389,6 +1404,10 @@ local function closeOneGrab(pose,why,restore)
         local released=not handoff and release(run) or '；旧技能由原生切换处理'
         chain:stop(why)
         local back=returnBody(run.body)..'；'..(handoff and 'AI暂停交给下一段' or resume(run))..released
+        if run.targetPaused then
+            run.targetPaused=nil
+            back=back..'；目标'..(U.valid(run.boss) and select(2,holdAI(run.boss,false)) or '已失效，不恢复 AI')
+        end
         if run.lionPickup then options.lionPickupEnded(run.executor) end
         local boss=run.boss
         local hp=U.valid(boss) and read(boss,'Health') or nil
@@ -1405,12 +1424,12 @@ local function closeOneGrab(pose,why,restore)
         elseif hp and hp>0 and options.immune and options.immune(boss,'lethal') then
             kill='魂的方案免疫强制致死，生命读回 '..fmt(hp)
             local unit=units[U.key(boss)]
-            if unit and not run.adopted then unit.state=run.info.hunPair and 'nopair' or 'ready';unit.again=now()+AGAIN end
+            if unit and not run.adopted then unit.state=run.info.hunPair and run.previousState or 'ready';unit.again=now()+AGAIN end
         elseif hp and hp>0 and run.info.boss and not run.byLock then
             -- A boss may have another phase: it stays, and may be executed again a little later.
             local unit=units[U.key(boss)]
-            -- A Hun weapon pair is not the target's own: it goes back to having none, for the Hun to try again.
-            if unit and not run.adopted then unit.state=run.info.hunPair and 'nopair' or 'ready';unit.since=nil;unit.waited=nil;unit.again=now()+AGAIN end
+            -- A Hun weapon pair is not the target's own: a target with none goes back to having none, for the Hun to try again.
+            if unit and not run.adopted then unit.state=run.info.hunPair and run.previousState or 'ready';unit.since=nil;unit.waited=nil;unit.again=now()+AGAIN end
             if run.adopted then kill='原生BOSS处决结束，保留后续阶段 HP='..fmt(hp)
             else kill=string.format('BOSS（%s）处决完还站着，不强制判死，%d 秒后可再被处决 HP=%s',run.info.rank,AGAIN,fmt(hp)) end
         elseif (hp==nil or hp>0) and (run.info.mob or run.info.boss and run.byLock) then
@@ -1485,7 +1504,17 @@ local function closeOneGrab(pose,why,restore)
             end
         end
         if run.mash and not run.mash.finale and t>=run.mash.next then press(run,t) end
-        if t>=1.5 and not run.montage and not run.fell then finish('目标没有播被处决动作',true);return end
+        if t>=1.5 and not run.montage and not run.fell then
+            if not run.info.foreign then finish('目标没有播被处决动作',true);return end
+            -- A pair that was not made for this skeleton: the executor's half plays out; the target is held where it is.
+            if not run.foreignHeld then
+                run.foreignHeld=true
+                local got,was=call(U.field(U.field(run.boss,'Controller'),'BrainComponent'),'IsPaused')
+                local held='AI原本已暂停，结束时保留原状态'
+                if not (got and U.unwrap(was)==true) then run.targetPaused,held=holdAI(run.boss,true) end
+                say(string.format('处决对不是给目标骨架做的，%.1fs 内目标没有播被处决动作：执行方照常播完，目标原地停住（%s），结束时照常收尾',t,tostring(held)))
+            end
+        end
         if not run.dynamic and t>=run.length then finish(run.fell and '播完，目标已倒下' or '播完');return end
     end
 
@@ -1521,7 +1550,8 @@ local function closeOneGrab(pose,why,restore)
             and (not executor or not active or U.key(active.executor)==U.key(executor))end,data=animationData,adopt=adoptNative})
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
-    local function tryExecute(target,unit,t,team)
+    -- only: as opponent()'s, the executors this attempt may take (a companion Hun's own attempts take Hun bodies only).
+    local function tryExecute(target,unit,t,team,only)
         if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) then return false end
         if options.onPole and options.onPole(target) then return false end
@@ -1543,7 +1573,7 @@ local function closeOneGrab(pose,why,restore)
             return false
         end
         local executor,d,denied
-        if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob)end
+        if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob,only)end
         if executor then return start(executor,target,selected,d,reason)~=false end
         -- A denied finisher cannot leave a minion immortal at its final death floor.
         if denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
@@ -1563,56 +1593,106 @@ local function closeOneGrab(pose,why,restore)
     end
     -- 1-4: a target with no pair of its own, and a Hun body the nearest enemy that could execute it. The Hun weapon's
     -- generic pairs are taken only when the target's mesh skeleton is the skeleton of the pair's executed montage;
-    -- each target is checked once and the result logged.
-    local function hunPairFor(target,unit,executor)
+    -- each target is checked once for each weapon and the result logged.
+    -- generic (the companions' way): the pairs of the weapon the executor holds first, then the generic ones (绝影's),
+    -- so a weapon with no pair for this skeleton still finishes, and an executor that is no Hun body gets the generic
+    -- ones. Without it (the arena) a Hun holding a weapon uses that weapon's pairs only, as before.
+    -- foreign (a companion Hun only): with no pair for this skeleton, the first pair whose abilities load is taken
+    -- all the same, marked info.foreign.
+    local function hunPairFor(target,unit,executor,generic,foreign)
         local config=options.hunWeapon and options.hunWeapon(executor)
         local skeleton=meshSkeleton(target)
-        local key=U.key(skeleton)
+        local key=U.key(skeleton) or (foreign and '读不到') or nil
         if not key then return end
-        if unit.hunConfig~=config or unit.hunSkeleton~=key then
-            unit.hunConfig,unit.hunSkeleton,unit.hunCandidates=config,key,{}
-            local pairsForWeapon=config and require('hun_weapon_execution_data').forConfig(config) or nil
-            for _,entry in ipairs(config and (pairsForWeapon or {}) or hunPairs)do
-                local victim=object(entry.victim)
-                local wanted=victim and U.field(victim,'Skeleton')
-                local adopt=skeleton~=nil and U.valid(wanted) and U.key(wanted)==U.key(skeleton)
-                local execution,executed
-                if adopt then execution,executed=object(entry.execution),object(entry.executed);adopt=execution~=nil and executed~=nil end
-                say(string.format('魂武器处决对 目标=%s 目标骨架=%s 受害方骨架=%s（%s） 技能对=%s 采用=%s',className(target),skeleton and short(skeleton) or '读不到',
-                    U.valid(wanted) and short(wanted) or '读不到',entry.victim_skeleton,entry.execution:match('%.([^%.]+)$'),tostring(adopt)))
-                if adopt then
-                    unit.hunCandidates[#unit.hunCandidates+1]={rule=entry,info={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,
-                        pair={execution=execution,executed=executed,source='魂武器通用处决对（目标没有自己的处决对）',type='Execution.Type.Combat'}}}
+        if unit.hunSkeleton~=key then unit.hunSkeleton,unit.hunSets=key,{} end
+        local name=(config or '')..(generic and '+通用' or '')
+        local set=unit.hunSets[name]
+        if not set then
+            set={};unit.hunSets[name]=set
+            local lists={}
+            if config then lists[1]={entries=require('hun_weapon_execution_data').forConfig(config) or {},from='手持武器',source='魂手持武器的处决对'} end
+            if not config or generic then lists[#lists+1]={entries=hunPairs,from='通用',source='魂武器通用处决对'} end
+            local seen={}
+            for _,list in ipairs(lists)do
+                for _,entry in ipairs(list.entries)do
+                    if not seen[entry.execution] then
+                        seen[entry.execution]=true
+                        local victim=object(entry.victim)
+                        local wanted=victim and U.field(victim,'Skeleton')
+                        local adopt=skeleton~=nil and U.valid(wanted) and U.key(wanted)==U.key(skeleton)
+                        local execution,executed
+                        if adopt then execution,executed=object(entry.execution),object(entry.executed);adopt=execution~=nil and executed~=nil end
+                        say(string.format('魂武器处决对 目标=%s 目标骨架=%s 受害方骨架=%s（%s） 技能对=%s 采用=%s 来自=%s',className(target),skeleton and short(skeleton) or '读不到',
+                            U.valid(wanted) and short(wanted) or '读不到',entry.victim_skeleton,entry.execution:match('%.([^%.]+)$'),tostring(adopt),list.from))
+                        if adopt then
+                            set[#set+1]={rule=entry,info={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,
+                                pair={execution=execution,executed=executed,source=list.source,type='Execution.Type.Combat'}}}
+                        else
+                            set.rest=set.rest or {};set.rest[#set.rest+1]={entry=entry,source=list.source}
+                        end
+                    end
                 end
             end
         end
-        for _,pair in ipairs(unit.hunCandidates)do
+        for _,pair in ipairs(set)do
             local rule=pair.rule
             if tagsMatch(executor,rule.executor_required,true) and tagsMatch(executor,rule.executor_ignored,false)
                 and tagsMatch(target,rule.target_required,true) and tagsMatch(target,rule.target_ignored,false) then return pair.info end
         end
+        if not foreign then return end
+        -- No pair for this skeleton. The pairs made for other skeletons, in the same order, the first whose abilities
+        -- load and whose executor tags hold; the target's tag rules are for the bodies the pair was made for.
+        if not set.foreign then
+            set.foreign={}
+            for _,item in ipairs(set.rest or {})do
+                local entry=item.entry
+                local execution,executed=object(entry.execution),object(entry.executed)
+                if execution and executed then
+                    set.foreign[#set.foreign+1]={rule=entry,info={state='ready',locks=unit.locks,rank=unit.rank,boss=unit.boss,mob=unit.mob,timing=entry.timing,hunPair=true,foreign=true,
+                        pair={execution=execution,executed=executed,source=item.source..'（不是给目标骨架做的）',type='Execution.Type.Combat'}}}
+                end
+            end
+            say(string.format('魂处决对里没有给 %s 的骨架（%s）做的：随从魂照样处决，可用 %d 对，受害方动作由游戏在它身上播，播不出就原地停住',className(target),
+                skeleton and short(skeleton) or '读不到',#set.foreign))
+        end
+        for _,pair in ipairs(set.foreign)do
+            local rule=pair.rule
+            if tagsMatch(executor,rule.executor_required,true) and tagsMatch(executor,rule.executor_ignored,false) then return pair.info end
+        end
     end
-    local function tryHunPair(target,unit,t,team)
+    -- only: the executors this attempt may take (opponent()'s); generic, foreign: as hunPairFor's.
+    local function tryHunPair(target,unit,t,team,only,generic,foreign)
         if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) or (options.onPole and options.onPole(target)) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
         local locked=onLock(target,unit,hp)
         if locked then unit.hunSince=unit.hunSince or t else unit.hunSince=nil end
-        local reason=locked and t-unit.hunSince>=HOLD and '卡在锁血线' or executable(target)
-        if not reason and tagsMatch(target,{'CharacterState.Stand.Break'},true) then reason='CharacterState.Stand.Break' end
+        local reason=locked and t-unit.hunSince>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
+        if not reason and not unit.lockOnly and tagsMatch(target,{'CharacterState.Stand.Break'},true) then reason='CharacterState.Stand.Break' end
         if not reason then return false end
-        local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,isHun)
+        local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,only)
         if not executor then return false end
-        local info=hunPairFor(target,unit,executor)
+        local info=hunPairFor(target,unit,executor,generic,foreign)
         if not info then return false end
-        start(executor,target,info,d,reason..'，魂武器处决对')
-        return true
+        return start(executor,target,info,d,reason..'，魂武器处决对')~=false
     end
     -- What the companions are after, while the switch is on: anything on their hatred lists but the player and the arena's
     -- own units. A unit summoned with no team is summoned to be fought, so it counts.
+    local function hunCompanionHere(members)
+        if not isHun or hunSteps.companionExecutions==false then return false end
+        for _,member in ipairs(members)do
+            if member.team=='companion' and not member.reserve and isHun(member.actor) then return true end
+        end
+        return false
+    end
+    -- Returns the foes, whether the 随从处决 BOSS switch is on, whether a companion Hun is there, and whether the
+    -- 随从处决小怪 switch is on.
     companionFoes=function(members)
-        if not (options.companions and options.companions()) then return {} end
+        local switch=options.companions and options.companions() and true or false
+        local hun=hunCompanionHere(members)
+        local minions=options.companionMinions and options.companionMinions() and true or false
+        if not switch and not hun and not minions then return {},false,false,false end
         local skip,seen,foes={},{},{}
         local playerKey=U.key(options.getPlayer and options.getPlayer())
         if playerKey then skip[playerKey]=true end
@@ -1629,7 +1709,7 @@ local function closeOneGrab(pose,why,restore)
                 end
             end
         end
-        return foes
+        return foes,switch,hun,minions
     end
     -- The player has this one (the game keeps the last executor on the target's component): it stays the player's.
     local function theirExecutorIsPlayer(target)
@@ -1638,7 +1718,7 @@ local function closeOneGrab(pose,why,restore)
         local playerKey=U.key(options.getPlayer and options.getPlayer())
         return playerKey~=nil and U.key(executor)==playerKey
     end
-    local function considerFoes(foes,t)
+    local function considerFoes(foes,t,switch,hun,minions)
         for _,foe in ipairs(foes)do
             local unit=units[foe.key]
             if not unit then
@@ -1651,10 +1731,30 @@ local function closeOneGrab(pose,why,restore)
                     say('随从处决：这个 BOSS 没有能用的处决动作，不处决：'..className(foe.actor)..' 状态='..unit.state)
                 end
             end
-            if unit.boss and unit.state=='ready' and not (unit.again and t<unit.again) then
+            if switch and unit.boss and unit.state=='ready' and not (unit.again and t<unit.again) then
                 if theirExecutorIsPlayer(foe.actor) then
                     if not unit.playerHeld then unit.playerHeld=true;say('玩家处决过或正在处决，随从不抢：'..className(foe.actor)) end
                 elseif tryExecute(foe.actor,unit,t,nil) then return end
+            end
+            local free=not unit.finalDeath and not (unit.again and t<unit.again)
+            local open=(unit.state=='ready' or unit.state=='nopair') and free
+            -- A companion Hun: any foe the player could finish, minions too; never one the player has taken. A minion
+            -- gets the pair of the weapon the Hun holds, then the generic one, then its own; a boss its own first.
+            -- Last, for anyone but a boss that has its own pair: a pair that was not made for the foe's skeleton.
+            if hun and free and (unit.state=='ready' or unit.state=='nopair' or unit.state=='nodata') and not theirExecutorIsPlayer(foe.actor) then
+                local own=unit.state=='ready'
+                if hunSteps.weaponPairs~=false and (not own or not unit.boss and hunSteps.companionWeaponFirst~=false)
+                    and tryHunPair(foe.actor,unit,t,nil,isHun,true) then return end
+                if own and unit.state=='ready' and tryExecute(foe.actor,unit,t,nil,isHun) then return end
+                if hunSteps.weaponPairs~=false and hunSteps.companionAnyone~=false and not (own and unit.boss)
+                    and (unit.state=='ready' or unit.state=='nopair' or unit.state=='nodata') and tryHunPair(foe.actor,unit,t,nil,isHun,true,true) then return end
+            end
+            -- 随从处决小怪: a minion, by the nearest companion; never one the player has taken. Its own pair, or with none
+            -- the Hun's generic pair, which the executor borrows the player's body for.
+            if minions and not unit.boss and open and (unit.state=='ready' or unit.state=='nopair') and not theirExecutorIsPlayer(foe.actor) then
+                if unit.state=='ready' then
+                    if tryExecute(foe.actor,unit,t,nil) then return end
+                elseif hunSteps.weaponPairs~=false and tryHunPair(foe.actor,unit,t,nil,nil,true) then return end
             end
         end
     end
@@ -1690,7 +1790,7 @@ local function closeOneGrab(pose,why,restore)
             local key=U.key(member.actor)
             if key then present[key]=member end
         end
-        local foes=companionFoes(members)
+        local foes,foeSwitch,foeHun,foeMinions=companionFoes(members)
         for _,foe in ipairs(foes)do present[foe.key]=true end
         local finishing
         for key,unit in pairs(units)do
@@ -1734,7 +1834,7 @@ local function closeOneGrab(pose,why,restore)
         endLocks(members,t)
         if options.fighting and(policyFight==false or policyFight==nil and not options.fighting())then
             for _,unit in pairs(units) do unit.prologueSince=nil end
-            considerFoes(foes,t);return
+            considerFoes(foes,t,foeSwitch,foeHun,foeMinions);return
         end
         -- Whether a Hun body is in the fight; only then are targets with no pair looked at for its weapon pairs.
         local hunHere=false
@@ -1787,10 +1887,10 @@ local function closeOneGrab(pose,why,restore)
                 end
                 if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
                 if hunHere and unit.state=='nopair' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
-                    and not member.stand and tryHunPair(target,unit,t,member.team) then return end
+                    and not member.stand and tryHunPair(target,unit,t,member.team,isHun) then return end
             end
         end
-        considerFoes(foes,t)
+        considerFoes(foes,t,foeSwitch,foeHun,foeMinions)
     end
     -- F4 / stop: give the body back; the boss is left as it is.
     function self:stop(why)

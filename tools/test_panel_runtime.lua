@@ -108,7 +108,7 @@ local function harness(saved,withSpectator,withCodex)
         if name=='panel_bridge'then return Bridge end
         if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
         if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
-        assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys')
+        assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys' or name=='teleport_places' or name=='teleport_keys')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -700,7 +700,8 @@ test("不倒下 takes its team from the team column and ON/OFF from key_start; t
     -- panel_bridge.lua writes at most 256 entries; v0.36.0 lost random ones past the old cap of 100.
     -- A real session reports about 27 more than this fixture (230 lines against 199 before the Hun keys).
     local entries=0;for _ in pairs(h.reported)do entries=entries+1 end
-    assert(entries<=225,'status entries: '..entries)
+    -- 226 with teleport_supported; a session with the teleport module adds three more, far below the cap of 288.
+    assert(entries<=226,'status entries: '..entries)
     local missing=harness();missing.runtime:start();missing.inbox={action='set_team_immortal',team='red',key_start='ON'};missing:tick()
     assert(not missing.result.ok and missing.reported.immortal_supported==false)
 end)
@@ -896,6 +897,66 @@ test('weather hotkeys directly dispatch different presets and all three navigati
         h.keys[i==1 and 'F8' or 'F8:'..(i-1)]();h:drain();assert(seen[i]==id)
     end
     h:run(function()assert(h.runtime.handlers.set_weather({key_spawn='FOGGY'}).ok)end);assert(seen[6]=='foggy')
+end)
+test('teleport takes a place code and looks the coordinates up in the mod table, never in the command',function()
+    local h=harness();local went,back={},0
+    local module={status=function()return {pending=true,can_return=true,last={ok=true,message='已到达',place='左殇'}}end,
+        go=function(_,place)went[#went+1]=place;return {ok=true,message='已发起传送'}end,
+        goBack=function()back=back+1;return {ok=false,message='没有可返回的位置'}end}
+    h.runtime=h.new({support={teleport=module}});h.runtime:start();h:tick()
+    local places=assert(loadfile('Mods/PhantomGladiator/Scripts/teleport_places.lua'))()
+    local code,place=next(places)
+    h:run(function()
+        local r=h.runtime.handlers.teleport({key_spawn=code,unit_id='x=1,y=2,z=3',team='blue',count=1})
+        assert(r.ok and r.spawned_count==0 and #went==1 and went[1].world==place.world and went[1].x==place.x and went[1].z==place.z)
+        r=h.runtime.handlers.teleport({key_spawn='TNOPE'})
+        assert(not r.ok and #went==1 and r.message:find('不在本版模组的地点表',1,true),'an unknown code calls nothing')
+        r=h.runtime.handlers.teleport({})
+        assert(not r.ok and #went==1,'an empty code is not a place')
+        r=h.runtime.handlers.teleport_back({})
+        assert(not r.ok and back==1 and r.spawned_count==0 and r.message=='没有可返回的位置')
+    end)
+    h.runtime=h.new({support={}});h.runtime:start();h:tick()
+    h:run(function()assert(h.runtime.handlers.teleport({key_spawn=code}).message=='传送模块未加载')end)
+end)
+test('the walk-through-companions switch reaches its module and is reported only when the module is there',function()
+    local h=harness();local seen={}
+    local module={on=true,set=function(self,value)seen[#seen+1]=value;self.on=value=='ON';return {ok=true,message='fixture',spawned_count=0}end,
+        status=function(self)return {on=self.on,applied=0}end}
+    h.runtime=h.new({support={companionPassage=module,status=function()return {}end,tick=function()end}});h.runtime:start()
+    h.inbox={action='set_companion_passage',key_start='OFF'};h:tick()
+    assert(h.result.ok and seen[1]=='OFF' and h.reported.companion_passage_supported==true and h.reported.companion_passage==false)
+    h.inbox={action='set_companion_passage',key_start='ON'};h:tick()
+    assert(seen[2]=='ON' and h.reported.companion_passage==true)
+    local missing=harness();missing.runtime:start();missing.inbox={action='set_companion_passage',key_start='ON'};missing:tick()
+    assert(not missing.result.ok and missing.reported.companion_passage_supported==nil,'an old or partial mod reports nothing')
+end)
+test('a teleport key goes through the shared router, and a chord another feature owns is refused',function()
+    local h=harness();local went={}
+    local module={status=function()return {pending=false,can_return=false}end,
+        go=function(_,place)went[#went+1]=place.name;return {ok=true,message='已发起传送'}end,
+        goBack=function()went[#went+1]='BACK';return {ok=true,message='已发起传送'}end}
+    h.runtime=h.new({support={teleport=module}});h.runtime:start();h:tick()
+    local places=assert(loadfile('Mods/PhantomGladiator/Scripts/teleport_places.lua'))()
+    local code,place=next(places)
+    local owned
+    for _,token in pairs(h.runtime.functionKeys.entries)do
+        local vk,mask=tostring(token):match('^VK_(%d+)_MOD_(%d+)$');if vk then owned={vk,mask};break end
+    end
+    h:run(function()
+        assert(h.runtime.handlers.configure_teleport_key({key_spawn=code,key_start='VK_122',key_stop='MOD_7'}).ok)
+        assert(h.runtime.handlers.configure_teleport_key({key_spawn='BACK',key_start='VK_122',key_stop='MOD_6'}).ok)
+        assert(not h.runtime.handlers.configure_teleport_key({key_spawn='TNOPE',key_start='VK_123',key_stop='MOD_7'}).ok)
+        if owned then
+            local r=h.runtime.handlers.configure_teleport_key({key_spawn=code,key_start='VK_'..owned[1],key_stop='MOD_'..owned[2]})
+            assert(not r.ok and r.message:find('功能「',1,true),'a function key keeps its chord: '..tostring(r.message))
+        end
+        assert(h.runtime:unitKeyReserved(122,7)=='传送：'..place.name,'unit keys see the chord as taken')
+    end)
+    h.keys['F11:7']();h:drain();assert(went[1]==place.name,'one press teleports')
+    h.keys['F11:6']();h:drain();assert(went[2]=='BACK')
+    h:run(function()assert(h.runtime.handlers.configure_teleport_key({key_spawn=code,key_start='UNBOUND',key_stop='MOD_0'}).ok)end)
+    h.keys['F11:7']();h:drain();assert(#went==2,'an unbound chord does nothing')
 end)
 test('a Hun summon key uses the Hun entry with the saved count and respects the queue',function()
     local h=harness();local summons,frozen={},{}
