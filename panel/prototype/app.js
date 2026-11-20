@@ -2778,17 +2778,19 @@
   }
 
   function aboutHTML() {
-    const u = ui.update;
+    const u = ui.update, version = installedVersion();
+    const notes = installedNotesHTML();
     const status = fromNexus() ? "" : u.phase === "checking" ? `<span class="spinner"></span>${esc(t("update.checking"))}`
-      : u.info && !u.info.latest && u.phase !== "done" ? `<span class="chip chip-blue">${icon("sparkles")}${esc(t("about.newVersion", { v: u.info.version }))}</span>`
+      : u.info && !u.info.latest && u.phase !== "done" ? `<span class="chip chip-blue">${icon("sparkles")}${esc(t(u.info.switchToStable ? "update.stableTitle" : "about.newVersion", { v: u.info.version }))}</span>`
       : u.lastChecked ? esc(t("about.lastChecked", { time: fmtAgo(u.lastChecked) })) : "";
     return `<div class="stack">
       <section class="card about-hero">
         <span class="seal seal-lg" aria-hidden="true">斗</span>
         <div style="min-width:0"><h2>Phantom Gladiator</h2><p>${esc(t("app.tagline"))}</p>
-          <div class="about-version"><span class="chip chip-outline">${esc(t("about.version", { v: S.appVersion }))}</span><span class="chip chip-amber">${esc(t("about.channel"))}</span>${fromNexus() ? `<span class="chip chip-outline">${esc(t("about.nexusBuild"))}</span>` : ""}</div></div>
+          <div class="about-version"><span class="chip chip-outline">${esc(t("about.version", { v: version }))}</span>${S.expectedBuild ? `<span class="chip chip-amber">${esc(t(version.includes("-") ? "about.channel" : "about.stableChannel"))}</span>` : ""}${fromNexus() ? `<span class="chip chip-outline">${esc(t("about.nexusBuild"))}</span>` : ""}</div></div>
         <div class="about-hero-side"><button class="btn btn-primary" type="button" data-action="open-update">${icon("refresh", "icon-sm")}${esc(t(fromNexus() ? "about.checkNexus" : "about.check"))}</button><small class="muted" style="display:flex;align-items:center;gap:6px;font-size:12px">${status}</small></div>
       </section>
+      ${notes ? `<section class="card"><div class="card-body">${notes}</div></section>` : ""}
       <section class="card">
         <div class="author"><span class="author-avatar" aria-hidden="true">泠</span>
           <div style="min-width:0"><div class="muted" style="font-size:12px">${esc(t("about.author"))}</div><div class="author-name">泠依_01</div>
@@ -2811,6 +2813,12 @@
   // ---------- Update flow ----------
   const LINE_IDS = ["auto", "parts", "cn1", "cn2", "github"];
   const versionParts = v => String(v || "").split(".").map(n => parseInt(n, 10) || 0);
+  // The package manifest comes from the desktop host, independently of the mod in the running game.
+  function installedVersion() {
+    const base = S.appVersion || "";
+    const build = (S.expectedBuild || "").replace(/^v/i, "");
+    return !base || build.startsWith(base + "-") ? build || base : base;
+  }
   const compareVersions = (a, b) => {
     const x = versionParts(a), y = versionParts(b);
     for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
@@ -2823,15 +2831,50 @@
   // Every released version this copy of the app has received (changelog.js), newest first, in the app's language.
   // ~~text~~ in a note: said fixed in that version but it was not, kept visible and struck out.
   const noteHTML = n => esc(n).replace(/~~(.+?)~~/g, "<s>$1</s>");
-  function releaseHistoryHTML() {
+  function installedAnnouncement() {
+    const match = /^(\d+\.\d+\.\d+)-beta-(\d+)$/.exec(installedVersion());
+    if (!match || match[1] !== S.appVersion) return null;
+    const entry = window.PG_PREVIEW_NOTES?.[match[1]];
+    if (!entry) return null;
+    const available = note => note.since <= Number(match[2]);
+    const localize = note => note[I18N.lang] || note.en || note.zh;
+    const groups = ["added", "combat", "fixes"].map(key => ({
+      key, notes: entry[key].map(parts => parts.filter(available).map(localize).join(" ")).filter(Boolean),
+    })).filter(group => group.notes.length);
+    if (!groups.length) return null;
+    return { title: localize(entry.title), groups, details: entry.details.filter(available).map(row => ({ issue: row.issue, text: localize(row) })) };
+  }
+  function previewNotesBody(announcement) {
+    const body = announcement.groups.map(group => `<section class="preview-group"><h4>${esc(t("update.group." + group.key))}</h4>
+      <ul>${group.notes.map(note => `<li>${esc(note)}</li>`).join("")}</ul></section>`).join("");
+    if (!announcement.details.length) return body;
+    const detailList = announcement.details.map(row => {
+      const link = Number.isSafeInteger(row.issue) && row.issue > 0
+        ? `<a href="${REPO}/issues/${row.issue}" target="_blank" rel="noopener noreferrer">#${row.issue}</a> ` : "";
+      return `<li>${link}${esc(row.text)}</li>`;
+    }).join("");
+    return body + `<details class="release-history preview-details"><summary>${esc(t("update.issueFollowUp"))}${icon("chevron-down", "icon-sm release-chevron")}</summary><ul class="notes">${detailList}</ul></details>`;
+  }
+  function installedNotesHTML() {
+    const announcement = installedAnnouncement();
+    if (!announcement) return "";
+    return `<article class="installed-notes"><h3 class="preview-title">${esc(announcement.title)}</h3>
+      <p class="preview-version">${esc(t("update.installedNotes", { v: installedVersion(), base: S.appVersion }))}</p>${previewNotesBody(announcement)}</article>`;
+  }
+  function releaseHistoryHTML(installedNotesShown = false) {
+    const installed = installedVersion();
     const list = (window.PG_CHANGELOG || []).filter(r => compareVersions(r.version, S.appVersion) <= 0);
+    if (installed.includes("-") && !list.some(r => r.version === installed)) list.unshift({ version: installed });
     if (!list.length) return "";
     const items = list.map(r => {
+      const announcement = r.version === installed ? installedAnnouncement() : null;
       const notes = releaseNotes(r);
-      const current = compareVersions(r.version, S.appVersion) === 0 ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
+      const listHTML = announcement ? (installedNotesShown ? "" : previewNotesBody(announcement))
+        : (notes.length ? `<ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : "");
+      const current = r.version === installed ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
       const back = !fromNexus() && compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
         ? `<button class="btn btn-secondary btn-sm release-rollback" type="button" data-action="update-rollback" data-value="${esc(r.version)}">${esc(t("update.rollback"))}</button>` : "";
-      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(fmtDate(r.date))}</span>${current}${back}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul></div>`;
+      return `<div class="release-item"><div class="release-head"><strong>v${esc(r.version)}</strong><span class="muted">${esc(r.date ? fmtDate(r.date) : t("about.channel"))}</span>${current}${back}</div>${listHTML}</div>`;
     }).join("");
     return `<details class="release-history"><summary>${icon("history", "icon-sm")}<span>${esc(t("update.history"))}</span><span class="muted">${esc(t("update.history.count", { n: list.length }))}</span>${icon("chevron-down", "icon-sm release-chevron")}</summary><div class="release-list">${items}</div></details>`;
   }
@@ -2844,7 +2887,7 @@
   }
   function lineFor(info, id) { return id === "auto" ? autoLines(info)[0] : info.lines.find(l => l.id === id); }
   function updateHTML() {
-    const u = ui.update, info = u.info;
+    const u = ui.update, info = u.info, installed = installedVersion();
     const head = title => `<div class="dialog-head"><h2 id="dlg-title">${esc(title)}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>`;
     const state = (badge, title, body, extra = "") => `<div class="update-state">${badge}<h3>${esc(title)}</h3><p>${esc(body)}</p>${extra}</div>`;
     if (fromNexus())
@@ -2852,11 +2895,11 @@
           <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.close"))}</button><a class="btn btn-primary" href="${NEXUS}?tab=files" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.nexus.open"))}</a></div>`;
     switch (u.phase) {
       case "checking":
-        return head(t("update.title")) + `<div class="dialog-body">${state('<span class="state-badge"><span class="spinner spinner-lg"></span></span>', t("update.checking"), t("update.checking.sub"))}</div>`;
+        return head(t("update.title")) + `<div class="dialog-body">${state('<span class="state-badge"><span class="spinner spinner-lg"></span></span>', t("update.checking"), t("update.checking.sub"))}${installedNotesHTML()}</div>`;
       case "latest":
-        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t("update.latest.title"), t("update.latest.body", { v: S.appVersion }))}${releaseHistoryHTML()}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(t("common.done"))}</button></div>`;
+        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t(installed.includes("-") ? "update.previewTitle" : "update.latest.title"), t(installed.includes("-") ? "update.previewInstalled" : "update.latest.body", { v: installed }))}${installedNotesHTML()}${releaseHistoryHTML(true)}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(t("common.done"))}</button></div>`;
       case "error":
-        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedTitle" : "update.error.title"), t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedBody" : "update.error.body"), `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: (u.error?.tried || []).map(s => t("update.source." + s)).join(" · ") }))}</p>`)}${releaseHistoryHTML()}</div>
+        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedTitle" : "update.error.title"), t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedBody" : "update.error.body"), `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: (u.error?.tried || []).map(s => t("update.source." + s)).join(" · ") }))}</p>`)}${installedNotesHTML()}${releaseHistoryHTML(true)}</div>
           <div class="dialog-foot"><a class="btn btn-ghost" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.manual"))}</a><button class="btn btn-primary" type="button" data-action="update-check">${icon("refresh", "icon-sm")}${esc(t("common.retry"))}</button></div>`;
       case "available": {
         const best = lineFor(info, "auto");
@@ -2869,7 +2912,7 @@
         if (info.rollback) {
           const notes = releaseNotes((window.PG_CHANGELOG || []).find(r => r.version === info.version));
           return head(t("update.title")) + `<div class="dialog-body">
-            <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
+            <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: installed }))}</div></div></div>
             <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t(info.isolated ? "update.rollback.isolated" : "update.rollback.body"))}</span></div></div>
             ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : ""}
             <div class="section-label">${esc(t("update.line"))}</div>
@@ -2877,14 +2920,18 @@
           </div>
           <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="update-check">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t("update.rollback.confirm"))}</button></div>`;
         }
+        const installedNotes = info.switchToStable && info.version === S.appVersion ? installedNotesHTML() : "";
+        const targetNotes = info.notes?.length ? `<ul class="notes">${info.notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : `<p class="muted">${esc(t("update.notesUnavailable"))} <a href="${REPO}/releases/tag/v${encodeURIComponent(info.version)}" target="_blank" rel="noopener noreferrer">${esc(t("update.manual"))}</a></p>`;
         return head(t("update.title")) + `<div class="dialog-body">
-            <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t(info.switchToStable ? "update.stableTitle" : "update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: S.appVersion }))}</div></div></div>
-            ${info.switchToStable ? `<p class="callout">${esc(t("update.stableBody", { build: info.currentBuild }))}</p>` : ""}
-            <div class="section-label">${esc(t("update.notes"))}</div>
-            ${info.notes?.length ? `<ul class="notes">${info.notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : `<p class="muted">${esc(t("update.notesUnavailable"))} <a href="${REPO}/releases/tag/v${encodeURIComponent(info.version)}" target="_blank" rel="noopener noreferrer">${esc(t("update.manual"))}</a></p>`}
+            <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t(info.switchToStable ? "update.stableTitle" : "update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: installed }))}</div></div></div>
+            ${info.switchToStable ? `<p class="callout">${esc(t(installedNotes ? "update.returnToBaseBody" : "update.stableBody", { build: info.currentBuild, v: info.version }))}</p>` : ""}
+            ${installedNotes}
+            ${installedNotes
+              ? `<details class="release-history target-notes"><summary>${esc(t("update.targetStableNotes", { v: info.version }))}${icon("chevron-down", "icon-sm release-chevron")}</summary>${targetNotes}</details>`
+              : `<div class="section-label">${esc(t("update.notes"))}</div>${targetNotes}`}
             <div class="section-label">${esc(t("update.line"))}</div>
             <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>
-            ${releaseHistoryHTML()}
+            ${releaseHistoryHTML(Boolean(installedNotes))}
           </div>
           <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("update.later"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t(info.switchToStable ? "update.stableDownload" : "update.download"))}</button></div>`;
       }
@@ -2909,7 +2956,7 @@
       case "installing":
         return head(t("update.title")) + `<div class="dialog-body">${state('<span class="state-badge"><span class="spinner spinner-lg"></span></span>', t("update.installing"), t("update.installing.sub"))}</div>`;
       case "done":
-        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t("update.done.title"), t("update.done.body", { v: S.appVersion }))}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="update-restart" data-autofocus>${icon("refresh", "icon-sm")}${esc(t("update.restart"))}</button></div>`;
+        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t("update.done.title"), t("update.done.body", { v: info?.version || installed }))}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="update-restart" data-autofocus>${icon("refresh", "icon-sm")}${esc(t("update.restart"))}</button></div>`;
       default:
         return "";
     }
@@ -3129,7 +3176,7 @@
       <a class="menu-item" role="menuitem" href="${REPO}#readme" target="_blank" rel="noopener noreferrer">${icon("help")}<span>${esc(t("help.faq"))}</span>${icon("external", "check")}</a>
       <a class="menu-item" role="menuitem" href="${REPO}/issues" target="_blank" rel="noopener noreferrer">${icon("message")}<span>${esc(t("help.feedback"))}</span>${icon("external", "check")}</a>
       <div class="menu-sep"></div>
-      <button class="menu-item" type="button" role="menuitem" data-action="nav" data-page="about">${icon("info")}<span>${esc(t("nav.about"))}</span><small>v${esc(S.appVersion)}</small></button>`;
+      <button class="menu-item" type="button" role="menuitem" data-action="nav" data-page="about">${icon("info")}<span>${esc(t("nav.about"))}</span><small>v${esc(installedVersion())}</small></button>`;
   }
   function shortcutsDialog() {
     const row = (keys, label) => `<div class="row" style="padding:10px 0"><div class="row-main">${esc(label)}</div><div class="row-side">${keys.map(k => kbd(k)).join(" ")}</div></div>`;

@@ -13,7 +13,8 @@ const context = {
   ui: { update: { phase: "error", error: { code: "updateUnconfirmed", tried: ["cdn"] } }, page: "battle" },
   S: { appVersion: "0.40.13", gameRunning: false },
   t: (key, params) => i18n.t(key, params), esc: v => String(v ?? ""), icon: () => "",
-  fromNexus: () => false, releaseHistoryHTML: () => "", releaseNotes: () => [],
+  fromNexus: () => false, I18N: i18n, QQ_GROUP: "", BILI: "",
+  window: { PG_CHANGELOG: [{ version: "0.40.13", date: "2026-11-01", notes: { en: ["Release"] } }] },
   noteHTML: v => String(v), lineFor: info => info.lines[0], LINE_IDS: ["auto", "github"],
   fmtDate: String, fmtBytes: String, REPO: "https://github.com/example/project",
   dlg: null, store: { set() {} }, renderTopbar() {}, renderPage() {},
@@ -23,7 +24,10 @@ const context = {
   } } },
 };
 vm.createContext(context);
-vm.runInContext(section("  function updateHTML()", "  // Asks for the older version"), context);
+vm.runInContext(section("  function aboutHTML()", "  // ---------- Update flow") +
+  section("  const versionParts", "  // The lines") +
+  section("  function updateHTML()", "  // Asks for the older version") +
+  section("  function helpMenuHTML()", "  function shortcutsDialog()"), context);
 for (const lang of ["zh", "en", "ja", "fr", "de", "es"]) {
   i18n.set(lang);
   for (const key of ["update.unconfirmedTitle", "update.unconfirmedBody", "update.stableTitle", "update.stableBody", "update.stableDownload", "update.notesUnavailable"]) {
@@ -40,6 +44,68 @@ for (const lang of ["zh", "en", "ja", "fr", "de", "es"]) {
   assert(stable.includes(i18n.t("update.stableTitle", { v: "0.40.13" })), lang);
   assert(stable.includes(i18n.t("update.stableDownload")) && stable.includes("v0.40.13-beta-3"), lang);
   assert(stable.includes(i18n.t("update.notesUnavailable")) && !stable.includes(i18n.t("update.note1")), lang);
+}
+// The desktop manifest identifies this package even when the game is closed or running a different mod.
+for (const lang of ["zh", "en"]) {
+  i18n.set(lang);
+  context.S.expectedBuild = "v0.40.13-beta-4";
+  context.S.modVersion = "v0.40.12";
+  context.ui.update = { phase: "latest", info: { latest: true, version: "0.40.13" } };
+  assert(context.aboutHTML().includes("v0.40.13-beta-4"), "About lost the installed build");
+  assert(context.helpMenuHTML().includes("v0.40.13-beta-4"), "Help lost the installed build");
+  const history = context.releaseHistoryHTML();
+  const currentChip = i18n.t("update.history.current");
+  assert(history.indexOf("v0.40.13-beta-4") >= 0 && history.indexOf(currentChip) < history.indexOf("v0.40.13</strong>"));
+  assert.equal(history.split(currentChip).length, 2, "only one installed version");
+  assert(!history.includes("v0.40.12") && !context.aboutHTML().includes("v0.40.12"));
+  assert(context.updateHTML().includes(i18n.t("update.previewInstalled", { v: "0.40.13-beta-4" })));
+  context.ui.update = { phase: "available", line: "auto", info: { version: "0.40.14", date: "", size: 1, notes: [], lines: [{ id: "github", ms: 1 }] } };
+  assert(context.updateHTML().includes(i18n.t("update.available.meta", { date: "", size: "1", current: "0.40.13-beta-4" })));
+  context.ui.update.phase = "done";
+  assert(context.updateHTML().includes(i18n.t("update.done.body", { v: "0.40.14" })), "completion identifies the installed update target");
+  context.S.expectedBuild = "v0.40.13";
+  context.ui.update = { phase: "latest" };
+  assert(context.aboutHTML().includes(i18n.t("about.stableChannel")));
+  assert(context.updateHTML().includes(i18n.t("update.latest.body", { v: "0.40.13" })));
+  assert(!context.releaseHistoryHTML().includes("beta-") && context.releaseHistoryHTML().includes(currentChip));
+  delete context.S.expectedBuild;
+  assert(context.helpMenuHTML().includes("v0.40.13"), "older hosts fall back to app version");
+}
+vm.runInContext(fs.readFileSync(path.join(__dirname, "prototype/preview-notes.js"), "utf8"), context);
+context.S.appVersion = "0.40.18";
+context.S.expectedBuild = "v0.40.18-beta-6";
+context.window.PG_CHANGELOG = [{version: "0.40.18", date: "2026-11-20", notes: {zh: ["STABLE_HISTORY"], en: ["STABLE_HISTORY"]}}];
+for (const lang of ["zh", "en"]) {
+  i18n.set(lang);
+  context.ui.update = { phase: "available", line: "auto", info: {
+    version: "0.40.18", currentBuild: context.S.expectedBuild, switchToStable: true, date: "", size: 1,
+    lines: [{id: "github", ms: 1}], notes: ["TARGET_RELEASE_ONLY"],
+  }};
+  const modal = context.updateHTML();
+  const issueIds = [22, 21, 19, 18, 17, 16, 15, 14, 13, 12, 8];
+  for (const n of issueIds) assert(modal.includes(context.REPO + "/issues/" + n), "missing issue " + n);
+  assert(modal.includes("0.01") && modal.includes("65"));
+  const detailStart = modal.indexOf('<details class="release-history preview-details">');
+  assert(detailStart > 0 && modal.indexOf("/issues/22") > detailStart, "issue references belong in the collapsed detail");
+  const bulletin = modal.slice(modal.indexOf('<article class="installed-notes">'), detailStart);
+  assert.equal((bulletin.match(/class="preview-group"/g) || []).length, 3);
+  assert.equal((bulletin.match(/<li>/g) || []).length, 9, "one player-facing point per topic");
+  for (const section of ["added", "combat", "fixes"]) assert(bulletin.includes(i18n.t("update.group." + section)));
+  assert(!bulletin.includes("/issues/") && !bulletin.includes("0.01") && bulletin.includes("65"));
+  const stableNotes = modal.indexOf('<details class="release-history target-notes">');
+  assert(stableNotes > modal.indexOf("/issues/22") && modal.indexOf("TARGET_RELEASE_ONLY") > stableNotes);
+  assert(context.aboutHTML().includes("/issues/22") && context.releaseHistoryHTML().includes("/issues/21"));
+  context.ui.update = {phase: "error", error: {code: "offline", tried: []}};
+  assert(context.updateHTML().includes("/issues/19"), "installed notes must be readable offline");
+  context.ui.update = {phase: "checking"};
+  assert(context.updateHTML().includes("/issues/14"));
+  context.ui.update = {phase: "latest"};
+  assert(context.updateHTML().includes("/issues/17"));
+  context.S.expectedBuild = "v0.40.18-beta-2";
+  assert(!context.aboutHTML().includes("/issues/22") && context.aboutHTML().includes("/issues/17"), "older builds must not claim a later fix");
+  context.S.expectedBuild = "v0.40.18";
+  assert(!context.updateHTML().includes("/issues/22") && context.updateHTML().includes("STABLE_HISTORY"));
+  context.S.expectedBuild = "v0.40.18-beta-6";
 }
 (async () => {
   context.ui.update = { phase: "idle" };

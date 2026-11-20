@@ -1242,6 +1242,14 @@ body.has-dock.has-dialog .toasts { right: 20px; }
 .ai-tip { display: inline-flex; flex: none; color: var(--text-3); cursor: help; }
 .ai-tip:hover { color: var(--text); }
 .release-item .notes { margin: 6px 0 8px; }
+.installed-notes { text-align: start; }
+.preview-title { margin: 12px 0 2px; font-size: 18px; line-height: 1.35; }
+.preview-version { margin: 0 0 14px; color: var(--text-3); font-size: 12px; }
+.preview-group { margin: 12px 0; }
+.preview-group h4 { margin: 0 0 4px; font-size: 14px; }
+.preview-group ul { margin: 0; padding-inline-start: 1.25em; color: var(--text-2); }
+.preview-group li { line-height: 1.55; }
+.preview-group li + li { margin-top: 5px; }
 .line-list { display: flex; flex-direction: column; gap: 6px; }
 .line { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border-strong); background: var(--surface); text-align: left; transition: all var(--t-fast); }
 .line:hover:not(:disabled) { border-color: var(--text-3); }
