@@ -1,347 +1,343 @@
 {
-  "version": "0.40.18",
-  "modBuild": "v0.40.18",
-  "date": "2026-11-20T03:04:13+08:00",
-  "size": 109108089,
-  "sha256": "4170aa82da17ad915ba1dcf2510da36212be272e13765718d0b23978e0038cad",
+  "version": "0.40.19",
+  "modBuild": "v0.40.19",
+  "date": "2026-11-20T22:28:52+08:00",
+  "size": 109131374,
+  "sha256": "5371ad36518f6f5a51c2b22fd53ab525abb0a4b18172498c79641d8cfd8ec561",
   "notes": {
     "zh": [
-      "新增试验功能「传送」。9 张地图共 121 个地点，包括各 Boss 场地和流程过后回不去的场景。点一下就传，走游戏自己的加载，可以返回传送前的位置。每个地点和「返回」都能单独绑快捷键，在游戏里按一次就传送。",
-      "传送很可能让游戏立刻按新位置存档，使用前请先备份存档。到位后 15 秒内如果掉出地面，会被拉回落点。剧情已过的场景里可能没有怪，也可能没有出口，出不去可以用钟或返回传送前的位置。自由观战中不能传送。",
-      "魂会照你当前这一身来穿，包括游戏内换的服装和外观 Mod 换掉的部件。读不到时用默认外观。",
-      "修正装了主角服装类 Mod 后，召出来的魂有时打不中的问题。",
-      "新增「可以穿过随从」开关，默认开启。在窄路里不会再被随从堵住，敌人仍然会被随从挡住，受击判定不变。",
-      "随从魂可以处决敌人，小怪和 Boss 都行。小怪优先用魂手上那把武器的处决动作，其次是通用处决动作；Boss 用它自己的处决动作。没有合适处决动作的敌人也会处决，这时对方可能不播被处决动作，只是原地停住。你正在处决或处决过的目标不会被抢。",
-      "新增「随从处决小怪」开关，默认关闭。打开后，小怪能被处决时附近的随从也会上去处决。",
-      "修正随从出招的瞬间丢失目标时，技能可能锁回玩家的问题。随从银发左殇放大招时不会再强制玩家走路。",
-      "随从银发左殇的金色剑雨仍可能拐向玩家。上一版写的修正在随从打地图上的怪时没有生效，这一版没有修好，只补了保险和排查用的日志。",
-      "传送页、地点名和新开关都提供英文。",
-      "本版已通过 213 项自动检查。以上各项都还没有在游戏里复核。"
+      "补齐龙柱第 2、3、4 战的魔渊。现在五战都能单独召唤，各自使用原版数值和招式。 第一战的金面具黑衣人可以在卡面关闭虚化，下次召唤生效。",
+      "最终战魔渊在红蓝擂台开战也会响起原版战斗曲。进入二阶段时切歌，战后恢复场景音乐。",
+      "烈焰召出小狮子后，对手会先清她这一波。谁处决最后一只、戴上狮头，谁就上桩挑战她。同场多组烈焰各自配对。 首跳受阻时，NPC 会换方向重试。",
+      "毕峰的残血终结抓现在允许 NPC 反制。被抓者优先，无法行动时，附近正在交战的队友也有机会接手。玉鼎的斩杀投则需要 NPC 对这一下打出精准闪避，才能接上收尾。",
+      "魂自动处决 NPC 时会看对手剩余血量，默认常态 10%、破防 20%。两项都能自定义，填 0 可关闭对应状态的自动处决。",
+      "AI「全部拉满」同时强化进攻和闪避，四组共 65 项参数仍可单独调整。用过旧预设的玩家，重新点一次「全部拉满 → 保存并应用」即可。",
+      "修复魔渊二阶段砸火柱被打断后，火柱特效跟着他移动的问题。",
+      "修复角色下坠时把半空误记为安全落点的问题。 双方一起坠落时会尝试返回已确认的地面，跟踪镜头向下移动时也会检查地形。",
+      "修正桌面快捷方式和助手版本号显示过旧的问题。"
     ],
     "en": [
-      "New experimental feature: Teleport. 121 places across 9 maps, including boss arenas and areas the story no longer lets you return to. One click teleports you through the game's own loading screen, and you can return to where you were. Each place and Return can have its own hotkey; in the game, one press teleports.",
-      "Teleporting very likely makes the game save at the new position right away, so back up your save first. If you fall through the ground within 15 seconds of arriving, you are put back at the landing point. An area whose story is over may have no enemies and no exit; use a bell or Return to get out. You cannot teleport while spectating.",
-      "Hun now wears what you are wearing, including outfits changed in the game and parts replaced by appearance mods. If your outfit cannot be read, he uses the default look.",
-      "Fixed summoned Hun sometimes being impossible to hit when a player outfit mod was installed.",
-      "New switch: Walk through companions, on by default. Companions no longer box you in on narrow paths. Enemies are still blocked by them, and hit detection is unchanged.",
-      "A companion Hun can now execute enemies, minions and bosses alike. On a minion he prefers the execution of the weapon in his hand, then the generic one; on a boss he uses the boss's own. He also executes enemies that have no fitting execution animation; they may stand still instead of playing a reaction. He never takes a target you are executing or have executed.",
-      "New switch: Companions execute minions, off by default. When on, a nearby companion also goes in once a minion can be executed.",
-      "Fixed companion skills that could lock back onto the player when the companion lost its target for a moment as the skill started. A companion silver-haired Zuo Shang's ultimate no longer forces the player to walk.",
-      "A companion silver-haired Zuo Shang's golden sword rain can still veer toward the player. The fix in the previous version did not take effect when a companion fights enemies on the map. It is not fixed in this version, which only adds safeguards and diagnostic logging.",
-      "The Teleport page, its place names and the new switches are available in English.",
-      "This version passed 213 automated checks. None of the items above has been rechecked in the game yet."
+      "Added Mó Yuan’s second, third and fourth Dragon Pillar trials. All five encounters can now be summoned separately with their original stats and moves. The Gold-Masked One’s card lets you turn off his trial protection for the next summon.",
+      "The final-trial Mó Yuan can now play his native boss theme in the arena. The music changes in phase two and the map soundtrack returns when the fight ends.",
+      "Flame’s opponents now go after her cubs first. The fighter who executes the last cub and gets the lion head earns the pole duel against that Flame, even with multiple groups in the arena. NPCs can retry a blocked first jump from another direction.",
+      "NPCs can counter Bi Feng’s low-health grab. The grabbed fighter has first chance, and an engaged teammate nearby can respond if it cannot act. Against Yuding’s execution grab, the NPC must perfect-dodge that attack to perform the counter.",
+      "Hun’s automatic executions now check the target’s remaining HP. The defaults are 10% normally and 20% during guard break. Both are adjustable. Set either to 0 to disable executions in that state.",
+      "Max everything now boosts attacks and dodges together. All 65 settings can still be adjusted individually or by group. To replace an old preset, choose Max everything, then Save and apply.",
+      "Fixed the pillar effect following summoned Mó Yuan when his phase-two slam is interrupted.",
+      "Fixed a mid-air position being saved as a safe landing point during a fall. If both fighters fall, recovery can use a previously confirmed floor. The tracking camera now checks the terrain as it follows a target downward.",
+      "Fixed outdated version labels in the desktop shortcut and assistant."
     ]
   },
   "downloads": [
     {
       "id": "cn1",
-      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.18/PhantomGladiator-0.40.18-win64.zip"
+      "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.19/PhantomGladiator-0.40.19-win64.zip"
     },
     {
       "id": "cn2",
-      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.18/PhantomGladiator-0.40.18-win64.zip"
+      "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.19/PhantomGladiator-0.40.19-win64.zip"
     },
     {
       "id": "github",
-      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.18/PhantomGladiator-0.40.18-win64.zip"
+      "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.19/PhantomGladiator-0.40.19-win64.zip"
     }
   ],
   "parts": {
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.18/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.19/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.18/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.19/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.18/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.19/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.18/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.19/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.18/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.19/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.18/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.19/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.18/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.19/"
       }
     ],
     "files": [
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.000",
+        "name": "PhantomGladiator-0.40.19-win64.zip.000",
         "size": 2097152,
-        "sha256": "eb5e1c2ce20e6974f5e714265befbbcf623a3d397fb97b05814fc31a0ec55038"
+        "sha256": "713d8ae0d33d43835a2b5070f3b9fcfdcf35d744150f03393f7026c700f08ff1"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.001",
+        "name": "PhantomGladiator-0.40.19-win64.zip.001",
         "size": 2097152,
         "sha256": "c73deec4b4fb45ba6d82365511a58fe6f01b24aaffcc10b118ee20c7ac7cb01d"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.002",
+        "name": "PhantomGladiator-0.40.19-win64.zip.002",
         "size": 2097152,
         "sha256": "019cf2363bb6cbfb7dd580f867fecd8626961a0e48e0a5c5bfe70c0799d11397"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.003",
+        "name": "PhantomGladiator-0.40.19-win64.zip.003",
         "size": 2097152,
         "sha256": "6a965ad3e73d88a600f7b72ee823c7e642710ab62d1daf8c74af91456bd62926"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.004",
+        "name": "PhantomGladiator-0.40.19-win64.zip.004",
         "size": 2097152,
         "sha256": "9be51d24081cbd1d922cf2be24360ae85f7b32d060306e36148f6b827dcd8053"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.005",
+        "name": "PhantomGladiator-0.40.19-win64.zip.005",
         "size": 2097152,
         "sha256": "f355bcdad63e0f4f9de90dd2798c465cd212dab7b7a0bb92342691b429dd0c71"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.006",
+        "name": "PhantomGladiator-0.40.19-win64.zip.006",
         "size": 2097152,
         "sha256": "b974d41a473ad2c0654525216f0e8069508849eff08581eb0af544f80d0e8039"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.007",
+        "name": "PhantomGladiator-0.40.19-win64.zip.007",
         "size": 2097152,
         "sha256": "3652f83d5d4a0fa61cd590f5e5df0127e461a3d9d38f4b73ddbd201cd01a5cae"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.008",
+        "name": "PhantomGladiator-0.40.19-win64.zip.008",
         "size": 2097152,
         "sha256": "4cbb590fc3c99de44d0eb5f57a821cd01b938b607ffaf638b5ae02bf8e916322"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.009",
+        "name": "PhantomGladiator-0.40.19-win64.zip.009",
         "size": 2097152,
         "sha256": "e0d0126edc2eb0c9aca1342207cadb71485dcabbe8a2d51ed55034582e1282a5"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.010",
+        "name": "PhantomGladiator-0.40.19-win64.zip.010",
         "size": 2097152,
         "sha256": "695ec58b15995d701f801555168708acbde99997d74b559658687564c18763a4"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.011",
+        "name": "PhantomGladiator-0.40.19-win64.zip.011",
         "size": 2097152,
         "sha256": "50eb470c5ec7ae273ed1cb0338e3decb1d4b0ca47141766c3f6e9fb093fb5bb5"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.012",
+        "name": "PhantomGladiator-0.40.19-win64.zip.012",
         "size": 2097152,
         "sha256": "0d8185bca0983cc8bd22201dec42bda10ececfa998500c97c3230870d28d7fbe"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.013",
+        "name": "PhantomGladiator-0.40.19-win64.zip.013",
         "size": 2097152,
         "sha256": "e498700578c437b9331e9f454d1563633004aa98cf76cb2ff5438bd3ed0f932f"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.014",
+        "name": "PhantomGladiator-0.40.19-win64.zip.014",
         "size": 2097152,
         "sha256": "713a264787c3df7212d5cc851cdda2a68c2f3779177d218db7af9b15db8af6f6"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.015",
+        "name": "PhantomGladiator-0.40.19-win64.zip.015",
         "size": 2097152,
         "sha256": "9358ca8f1818d1b00c92038d11ab6166a54e49608177ffcf89beb351a0ff5d3e"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.016",
+        "name": "PhantomGladiator-0.40.19-win64.zip.016",
         "size": 2097152,
         "sha256": "210f4c53f5f80064a4450e243cee04464ba15712164b9f76d1b4e61fc3a55781"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.017",
+        "name": "PhantomGladiator-0.40.19-win64.zip.017",
         "size": 2097152,
         "sha256": "5ad9021a4272cf5c953216825a82f4e84f39708a6a5a1752a20601c78b68d517"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.018",
+        "name": "PhantomGladiator-0.40.19-win64.zip.018",
         "size": 2097152,
         "sha256": "7667f1460a68d4f73485226ebb93beadd61b89229f28ef6f4df4a3e21dd16113"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.019",
+        "name": "PhantomGladiator-0.40.19-win64.zip.019",
         "size": 2097152,
         "sha256": "d073c6f145664edc1993861079ca84d972ae57d7f745d8dad738d8e9baf0a041"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.020",
+        "name": "PhantomGladiator-0.40.19-win64.zip.020",
         "size": 2097152,
         "sha256": "d7c90fd8b6903b0c3fed2d800dbb918cade2e2cbb25134283c1eaab6670194c9"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.021",
+        "name": "PhantomGladiator-0.40.19-win64.zip.021",
         "size": 2097152,
         "sha256": "fe239490a74cd0ec9bac15969e29851cb46701d0a7f397ec353e8c661176645f"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.022",
+        "name": "PhantomGladiator-0.40.19-win64.zip.022",
         "size": 2097152,
         "sha256": "40dee9e0551e0259e04550eb7156f28ac6bedb80523f23befe9a0134a3643f45"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.023",
+        "name": "PhantomGladiator-0.40.19-win64.zip.023",
         "size": 2097152,
         "sha256": "63b2693cf0fb3f18fc9ec1628278c2df5f5b041ec162432306b4854ef2f08150"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.024",
+        "name": "PhantomGladiator-0.40.19-win64.zip.024",
         "size": 2097152,
         "sha256": "739c0105fb4d84bde1213d2729d200afaa91f5192cca2cb0ea700c5fe22f56ed"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.025",
+        "name": "PhantomGladiator-0.40.19-win64.zip.025",
         "size": 2097152,
         "sha256": "0a9a5116da7500b47d075966d6c90d0b666550de6bb0aa4f1713220fd40ee081"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.026",
+        "name": "PhantomGladiator-0.40.19-win64.zip.026",
         "size": 2097152,
         "sha256": "96051b3ec01e4b3e645a4d0f1ddf7c408c2bc389dff9517962ca5627bec22606"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.027",
+        "name": "PhantomGladiator-0.40.19-win64.zip.027",
         "size": 2097152,
         "sha256": "a425b132b312fcb6d2f9f7a5703185abdd7dde0c2e0fbace649f9391c031f35e"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.028",
+        "name": "PhantomGladiator-0.40.19-win64.zip.028",
         "size": 2097152,
         "sha256": "de617153ebffa517a2c841ba2d1921342aa96fec44b3c221c38b0810b2f15fef"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.029",
+        "name": "PhantomGladiator-0.40.19-win64.zip.029",
         "size": 2097152,
         "sha256": "bd75e2646f7482026de87288593fd0a5c9ef3bae5a1903a755fa053012410836"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.030",
+        "name": "PhantomGladiator-0.40.19-win64.zip.030",
         "size": 2097152,
         "sha256": "5142edc2294dc5cb8fec2cd6c091b53c4b1eac26ac31aa93ab8232f0300e54c6"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.031",
+        "name": "PhantomGladiator-0.40.19-win64.zip.031",
         "size": 2097152,
         "sha256": "bc902c59e2049bd25102622f335921bc7c872918d9b0ebbab2d5d496cbb71679"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.032",
+        "name": "PhantomGladiator-0.40.19-win64.zip.032",
         "size": 2097152,
         "sha256": "5e75a2b1aedac2fdfee9fea63f6b98f2fb12d869c728b913d8f31700c3f8e445"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.033",
+        "name": "PhantomGladiator-0.40.19-win64.zip.033",
         "size": 2097152,
         "sha256": "da5fc86c5de80a44c2f02b0d44040f5599e7ab95b796ef9a4a3b50942d2eb47a"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.034",
+        "name": "PhantomGladiator-0.40.19-win64.zip.034",
         "size": 2097152,
         "sha256": "0c2000654364a6360e4013941deefb88c5fdd456d9b838f206067e8039fc1faa"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.035",
+        "name": "PhantomGladiator-0.40.19-win64.zip.035",
         "size": 2097152,
         "sha256": "87d56c7a36e7c6af218b5ac15e646722e467c8017ab25c9a23a64a7f869882cc"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.036",
+        "name": "PhantomGladiator-0.40.19-win64.zip.036",
         "size": 2097152,
         "sha256": "cfa00b2b0bf9f96bcde97881bb7d330b660f9ab72c39f14deaefe44fd43bc710"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.037",
+        "name": "PhantomGladiator-0.40.19-win64.zip.037",
         "size": 2097152,
         "sha256": "c25f00af5f02d4a7a219d23f076db36c5ac568a61c61b27c0f8809a8c19dbd51"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.038",
+        "name": "PhantomGladiator-0.40.19-win64.zip.038",
         "size": 2097152,
         "sha256": "c8dc0a176c54ce49590567600e0afe0f43673b3d7912057d5fcdb649ae995928"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.039",
+        "name": "PhantomGladiator-0.40.19-win64.zip.039",
         "size": 2097152,
         "sha256": "af5be499448229bd2b7324006b9e7806f71a0d0c682865aeb1214d6db1179ac1"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.040",
+        "name": "PhantomGladiator-0.40.19-win64.zip.040",
         "size": 2097152,
         "sha256": "bfa8b7960976645d4e1440feb5ae05d9a21381ebcd39ccf7f46c2f1f2ca669ab"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.041",
+        "name": "PhantomGladiator-0.40.19-win64.zip.041",
         "size": 2097152,
-        "sha256": "209ce637dabd6239b83bc298ec6f607f1b39c69af135c931d567c5b796474625"
+        "sha256": "fac0777cfdf905fb1ec408508882e1ffe45731cdbb5ae4a3ea373701df880073"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.042",
+        "name": "PhantomGladiator-0.40.19-win64.zip.042",
         "size": 2097152,
-        "sha256": "c9be669116c6c87b04a2b221846c8414f87630af1ed53bb5ee562f286cf3d427"
+        "sha256": "d339b41edc7dae8a5465326bb2f5994eb56fc8bbec00d3a7867d9789408be5d6"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.043",
+        "name": "PhantomGladiator-0.40.19-win64.zip.043",
         "size": 2097152,
-        "sha256": "c01704030090318f0af668540aaa403c9d176a510ccb4500884068adb6e252ca"
+        "sha256": "d738553c4be712a8f818bd69809b35bf4be67a045875e85c3ef86d88d0a11919"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.044",
+        "name": "PhantomGladiator-0.40.19-win64.zip.044",
         "size": 2097152,
-        "sha256": "14b594fb9fce467cf267367b9f81dae6315bd8ac6746016508e7cd17b695129e"
+        "sha256": "989c829da19b1a9ef6ff5e667e1bdadc439b14f2e9cc070caf0e576b52d10bde"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.045",
+        "name": "PhantomGladiator-0.40.19-win64.zip.045",
         "size": 2097152,
-        "sha256": "7039ae8889479dcf6dfdcdf8ed15a05b9c193a888d831c40a5b41f862f2b37f8"
+        "sha256": "6168840c8d75a448cb52d3753f2a6b6947b76f2dbc60f7e71e4832a4ce066ef3"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.046",
+        "name": "PhantomGladiator-0.40.19-win64.zip.046",
         "size": 2097152,
-        "sha256": "49709f0d1478543f06345054c5a6e0154fc64fc6e36cd5b961895c224309cce8"
+        "sha256": "fbebf56658f86c6a9204e0bc4fd0e24b494430dd77e80a192bed11b143c2d43b"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.047",
+        "name": "PhantomGladiator-0.40.19-win64.zip.047",
         "size": 2097152,
-        "sha256": "5fb5f16bf602b6e62d65e9ad67f3dff007617f96e534be4d15528787a080628c"
+        "sha256": "517bbd97e65c90288cdbfc20dc7c1e9c608e273bde75e1a48a5800757933e4b3"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.048",
+        "name": "PhantomGladiator-0.40.19-win64.zip.048",
         "size": 2097152,
-        "sha256": "e941e87a6f39410da874d51e07b6bdc063b33d84541926694b96986092123a6c"
+        "sha256": "db2fcd3860348b5739836bc1dc925bd86461955c4b0c0dd006edb21da3d81e77"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.049",
+        "name": "PhantomGladiator-0.40.19-win64.zip.049",
         "size": 2097152,
-        "sha256": "c0fa9a4d04d2b7d8247cfc4f39389c6c03f6c53b580f965ed942d578d760ba52"
+        "sha256": "c660701fc9ae79b8772badde303989e066961c6e3c7eed0647495fb312205c75"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.050",
+        "name": "PhantomGladiator-0.40.19-win64.zip.050",
         "size": 2097152,
-        "sha256": "a46ec255c9235c17a472aee9699954864124daf854369046079e621d7dbd48f3"
+        "sha256": "4a0f678bb19315aedf4a9064fd2bcbb6d59308136e100940f9c783cca7ac8dde"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.051",
+        "name": "PhantomGladiator-0.40.19-win64.zip.051",
         "size": 2097152,
-        "sha256": "9453d65aaa785fe78aa1dde9b10855d318f18143a9e95407e470f5f309edc440"
+        "sha256": "25bc0f0b6a21c8019afb6336bf1b8d9e2925a6a2d5b54b6a59ba54128ad2221e"
       },
       {
-        "name": "PhantomGladiator-0.40.18-win64.zip.052",
-        "size": 56185,
-        "sha256": "9a64f3709da55d929e9b58668358b3dd587dc00fbf7ab11c791873ca7c33fe62"
+        "name": "PhantomGladiator-0.40.19-win64.zip.052",
+        "size": 79470,
+        "sha256": "bdb4d0c8a0b3ede553f1fd834057fe501926d2cb18456bb5f205a0c8f3f3fe1f"
       }
     ]
   }
