@@ -193,3 +193,14 @@ do
     assert(unit.effects==1 and #h.removed==1,'the same class used by later dodge actions is left in place')
 end
 print('phantom_break: PASS')
+
+do
+    local h=harness();local path='/PBZCombatAsset/ActorData/Mobs/067_MoTian/BP_Monster_MoTian_LongZhu_01.BP_Monster_MoTian_LongZhu_01_C'
+    local id='BP_Monster_MoTian_LongZhu_01';local count=0
+    local unit=object(id,{AbilitySystemComponent=object('ASC',{GetGameplayTagCount=function(_,q)assert(q.TagName=='CharacterState.AbilityState.MoYuan.LongZhu.DisableInvulnerability');return count end})})
+    h.classes['/Script/SGameUtils.Default__AbilityUtils']=object('lib',{AddLooseGameplayTag=function(_,a)assert(a==unit);count=count+1 end})
+    h.rules[id]='keep';assert(h.mod:beforeActivate(unit,path,false) and count==0)
+    h.rules[id]='off';assert(h.mod:beforeActivate(unit,path,true) and count==0)
+    assert(h.mod:beforeActivate(unit,path,false) and count==1)
+    assert(h.mod:beforeActivate(unit,path,false) and count==1)
+end

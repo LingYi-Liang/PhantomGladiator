@@ -1180,3 +1180,30 @@ if not arg[2] or arg[2]=='native-phase' then
     print('PASS per-unit native-phase suspension and verified normal targeting resumption')
 end
 print("arena_controller: PASS (owned lifecycle, targeting retries, native-phase isolation and resumption)")
+
+do -- Use the real wave registry through the controller's normal reinforcement and targeting paths.
+    package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
+    local Wave=require('lion_challenge')
+    local clock=0
+    local f=fixture({actorKey=function(a)return a.name end,now=function()return clock end,inCombat=function()return true end})
+    local function reflected(a)
+        a.IsValid=function(v)return v.alive end;a.GetAddress=function(v)return v.name end
+        a.GetFullName=function(v)return v.name end;a.GetOuter=function()return f.world end;a.tags={}
+        return a
+    end
+    reflected(f.world);f.world.name='world'
+    local wave=Wave.new({world=function()return f.world end,hp=function(a)return a.hp or 400 end,tag=function(a,t)return a.tags[t] end})
+    f.options.preferredTargets=function(a,s,current)return wave:preferred(a,s,current)end
+    assert(f.arena:spawn('/Catalog/Walker.Walker_C','blue',1).ok and f.arena:spawn(Wave.BOSS,'red',1).ok)
+    local runner,boss=reflected(f.actors[1]),reflected(f.actors[2])
+    assert(f.arena:start().ok and f.arena:aggroOpponent(runner)==boss)
+    boss.tags[Wave.ON_POLE]=1
+    local cub=reflected({name='owned-cub',alive=true})
+    assert(f.arena:adoptSummon(cub,boss,Wave.CUB,'native summoner').ok)
+    clock=1;wave:sync(f.arena:members(),true);f.arena:tickReinforcements()
+    assert(f.arena:aggroOpponent(runner)==cub,'switch even when the original boss is still alive and targetable')
+    local count=stageCount(f,'attack');f.arena:tickReinforcements();assert(stageCount(f,'attack')==count,'stable target')
+    cub.tags[Wave.LAST]=1;local ticket=assert(wave:ticket(runner,cub));cub.hp=0
+    assert(wave:award(ticket,runner,boss));clock=2;wave:sync(f.arena:members(),true);f.arena:tickReinforcements()
+    assert(f.arena:aggroOpponent(runner)==boss,'head holder returns to its own lion')
+end

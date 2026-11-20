@@ -2,6 +2,11 @@
 -- grab-counter QTEs while their native action/task is live. No health-floor substitute for a grab counter.
 local U=require('ue_observe')
 local O={}
+local Windows=require('arena_counter_windows')
+O.bladePath=Windows.BLADE_GRAB..':OnTick_7E5A1E344065E15ADAE3BEB56AAD8275'
+O.jadePath=Windows.JADE_GRAB_BASE..':K2_ActivateAbility'
+O.jadeAfterPath='/PBZDeflectSystem/Abilities/BP_Hun_PerfectDodge_ExecutionBase.BP_Hun_PerfectDodge_ExecutionBase_C:Do Dodge After Deflect'
+O.evadePath='/PBZDeflectSystem/Abilities/BP_PlayerDodge_Base.BP_PlayerDodge_Base_C:OnEvadeDamage'
 O.executionPath='/Script/SGameExecution.ExecutionComponent:PlayExactExecution'
 local QTE_CLASS='/PBZCombatAsset/Prototypes/Actions/GAA_MultiClickQTE.GAA_MultiClickQTE_C'
 O.qtePath=QTE_CLASS..':Received_ActionBegin'
@@ -55,7 +60,7 @@ function O.new(options)
         local handle
         local ok,result=pcall(defer,function()
             if handle then queued[handle]=nil end
-            if not self.alive or token~=generation then return end
+            if not self.alive or token~=generation or options.inGameThread and not options.inGameThread() then return end
             local worked,err=pcall(fn)
             if not worked then say('原生机会处理失败：'..tostring(err)) end
         end)
@@ -68,7 +73,12 @@ function O.new(options)
         local executor=call(component,'GetOwner')
         target=U.unwrap(target);animData=U.unwrap(animData)
         local execution=U.struct(animData,'ExecutionAbility');local executed=U.struct(animData,'ExecutedAbility')
-        if not opponents(executor,target) or not U.valid(execution) or not U.valid(executed) or not options.data(short(execution)) then return end
+        if not opponents(executor,target) or not U.valid(execution) or not U.valid(executed) then return end
+        local ability=short(execution)
+        if options.grabReadback and lines<60 and (ability:lower():find('^ga_greatblademan_ca_01_gex') or ability:find('^GA_YuDing_GEx_01')) then
+            say('原生抓取启动 招式='..ability..' 双方='..short(executor)..'/'..short(target)..' '..options.grabReadback(executor,target))
+        end
+        if not options.data(ability) then return end
         if not options.available(executor,target) then say('另一对处决表现仍在进行，未重复接管原生调用');return end
         local t=U.unwrap(startTime)
         local info={executor=executor,target=target,execution=execution,executed=executed,start=type(t)=='number' and t or 0}
@@ -102,9 +112,42 @@ function O.new(options)
             end
         end)
     end
-    function self:tick()
-        if not self.alive or not options.fighting() or type(register)~='function' or type(unregister)~='function' then return end
-        for _,entry in ipairs({{path=O.executionPath,native=true,callback=execution},{path=O.qtePath,callback=qte,asset=QTE_CLASS}})do
+    local windows=options.counterWindows
+    local function bladeTick(context)
+        if self.alive and windows.blade and not options.internal() then windows:bladeTick(U.unwrap(context)) end
+    end
+    local function jadeCast(context)
+        if self.alive and windows.jade and not options.internal() then windows:jadeCast(U.unwrap(context)) end
+    end
+    local function jadeAfter(context)
+        if not self.alive or not windows.jade or options.internal() then return end
+        local ability=U.unwrap(context)
+        schedule(function()
+            local event=windows:jadePair(ability)
+            if event and options.available(event.executor,event.target) then
+                say('玉鼎精准闪避双方已启动 '..short(event.executor)..' → '..short(event.target))
+                options.adopt(event)
+            end
+        end)
+    end
+    local function onEvade(context,source,_,perfect)
+        if self.alive and windows.jade and U.unwrap(perfect)==true and not options.internal() then
+            local actor=call(U.unwrap(context),'GetAvatarActorFromActorInfo')
+            windows:jadeResult(actor,U.unwrap(source))
+        end
+    end
+    function self:tick(members,foes)
+        local fighting=self.alive and options.fighting()
+        if windows then windows:sync(members or {},fighting,foes) end
+        if not self.alive or not (fighting or windows and windows.blade) or type(register)~='function' or type(unregister)~='function' then return end
+        local entries=fighting and {{path=O.executionPath,native=true,callback=execution},{path=O.qtePath,callback=qte,asset=QTE_CLASS}} or {}
+        if windows and windows.blade then entries[#entries+1]={path=O.bladePath,callback=bladeTick} end
+        if windows and windows.jade then
+            entries[#entries+1]={path=O.jadePath,callback=jadeCast}
+            entries[#entries+1]={path=O.evadePath,callback=onEvade}
+            entries[#entries+1]={path=O.jadeAfterPath,callback=jadeAfter}
+        end
+        for _,entry in ipairs(entries)do
             local prior=hooks[entry.path]
             if prior and not prior.lease.enabled and not prior.uncertain and not prior.failed then
                 if pcall(unregister,entry.path,prior.pre,prior.post) then hooks[entry.path]=nil end
@@ -117,7 +160,9 @@ function O.new(options)
                 if ok and U.valid(fn) then
                     local lease={enabled=true}
                     local fnCallback=entry.callback
-                    local callback=function(...)if lease.enabled then return fnCallback(...)end end
+                    local callback=function(...)
+                        if lease.enabled and (not options.inGameThread or options.inGameThread()) then return fnCallback(...) end
+                    end
                     local installed,pre,post
                     if entry.native then installed,pre,post=pcall(register,entry.path,function()end,callback)
                     else installed,pre,post=pcall(register,entry.path,callback)end
@@ -133,6 +178,7 @@ function O.new(options)
         end
     end
     function self:stop(reason)
+        if windows then windows:clear() end
         generation=generation+1
         for handle in pairs(queued)do pcall(cancel,handle)end;queued={}
         for path,ids in pairs(hooks)do
@@ -145,6 +191,7 @@ function O.new(options)
         end
     end
     function self:silence()
+        if windows then windows:clear() end
         self.alive=false;generation=generation+1
         for _,slot in pairs(hooks)do slot.lease.enabled=false end
         for handle in pairs(queued)do pcall(cancel,handle)end;queued={}

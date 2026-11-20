@@ -14,16 +14,20 @@
 local U=require('ue_observe')
 local Ground={}
 local CLEARANCE,PLACE_MAX_DROP,MAX_DROP,BESIDE,MAX_RISE,PARK_STEP=3,800,1500,300,60,300
-local WALKING,FALLING,FLYING=1,3,5
+local WALKING,NAV_WALKING,FALLING,FLYING=1,2,3,5
 local BLOCK='AI.DisableCombatAI'
 local NO_FALL_DEATH=1e9
-local CLOSER={0.75,0.5,0.25}
+local CLOSER={0.75,0.5,0.25,0}
 local CAPS={place=12,miss=6,free=30,depth=6}
 
 function Ground.new(options)
     local log=options.log or function()end
     local self={freed=0,placed=0}
     local lines={}
+    local anchors={}
+    function self:prune(keys)
+        for key in pairs(anchors)do if not keys[key] then anchors[key]=nil end end
+    end
     local function say(kind,text)
         lines[kind]=(lines[kind] or 0)+1
         if lines[kind]<=(CAPS[kind] or 10) then log('[OnGround] '..text) end
@@ -39,18 +43,18 @@ function Ground.new(options)
         local moved,result=pcall(function()return actor:K2_TeleportTo(dest,okRot and rot or {Pitch=0,Yaw=0,Roll=0})end)
         return moved and result
     end
-    local function trace(world,x,y,z,up)
-        local ok,ground,why=pcall(options.ground,world,x,y,z,up)
+    local function trace(world,x,y,z,up,ignored)
+        local ok,ground,why=pcall(options.ground,world,x,y,z,up,ignored)
         if ok and type(ground)=='number' then return ground end
         return nil,ok and why or nil
     end
     -- From its own height first (a roof over a low room is not its floor), then from 3 m up for a spot under a hill or inside
     -- something. Under a hill the first look finds nothing and the surface can be metres up. A first look that starts inside
     -- something solid and a second one landing high means the top of that thing (seen 90 and 116 cm up): not a floor.
-    local function groundAt(world,x,y,z)
-        local found,why=trace(world,x,y,z,0)
+    local function groundAt(world,x,y,z,ignored)
+        local found,why=trace(world,x,y,z,0,ignored)
         if found then return found end
-        found=trace(world,x,y,z)
+        found=trace(world,x,y,z,nil,ignored)
         if found and why=='inside' and found>z+MAX_RISE then return nil end
         return found
     end
@@ -78,6 +82,8 @@ function Ground.new(options)
 
     -- Before the unit starts: its spawn spot. t is the transform it will start with. Returns what settle needs.
     function self:place(pawn,t,world)
+        local key=U.key(pawn)
+        if key then anchors[key]=nil end
         local spot=t and t.Translation
         local half=halfHeight(pawn)
         if type(spot)~='table' or not half then return nil end
@@ -100,7 +106,7 @@ function Ground.new(options)
                 end
             end
         end
-        if not ground then say('miss','出生点下方没找到地面，高度不变 Z='..tostring(spot.Z));return nil end
+        if not ground or spot.Z-ground>PLACE_MAX_DROP then say('miss','出生点下方没找到地面，高度不变 Z='..tostring(spot.Z));return nil end
         local before=spot.Z
         spot.Z=ground+half+CLEARANCE
         self.placed=self.placed+1
@@ -115,20 +121,45 @@ function Ground.new(options)
             lifted=tostring(teleport(pawn,{X=at.X,Y=at.Y,Z=placed.ground+half+CLEARANCE}))
             at=options.location(pawn)
         end
+        local key=U.key(pawn)
+        if key and half and at and math.abs(at.Z-half-placed.ground)<=MAX_RISE then
+            anchors[key]={world=U.key(options.world()),x=at.X,y=at.Y,z=placed.ground}
+        end
         say('place',string.format('%s 地面Z=%.1f 半高 出生前=%.1f 现在=%s 原高度=%.1f 目标=%.1f 抬高=%s 读回Z=%s%s',options.label(pawn),placed.ground,placed.half,
             tostring(half),placed.before,placed.wanted,lifted,at and string.format('%.1f',at.Z) or '?',placed.closer and string.format(' 出生点下面是落差，移近玩家到%.0f%%',placed.closer*100) or ''))
+    end
+    -- CurrentFloor can be one movement sample older than the capsule after a warp or a floor break.
+    local function floorAtFeet(cmc,at,half)
+        if not at or not half then return end
+        local floor=U.field(cmc,'CurrentFloor')
+        if U.struct(floor,'bWalkableFloor')~=true or U.struct(floor,'bBlockingHit')~=true then return end
+        local hit=U.struct(floor,'HitResult')
+        if U.struct(hit,'bStartPenetrating')==true then return end
+        local point=U.struct(hit,'ImpactPoint')
+        local x,y,z=U.struct(point,'X'),U.struct(point,'Y'),U.struct(point,'Z')
+        if type(x)=='number' and type(y)=='number' and type(z)=='number' and math.abs(z-(at.Z-half))<=MAX_RISE
+            and (x-at.X)^2+(y-at.Y)^2<=MAX_RISE^2 then return z end
     end
     function self:free(actor,target)
         if not U.valid(actor) then return false end
         self:keepFromFallDeath(actor)
         local mode,cmc=self:mode(actor)
+        if mode==WALKING or mode==NAV_WALKING then
+            local at=options.location(actor)
+            local z=floorAtFeet(cmc,at,halfHeight(actor))
+            if z then
+                local key,world=U.key(actor),U.key(options.world())
+                if key and world then anchors[key]={world=world,x=at.X,y=at.Y,z=z} end
+            end
+        end
         if mode~=FLYING and mode~=FALLING then return false end
         local blocked=self:blocked(actor)
         if mode==FLYING and (not blocked or blocked<=0) then return false end
         local here,half,world=options.location(actor),halfHeight(actor),options.world()
         if not here or not half or not U.valid(world) then return false end
         local feet=here.Z-half
-        local ground=trace(world,here.X,here.Y,feet,10)
+        local ignored={actor};if U.valid(target) then ignored[2]=target end
+        local ground=trace(world,here.X,here.Y,feet,10,ignored)
         -- Falling with ground in reach is an ordinary fall: it lands by itself.
         if mode==FALLING and ground and feet-ground<=MAX_DROP then return false end
         local dest,how
@@ -141,12 +172,27 @@ function Ground.new(options)
                 local length=math.sqrt(dx*dx+dy*dy)
                 if length<1 then dx,dy,length=1,0,1 end
                 local x,y=there.X+dx/length*BESIDE,there.Y+dy/length*BESIDE
-                local beside=groundAt(world,x,y,there.Z)
-                dest,how={X=x,Y=y,Z=(beside or there.Z)+half+CLEARANCE},'对手身边'
+                local beside=groundAt(world,x,y,there.Z,ignored)
+                local theirHalf=halfHeight(target)
+                if beside and theirHalf and math.abs(there.Z-theirHalf-beside)<=PLACE_MAX_DROP then
+                    dest,how={X=x,Y=y,Z=beside+half+CLEARANCE},'对手身边'
+                end
+            end
+        end
+        if not dest then
+            local anchor=anchors[U.key(actor)]
+            if anchor and anchor.world==U.key(world) then
+                local support=trace(world,anchor.x,anchor.y,anchor.z+MAX_RISE,0,ignored)
+                if support and math.abs(support-anchor.z)<=MAX_RISE then
+                    dest,how={X=anchor.x,Y=anchor.y,Z=support+half+CLEARANCE},'此前已确认的地面'
+                end
             end
         end
         if not dest then return false end
         local moved=teleport(actor,dest)
+        if not moved or not U.valid(actor) then return false end
+        local reached=options.location(actor)
+        if not reached or math.abs(reached.Z-dest.Z)>MAX_RISE or (reached.X-dest.X)^2+(reached.Y-dest.Y)^2>MAX_RISE^2 then return false end
         local walked=U.valid(actor) and U.valid(cmc) and pcall(function()cmc:SetMovementMode(WALKING,0)end)
         self.freed=self.freed+1
         local at=options.location(actor)
@@ -176,7 +222,12 @@ function Ground.new(options)
             ground=groundAt(world,x,y,there.Z)
             if not ground or math.abs(ground-ownerFeet)>PARK_STEP then
                 x,y,how=there.X,there.Y,'召唤者脚下'
-                ground=groundAt(world,x,y,there.Z) or ownerFeet
+                ground=groundAt(world,x,y,there.Z,{actor,owner})
+                if not ground or math.abs(ground-ownerFeet)>PARK_STEP then
+                    local ownerMode,cmc=self:mode(owner)
+                    ground=(ownerMode==WALKING or ownerMode==NAV_WALKING) and floorAtFeet(cmc,there,halfHeight(owner))
+                    if not ground then return {why='召唤者脚下尚无可确认的地面'} end
+                end
             end
         end
         local dest={X=x,Y=y,Z=ground+half+CLEARANCE}

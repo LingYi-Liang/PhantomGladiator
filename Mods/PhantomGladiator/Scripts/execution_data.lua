@@ -48,6 +48,12 @@ return {
             {3.1650,30.000,40.000,0.005,-50.000,-50.000,0.000,150.007,0.000,0.000,0.000},
         }},
     },
+    GA_Hun_BDEx_Common_YuDing_M_01_C={
+        montage='/PBZCombatAsset/ActorData/Mobs/YuDing_00/Ability/Montage/PerfectDodge/Hun_Perfect_Dodge_Attack_YuDing_Hun_Montage.Hun_Perfect_Dodge_Attack_YuDing_Hun_Montage',
+        clip='/HuaShira/Characters/Boss/YuDing/Anim/Hun_Perfect_Dodge_Attack_YuDing_Hun.Hun_Perfect_Dodge_Attack_YuDing_Hun',
+        clip_from=0,clip_to=10.133333,rate=1,start=0,segments=1,executor=10.133333,
+        executed={GA_Hun_BDEd_Common_YuDing_M_01_C=20.333333},
+    },
     GA_Hun_BEx_Common_BladeMan_C={montage='/HuaShira/Characters/Boss/BladeMan/Animation/Hun_Perfect_Dodge_Attack_BladeMan_Hun_Montage.Hun_Perfect_Dodge_Attack_BladeMan_Hun_Montage',clip='/HuaShira/Characters/Boss/BladeMan/Animation/Hun_Perfect_Dodge_Attack_BladeMan_Hun.Hun_Perfect_Dodge_Attack_BladeMan_Hun',clip_from=0.0000,clip_to=10.5500,rate=1.0000,start=0.0000,segments=1,executor=10.5500,
         executed={GA_Hun_BDEd_Common_AttackBladeMan_01_C=10.2500},
         camera={start=0.0000,duration=8.6873,stop_yaw=3.2300,provider='CameraAnimRotationProvider_Execution_C',frames={

@@ -642,6 +642,7 @@ function Runtime.new(options)
         out.remote_reflect_blocked=remoteReflect.blocked or 0
         out.remote_reflect_unknown=remoteReflect.unknown or 0
         local xianzhe=options.support and options.support.xianzhePhantom and options.support.xianzhePhantom:status() or {}
+        out.longzhu_protection_supported=options.support~=nil and options.support.phantom~=nil
         out.xianzhe_phantom_supported=xianzhe.supported==true
         out.xianzhe_phantom_state=xianzhe.state or 'off'
         out.xianzhe_phantom_blocked=xianzhe.blocked or 0

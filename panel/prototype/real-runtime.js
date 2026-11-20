@@ -128,6 +128,7 @@ const RealRuntime = (() => {
     unitRules: {},
     unitRulesSupported: false,
     remoteReflectSupported: false,
+    longzhuProtectionSupported: false,
     xianzhePhantomSupported: false,
     menghuaStageSupported: false,
     // free_camera_*: 时停 and the free camera's speed (cm/s), turn and smoothing (%) as free_camera.lua saved them.
@@ -486,6 +487,7 @@ const RealRuntime = (() => {
       s.unitRulesSupported = yes("unit_rules_supported");
       s.executionMinionsSupported = yes("execution_minions_rule_supported");
       s.remoteReflectSupported = yes("remote_reflect_supported");
+      s.longzhuProtectionSupported = yes("longzhu_protection_supported");
       s.xianzhePhantomSupported = yes("xianzhe_phantom_supported");
       s.menghuaStageSupported = yes("menghua_stage_rule_supported");
       s.unitRules = {};
@@ -574,7 +576,7 @@ const RealRuntime = (() => {
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
       keys: [s.game, s.keys, s.eyesKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported],
-      grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
+      grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.longzhuProtectionSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
       summonQueue: [s.game, s.summonQueue],

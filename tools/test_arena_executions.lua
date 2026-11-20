@@ -663,7 +663,7 @@ do
     h.members={{actor=boss,team='red'},{actor=dog,team='blue'}}
     local exec=h.new()
     h.run(exec,3)
-    local _,waits=h.all():gsub('附近 20 米内没有对手','')
+    local _,waits=h.all():gsub('附近 20 米内没有符合处决条件的对手','')
     assert(exec:status().started==0 and waits==1,h.all())
     dog.at={X=400,Y=0,Z=0}
     h.run(exec,0.5)
@@ -682,7 +682,7 @@ do
     h.members={{actor=boss,team='red'},{actor=helper,team='blue',aid=true},{actor=enemy,team='blue'}}
     local exec=h.new()
     h.run(exec,3)
-    assert(exec:status().started==0 and h.all():find('附近 20 米内没有对手',1,true),h.all())
+    assert(exec:status().started==0 and h.all():find('附近 20 米内没有符合处决条件的对手',1,true),h.all())
     enemy.at={X=400,Y=0,Z=0}
     h.run(exec,0.5)
     assert(exec:status().started==1 and h.all():find('执行方=BP_Monster_GuiChai',1,true) and not h.all():find('执行方=BP_Monster_Helper',1,true),h.all())
@@ -1264,6 +1264,7 @@ local function weaponPairCase(targetSkeleton,isHun)
         h.found[entry.timing.clip]=object(entry.timing.clip:match('%.([^%.]+)$'),{Skeleton=skeleton})
     end
     local target=h.boss('BP_Monster_MaleThug',500,0,{pairs={},locks={},rank='Standard'})
+    h.attrs[target].Health_Max=5000
     local asset=object('MaleThug',{Skeleton=targetSkeleton=='thug' and thug or object(targetSkeleton)})
     target.Mesh.GetSkeletalMeshAsset=function()return asset end
     local nearer=h.enemy({X=100,Y=0,Z=0})
@@ -1373,6 +1374,7 @@ end
 local function companionHunCase(rank)
     local h=harness()
     local foe=h.boss('BP_Foe',100,0,{rank=rank or 'Elite'})
+    h.attrs[foe].Health_Max=1000
     local hun=h.enemy({X=300,Y=0,Z=0},{class='BP_Monster_Hun'})
     local other=h.enemy({X=100,Y=0,Z=0})
     other.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={foe}})
@@ -1646,6 +1648,7 @@ do
         own.TargetRequiredTags={'CharacterState.NotCarried'}
         local h=harness()
         local foe=h.boss('BP_Foe',100,0,{rank=rank,pairs={own}})
+        h.attrs[foe].Health_Max=1000
         local hun=h.enemy({X=300,Y=0,Z=0},{class='BP_Monster_Hun'})
         hun.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={foe}})
         h.tags[foe]={['CharacterState.CanWeakExecute.Weak']=1}
@@ -1666,4 +1669,117 @@ do
     exec:stop('regression')
     print('PASS a minion whose own pair is closed is still executed by a companion Hun; a boss that has its own pair is not')
 end
+-- An execution opportunity still needs the victim's remaining HP to be in range.
+do
+    local function attempt(hp,maximum,broken,overrides,own)
+        local options={hunProfile=function()return {attributes=overrides} end}
+        local h,exec,foe
+        if own then h,exec,foe=ownPairCase('Elite',options)
+        else h,exec,foe=companionPairCase(options) end
+        h.attrs[foe].Health,h.attrs[foe].Health_Max=hp,maximum
+        if broken then h.tags[foe]={['CharacterState.Stand.Break']=1} end
+        h.run(exec,1)
+        local started=exec:status().started
+        exec:stop('test')
+        return started
+    end
+    for _,own in ipairs({true,false})do
+        assert(attempt(201,1000,true,{},own)==0,'a break above the default HP cap must not start a finisher')
+        assert(attempt(200,1000,true,{},own)==1)
+        assert(attempt(101,1000,false,{},own)==0 and attempt(100,1000,false,{},own)==1)
+        local limits={ExecutionExecutorBreakHealthThreshold=.01,ExecutionExecutorNormalHealthThreshold=0}
+        assert(attempt(11,1000,true,limits,own)==0 and attempt(10,1000,true,limits,own)==1)
+        assert(attempt(1,1000,false,limits,own)==0)
+        limits.ExecutionExecutorBreakHealthThreshold=0
+        assert(attempt(1,1000,true,limits,own)==0)
+        assert(attempt(10,nil,true,{},own)==0 and attempt(10,0,true,{},own)==0)
+    end
+    local arena,arenaExec,arenaTarget=weaponPairCase('thug')
+    arena.tags[arenaTarget]['CharacterState.Stand.Break']=1
+    arena.attrs[arenaTarget].Health_Max=1000
+    arena.run(arenaExec,1)
+    assert(arenaExec:status().started==0 and lines(arena,'魂暂缓自动处决')==1)
+    arena.attrs[arenaTarget].Health=199
+    arena.run(arenaExec,0.5);assert(arenaExec:status().started==1)
+    arenaExec:stop('test')
+    local h,foe,far,near=companionHunCase('UltimateBoss')
+    local thresholds={[near]=0.01,[far]=0.20}
+    local exec=h.new({isHun=function(actor)return thresholds[actor]~=nil end,
+        hunProfile=function(actor)return {attributes={ExecutionExecutorBreakHealthThreshold=thresholds[actor]}} end})
+    h.tags[foe]['CharacterState.Stand.Break']=1
+    h.attrs[foe].Health=201
+    h.run(exec,1);assert(exec:status().started==0)
+    h.attrs[foe].Health=200
+    h.run(exec,1);assert(exec:executing(far) and not exec:executing(near),'the nearer ineligible Hun must not hide the eligible one: '..h.all())
+    exec:stop('test')
+    print('PASS Hun automatic finishers respect separate normal/break HP caps, zero and unavailable maxima')
+end
 print('arena_executions ok')
+
+-- Drive the registered ability callback through Exec.new, not just the eligibility predicate.
+do
+    local C,O=require('arena_counter_windows'),require('execution_opportunities')
+    for _,mode in ipairs({'arena-red','arena-blue','companion','map'})do
+        local h=harness()
+        local world=object('World');local function outer()return world end
+        local boss=h.boss('BP_Monster_GreatBladeMan',71487,1,{pairs={},locks={}})
+        h.attrs[boss].Health_Max=636480
+        local npc=h.enemy({X=600,Y=0,Z=0})
+        boss.GetOuter,npc.GetOuter,h.player.GetOuter=outer,outer,outer
+        local function pathClass(path)
+            return object(path:match('%.(.+)$'),{GetFullName=function()return 'LegoAbilityBlueprintGeneratedClass '..path end})
+        end
+        local npcBase=object('NPC',{GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC' end})
+        local cls=pathClass(C.BLADE);cls.GetSuperStruct=function()return npcBase end;boss.GetClass=function()return cls end
+        local npcClass=pathClass('/Test/BP_Monster_GuiChai.BP_Monster_GuiChai_C')
+        npcClass.GetSuperStruct=function()return npcBase end;npc.GetClass=function()return npcClass end
+        local bossTeam=mode=='arena-red' and 'red' or mode=='arena-blue' and 'blue' or mode=='companion' and 'companion'
+        local npcTeam=bossTeam=='red' and 'blue' or bossTeam=='blue' and 'red' or mode=='map' and 'companion'
+        if bossTeam then h.members[#h.members+1]={actor=boss,class_path=C.BLADE,team=bossTeam} end
+        if npcTeam then h.members[#h.members+1]={actor=npc,team=npcTeam} end
+        local companion=mode=='map' and npc or mode=='companion' and boss
+        if companion then companion.BP_PBZHatredManagerComponent=object('Hatred',{HatredList={companion==npc and boss or npc}}) end
+        h.fighting=not companion
+        local exPath=MOBS_PATH..'008_GreatBladeMan/Ability/Abilities/GA_Hun_BEx_Common_BladeMan.GA_Hun_BEx_Common_BladeMan_C'
+        local edPath='/PBZCombatAsset/ActorData/Players/Hun/Abilities/Common/ExE/GA_Hun_BDEd_Common_AttackBladeMan_01.GA_Hun_BDEd_Common_AttackBladeMan_01_C'
+        h.found[exPath]=pathClass(exPath);h.found[edPath]=pathClass(edPath);h.found[O.bladePath]=object('Callback')
+        local hooks={};local gameThread,canAct=false,true
+        local exec=h.new({getWorld=outer,assignedOpponent=function(a)return a==boss and npc or boss end,
+            companions=function()return true end,inGameThread=function()return gameThread end,
+            registerHook=function(p,pre,post)hooks[p]=post or pre;return 1,2 end,unregisterHook=function(p)hooks[p]=nil end})
+        exec:tick()
+        local event=assert(hooks[O.bladePath],mode)
+        local timeline=object('Timeline',{CurrentTime=2.333})
+        local gc=pathClass(C.BLADE_GRAB)
+        local ability=object('Grab',{GetClass=function()return gc end,bIsActive=true,GetPlayTimelineTask=function()return timeline end,
+            GetAvatarActorFromActorInfo=function()return boss end,['Execution Info']={Executor=boss,Target=npc}})
+        npc['Actor State Component']=object('State',{GetOwner=function()return npc end,
+            CanActivateNewState=function(_,t)return t.TagName=='CharacterState.Action' and canAct end})
+        h.tags[boss]={[C.JUDGE]=1};event(ability);assert(not exec:status().active,mode..' off game thread')
+        gameThread=true;canAct=false;event(ability);assert(not exec:status().active,mode..' cannot act')
+        canAct=true;ability['Execution Info'].Target=h.player;event(ability);assert(not exec:status().active,mode..' real player owns encounter')
+        ability['Execution Info'].Target=npc
+        if companion then
+            local manager=companion.BP_PBZHatredManagerComponent;local saved=manager.HatredList
+            manager.HatredList={};event(ability);assert(not exec:status().active,'lost hostility')
+            manager.HatredList=saved
+        end
+        event(ability);event(ability)
+        local play='play GA_Hun_BEx_Common_BladeMan_C + GA_Hun_BDEd_Common_AttackBladeMan_01_C on '..boss:GetFName():ToString()..' at 2.333'
+        assert(h.count(play)==1 and exec:status().active and h.all():find('启动读回=true',1,true),mode..' '..h.all())
+        assert(h.attrs[boss].Health==71487 and h.attrs[boss].Health_Min==1,'the counter does not write HP or clear the native floor')
+        if mode=='arena-red' then
+            local second=h.boss('BP_Monster_GreatBladeMan',89000,1,{pairs={},locks={}})
+            local helper=h.enemy({X=100,Y=20,Z=0});second.GetOuter,helper.GetOuter=outer,outer
+            second.GetClass=function()return cls end;h.tags[second]={[C.JUDGE]=1}
+            helper['Actor State Component']=object('State',{GetOwner=function()return helper end,CanActivateNewState=function()return true end})
+            h.members[#h.members+1]={actor=second,class_path=C.BLADE,team='red'};h.members[#h.members+1]={actor=helper,team='blue'}
+            exec:tick();ability.GetAvatarActorFromActorInfo=function()return second end
+            ability['Execution Info']={Executor=second,Target=helper};event(ability)
+            assert(helper['Execution Component'].CurrentExecutionInfo.Target==second,'the other pair may respond during the first presentation')
+            assert(npc['Execution Component'].CurrentExecutionInfo.Target==boss and exec:status().active)
+        end
+        local plays=h.count(play);exec:stop('complete');event(ability);assert(h.count(play)==plays,'retained hook after stop')
+    end
+    print('PASS native Bi Feng handoff through full arena and companion handlers in both roles')
+end

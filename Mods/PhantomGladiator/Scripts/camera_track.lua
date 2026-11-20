@@ -565,6 +565,9 @@ function Track.new(options)
         -- The look point follows; a new target more slowly, so the view travels there.
         local follow=ease(dt,now<r.slowUntil and TAU_RETARGET or TAU_LOOK)
         local look=r.look
+        if r.lastFocusZ and wantLook.Z<r.lastFocusZ then r.followingDrop=true
+        elseif wantLook.Z>=look.Z then r.followingDrop=false end
+        r.lastFocusZ=wantLook.Z
         look.X,look.Y,look.Z=look.X+(wantLook.X-look.X)*follow,look.Y+(wantLook.Y-look.Y)*follow,look.Z+(wantLook.Z-look.Z)*follow
         local origin={X=look.X+pan.X,Y=look.Y+pan.Y,Z=look.Z+pan.Z}
         -- The keys do not take the view through the ground: from under it, the wall check below finds nothing to stop the camera.
@@ -626,7 +629,7 @@ function Track.new(options)
         end
         -- Pivot clearance and the debounced wall trace do not protect the camera's actual downward move.
         local floorZ
-        if options.trace and options.view and (pan.Z<0 or dir.Z>0) then
+        if options.trace and options.view and (pan.Z<0 or dir.Z>0 or r.followingDrop or r.floorContact) then
             local previous=vec(options.view())
             if previous and camera.Z<previous.Z then
                 local hit=r.floorContact

@@ -143,14 +143,14 @@ function LionNPC.new(options)
         if under then return under,'烈焰脚下的原版桩' end
         return nil,'烈焰身边的桩顶未读回'
     end
-    local function chooseSpot(actor,carrier,source,body,anchor)
+    local function chooseSpot(actor,carrier,source,body,anchor,retry)
         local at=location(carrier)
         local bossBody=shape(source.actor,true)
         if not at or not bossBody then return nil end
         local gap=body.radius+bossBody.radius+45
         local range=options.range(actor)
         local reach=type(range)=='number' and math.max(gap,math.min(range*0.65,1000)) or gap+80
-        local angle=math.atan(at.Y-anchor.Y,at.X-anchor.X)
+        local angle=math.atan(at.Y-anchor.Y,at.X-anchor.X)+math.rad(retry==1 and 65 or retry==2 and -65 or 0)
         for _,degrees in ipairs({0,45,-45,90,-90,135,-135,180})do
             local radians=angle+math.rad(degrees)
             local candidate={X=anchor.X+math.cos(radians)*reach,Y=anchor.Y+math.sin(radians)*reach,Z=anchor.Z}
@@ -241,18 +241,31 @@ function LionNPC.new(options)
         if not poles or not U.inWorld(area,world) then return false end
         local key=U.key(actor)
         if not key or pickups[key] then return false end
+        local ticket=options.challenge:ticket(actor,victim)
+        if not ticket then return false end
         local prior={}
         for _,pole in ipairs(poles)do
             local poleKey=U.key(pole)
             if poleKey then prior[poleKey]=true end
         end
-        pickups[key]={key=key,actor=actor,source=source,area=area,world=world,prior=prior,
+        pickups[key]={key=key,actor=actor,ticket=ticket,victim=victim,source=source,area=area,world=world,prior=prior,
             weapon=combat:captureWeapon(actor,world)}
         return true
     end
-    function self:pickupEnded(actor)
+    function self:observeHead(actor)
         local pickup=pickups[U.key(actor)]
-        if pickup then pickup.ended=options.now();pickup.planned=true end
+        if not pickup or not same(options.world(),pickup.world) then return false end
+        if (tag(actor,'CharacterState.HasTempWeapon.HouHouHouHead') or 0)>0 then pickup.headSeen=true end
+        return pickup.headSeen==true
+    end
+    function self:pickupEnded(actor,completed)
+        local pickup=pickups[U.key(actor)]
+        if not pickup then return end
+        pickup.ended=options.now()
+        pickup.planned=completed==true and self:observeHead(actor) and options.challenge:award(pickup.ticket,actor,pickup.source)
+        pickup.cancelled=not pickup.planned
+        local seat=self.seats[U.key(options.carrier(actor))]
+        if pickup.cancelled and not (seat and seat.pickup==pickup) and combat:restoreWeapon(pickup.weapon) then pickups[pickup.key]=nil end
     end
     local function stopFlight(seat)
         local flight=seat.flight
@@ -303,7 +316,8 @@ function LionNPC.new(options)
     local function stageHit(seat,component)
         local ok,owner=call(component,'GetOwner')
         if not ok or not U.inWorld(owner,seat.world) then return false end
-        if contains(U.field(seat.area,'ActivatedPoles'),owner) and same(U.field(owner,'Area'),seat.area) then return 'pole' end
+        if same(U.field(owner,'Area'),seat.area) and (contains(U.field(seat.area,'ActivatedPoles'),owner)
+            or same(U.field(owner,'SM_WoodPost_001'),component) and contains(U.field(seat.area,'DeactivatedPoles'),owner)) then return 'pole' end
         local a,b=U.field(owner,'LinkedPoleA'),U.field(owner,'LinkedPoleB')
         if contains(U.field(seat.area,'ActivatedLinks'),owner) and same(U.field(owner,'Box'),component)
             and same(U.field(a,'Area'),seat.area) and same(U.field(b,'Area'),seat.area) then return 'link' end
@@ -474,6 +488,7 @@ function LionNPC.new(options)
         end
         local pickup=pickups[U.key(actor)]
         if pickup and (not same(pickup.source,source.actor) or not same(pickup.area,source.area)) then pickup=nil end
+        if not pickup and not options.challenge:holdsHead(actor,source.actor) then return end
         if pickup and not pickup.planned then return wait(actor,'等待原版狮头桩升起') end
         local platform=pickupPole(pickup,body,carrier,now)
         local anchorRead='处决升起的原版桩'
@@ -482,7 +497,7 @@ function LionNPC.new(options)
             local anchor
             anchor,anchorRead=sourceAnchor(source)
             if not anchor then return wait(actor,anchorRead) end
-            top=chooseSpot(actor,carrier,source,body,anchor)
+            top=chooseSpot(actor,carrier,source,body,anchor,source.retries and source.retries[U.key(actor)])
         end
         local original=location(carrier)
         local rotation=rotationOf(carrier)
@@ -502,14 +517,14 @@ function LionNPC.new(options)
     function self:pickupReady(actor)
         local pickup=pickups[U.key(actor)]
         if not pickup then return false end
-        pickup.planned=true
         pickup.warp=pickup.warp or poleWarp(actor)
         local now=options.now()
         if type(now)~='number' or not same(currentWorld,pickup.world)
-            or (tag(actor,'CharacterState.HasTempWeapon.HouHouHouHead') or 0)<=0
-            or not clearTags(pickup.source,PROTECTED) or not same(options.opponent(actor),pickup.source) then
+            or not self:observeHead(actor)
+            or not clearTags(pickup.source,PROTECTED) then
             return false
         end
+        pickup.planned=true
         local carrier=options.carrier(actor)
         local key=U.key(carrier)
         local source=self.sources[U.key(pickup.source)]
@@ -687,6 +702,11 @@ function LionNPC.new(options)
         local function blocked(progress,hit,desired,actual)
             local component=hitComponent(hit)
             local _,full=call(component,'GetFullName')
+            local ownerOK,owner=call(component,'GetOwner')
+            if flight.first and ownerOK and U.inWorld(owner,seat.world) then
+                seat.retryFirst=stageHit(seat,component) or same(component,U.field(owner,'CapsuleComponent')) and U.npcPath(owner)
+                    or same(U.field(owner,'Area'),seat.area) and same(component,U.field(owner,'SM_WoodPost_001'))
+            end
             fail(string.format('跳跃位移未到位 %.0f%% 碰撞部件=%s 深度=%s 目标=%s 实际=%s',
                 progress*100,tostring(full or '未读回'),tostring(U.struct(hit,'PenetrationDepth')),pointText(desired),pointText(actual)))
         end
@@ -903,18 +923,26 @@ function LionNPC.new(options)
             local target=owner and options.opponent(seat.actor)
             local carrier=owner and options.carrier(seat.actor)
             if not active[U.key(seat.source.actor)] or not owner or not same(carrier,seat.carrier)
-                or not same(target,seat.source.actor) or not clearTags(seat.source.actor,PROTECTED)
+                or (seat.pickup and seat.pickup.cancelled) or (not same(target,seat.source.actor) and not (seat.pickup and not seat.pickup.ended)) or not clearTags(seat.source.actor,PROTECTED)
                 or gone(seat.pole) or U.field(seat.pole,'Activated')~=true or not alive(seat.carrier) or seat.failed then
                 if release(seat,'阶段、目标或支撑变化') then
                     local actorKey=U.key(seat.actor) or key
                     self.seats[key]=nil;retryAt[actorKey]=now+RETRY
-                    if seat.failed then failedFor[actorKey]=seat.source end
+                    if seat.failed then
+                        local source=seat.source
+                        source.retries=source.retries or {}
+                        local attempts=source.retries[actorKey] or 0
+                        if seat.retryFirst and attempts<2 then
+                            source.retries[actorKey]=attempts+1
+                            say('首跳遇阻，返地后重新选桩 actor='..actorKey..' 重试='..(attempts+1))
+                        else failedFor[actorKey]=source end
+                    end
                 end
             elseif seat.flight then finishFlight(seat,now)
             elseif seat.nextPole then hop(seat,now)
             elseif seat.boardedAt then
                 if verifySeat(seat,now) then fight(seat,now) end
-            else board(seat,now) end
+            elseif options.challenge:holdsHead(seat.actor,seat.source.actor) then board(seat,now) end
         end
         for key,pickup in pairs(pickups)do
             local carrier=roster[key] and options.carrier(pickup.actor)
@@ -927,7 +955,7 @@ function LionNPC.new(options)
             if entry.class_path~=BOSS and (not retryAt[key] or now>=retryAt[key]) then
                 local target=options.opponent(entry.actor)
                 local source=active[U.key(target)]
-                if source and source~=failedFor[key] and source.team~=entry.team and clearTags(source.actor,PROTECTED) then
+                if source and source~=failedFor[key] and source.team~=entry.team and options.challenge:holdsHead(entry.actor,source.actor) and clearTags(source.actor,PROTECTED) then
                     local carrier=options.carrier(entry.actor)
                     if U.valid(carrier) and not self.seats[U.key(carrier)] then
                         retryAt[key]=now+0.5

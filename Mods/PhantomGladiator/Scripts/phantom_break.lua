@@ -98,6 +98,20 @@ function Break.new(options)
     -- ActorConfig adds the infinite effect during initialization. Only this direct spawn path runs
     -- before ActivateAI. Timed dodge actions grant the same class, so never remove it in tick().
     function self:beforeActivate(actor,path,escort)
+        if path=='/PBZCombatAsset/ActorData/Mobs/067_MoTian/BP_Monster_MoTian_LongZhu_01.BP_Monster_MoTian_LongZhu_01_C' then
+            if escort or not options.rule or options.rule('BP_Monster_MoTian_LongZhu_01')~='off' then return true end
+            local asc=U.field(actor,'AbilitySystemComponent')
+            local tag='CharacterState.AbilityState.MoYuan.LongZhu.DisableInvulnerability'
+            local before=tagCount(asc,tag)
+            if before and before>0 then return true end
+            local lib=find('/Script/SGameUtils.Default__AbilityUtils')
+            if before==0 and U.valid(lib) and U.valid(actor) then
+                pcall(function()lib:AddLooseGameplayTag(actor,{TagName=FName(tag)},false)end)
+            end
+            local after=tagCount(asc,tag)
+            say('金面具黑衣人解除保护 原生标签计数 '..tostring(before)..' -> '..tostring(after))
+            return after~=nil and after>0,'金面具黑衣人保护设置未确认'
+        end
         if path~=XUKONG_PATH or escort or not options.rule or options.rule(XUKONG)~='off' then return true end
         local asc=U.field(actor,'AbilitySystemComponent')
         local before=tagCount(asc,DODGE_TAG)

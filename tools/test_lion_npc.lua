@@ -41,7 +41,7 @@ local function collider(outer,channel)
         end,
         SetGenerateOverlapEvents=function(self,value)self.overlapEvents=value end})
 end
-local function fixture(combat)
+local function fixture(combat,nativeWave)
     local h={now=0,world=object({}),poles={},resume={},log={},members={},timers={},timerId=0,battle={battle_active=true}}
     local npcBase=object({GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC' end})
     function h:unit(path,team,mode,radius,x)
@@ -138,7 +138,13 @@ local function fixture(combat)
         h.resume[#h.resume+1]=actor
         return h.resumeCount or 1
     end})
-    h.adapter=LionNPC.new({log=function(message)h.log[#h.log+1]=message end,
+    -- Movement fixtures start after a completed pickup; the wave controller tests actual admission.
+    h.challenge={holdsHead=function()return true end,ticket=function()return {} end,award=function()return true end}
+    if nativeWave then
+        h.challenge=require('lion_challenge').new({world=function()return h.world end,hp=function(a)return a.hp end,
+            tag=function(a,t)return a.tags[t] end})
+    end
+    h.adapter=LionNPC.new({challenge=h.challenge,log=function(message)h.log[#h.log+1]=message end,
         now=function()return h.now end,world=function()return h.world end,area=function()return h.area end,
         location=function(a)assert(not a.gone);return a.at end,hp=function(a)assert(not a.gone);return a.hp end,
         ground=function()return 0 end,isDestroying=function(a)return a.gone end,
@@ -165,6 +171,7 @@ local function fixture(combat)
     end
     function h:tick(seconds)
         self:frames(seconds or 0.5)
+        if nativeWave then self.challenge:sync(self.members,self.battle.battle_active)end
         self.adapter:tick(self.members,self.battle)
     end
     function h:board()
@@ -412,11 +419,17 @@ end
 
 test('a staged pickup selects the newly registered pole at the native warp target',function()
     local combat=combatFixture()
-    local h=fixture(combat)
-    local npc=enemy(h)
-    local victim=h:unit('/Test/HouHouHou.HouHouHou_C','red',1,25)
+    local h=fixture(combat,true)
+    local npc,other=enemy(h),enemy(h)
+    local wave=require('lion_challenge')
+    local victim=h:unit(wave.CUB,'red',1,25)
     h.members[#h.members].summoner=h.boss
-    npc.executing=true
+    h:tick();assert(#h.poles==0 and not h.adapter:beginPickup(npc,victim,h.members,h.battle))
+    victim.tags[wave.LAST]=1
+    assert(h.adapter:beginPickup(npc,victim,h.members,h.battle))
+    h.adapter:pickupEnded(npc,false)
+    assert(not h.challenge:holdsHead(npc,h.boss) and combat.restored==1)
+    npc.target=victim;npc.executing=true
     assert(h.adapter:beginPickup(npc,victim,h.members,h.battle))
     h:tick()
     assert(#h.poles==0,'wait for the actual pole plan before choosing the first landing')
@@ -433,12 +446,13 @@ test('a staged pickup selects the newly registered pole at the native warp targe
     npc.tags['CharacterState.HasTempWeapon.HouHouHouHead']=1
     assert(h.adapter:pickupReady(npc))
     assert(#h.poles==0 and pole.Occupied)
-    h.adapter:pickupEnded(npc)
-    npc.executing=false
+    victim.hp=0;h.adapter:pickupEnded(npc,true)
+    assert(h.challenge:holdsHead(npc,h.boss) and not h.challenge:holdsHead(other,h.boss))
+    npc.target=h.boss;npc.executing=false
     h:tick();h:tick(1.4);h:tick()
     assert(combat.hops==1 and combat.landings==1 and npc.CharacterMovement.base==pole.SM_WoodPost_001)
     assert(#npc.teleports==0 and #h.resume==1)
-    assert(h.adapter:stop() and combat.restored==1 and not pole.Occupied and not pole.gone)
+    assert(h.adapter:stop() and combat.restored==2 and not pole.Occupied and not pole.gone)
 end)
 
 test('confirmed poles can be reused for a second and third landing without a ground reset',function()
@@ -540,7 +554,8 @@ test('two registered stage components can block the same sweep without canceling
         local mesh=collider(pole,1)
         function mesh:GetOwner()return pole end
         pole.SM_WoodPost_001=mesh
-        h.area.ActivatedPoles[#h.area.ActivatedPoles+1]=pole
+        if i==1 then h.area.DeactivatedPoles={pole}
+        else h.area.ActivatedPoles[#h.area.ActivatedPoles+1]=pole end
         components[i]=mesh
     end
     local blocks={0,0}
@@ -682,4 +697,20 @@ test('an existing link ignore is preserved when the pole controller releases its
     h:board()
     assert(#h.resume==1 and h.adapter:stop())
     assert(ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==1)
+end)
+
+test('a first jump obstructed by a character can retry a different landing site in the same phase',function()
+    local h=fixture()
+    local npc=enemy(h)
+    function h.boss.CapsuleComponent:GetOwner()return h.boss end
+    h.block=function(_,dest,hit)
+        if dest.Z>200 then hit.Component=h.boss.CapsuleComponent;return true end
+    end
+    h:tick();h:tick();h:tick(1.4);h:tick()
+    assert(#h.poles==1 and h.poles[1].gone)
+    h.block=nil;h:tick(6);h:tick();h:frames(1.5);h:tick()
+    assert(#h.poles==2 and npc.CharacterMovement.base==h.poles[2].SM_WoodPost_001,'recover from a transient intercept')
+    local a,b=h.poles[1].StandPoint:K2_GetComponentLocation(),h.poles[2].StandPoint:K2_GetComponentLocation()
+    assert(a.X~=b.X or a.Y~=b.Y,'retry a different angle')
+    assert(h.adapter:stop())
 end)

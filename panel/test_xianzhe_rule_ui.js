@@ -18,6 +18,12 @@ assert(c.unitRuleHTML(unit).includes('下次召唤生效')&&c.unitRuleHTML(unit)
   assert(c.unitRuleHTML(unit).includes('技能虚化无敌：关闭')&&c.unitRuleHTML(unit).includes('is-changed'));
   c.ui.busy.add('set_unit_rule');await c.toggleUnitRule(unit.id,'phantom');assert.equal(sent.length,1);c.ui.busy.clear();
   c.S.xianzhePhantomSupported=false;assert.equal(c.unitRuleHTML(unit),'','old game scripts must not advertise the new rule');
+  const mask={id:'BP_Monster_MoTian_LongZhu_01',name:'金面具黑衣人'};
+  assert.equal(c.unitRuleHTML(mask),'');
+  c.S.longzhuProtectionSupported=true;
+  assert(c.unitRuleHTML(mask).includes('龙柱试炼') && !c.unitRuleHTML(mask).includes('is-changed'));
+  await c.toggleUnitRule(mask.id,'phantom');
+  assert.equal(sent[sent.length-1].payload.value,'off');
   online=false;assert(c.unitRuleHTML(unit).includes('技能虚化无敌'));
   console.log('xianzhe_rule_ui: PASS (native default, next spawn, capability guard, busy and confirmed state)');
 })().catch(error=>{console.error(error);process.exitCode=1});

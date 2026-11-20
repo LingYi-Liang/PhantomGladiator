@@ -700,8 +700,8 @@ test("不倒下 takes its team from the team column and ON/OFF from key_start; t
     -- panel_bridge.lua writes at most 256 entries; v0.36.0 lost random ones past the old cap of 100.
     -- A real session reports about 27 more than this fixture (230 lines against 199 before the Hun keys).
     local entries=0;for _ in pairs(h.reported)do entries=entries+1 end
-    -- 226 with teleport_supported; a session with the teleport module adds three more, far below the cap of 288.
-    assert(entries<=226,'status entries: '..entries)
+    -- 227 with longzhu_protection_supported; a session with the teleport module adds three more, far below the cap of 288.
+    assert(entries<=227,'status entries: '..entries)
     local missing=harness();missing.runtime:start();missing.inbox={action='set_team_immortal',team='red',key_start='ON'};missing:tick()
     assert(not missing.result.ok and missing.reported.immortal_supported==false)
 end)

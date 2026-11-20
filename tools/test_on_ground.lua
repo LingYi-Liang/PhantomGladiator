@@ -206,7 +206,7 @@ do -- a stand between moves: straight down when it may stay and ground is in rea
     assert(done.how=='召唤者身边' and h.at[stand].X==300,h.at[stand].X)
 end
 
-do -- a ledge or a hole beside the summoner: its own spot; no ground read at all: its feet
+do -- A ledge beside the summoner: use its own confirmed floor, including movement support when the trace misses.
     local h=harness();h.floor=0
     local owner,stand=h.unit(100,{X=0,Y=0,Z=100}),h.unit(90,{X=20000,Y=0,Z=400},5)
     h.heights['300.0,0.0']=-2000
@@ -216,7 +216,10 @@ do -- a ledge or a hole beside the summoner: its own spot; no ground read at all
     h.floor=false
     h.at[stand]={X=20000,Y=0,Z=400}
     done=h.g:park(stand,owner,false)
-    assert(done.how=='召唤者脚下' and h.at[stand].X==0 and h.at[stand].Z==0+90+3,h.at[stand].Z)
+    assert(done.why and h.at[stand].X==20000,'both over a void: do not park at the falling owner')
+    owner.CharacterMovement.CurrentFloor={bWalkableFloor=true,bBlockingHit=true,HitResult={ImpactPoint={X=0,Y=0,Z=0}}}
+    done=h.g:park(stand,owner,false)
+    assert(done.how=='召唤者脚下' and h.at[stand].X==0 and h.at[stand].Z==93)
 end
 
 do -- nothing to work with: says why, moves nothing; a dead object is not asked anything
@@ -252,3 +255,35 @@ do -- teleport can invalidate the movement component before walking mode is rest
     assert(calls==0,'invalid movement component was invoked after teleport')
 end
 print('on_ground: PASS')
+
+do
+    local h=harness();h.floor=0
+    local u=h.unit(80,{X=20,Y=0,Z=83})
+    local placed=h.g:place(u,{Translation={X=20,Y=0,Z=83}},h.world)
+    h.g:settle(u,placed)
+    local victim=h.unit(90,{X=500,Y=0,Z=-6000},3)
+    h.floor=false;h.heights['20,0']=0;h.at[u]={X=100,Y=0,Z=-6050}
+    u.CharacterMovement.MovementMode=3
+    assert(h.g:free(u,victim) and h.at[u].X==20 and h.at[u].Z==83,'both falling: use a verified prior floor')
+    u.CharacterMovement.MovementMode=3;u.K2_TeleportTo=function()return false end
+    h.at[u]={X=100,Y=0,Z=-6500};assert(not h.g:free(u,victim) and u.CharacterMovement.MovementMode==3,'failed relocation cannot switch to walking')
+    h.floor=-2200;local spot={Translation={X=0,Y=0,Z=0}}
+    assert(not h.g:place(h.unit(50),spot,h.world) and spot.Translation.Z==0,'do not spawn on deep geometry')
+end
+
+do -- MovementMode may still say Walking for one sample after the capsule crosses a broken floor.
+    local h=harness();h.floor=0
+    local u=h.unit(80,{X=20,Y=0,Z=83})
+    h.g:settle(u,h.g:place(u,{Translation={X=20,Y=0,Z=83}},h.world))
+    local cmc=u.CharacterMovement
+    cmc.CurrentFloor={bWalkableFloor=true,bBlockingHit=true,HitResult={ImpactPoint={X=20,Y=0,Z=0}}}
+    h.at[u]={X=400,Y=0,Z=-6050};h.floor=false;h.heights['20,0']=0
+    assert(not h.g:free(u));cmc.MovementMode=3
+    assert(h.g:free(u) and h.at[u].X==20 and h.at[u].Z==83,'stale floor result replaced the verified recovery spot')
+    -- A real lower navigable floor becomes the new recovery spot.
+    h.at[u]={X=950,Y=0,Z=-917};cmc.MovementMode=2
+    cmc.CurrentFloor.HitResult.ImpactPoint={X=950,Y=0,Z=-1000}
+    h.g:free(u);h.heights['20,0']=false;h.heights['950,0']=-1000
+    cmc.MovementMode=3;h.at[u]={X=2500,Y=10,Z=-7000}
+    assert(h.g:free(u) and h.at[u].X==950 and h.at[u].Z==-917,'permit genuine lower floors and NavWalking')
+end

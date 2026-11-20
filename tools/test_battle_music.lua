@@ -168,3 +168,13 @@ test('partial hook readiness, wrong threads and unload cannot issue uncontrolled
     h.music:silence();h.actor.hp=0;h.music:tick();assert(h:count('clear')==0)
 end)
 print('battle_music: PASS ('..passed..' ownership, death, recovery and session checks; no game accessed)')
+
+test('native mode plays Mo Yuan only during an arena fight and restores on exit',function()
+    local h=fixture()
+    h.music:tick(h.members,{battle_active=false});assert(h:count('play')==0)
+    h.music:tick(h.members,{battle_active=true});assert(h:count('play')==1)
+    h.music:tick(h.members,{battle_active=true});assert(h:count('play')==1)
+    h.options.moYuanPhaseTwo=function()return true end
+    h.music:tick(h.members,{battle_active=true});assert(h.music.lease.track=='MOYUAN_P2' and h:count('play')==2)
+    h.music:tick({}, {battle_active=false});assert(not h.music.lease and h:count('restore')==1)
+end)

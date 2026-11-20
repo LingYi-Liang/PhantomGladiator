@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.18"
+local BUILD = "v0.40.18-beta-4"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1515,6 +1515,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return okTag and (name=='None' or name=='')
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
+    preferredTargets=function(actor,team,currentKey)return arenaSupport.lionWave:preferred(actor,team,currentKey)end,
     targetProtected=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:protected(actor)end,
     keepOpponent=function(actor,fresh)return arenaSupport.combatContinuity:keepOpponent(actor,fresh)end,
     engagedWith=function(actor,target)
@@ -1586,7 +1587,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             local called,ok,reason=pcall(function()return arenaSupport.phantom:beforeActivate(actor,unitPath,escort)end)
             if not called or not ok then
                 if not called then log('[Phantom] 虚空登场前处理失败：'..tostring(ok)) end
-                spawnWarning=reason or '虚空常驻无敌解除未确认'
+                spawnWarning=reason or '登场保护设置未确认'
             end
         end
         if not summonActorLive(actor) then return false,'登场前对象已失效' end
@@ -1716,6 +1717,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     isDestroying=actorIsDestroying,
     restore=function()
+        if arenaSupport.lionWave then arenaSupport.lionWave:sync({},false) end
         local aggroRestored=not arenaSupport.aggroGuard or arenaSupport.aggroGuard:stop()
         probeSampleGen=probeSampleGen+1
         probe:stop("停止参赛者")
@@ -1985,7 +1987,9 @@ arenaSupport.track=require('camera_track').new({log=log,world=GetCurrentWorld,pa
     end})
 arenaSupport.lionStage=require('lion_stage').new({log=log,location=GetLocation,player=GetPlayerPawn,
     world=GetCurrentWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics})
-arenaSupport.lionNPC=require('lion_npc').new({log=log,location=GetLocation,ground=GroundZ,
+arenaSupport.lionWave=require('lion_challenge').new({world=GetCurrentWorld,hp=GetHP,
+    tag=function(actor,tag)return onGround:tagCount(actor,tag)end})
+arenaSupport.lionNPC=require('lion_npc').new({challenge=arenaSupport.lionWave,log=log,location=GetLocation,ground=GroundZ,
     world=GetCurrentWorld,isDestroying=actorIsDestroying,hp=GetHP,now=GameSeconds,statics=GetGameplayStatics,
     area=function(actor,world)return arenaSupport.lionStage:areaFor(actor,world)end,
     opponent=function(actor)return arena:opponentOf(UEObserve.key(actor))end,
@@ -2306,6 +2310,14 @@ combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=
 -- 招式锁玩家（二）: while a fight runs, a skill of a blue or red unit that asks GameplayStatics for the player gets the
 -- unit's opponent instead; executions keep the player (player_aim.lua).
 fightWatch=require('fight_watch').new({log=log,members=ArenaMembers,location=GetLocation,hp=GetHP,
+    dropContext=function(actor,s)
+        local player,target=GetPlayerPawn(),arena:opponentOf(UEObserve.key(actor))
+        local body=safeValid(player) and GetLocation(player)
+        local other=safeValid(target) and GetLocation(target)
+        local ignored={actor};if safeValid(target) then ignored[2]=target end
+        local floor=GroundZ(GetCurrentWorld(),s.x,s.y,s.z,0,ignored)
+        return string.format(' 玩家Z=%s 对手Z=%s 下方地面Z=%s',tostring(body and body.Z),tostring(other and other.Z),tostring(floor))
+    end,
     camera=function()return arenaSupport:cameraAt() end,
     read=function(actor)
         local ai=GetAIComp(actor)
@@ -2404,7 +2416,14 @@ arenaSupport.weather=require('map_weather').new({world=GetCurrentWorld,findAll=F
         local lib=GetGameplayStatics()
         if safeValid(lib) and safeValid(cls) then return UEObserve.unwrap(lib:GetActorOfClass(world,cls)) end
     end})
-arenaSupport.battleMusic=require('battle_music').new({log=log,path=Config.RuntimePath,clock=os.clock,
+arenaSupport.battleMusic=require('battle_music').new({log=log,
+    moYuanPhaseTwo=function(actor)
+        local asc=UEObserve.field(actor,'AbilitySystemComponent')
+        if not UEObserve.valid(asc)then return false end
+        local ok,n=pcall(function()return asc:GetGameplayTagCount({TagName=FName('CharacterState.AbilityState.MoYuan.P2')})end)
+        return ok and type(n)=='number' and n>0
+    end,
+    path=Config.RuntimePath,clock=os.clock,
     session=function()return runtimeSession:status().game_session end,
     members=ArenaMembers,status=ArenaStatus,hp=GetHP,world=GetCurrentWorld,
     ready=function()return runtimeSession:status().game_ready==true end,
@@ -2413,6 +2432,7 @@ arenaSupport.battleMusic=require('battle_music').new({log=log,path=Config.Runtim
 arenaSupport.remoteReflect=require('remote_reflect').new({log=log,members=ArenaMembers,
     ready=function()return runtimeSession:status().game_ready==true end,
     rule=function(id)return arenaSupport.unitRules:get(id,'remote_reflect')end})
+arenaSupport.moYuanPillar=require('moyuan_pillar').new(log)
 arenaSupport.phantom=require('phantom_break').new({log=log,members=ArenaMembers,rule=function(actor)return arenaSupport.unitRules:get(actor,'phantom') end})
 -- Read only: what a monster's grab did to the unit it hit (grab_probe.lua).
 arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log=log,members=ArenaMembers,location=GetLocation,
@@ -2426,6 +2446,7 @@ function arenaSupport.hunImmune(actor,kind)
 end
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
     immune=arenaSupport.hunImmune,
+    hunProfile=function(actor)return arenaSupport.hunBody:profile(actor)end,
     hunWeapon=function(actor)return arenaSupport.hunBody:weaponConfig(actor)end,
     hunPoleHead=function(actor)
         local profile=arenaSupport.hunBody:profile(actor)
@@ -2440,8 +2461,12 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,camera=executionCamera,
     onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
     lionPickup=function(actor,victim)return arenaSupport.lionNPC:beginPickup(actor,victim,ArenaMembers(),ArenaStatus())end,
+    assignedOpponent=function(actor)return arena:aggroOpponent(actor)end,
+    lastLionOwner=function(actor)return arenaSupport.lionWave:lastOwner(actor)end,
+    inGameThread=IsInGameThread,
+    lionHeadSeen=function(actor)return arenaSupport.lionNPC:observeHead(actor)end,
     lionPickupReady=function(actor)return arenaSupport.lionNPC:pickupReady(actor)end,
-    lionPickupEnded=function(actor)arenaSupport.lionNPC:pickupEnded(actor)end,
+    lionPickupEnded=function(actor,completed)arenaSupport.lionNPC:pickupEnded(actor,completed)end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end,
     storyAllows=function(ability)return arenaSupport.storyWrites:allows(ability)end,
     isHun=function(actor)return arenaSupport.hunBody~=nil and arenaSupport.hunBody:owns(actor)end,
@@ -2489,6 +2514,7 @@ local function supportSteps(self)
     step('prune',function()
         local memberKeys={}
         for _,entry in ipairs(tickMembers)do local key=UEObserve.key(entry.actor);if key then memberKeys[key]=true end end
+        if onGround then onGround:prune(memberKeys) end
         spawnDifficulty:prune(memberKeys)
     end)
     step('aiDifficulty',function()aiDifficulty:tick()end)
@@ -2504,13 +2530,14 @@ local function supportSteps(self)
     if codexIcons then step('codexIcons',function()codexIcons:tick()end) end
     step('summonKeep',function()self.summonKeep:tick()end)
     step('phantom',function()self.phantom:tick()end)
+    step('moYuanPillar',function()self.moYuanPillar:tick(tickMembers)end)
     step('remoteReflect',function()self.remoteReflect:tick()end)
     step('xianzhePhantom',function()self.xianzhePhantom:tick()end)
     step('offCombatRegen',function()self.offCombatRegen:tick()end)
     if self.teleport and self.teleport:busy() then step('teleport',function()self.teleport:tick()end) end
     step('battleMusic',function()
         local now=os.clock()
-        if not self.musicNext or now>=self.musicNext then self.musicNext=now+0.25;self.battleMusic:tick()end
+        if not self.musicNext or now>=self.musicNext then self.musicNext=now+0.25;self.battleMusic:tick(tickMembers,tickStatus)end
     end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
     step('summonLinks',function()self:discover()end)
@@ -2532,6 +2559,7 @@ local function supportSteps(self)
     step('entourage',function()self.entourage:tick()end)
     step('bossCombos',function()bossCombos:tick()end)
     step('fightWatch',function()fightWatch:tick()end)
+    step('lionWave',function()self.lionWave:sync(tickMembers,tickStatus.battle_active)end)
     step('reinforce',function()arena:tickReinforcements()end)
     if self.guillotine then step('guillotine',function()self.guillotine:tick(tickMembers,tickStatus)end) end
     if arenaExecutions then step('executions',function()arenaExecutions:tick()end) end

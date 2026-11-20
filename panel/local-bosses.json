@@ -41,11 +41,23 @@
   },
   {
     "id": "BP_Monster_MoTian_LongZhu_01",
-    "name": "金面具黑衣人"
+    "name": "龙柱第1战 · 金面具黑衣人"
+  },
+  {
+    "id": "BP_Monster_MoTian_LongZhu_03",
+    "name": "龙柱第2战 · 魔渊"
+  },
+  {
+    "id": "BP_Monster_MoTian_LongZhu_02",
+    "name": "龙柱第3战 · 魔渊"
+  },
+  {
+    "id": "BP_Monster_MoTian_LongZhu_04",
+    "name": "龙柱第4战 · 魔渊"
   },
   {
     "id": "BP_Monster_MoTian",
-    "name": "暗魔天堡之主：魔渊"
+    "name": "龙柱第5战 · 暗魔天堡之主：魔渊"
   },
   {
     "id": "BP_Monster_HuaQianXIao",

@@ -23,7 +23,7 @@ for (const row of catalog.items) {
 const first = rows[0];
 const english = {lang:'en-US',units:{[first.id]:{name:'Name from game'}}};
 const chinese = {lang:'zh-Hans',units:{[first.id]:{name:'游戏内名称'}}};
-Object.assign(context,{PG_UNITS:rows,initialOf:s=>s.slice(0,1)});
+Object.assign(context,{PG_UNITS:rows,initialOf:s=>s.slice(0,1),t:(key,params)=>i18n.t(key,params)});
 const start=source.indexOf('  const UNITS ='), end=source.indexOf('  // ---------- State',start);
 assert(start>=0 && end>start);
 vm.runInContext(source.slice(start,end)+'\nthis.unit=UNITS[0];',context);
@@ -40,3 +40,13 @@ for (const key of i18n.keys('en')) {
 }
 assert.equal(i18n.combatMessage('音频文件为空或超过 512 MB'),'The file is empty or exceeds 512 MB.');
 console.log('PASS English catalog, offline names, game-language mismatch, live language changes and localized messages');
+const trials=rows.filter(u=>u.dragonTrial);
+const ids=['BP_Monster_MoTian_LongZhu_01','BP_Monster_MoTian_LongZhu_03','BP_Monster_MoTian_LongZhu_02','BP_Monster_MoTian_LongZhu_04','BP_Monster_MoTian'];
+assert.deepEqual(Array.from(trials,u=>u.id),ids);
+for(const lang of ['en','zh']){
+  i18n.set(lang);context.applyNames({lang,units:Object.fromEntries(ids.map(id=>[id,{name:lang==='en'?'Shared boss':'金面具黑衣人'}]))});
+  const names=vm.runInContext('UNITS.filter(u=>u.dragonTrial).map(u=>u.name)',context);
+  assert.equal(new Set(names).size,5,'online alias translations must retain the trial number');
+  assert(names.every((n,i)=>n.includes(String(i+1))));
+  assert(vm.runInContext('UNITS.filter(u=>u.dragonTrial).every(u=>u.search.includes(t("longzhu.sites").toLowerCase()))',context));
+}

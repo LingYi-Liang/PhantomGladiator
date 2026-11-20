@@ -292,6 +292,7 @@ function Aim.new(options)
             say('没改写的取玩家调用 调用方='..cls..' 函数='..LABEL[name])
         end
     end
+    local dragonReads=0
     local function callback(name)
         return function(_,context,index)
             if not self.alive then return nil end
@@ -335,6 +336,24 @@ function Aim.new(options)
             local ok,target=pcall(opponentOf,unit)
             if not ok or not U.valid(target) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             if warning and not U.npcPath(target) then return nil end
+            if cls=='BP_ZuoShang_P2_DragonPillarBullet_C' and name=='pawn' and dragonReads<20 and className(target)=='BP_Monster_MoTian_C' then
+                dragonReads=dragonReads+1
+                local mesh=U.field(target,'Mesh')
+                local animOk,anim=false,nil
+                if U.valid(mesh) then animOk,anim=pcall(function()return mesh:GetAnimInstance()end) end
+                local playing,montage=false,nil
+                if animOk and U.valid(anim) then playing,montage=pcall(function()return anim:GetCurrentActiveMontage()end) end
+                local asc=U.field(target,'AbilitySystemComponent')
+                local function count(tag)
+                    if not U.valid(asc) then return '?' end
+                    local ok,n=pcall(function()return asc:GetGameplayTagCount({TagName=FName(tag)})end)
+                    return ok and tonumber(U.unwrap(n)) or '?'
+                end
+                local identified,motion=false,nil
+                if playing and U.valid(montage) then identified,motion=pcall(function()return montage:GetFullName()end) end
+                say('龙柱起飞 魔渊实例='..tostring(U.key(target))..' 当前动作='..tostring(identified and motion or '无读回')
+                    ..' 动作中='..count('Ability.Action')..' 破防='..count('CharacterState.Stand.Break'))
+            end
             if cls==probe and not AIMS[cls] then return target end
             self.redirected=self.redirected+1
             self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1

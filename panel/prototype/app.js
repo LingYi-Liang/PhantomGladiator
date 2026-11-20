@@ -93,7 +93,7 @@
     const label = (value, fallback) => value && !(english && /[\u3400-\u9fff]/u.test(value)) ? value : fallback;
     for (const u of UNITS) {
       const n = sameLanguage ? data.units?.[u.id] : null;
-      u.name = label(n?.name, english ? u.enName : u.zhName);
+      u.name = label(u.dragonTrial ? null : n?.name, english ? u.enName : u.zhName);
       u.map = label(n?.map, english ? u.enMap : u.zhMap);
       u.chName = label(n?.chapter, english ? u.enChapter || "" : u.zhChName);
       u.source = english ? u.enSource || u.zhSource : u.zhSource;
@@ -103,7 +103,8 @@
     for (const u of UNITS) {
       const place = u.map || u.chName;
       if (uses.get(u.name) > 1 && place) u.name = /[　-鿿＀-￯]/.test(u.name) ? `${u.name}（${place}）` : `${u.name} (${place})`;
-      u.search = (u.name === u.zhName ? u.name : `${u.name} ${u.zhName}`).toLowerCase();
+      const searchName = u.name === u.zhName ? u.name : `${u.name} ${u.zhName}`;
+      u.search = (u.dragonTrial ? `${searchName} ${t("longzhu.sites")}` : searchName).toLowerCase();
     }
     CHAPTERS = buildChapters();
   }
@@ -183,7 +184,7 @@
   const teamName = team => t("team." + team);
   const speciesName = sp => t("species." + sp);
   const chapterName = ch => (ch === 0 ? t("chapter.prologue") : t("chapter.n", { n: ch }));
-  const unitMeta = u => [speciesName(u.species), (u.sourceKey ? t(u.sourceKey) : u.source) || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
+  const unitMeta = u => u.dragonTrial ? t("longzhu.level", { n: u.trialLevel }) : [speciesName(u.species), (u.sourceKey ? t(u.sourceKey) : u.source) || (u.ch === 0 ? chapterName(0) : u.map)].join(" · ");
   const langName = id => id === "zh" && I18N.lang === "en" ? "Simplified Chinese" : I18N.LANGS.find(l => l.id === id)?.name || id;
 
   // ---------- Keys ----------
@@ -512,7 +513,7 @@
     BP_Monster_MoTian: "lock", BP_Monster_PengMeng_Axe: "lock", BP_Monster_GreatBladeMan: "lock", BP_Monster_LeiDang: "lock",
     BP_Monster_ChiLian_P2: "lock", BP_Monster_GuiChai_Red_P2: "lock", BP_Monster_Vessel_Child: "lock",
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
-    BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom", BP_Monster_MengHua: "menghua_stage",
+    BP_Monster_MoTian_LongZhu_01: "phantom", BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom", BP_Monster_MengHua: "menghua_stage",
   };
   const ENTOURAGE_UNITS = new Set(["BP_Monster_HuaShan_Blue", "BP_Monster_HuaShan_RedTroop_BigBro", "BP_Monster_JadeMaskMan", "BP_Monster_FemaleVessel_YuZan", "BP_Monster_CanQu_BiHai", "BP_Monster_Danghui", "BP_Monster_XiaoXue"]);
   const UNIT_RULE_VALUES = { entourage: ["off","on"], lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"], menghua_stage: ["keep", "skip"] };
@@ -528,7 +529,7 @@
   }
   const xukongDodgeRule = (id, rule) => id === "BP_Monster_XuKong" && rule === "phantom";
   const xianzhePhantomRule = (id, rule) => id === "BP_Monster_XianZhe" && rule === "phantom";
-  const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) ? "keep" : UNIT_RULE_VALUES[rule][0];
+  const unitRuleDefault = (id, rule) => xukongDodgeRule(id, rule) || xianzhePhantomRule(id, rule) || (id === "BP_Monster_MoTian_LongZhu_01" && rule === "phantom") ? "keep" : UNIT_RULE_VALUES[rule][0];
   const unitRuleValue = (id, rule) => S.unitRules?.[id]?.[rule] || unitRuleDefault(id, rule);
   const unitRuleLabel = (id, rule, value) => rule === "execution_minions" ? (value.startsWith("off_") ? t("minionRule.noExecute") : `${t("minionRule.autoExecute")} ${Number(value.split("_")[1])}%`)
     : xianzhePhantomRule(id, rule) ? t("xianzhePhantom." + (value === "off" ? "off" : "keep"))
@@ -539,6 +540,7 @@
   function unitRuleHTML(u) {
     const rule = UNIT_RULE_OF[u.id];
     if (RT.online() && !S.unitRulesSupported) return "";
+    if (u.id === "BP_Monster_MoTian_LongZhu_01" && RT.online() && !S.longzhuProtectionSupported) return "";
     if (xianzhePhantomRule(u.id, rule) && RT.online() && !S.xianzhePhantomSupported) return "";
     if (rule === "menghua_stage" && RT.online() && !S.menghuaStageSupported) return "";
     let html = "";
@@ -548,6 +550,7 @@
         ? t("menghuaStage.tip")
         : xianzhePhantomRule(u.id, rule)
         ? t("xianzhePhantom.tip")
+        : u.id === "BP_Monster_MoTian_LongZhu_01" ? t("longzhuProtection.tip")
         : xukongDodgeRule(u.id, rule)
         ? t("unit.permanent.help")
         : t(`unitRule.${rule}.tip`);
@@ -810,7 +813,7 @@
       <div class="sel-head">
         <span class="avatar sp-${u.species}${u.boss ? " is-boss" : ""}${artClass(u)}">${avatarArt(u)}<span class="avatar-initial" aria-hidden="true">${esc(u.initial)}</span></span>
         <div style="min-width:0"><div class="sel-name">${esc(u.name)}</div>
-          <div class="sel-meta"><span>${esc(speciesName(u.species))}</span><span>·</span><span>${esc(u.ch === 0 ? chapterName(0) : `${chapterName(u.ch)} ${u.map}`)}</span>${u.variant ? `<span class="chip">${esc(t("badge.variant", { i: u.variant, n: u.variants }))}</span>` : ""}</div>
+          <div class="sel-meta"><span>${esc(speciesName(u.species))}</span><span>·</span><span>${esc(u.dragonTrial ? unitMeta(u) : u.ch === 0 ? chapterName(0) : `${chapterName(u.ch)} ${u.map}`)}</span>${u.variant ? `<span class="chip">${esc(t("badge.variant", { i: u.variant, n: u.variants }))}</span>` : ""}</div>
         </div>
       </div>
       ${statusNote(u)}
@@ -1229,17 +1232,36 @@
   }
   // AI 行为参数 (set_ai_params, ai_params.lua): blank keeps what the game gave each unit.
   const AI_GROUPS = ["attack", "range", "movement", "defense"];
-  // Chances are compared with a random 0 to 1 (Condition_Probability), so 1 already means always; what the game writes as 999 or 10 is the same.
-  // Weights and distances take the highest the game's own configs use; what works against the aim goes to 0.
+  // Native attack decisions and incoming-attack reactions are separate. Within a reaction, weights compete.
   const AI_PRESET = {
-    attack: { "近距离进攻概率": 1, "中距离进攻概率": 1, "远距离进攻概率": 1, "目标在受击状态进攻概率": 1, "重新规划-进攻欲望": 1, "重新规划-打差合概率": 1, "事件反应-打差合概率": 1, "事件反应-反蓄力动作概率": 1, "咋呼概率": 0, "重新规划-全部攻击距离不满足时保底起攻": 1 },
-    range: { "进攻-起攻最大距离": 9999, "进攻-摸奖最小距离": 0, "进攻-摸奖最大距离": 1400, "进攻-牵制最小距离": 500, "重新规划-差合最小距离": 0, "重新规划-差合最大距离": 1400, "尝试远程攻击的距离": 2000 },
-    // Close range keeps circling as its one choice, so the weighted pick is never empty.
-    movement: { "立回-退出立回距离": 1000, "立回-近距离二人转权重": 100, "立回-近距离远离权重": 0, "立回-近距离闪避权重": 0, "立回-中距离靠近权重": 100, "立回-中距离远离权重": 0, "立回-中距离闪避权重": 0, "立回-远距离靠近权重": 200,
-      "立回-近距离二人转最小持续时间": 0.5, "立回-近距离二人转最大持续时间": 1, "立回-中距离二人转最小持续时间": 0.5, "立回-中距离二人转最大持续时间": 1, "立回-远距离二人转最小持续时间": 0.2, "立回-远距离二人转最大持续时间": 0.8 },
-    defense: { "玩家开始近战攻击-格挡权重": 1000, "玩家开始近战攻击-闪避权重": 200, "玩家开始近战攻击-无行为权重": 0, "玩家开始近战攻击-针对动作权重": 400, "玩家开始近战攻击-格挡距离": 1500, "玩家开始近战攻击-闪避距离": 1200,
-      "远程攻击发射-格挡权重": 100, "远程攻击发射-闪避权重": 500, "远程攻击发射-无行为权重": 0, "远程攻击发射-针对动作权重": 100, "玩家靠近-抢招权重": 300, "玩家靠近-闪避后撤权重": 50, "玩家靠近-无行为权重": 0,
-      "受击-转格挡概率": 1, "受击-允许转格挡计数": 1, "受击-正面脱离计数": 1, "受击-背面脱离计数": 1, "重新规划-不进攻时闪避概率": 1, "重新规划-不进攻时闪避最大距离": 300, "玩家开始远程攻击-反制概率": 1, "减帧时允许格挡": 1 },
+    attack: {
+      "近距离进攻概率": 1, "中距离进攻概率": 1, "远距离进攻概率": 1, "目标在受击状态进攻概率": 1, "咋呼概率": 0,
+      "重新规划-进攻欲望": 1, "重新规划-起攻权重": 120, "重新规划-摸奖权重": 150, "重新规划-牵制权重": 100,
+      "重新规划-打差合概率": 1, "事件反应-打差合概率": 1, "事件反应-反蓄力动作概率": 1,
+      "autocombo权重": 200, "非autocombo权重": 300, "重新规划-全部攻击距离不满足时保底起攻": 1,
+    },
+    range: {
+      "进攻-起攻最大距离": 9999, "进攻-摸奖最小距离": 0, "进攻-摸奖最大距离": 1400, "进攻-牵制最小距离": 500,
+      "重新规划-差合最小距离": 0, "重新规划-差合最大距离": 1400, "尝试远程攻击的距离": 2000, "格挡后-反击距离": 800,
+    },
+    movement: {
+      // Native median distance bands leave room for close footwork before returning to attack.
+      "立回-退出立回距离": 400, "立回-近距离分界线": 700, "立回-远距离分界线": 1200, "立回-超远距离分界线": 2500,
+      "立回-近距离二人转权重": 100, "立回-近距离远离权重": 0, "立回-近距离闪避权重": 500,
+      "立回-中距离二人转权重": 0, "立回-中距离靠近权重": 100, "立回-中距离远离权重": 0, "立回-中距离闪避权重": 300,
+      "立回-远距离二人转权重": 0, "立回-远距离靠近权重": 200,
+      "立回-近距离二人转最小持续时间": 0.5, "立回-近距离二人转最大持续时间": 1,
+      "立回-中距离二人转最小持续时间": 0.5, "立回-中距离二人转最大持续时间": 1,
+      "立回-远距离二人转最小持续时间": 0.2, "立回-远距离二人转最大持续时间": 0.8,
+    },
+    defense: {
+      "玩家开始近战攻击-格挡权重": 100, "玩家开始近战攻击-闪避权重": 200, "玩家开始近战攻击-无行为权重": 0, "玩家开始近战攻击-针对动作权重": 100,
+      "玩家开始近战攻击-格挡距离": 1500, "玩家开始近战攻击-闪避距离": 1200, "闪避敌人近战攻击的距离": 1200,
+      "远程攻击发射-格挡权重": 100, "远程攻击发射-闪避权重": 500, "远程攻击发射-无行为权重": 0, "远程攻击发射-针对动作权重": 100, "无视子弹开始事件": 0,
+      "玩家靠近-抢招权重": 50, "玩家靠近-闪避后撤权重": 50, "玩家靠近-无行为权重": 0,
+      "受击-转格挡概率": 1, "受击-允许转格挡计数": 1, "受击-正面脱离计数": 1, "受击-背面脱离计数": 1,
+      "重新规划-不进攻时闪避概率": 1, "重新规划-不进攻时闪避最大距离": 300, "玩家开始远程攻击-反制概率": 1, "减帧时允许格挡": 1,
+    },
   };
   const aiLabel = p => p.label[I18N.lang] || p.label.en || p.label.zh;
   const aiTip = p => p.tip[I18N.lang] || p.tip.en || p.tip.zh;
@@ -1263,6 +1285,7 @@
     }).join("");
     openDialog("ai", `<div class="dialog-head"><span class="row-icon">${icon("sliders")}</span><h2 id="dlg-title">${esc(t("ai.dialog.title"))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
       <div class="dialog-body"><p class="stat-dialog-desc">${esc(t("ai.dialog.desc"))}</p>
+        <p class="field-hint">${esc(t("ai.maxPresetHint"))}</p>
         <div class="stat-actions ai-presets"><button class="btn btn-secondary btn-sm" type="button" data-action="ai-preset" title="${esc(t("ai.preset.tip"))}">${esc(t("ai.preset"))}</button>${AI_GROUPS.map(g => `<button class="btn btn-ghost btn-sm" type="button" data-action="ai-preset" data-group="${g}" title="${esc(t("ai.preset." + g + ".tip"))}">${esc(t("ai.preset." + g))}</button>`).join("")}</div>
         <input class="stat-filter" type="search" placeholder="${esc(t("stats.filter"))}" aria-label="${esc(t("stats.filter"))}">
         ${groups}<p class="stat-filter-none" hidden>${esc(t("stats.filter.none"))}</p></div>
@@ -1292,6 +1315,7 @@
     const count = Object.keys(ui.aiValues || {}).length, busy = ui.busy.has("set_ai_params");
     el.innerHTML = `<div class="dock-head"><h3 id="ai-title">${esc(t("ai.title"))}</h3></div>
       <p class="muted" style="font-size:12.5px;margin:0 0 8px">${esc(count ? t("ai.count", { n: count }) : t("ai.count.none"))}</p>
+      <p class="field-hint">${esc(t("ai.maxPresetHint"))}</p>
       <button class="btn btn-secondary btn-sm" type="button" data-action="ai-open" ${RT.online() && !busy ? "" : "disabled"}>${icon("sliders", "icon-sm")}${esc(t("ai.edit"))}</button>
       <div class="control-row${S.combo?.on ? " is-on" : ""}" style="margin-top:10px">
         <span class="control-icon">${icon("swap")}</span>

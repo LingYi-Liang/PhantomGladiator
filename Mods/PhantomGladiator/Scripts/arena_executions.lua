@@ -55,6 +55,7 @@ local MOBS='/PBZCombatAsset/ActorData/Mobs/'
 local GE_LOCK='/PBZCombatAsset/Prototypes/GameplayEffects/GE_LockHealth.GE_LockHealth_C'
 -- Bosses whose pair is started from their own skill, not listed in their config. start: the StartTime the skill
 -- passes; locks: the lock effects it removes, with unlock='start' when it removes them as the execution starts.
+local LAST_LION_CLASS=require('lion_challenge').CUB
 local PAIRS={
     BP_Monster_GuiChai_Red_P2={
         execution=MOBS..'075_GuiChai_Red_P2/Ability/GA_GuiChai_Red_P2_BEx_01.GA_GuiChai_Red_P2_BEx_01_C',
@@ -140,7 +141,7 @@ local function fmt(v)return type(v)=='number' and string.format('%.1f',v) or tos
 -- A TWeakObjectPtr property may come back as the object or as a wrapper with Get().
 local function weak(value)
     value=U.unwrap(value)
-    if U.valid(value) then return value end
+    if U.key(value) then return value end
     local ok,object=pcall(function()return value:Get()end)
     return ok and U.valid(object) and object or nil
 end
@@ -348,12 +349,29 @@ function Exec.new(options)
         end
         return yes
     end
+    -- The profile's outgoing thresholds cap mod-initiated finishers, including weapon-pair fallbacks.
+    local function healthWindow(target)
+        local hp,max=read(target,'Health'),read(target,'Health_Max')
+        local ok,count=call(U.field(target,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=name('CharacterState.Stand.Break')})
+        count=ok and U.unwrap(count)
+        if type(hp)~='number' or not (hp>0 and hp<math.huge) or type(max)~='number'
+            or not (max>0 and max<math.huge) or type(count)~='number' or not (count>=0) then return false end
+        return hp/max,count>0
+    end
+    local function hunWithinLimit(actor,ratio,broken)
+        local profile=options.hunProfile and options.hunProfile(actor)
+        local field=broken and 'ExecutionExecutorBreakHealthThreshold' or 'ExecutionExecutorNormalHealthThreshold'
+        local limit=profile and profile.attributes and profile.attributes[field]
+        if limit==nil then limit=broken and 0.20 or 0.10 end
+        return ratio and type(limit)=='number' and limit>0 and limit<math.huge and ratio<=math.min(1,limit),limit
+    end
     -- The nearest living enemy within reach; a locked boss takes anyone, any other target a humanoid only.
     -- team: the target's arena team, or nil for a companion's foe, which only companions go for.
     -- A helper the other side's boss brought out (member.aid, arena_controller.lua) does not finish anyone.
     -- only: when given, a member it returns false for is not considered (the Hun weapon pairs take Hun bodies only).
     local function opponent(target,team,reach,anyone,executionType,isMob,only)
         local best,bestDistance,denied
+        local ratio,broken
         for _,member in ipairs(options.members() or {}) do
             local other=member.actor
             local against
@@ -366,7 +384,23 @@ function Exec.new(options)
                 local d=hp and hp>0 and distance(target,other)
                 if d and d<=reach and (not bestDistance or d<bestDistance) and (anyone or isHumanoid(other))
                     and (anyone or ruleAllows(other,Rules[executionType],'executor')) then
-                    if policy:allow(other,target,isMob)then best,bestDistance=other,d else denied=true end
+                    local eligible=true
+                    if isHun and isHun(other) then
+                        if ratio==nil then ratio,broken=healthWindow(target) end
+                        local limit
+                        eligible,limit=hunWithinLimit(other,ratio,broken)
+                        if not eligible then
+                            local record=units[U.key(target)]
+                            if record and not record.hunLimitLogged then
+                                record.hunLimitLogged=true
+                                say('魂暂缓自动处决 执行方='..className(other)..' 目标='..className(target)..' 剩余血量比例='..tostring(ratio)
+                                    ..' 破防='..tostring(broken)..' 配置上限='..tostring(limit))
+                            end
+                        end
+                    end
+                    if eligible then
+                        if policy:allow(other,target,isMob)then best,bestDistance=other,d else denied=true end
+                    end
                 end
             end
         end
@@ -1239,7 +1273,7 @@ local function closeOneGrab(pose,why,restore)
             if options.hunPoleHead then enabled=options.hunPoleHead(executor) end
             if enabled==false then return false end
             lionPickup=options.lionPickup and options.lionPickup(executor,boss)
-            if enabled==true and not lionPickup then return false end
+            if (enabled==true or info.requireLionPickup) and not lionPickup then return false end
         end
         local unit=units[U.key(boss)]
         local previousState=unit and unit.state
@@ -1293,7 +1327,7 @@ local function closeOneGrab(pose,why,restore)
         say(string.format('调用 PlayExactExecution=%s %s；%s；执行方组件：%s；目标组件：%s；目标动作=%s 执行方动作=%s',tostring(ok),ok and '' or tostring(err),
             held,executionInfo(executor),executionInfo(boss),tostring(montageOf(boss)),tostring(montageOf(executor))))
         if not ok then
-            if lionPickup then options.lionPickupEnded(executor) end
+            if lionPickup then options.lionPickupEnded(executor,false) end
             self.failures=self.failures+1
             chain:stop('PlayExactExecution failed')
             poseProbe:stop('PlayExactExecution failed')
@@ -1302,7 +1336,12 @@ local function closeOneGrab(pose,why,restore)
             say('没能开始：'..returnBody(body)..'；'..resumed);self.message='调用失败';return false
         end
         -- The executor's clip plays to its end, past the target's fall: the game's execution does too.
-        local length=(info.timing.executor or 120)+TAIL
+        local offset=info.counterTime or 0
+        local length=math.max(0,(info.timing.executor or 120)-offset)+TAIL
+        if offset>0 and body then
+            local position=(info.timing.clip_from or 0)+math.max(0,offset-(info.timing.start or 0))*(info.timing.rate or 1)
+            call(body.comp,'SetPosition',position,false)
+        end
         local after=montageOf(boss)
         if info.pair.unlock=='start' then
             local _,removed,floor=unlock(boss,info)
@@ -1316,6 +1355,10 @@ local function closeOneGrab(pose,why,restore)
             own=abilityOn(executor,short(info.pair.execution)),theirs=abilityOn(boss,short(info.pair.executed)),
             montage=after~=before and after or nil,gone=nil,samples=0,paused=paused,byLock=reason=='卡在锁血线',
             direct=direct~=nil,executorBefore=executorBefore}
+        if adopted and after and not active.montage then
+            local readMontage,native=call(active.theirs,'GetCurrentMontage')
+            if readMontage and U.valid(U.unwrap(native)) and short(U.unwrap(native))==after then active.montage=after end
+        end
         self.message='处决中：'..className(executor)..' → '..className(boss)
         local run=active
         if run.direct then
@@ -1408,7 +1451,6 @@ local function closeOneGrab(pose,why,restore)
             run.targetPaused=nil
             back=back..'；目标'..(U.valid(run.boss) and select(2,holdAI(run.boss,false)) or '已失效，不恢复 AI')
         end
-        if run.lionPickup then options.lionPickupEnded(run.executor) end
         local boss=run.boss
         local hp=U.valid(boss) and read(boss,'Health') or nil
         if run.unitAtStart and run.unitAtStart.state=='playing' then
@@ -1446,6 +1488,11 @@ local function closeOneGrab(pose,why,restore)
         elseif hp and hp>0 then
             kill='角色类型未确认，保留原生结果 HP='..fmt(hp)
         end
+        if run.lionPickup then
+            local remaining=U.valid(boss) and read(boss,'Health')
+            local completed=not keep and not handoff and run.montage~=nil and (run.fell~=nil or type(remaining)=='number' and remaining<=0)
+            options.lionPickupEnded(run.executor,completed)
+        end
         self.finished=self.finished+1
         say(string.format('结束（%s）用时=%.1fs；%s；%s',why,now()-run.t0,back,kill))
         self.message='上次处决：'..className(run.executor)..' → '..className(boss)..'（'..why..'）'
@@ -1471,7 +1518,7 @@ local function closeOneGrab(pose,why,restore)
                 run.body=b
                 local placed='未借到'
                 if b then
-                    local at=(run.info.timing.clip_from or 0)+t*(run.info.timing.rate or 1)
+                    local at=(run.info.timing.clip_from or 0)+(t+(run.info.counterTime or 0))*(run.info.timing.rate or 1)
                     local set=call(b.comp,'SetPosition',at,false)
                     local got,actual=call(b.comp,'GetPosition');actual=got and U.unwrap(actual)
                     placed=string.format('片段位置 要求=%.2f 读回=%s 调用=%s',at,fmt(actual),tostring(set))
@@ -1492,6 +1539,7 @@ local function closeOneGrab(pose,why,restore)
                 tostring(montageOf(run.executor)),tostring(playing and U.unwrap(playing)),d and string.format('%.1fm',d/100) or '?'))
         end
         if hp and hp<=0 and not run.fell then run.fell=t;say(string.format('目标在 %.1fs 倒下，执行方的动作继续播完',t)) end
+        if run.lionPickup and not run.headSeen and options.lionHeadSeen then run.headSeen=options.lionHeadSeen(run.executor) end
         if run.lionPickup and run.fell and t>=2.8 and t<4.2 then
             local _,anim=call(U.field(run.executor,'Mesh'),'GetAnimInstance')
             local _,current=call(anim,'GetCurrentActiveMontage')
@@ -1539,11 +1587,70 @@ local function closeOneGrab(pose,why,restore)
         end
         local info=inspect(event.target)
         info.timing=timing
-        info.pair={execution=event.execution,executed=event.executed,start=event.start,source='原生PlayExactExecution读回'}
+        info.pair={execution=event.execution,executed=event.executed,start=event.start,source=event.source or '原生PlayExactExecution读回'}
         start(event.executor,event.target,info,distance(event.executor,event.target),'原生反制/连携',
             {continuing=continuing,paused=paused})
     end
-    local opportunities=Opportunities.new({log=log,staticFind=find,loadAsset=load,members=options.members,getPlayer=options.getPlayer,
+    local function counterEligible(actor,boss,kind)
+        if not self.enabled or next(pendingBodies) or next(pendingGrabControls) or phaseBusy(actor) or phaseBusy(boss) then return false end
+        local ak,bk=U.key(actor),U.key(boss)
+        if grabPoses[ak] or grabPoses[bk] then return false end
+        if active then
+            local ex,ed=U.key(active.executor),U.key(active.boss)
+            if ex==ak or ed==ak or ex==bk or ed==bk then return false end
+        end
+        local a,b
+        for _,member in ipairs(options.members() or {})do
+            if not member.stand and not member.reserve and not member.aid then
+                local key=U.key(member.actor)
+                if key==ak then a=member.team elseif key==bk then b=member.team end
+            end
+        end
+        if a=='companion' or b=='companion' then
+            local companion=a=='companion' and actor or boss
+            if kind~='blade' or not (options.companions and options.companions() or isHun and isHun(companion)) then return false end
+        elseif not options.fighting or not options.fighting() then return false
+        elseif (a~='blue' and a~='red') or b~=(a=='blue' and 'red' or 'blue') then return false end
+        if b and options.isImmortal and options.isImmortal(b) or options.immune and options.immune(boss,'execution') then return false end
+        if isHun and isHun(actor) then
+            if kind=='jade' and options.hunProfile then
+                local profile=options.hunProfile(actor)
+                local chance=profile and profile.ai and profile.ai.counter_chance
+                if chance and chance<1 then return false end -- Hun's own defense controller owns this choice.
+            end
+            if not hunWithinLimit(actor,healthWindow(boss)) then return false end
+        end
+        return true
+    end
+    local counters=require('arena_counter_windows').new({world=options.getWorld,player=options.getPlayer,now=now,
+        fname=name,hp=function(actor)return read(actor,'Health')end,location=options.getLocation,
+        assigned=options.assignedOpponent or function()return nil end,eligible=counterEligible,log=log,
+        loop=options.loop,cancel=options.cancel,
+        bladeCounter=function(actor,boss,time)
+            local known=PAIRS.BP_Monster_GreatBladeMan
+            local ex,ed=object(known.execution),object(known.executed)
+            local timing=ex and animationData(short(ex))
+            if not timing or not ed or not counterEligible(actor,boss,'blade') then return false end
+            if active then
+                -- The other pair owns the borrowed mesh and camera. This NPC still has its own gameplay component.
+                callingNative=true
+                local ok=call(U.field(actor,'Execution Component'),'PlayExactExecution',{ExecutionAbility=ex,ExecutedAbility=ed},boss,time)
+                callingNative=false
+                if not ok then return false end
+            else
+                local info=inspect(boss)
+                info.pair={execution=ex,executed=ed,start=time,type='Execution.Type.Combat',source='毕峰终结反制'}
+                info.timing=timing;info.counterTime=time
+                if start(actor,boss,info,distance(actor,boss),'毕峰原生终结窗口')==false then return false end
+            end
+            local actual=U.field(U.field(actor,'Execution Component'),'CurrentExecutionInfo')
+            return U.key(weak(U.struct(actual,'Executor')))==U.key(actor) and U.key(weak(U.struct(actual,'Target')))==U.key(boss)
+        end})
+    local opportunities=Opportunities.new({log=log,counterWindows=counters,inGameThread=options.inGameThread,
+        grabReadback=function(actor,target)
+            return string.format('执行方HP=%s/%s 锁血底线=%s 对手HP=%s',fmt(read(actor,'Health')),
+                fmt(read(actor,'Health_Max')),fmt(read(actor,'Health_Min')),fmt(read(target,'Health')))
+        end,staticFind=find,loadAsset=load,members=options.members,getPlayer=options.getPlayer,
         registerHook=options.registerHook,unregisterHook=options.unregisterHook,defer=options.defer,cancel=options.cancel,
         fighting=options.fighting or function()return true end,internal=function()return callingNative end,
         available=function(executor)return self.enabled and next(pendingBodies)==nil
@@ -1551,7 +1658,7 @@ local function closeOneGrab(pose,why,restore)
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     -- only: as opponent()'s, the executors this attempt may take (a companion Hun's own attempts take Hun bodies only).
-    local function tryExecute(target,unit,t,team,only)
+    local function tryExecute(target,unit,t,team,only,lastLion)
         if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) then return false end
         if options.onPole and options.onPole(target) then return false end
@@ -1573,10 +1680,19 @@ local function closeOneGrab(pose,why,restore)
             return false
         end
         local executor,d,denied
+        if lastLion then
+            if selected.state~='ready' or short(selected.pair.execution)~='GA_Hun_BEx_HouHouHou_01_C' then return false end
+            selected.requireLionPickup=true
+            local previous=only
+            only=function(actor)
+                return (not previous or previous(actor)) and U.key(options.assignedOpponent(actor))==U.key(target)
+                    and (not options.hunPoleHead or options.hunPoleHead(actor)~=false)
+            end
+        end
         if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob,only)end
         if executor then return start(executor,target,selected,d,reason)~=false end
         -- A denied finisher cannot leave a minion immortal at its final death floor.
-        if denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
+        if not lastLion and denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
             local floor,max=read(target,'Health_Min'),read(target,'Health_Max')
             if floor and max and floor<=DEATH_LOCK*max+1 and hp<=floor+1 then
                 unit.policyRetry=t+1
@@ -1588,7 +1704,7 @@ local function closeOneGrab(pose,why,restore)
             end
         end
         if selected.state~='ready' and not unit.conditionWait then unit.conditionWait=true;say('有处决数据，当前原生标签/骑乘条件未满足：'..className(target)) end
-        if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有对手，等对手靠近：'..className(target)) end
+        if locked and selected.state=='ready' and not unit.waited then unit.waited=true;say('卡在锁血线，附近 20 米内没有符合处决条件的对手：'..className(target)) end
         return false
     end
     -- 1-4: a target with no pair of its own, and a Hun body the nearest enemy that could execute it. The Hun weapon's
@@ -1816,7 +1932,7 @@ local function closeOneGrab(pose,why,restore)
             return
         end
         chain:auditExisting()
-        opportunities:tick()
+        opportunities:tick(members,(foeSwitch or foeHun) and #foes>0 and foes or nil)
         for key,body in pairs(pendingBodies) do if not U.valid(body.comp) then pendingBodies[key]=nil end end
         if next(pendingBodies) then self.message='面部附着恢复待重试，请停止/清场';return end
         if active then watch();return end
@@ -1837,6 +1953,19 @@ local function closeOneGrab(pose,why,restore)
             considerFoes(foes,t,foeSwitch,foeHun,foeMinions);return
         end
         -- Whether a Hun body is in the fight; only then are targets with no pair looked at for its weapon pairs.
+        local lastCubs,ordered
+        if options.lastLionOwner then
+            for _,m in ipairs(members)do
+                if m.summoner and m.class_path==LAST_LION_CLASS and options.lastLionOwner(m.actor) then
+                    lastCubs=lastCubs or {};ordered=ordered or {}
+                    lastCubs[m]=true;ordered[#ordered+1]=m
+                end
+            end
+            if ordered then
+                for _,m in ipairs(members)do if not lastCubs[m] then ordered[#ordered+1]=m end end
+                members=ordered
+            end
+        end
         local hunHere=false
         if isHun and hunSteps.weaponPairs~=false then
             for _,member in ipairs(members)do
@@ -1885,8 +2014,8 @@ local function closeOneGrab(pose,why,restore)
                         unit.stuck=nil
                     end
                 end
-                if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team) then return end
-                if hunHere and unit.state=='nopair' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
+                if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal and tryExecute(target,unit,t,member.team,nil,lastCubs and lastCubs[member]) then return end
+                if hunHere and not (lastCubs and lastCubs[member]) and unit.state=='nopair' and not unit.finalDeath and not (unit.again and t<unit.again) and not immortal
                     and not member.stand and tryHunPair(target,unit,t,member.team,isHun) then return end
             end
         end

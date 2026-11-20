@@ -19,9 +19,11 @@ for name,entry in pairs(data)do
     else check(entry) end
 end
 for name in pairs(contract.executors)do assert(data[name],'missing configured execution: '..name)end
-assert(count==35 and variants==6,'35 base/counter/continuation classes, with four rider and two doll branches')
+assert(count==36 and variants==6,'36 base/counter/continuation classes, with four rider and two doll branches')
 assert(data.GA_Hun_BDEx_Common_LionDancer_01_C and data.GA_Hun_BEx_ZuoSHang_P2_Skill_20_C)
 assert(data.GA_Hun_BEx_Common_EMei_EMeiCi_01_B_C.clip_from==5.36)
+local jade=data.GA_Hun_BDEx_Common_YuDing_M_01_C
+assert(jade and jade.executed.GA_Hun_BDEd_Common_YuDing_M_01_C and jade.clip_to==jade.executor)
 if arg[1] then
     local old=assert(loadfile(arg[1]))()
     local function equalOld(a,b,path)

@@ -60,7 +60,7 @@ function Mounts.new(options)
     local log=options.log or function()end
     local now=options.now or os.clock
     local self={records={},prepared=0,mounted=0,released=0,failures=0}
-    local fightLines=0
+    local fightLines,aimLines=0,0
     local function say(text)log('[Mount] '..text)end
     local function className(actor)
         return U.className(actor) or '?'
@@ -296,6 +296,20 @@ function Mounts.new(options)
         if combat~=false then
             if combat==true and options.nativeTarget then
                 local current=options.nativeTarget(mount)
+                if aimLines<36 and (record.aimSamples or 0)<6 and now()>=(record.aimSampleAt or 0) then
+                    local from,to=where(rider),where(target)
+                    local ok,forward=pcall(function()return rider:GetActorForwardVector()end)
+                    if from and to and ok and forward then
+                        local dx,dy=to.X-from.X,to.Y-from.Y
+                        local length=math.sqrt(dx*dx+dy*dy)
+                        local facing=length>0 and (dx*forward.X+dy*forward.Y)/length or 1
+                        aimLines=aimLines+1
+                        record.aimSampleAt=now()+3;record.aimSamples=(record.aimSamples or 0)+1
+                        say(string.format('骑兵索敌采样 骑手=%s 分配=%s 马的目标=%s 水平距离=%.1fm 朝向差=%.0f度 高差=%.1fm',
+                            record.name,U.key(target) or '?',U.key(current) or '?',length/100,
+                            math.deg(math.acos(math.max(-1,math.min(1,facing)))),(to.Z-from.Z)/100))
+                    end
+                end
                 if U.valid(current) and U.key(current)~=record.targetKey then return self:fight(rider,target) end
             end
             return false

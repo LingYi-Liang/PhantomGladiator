@@ -60,7 +60,7 @@ function Watch.new(options)
         local distance
         if camera then distance=math.sqrt((camera.X-at.X)^2+(camera.Y-at.Y)^2+(camera.Z-at.Z)^2) end
         local okHp,hp=pcall(options.hp,actor)
-        return {t=now,x=at.X,y=at.Y,z=at.Z,camera=distance,hp=okHp and hp or nil,mode=read.mode,hidden=read.hidden==true,state=read.state,blocked=read.blocked}
+        return {t=now,x=at.X,y=at.Y,z=at.Z,camera=distance,cameraZ=camera and camera.Z,hp=okHp and hp or nil,mode=read.mode,hidden=read.hidden==true,state=read.state,blocked=read.blocked}
     end
     local function event(track,kind,text)
         self.events=self.events+1
@@ -68,10 +68,17 @@ function Watch.new(options)
         counted[key]=(counted[key] or 0)+1
         if counted[key]<=KIND_LINES then say(track.name..' '..text) end
     end
-    local function compare(track,last,s)
+    local function compare(track,last,s,actor)
         local moved=math.sqrt((s.x-last.x)^2+(s.y-last.y)^2+(s.z-last.z)^2)
         if moved>=JUMP_CM then event(track,'jump',string.format('一秒内移动 %.0fm：(%.0f,%.0f,%.0f) -> (%.0f,%.0f,%.0f) 模式=%s',moved/100,last.x,last.y,last.z,s.x,s.y,s.z,modeName(s.mode))) end
-        if last.z-s.z>=DROP_CM then event(track,'drop',string.format('一秒内下降 %.0fm：Z=%.0f -> %.0f 模式=%s 距镜头=%s',(last.z-s.z)/100,last.z,s.z,modeName(s.mode),band(s.camera) or '?')) end
+        if last.z-s.z>=DROP_CM then
+            local note=''
+            if options.dropContext and total<TOTAL_LINES and (counted[track.name..'|drop'] or 0)<KIND_LINES then
+                note=options.dropContext(actor,s) or ''
+            end
+            event(track,'drop',string.format('一秒内下降 %.0fm：Z=%.0f -> %.0f 模式=%s 镜头Z=%s→%s%s',
+                (last.z-s.z)/100,last.z,s.z,modeName(s.mode),tostring(last.cameraZ),tostring(s.cameraZ),note))
+        end
         if s.hidden~=last.hidden then event(track,'hidden',s.hidden and '被隐藏' or '取消隐藏') end
         if (s.blocked or 0)>0 and (last.blocked or 0)<=0 then event(track,'blocked',string.format('进战斗被封锁 AI.DisableCombatAI 模式=%s Z=%.0f 距镜头=%s',modeName(s.mode),s.z,band(s.camera) or '?')) end
         if band(s.camera)~=band(last.camera) and s.camera and last.camera then event(track,'band',string.format('距镜头 %s -> %s（%.0fm）',band(last.camera),band(s.camera),s.camera/100)) end
@@ -111,7 +118,7 @@ function Watch.new(options)
                     if s then
                         local last=track.samples[#track.samples]
                         track.top=math.max(track.top,s.hp or 0,last and last.hp or 0)
-                        if last then compare(track,last,s) end
+                        if last then compare(track,last,s,actor) end
                         track.samples[#track.samples+1]=s
                         if #track.samples>KEEP then table.remove(track.samples,1) end
                     end

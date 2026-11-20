@@ -200,13 +200,20 @@ function Music.new(options)
         context=context,snapshot=snapshot,native=native,restore=restoreNative,hooks=ensureHooks,
         members=options.members,unitId=unitId,eligible=eligible,actorState=actorState,state=state,
         log=function(text)log('local',text)end})
-    function self:tick()
+    function self:tick(arenaMembers,arenaStatus)
         if not self.alive or not gameThread() then return end
-        if self.mode=='NATIVE' and not self.lease and not self.restorePending and not localMusic:owns()then if next(hooks)then unhook()end;state('native','保留原版音乐');return end
+        local nativeBoss=false
+        if self.mode=='NATIVE' and arenaStatus and arenaStatus.battle_active then
+            for _,member in ipairs(arenaMembers or {})do
+                if eligible(member) and unitId(member)=='BP_Monster_MoTian' then nativeBoss=true;break end
+            end
+        end
+        if arenaStatus and not arenaStatus.battle_active then self.suspended=false end
+        if self.mode=='NATIVE' and not nativeBoss and not self.lease and not self.restorePending and not localMusic:owns()then if next(hooks)then unhook()end;state('native','保留原版音乐');return end
         if self.mode=='LOCAL'and self.lease then if not release(context(),true)then return end end
         if self.mode=='LOCAL'and options.status().battle_active~=true then self.suspended=false end
         if localMusic:tick(self.mode=='LOCAL')then return end
-        local status=options.status() or {};local active=status.battle_active==true
+        local status=arenaStatus or options.status() or {};local active=status.battle_active==true
         if not active and not self.lease and not self.restorePending then
             self.suspended=false;attemptKey=nil;attempts=0
             if next(hooks)then unhook()end
@@ -219,7 +226,7 @@ function Music.new(options)
             if pending.world~=ctx.world or pending.key~=ctx.key or pending.name~=ctx.name or current.id>0 or current.story>0 or current.blocked then self.restorePending=nil
             elseif not restoreNative(ctx,current,true) then return end
         end
-        if not active or self.mode=='NATIVE' then
+        if not active or (self.mode=='NATIVE' and not nativeBoss) then
             if release(ctx,true) then self.suspended=false end
             return
         end
@@ -235,11 +242,12 @@ function Music.new(options)
         if self.lease and (current.id~=self.lease.id or current.eventName~=self.lease.eventName) then
             self.lease=nil;self.suspended=true;state('native','原版已更换音乐，本场不再抢占');return
         end
-        local members=options.members() or {};local selected,owner
+        local members=arenaMembers or options.members() or {};local selected,owner
         for _,member in ipairs(members)do
-            if eligible(member) then
+            if eligible(member) and (not nativeBoss or unitId(member)=='BP_Monster_MoTian') then
                 local id=self.mode=='TRACK' and self.track or Catalog.units[unitId(member)]
                 if id then
+                    if nativeBoss and options.moYuanPhaseTwo and options.moYuanPhaseTwo(member.actor) then id='MOYUAN_P2' end
                     local actor=actorState(member,ctx)
                     if actor and self.lease and actor.key==self.lease.ownerKey and actor.name==self.lease.ownerName then
                         if not actor.known then state('waiting','配乐来源血量未确认，暂不切换');return end

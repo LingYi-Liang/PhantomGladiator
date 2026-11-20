@@ -486,7 +486,7 @@ function Arena.new(options)
         return confirmed
     end
     -- The opponent fewest units are already sent at, so a crowd spreads over several enemies.
-    local function leastAttacked(unit,active)
+    local function leastAttacked(unit,active,preferred)
         local load={}
         for _,other in ipairs(active) do
             if other.assignedKey and not other.attackPending then load[other.assignedKey]=(load[other.assignedKey] or 0)+1 end
@@ -495,7 +495,7 @@ function Arena.new(options)
         while true do
             local best,bestLoad,bestRejected
             for _,other in ipairs(active) do
-                if other.team~=unit.team and not other.untargetable and not refused[other] then
+                if other.team~=unit.team and not other.untargetable and not refused[other] and (not preferred or preferred[other.key]) then
                     local n=load[other.key] or 0
                     local rejected=unit.rejectedPeers and unit.rejectedPeers[other] or -math.huge
                     if not best or rejected<bestRejected or (rejected==bestRejected and n<bestLoad) then
@@ -720,6 +720,16 @@ function Arena.new(options)
                 unit.protectedPair=original
                 wait_for_target(unit,original,now)
                 goto continueCombat
+            end
+            if options.preferredTargets and not (unit.attackRetryAt and now<unit.attackRetryAt) then
+                local ok,preferred=invoke('preferredTargets',unit.actor,unit.team,unit.assignedKey)
+                if ok and preferred and not (preferred[unit.assignedKey] and targetable(original)) and not action_busy(unit) then
+                    local nextTarget=leastAttacked(unit,active,preferred)
+                    if nextTarget then
+                        assign_target(unit,nextTarget,now)
+                        goto continueCombat
+                    end
+                end
             end
             if unit.phaseHeld then
                 unit.phaseHeld=nil;unit.attackPending=true;unit.attackRetryAt=nil;unit.attackFailures=nil;unit.heldTargetKey=nil

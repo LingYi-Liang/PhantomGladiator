@@ -28,7 +28,7 @@ local XUKONG='BP_Monster_XuKong'
 local XIANZHE='BP_Monster_XianZhe'
 
 local function defaultValue(id,rule)
-    if (id==XUKONG or id==XIANZHE) and rule=='phantom' then return 'keep' end
+    if (id==XUKONG or id==XIANZHE or id=='BP_Monster_MoTian_LongZhu_01') and rule=='phantom' then return 'keep' end
     return Rules.DEFAULTS[rule]
 end
 

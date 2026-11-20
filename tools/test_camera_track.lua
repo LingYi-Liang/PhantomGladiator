@@ -654,3 +654,13 @@ do
     assert(not h.track:frame(.016,4,{world=unit('AnotherWorld',0,0,0)}))
     print('PASS player/NPC eyes, native height fallback, target death, roster removal, change of framing and world')
 end
+
+do
+    local h=harness({trace=function(_,from,to)
+        if from.Z>0 and to.Z<=0 then return {at={X=to.X,Y=to.Y,Z=0},normal={Z=1}} end
+    end})
+    local a=h.add('BP_Falling_C',0,0,1000)
+    h.track:set('orbit',0);h.track:start(tostring(a.GetAddress()))
+    h.run(2,{world='WORLD'});a.at.Z=-3000
+    for i=1,120 do assert(h.run(1/60,{world='WORLD'}).Z>=0,'tracking a falling actor without manual pan crossed the floor')end
+end
