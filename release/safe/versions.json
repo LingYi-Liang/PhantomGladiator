@@ -1,6 +1,358 @@
 {
   "versions": [
     {
+      "version": "0.40.21",
+      "modBuild": "v0.40.21",
+      "date": "2026-11-24T04:35:03+08:00",
+      "size": 109188008,
+      "sha256": "9959d66efe1ea4e80f2e0087c946cdc73a51284fd0af14142701a8310cda7fa3",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.21/PhantomGladiator-0.40.21-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.21/PhantomGladiator-0.40.21-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.21/PhantomGladiator-0.40.21-win64.zip"
+        }
+      ],
+      "notes": {
+        "zh": [
+          "魂的方案新增「外观来源」。默认跟随本体，选「分身独立」可固定默认服装、保留召唤魂原模型或使用绝影分身模型。保存后，按钮和快捷键召唤的新魂都会使用这项设置。",
+          "新增「召唤时定格」。穿好一套衣服召一只魂，再换装召下一只，每只都会保留自己出生时已显示的装束和染色。排队召唤同样按每只实际出生时取外观。",
+          "修复跟随本体时，本体的染色在分身出生后才加载，分身一直停在默认色的问题。分批复查可读取的材质参数，并保留其他 Mod 已接管的分身材质槽。",
+          "七星剑阵：大师兄和悲痛欲绝的阿瑾在卡片选择「配合阵容：带队」后，召到红蓝擂台会各带六名队员。大师兄使用原版七人起手阵，阿瑾在首次迎敌时使用梅谷湖的「爆脸转化」。同场多组各认自己的队员。",
+          "剑阵 AI 可以按原版条件让同组弟子献血，为受伤的主将恢复生命。大师兄也能选中符合复活条件的白衣弟子，接原版起身和回血动作。",
+          "大师兄和阿瑾整组阵亡后，会清理长期留在场上的本组遗体。主将先倒时，活着的小弟继续战斗；组内发生复活会重新计时。",
+          "整队接力开战后，即使首批有单位还没锁定对手，后续候补也会保留，本方这一批打完后照常补位。",
+          "烈焰的桩挤在一起时，拿到狮头的 NPC 现在可以在起跳途中连续避开多根木桩，并在落脚前恢复桩体碰撞。",
+          "修复随从弹体换目标失败却仍报告成功的问题。梦华的攻击弹会核对自己锁定的敌人，仍指向玩家或空目标时放弃这次锁定。",
+          "对手确认阵亡后，参战 NPC 会在当前动作结束后清掉仍指向它的锁定。这也适用于最后一个敌人倒下的情况。",
+          "多人擂台减少重复查询。阿瑾和大师兄多组同场时会共用一次场上名单核对。修复剑阵召唤中断后可能留下隐藏物件的问题，清场遇到游戏暂时拒绝时会稍后重试。",
+          "开启免仇恨观战时，助手会减少全图搜索，继续逐批检查敌人是否锁定玩家。切换地图会立即刷新，刚用助手召出的敌人也会立即处理。",
+          "诊断包现在会记录梦华随从的攻击弹打中了谁、冷荼持续隐身时的本体状态，以及玉鼎斩杀时对手有没有打出精闪。"
+        ],
+        "en": [
+          "Choose an appearance source in Hun’s profile. Follow player is the default. Independent clone can wear the default outfit, keep the summoned NPC model, or use the Shadow Double mesh. Summon buttons and hotkeys use the saved choice for new clones.",
+          "Choose Capture on summon in Hun’s appearance settings. Wear one outfit, summon Hun, then change before summoning the next. Each clone keeps the outfit and dye visible when it spawns, including queued summons.",
+          "Hun now picks up supported dye and material changes that finish loading after a summon. Checks are spread across clones and leave material slots taken over by other mods alone.",
+          "Enable Entourage on the card for the Chief Disciple of the Seven-Stars Formation or Grief-Stricken Jin to bring six disciples into the arena. The Chief Disciple opens with the seven-person formation. Jin performs her ambush transformation on first engaging an opponent. Each party has its own members.",
+          "The sword formations use the game’s conditions for members to sacrifice HP and heal their leader. The Chief Disciple can also select a fallen white-robed disciple for the original revival and recovery sequence.",
+          "Lingering bodies are cleaned up after the eldest disciple’s or Ajin’s entire formation falls. Surviving members keep fighting if the leader dies first. A revival restarts the cleanup timer.",
+          "Once a relay fight starts, reserves stay queued even if some opening fighters take longer to acquire a target. Replacements enter when their wave is defeated.",
+          "In Flame’s pole arena, the fighter wearing the lion head can clear several overlapping posts in one jump. The landing post supports the fighter again before touchdown.",
+          "Companion projectiles now verify their target after a failed redirect. If a Menghua projectile still points at the player or has no target, the selector retries the enemy and rejects an unconfirmed lock.",
+          "Arena fighters release a lingering lock on a defeated opponent once their current action finishes, including when the last enemy falls.",
+          "Crowded arena fights need fewer checks, and Ajin’s and the Chief Disciple’s formations share one battlefield roster scan. Interrupted summons now clean up hidden formation actors. If the game temporarily refuses cleanup, the assistant retries after a short delay.",
+          "With no-aggro enabled, the assistant searches the map less often while continuing to check enemies for a lock on the player. It refreshes on map changes and handles enemies summoned by the assistant immediately.",
+          "Diagnostics now record who was hit by companion Menghua’s projectiles, Lengtu’s mesh state during prolonged invisibility, and NPC perfect dodges during Yuding’s execution grab."
+        ]
+      },
+      "parts": {
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.21/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.21/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.21/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.21/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.21/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.21/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.21/"
+          }
+        ],
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.000",
+            "size": 2097152,
+            "sha256": "19f30bf2d91e67560e8a20933281215028a957931d6e3b55c2fb5395cce9915d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.001",
+            "size": 2097152,
+            "sha256": "c73deec4b4fb45ba6d82365511a58fe6f01b24aaffcc10b118ee20c7ac7cb01d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.002",
+            "size": 2097152,
+            "sha256": "019cf2363bb6cbfb7dd580f867fecd8626961a0e48e0a5c5bfe70c0799d11397"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.003",
+            "size": 2097152,
+            "sha256": "6a965ad3e73d88a600f7b72ee823c7e642710ab62d1daf8c74af91456bd62926"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.004",
+            "size": 2097152,
+            "sha256": "9be51d24081cbd1d922cf2be24360ae85f7b32d060306e36148f6b827dcd8053"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.005",
+            "size": 2097152,
+            "sha256": "f355bcdad63e0f4f9de90dd2798c465cd212dab7b7a0bb92342691b429dd0c71"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.006",
+            "size": 2097152,
+            "sha256": "b974d41a473ad2c0654525216f0e8069508849eff08581eb0af544f80d0e8039"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.007",
+            "size": 2097152,
+            "sha256": "3652f83d5d4a0fa61cd590f5e5df0127e461a3d9d38f4b73ddbd201cd01a5cae"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.008",
+            "size": 2097152,
+            "sha256": "4cbb590fc3c99de44d0eb5f57a821cd01b938b607ffaf638b5ae02bf8e916322"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.009",
+            "size": 2097152,
+            "sha256": "e0d0126edc2eb0c9aca1342207cadb71485dcabbe8a2d51ed55034582e1282a5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.010",
+            "size": 2097152,
+            "sha256": "695ec58b15995d701f801555168708acbde99997d74b559658687564c18763a4"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.011",
+            "size": 2097152,
+            "sha256": "50eb470c5ec7ae273ed1cb0338e3decb1d4b0ca47141766c3f6e9fb093fb5bb5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.012",
+            "size": 2097152,
+            "sha256": "0d8185bca0983cc8bd22201dec42bda10ececfa998500c97c3230870d28d7fbe"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.013",
+            "size": 2097152,
+            "sha256": "e498700578c437b9331e9f454d1563633004aa98cf76cb2ff5438bd3ed0f932f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.014",
+            "size": 2097152,
+            "sha256": "713a264787c3df7212d5cc851cdda2a68c2f3779177d218db7af9b15db8af6f6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.015",
+            "size": 2097152,
+            "sha256": "9358ca8f1818d1b00c92038d11ab6166a54e49608177ffcf89beb351a0ff5d3e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.016",
+            "size": 2097152,
+            "sha256": "210f4c53f5f80064a4450e243cee04464ba15712164b9f76d1b4e61fc3a55781"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.017",
+            "size": 2097152,
+            "sha256": "5ad9021a4272cf5c953216825a82f4e84f39708a6a5a1752a20601c78b68d517"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.018",
+            "size": 2097152,
+            "sha256": "7667f1460a68d4f73485226ebb93beadd61b89229f28ef6f4df4a3e21dd16113"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.019",
+            "size": 2097152,
+            "sha256": "d073c6f145664edc1993861079ca84d972ae57d7f745d8dad738d8e9baf0a041"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.020",
+            "size": 2097152,
+            "sha256": "d7c90fd8b6903b0c3fed2d800dbb918cade2e2cbb25134283c1eaab6670194c9"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.021",
+            "size": 2097152,
+            "sha256": "fe239490a74cd0ec9bac15969e29851cb46701d0a7f397ec353e8c661176645f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.022",
+            "size": 2097152,
+            "sha256": "40dee9e0551e0259e04550eb7156f28ac6bedb80523f23befe9a0134a3643f45"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.023",
+            "size": 2097152,
+            "sha256": "63b2693cf0fb3f18fc9ec1628278c2df5f5b041ec162432306b4854ef2f08150"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.024",
+            "size": 2097152,
+            "sha256": "739c0105fb4d84bde1213d2729d200afaa91f5192cca2cb0ea700c5fe22f56ed"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.025",
+            "size": 2097152,
+            "sha256": "0a9a5116da7500b47d075966d6c90d0b666550de6bb0aa4f1713220fd40ee081"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.026",
+            "size": 2097152,
+            "sha256": "96051b3ec01e4b3e645a4d0f1ddf7c408c2bc389dff9517962ca5627bec22606"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.027",
+            "size": 2097152,
+            "sha256": "a425b132b312fcb6d2f9f7a5703185abdd7dde0c2e0fbace649f9391c031f35e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.028",
+            "size": 2097152,
+            "sha256": "de617153ebffa517a2c841ba2d1921342aa96fec44b3c221c38b0810b2f15fef"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.029",
+            "size": 2097152,
+            "sha256": "bd75e2646f7482026de87288593fd0a5c9ef3bae5a1903a755fa053012410836"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.030",
+            "size": 2097152,
+            "sha256": "5142edc2294dc5cb8fec2cd6c091b53c4b1eac26ac31aa93ab8232f0300e54c6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.031",
+            "size": 2097152,
+            "sha256": "bc902c59e2049bd25102622f335921bc7c872918d9b0ebbab2d5d496cbb71679"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.032",
+            "size": 2097152,
+            "sha256": "5e75a2b1aedac2fdfee9fea63f6b98f2fb12d869c728b913d8f31700c3f8e445"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.033",
+            "size": 2097152,
+            "sha256": "da5fc86c5de80a44c2f02b0d44040f5599e7ab95b796ef9a4a3b50942d2eb47a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.034",
+            "size": 2097152,
+            "sha256": "0c2000654364a6360e4013941deefb88c5fdd456d9b838f206067e8039fc1faa"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.035",
+            "size": 2097152,
+            "sha256": "87d56c7a36e7c6af218b5ac15e646722e467c8017ab25c9a23a64a7f869882cc"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.036",
+            "size": 2097152,
+            "sha256": "cfa00b2b0bf9f96bcde97881bb7d330b660f9ab72c39f14deaefe44fd43bc710"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.037",
+            "size": 2097152,
+            "sha256": "c25f00af5f02d4a7a219d23f076db36c5ac568a61c61b27c0f8809a8c19dbd51"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.038",
+            "size": 2097152,
+            "sha256": "c8dc0a176c54ce49590567600e0afe0f43673b3d7912057d5fcdb649ae995928"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.039",
+            "size": 2097152,
+            "sha256": "af5be499448229bd2b7324006b9e7806f71a0d0c682865aeb1214d6db1179ac1"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.040",
+            "size": 2097152,
+            "sha256": "bfa8b7960976645d4e1440feb5ae05d9a21381ebcd39ccf7f46c2f1f2ca669ab"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.041",
+            "size": 2097152,
+            "sha256": "db872bdb91aa519f9bc319d3b4e07cb231db112396959e83e517be120822084e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.042",
+            "size": 2097152,
+            "sha256": "7659b9052844eb60a84a35232d410d14141681cc0a42ae74b3abedec9d5e26cf"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.043",
+            "size": 2097152,
+            "sha256": "e11283c2aee4f740dcceb236f8e08f4e97c34e6de28ecf9e94b46447f8958ace"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.044",
+            "size": 2097152,
+            "sha256": "0deeb0d0bccb27c6284567d90cdb0b9eeb4752b77e8437541dac343db7dd9c21"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.045",
+            "size": 2097152,
+            "sha256": "bbec2a87bae9a910d9ce02a8f43542eb604d7f6ef6cd72db9ef9b4745ce273a0"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.046",
+            "size": 2097152,
+            "sha256": "49c69895a2eaa3ec64a3d4e543b37307c45fb70f02c93d25de33617823228e78"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.047",
+            "size": 2097152,
+            "sha256": "7c4b956aba512f4e38e568fdfa362750776c0667c12a592b065e9b6f6340347f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.048",
+            "size": 2097152,
+            "sha256": "fd7b951a55c79e3f2d0f0551397cc38ff403a845cb45a7fc6b3657f8b7f38523"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.049",
+            "size": 2097152,
+            "sha256": "e4f6efdf33b82d0398094da83f5c6ae165e52b3bada2f99c8ffdfea30e7d87d3"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.050",
+            "size": 2097152,
+            "sha256": "2763496e4003d7cbc4680dc0e7f03d93621bde079453e568c29a298e6224bca9"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.051",
+            "size": 2097152,
+            "sha256": "de133d297122820b1f821249f25e96a3fc126eac4395256b580d0c8cfb063c06"
+          },
+          {
+            "name": "PhantomGladiator-0.40.21-win64.zip.052",
+            "size": 136104,
+            "sha256": "fdc763587927aadda6be9b64547a13eac54e91ccc56bf4471cca4c42c6b62e16"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.20",
       "modBuild": "v0.40.20",
       "date": "2026-11-23T15:58:59+08:00",
@@ -1075,7 +1427,7 @@
       "notes": {
         "zh": [
           "七星剑阵大师兄、阿瑾、小雪、玉面郎君、玉瓒、碧海大师残躯和荡秽这 7 张 Boss 卡新增「配合阵容」，下次召唤生效。",
-          "想单挑就选「单体」。想看七星剑阵，就给大师兄选「带队」，他会带六名弟子上场，按原版条件发动配合招式。玉面郎君能带上金面和铁面，小雪也能在战斗中召出小弟。红蓝擂台按整队判胜负，Boss 先倒下，活着的队员会继续打。",
+          "想单挑就选「单体」。想看七星剑阵，就给大师兄选「带队」，他会带六名弟子上场~~，按原版条件发动配合招式~~。玉面郎君能带上金面和铁面，小雪也能在战斗中召出小弟。红蓝擂台按整队判胜负，Boss 先倒下，活着的队员会继续打。",
           "天气可以直接点选，也可以一键切到指定天气。 在支持天气控制的地图上，可选择晴天、雷雨、暴雪、沙尘暴等 13 种原版天气。每种天气都能单独绑键，「上一个」「下一个」「恢复原天气」也各有快捷键。",
           "可以从角色自己的视角看对战。 观战目标可选玩家本人或召唤出来的 NPC。想看魂怎么接下对面那一刀，可以直接切到他的视角。玩家和 NPC 的第一人称观战入口都能单独绑键。",
           "普通格挡改用原版持续防御，精准防御保留原版回杀气效果。顶部杀气条会短暂显示刚刚净掉了多少杀气，方便看清一次交锋的结果。",
@@ -1090,7 +1442,7 @@
         ],
         "en": [
           "Seven boss cards now have an Entourage setting that applies to your next summon: the Chief Disciple of the Seven-Stars Formation, Grief-Stricken Jin, Corpse-Eating Xue, Jade-Face, Yuzan, Master Bi Hai of Kuye Temple, and Dusk the Puppeteer.",
-          "Choose Solo for a duel. To see the Seven-Stars Formation, enable the Chief Disciple’s entourage. Six disciples join him and can perform their joint moves when the game’s usual conditions are met. Jade-Face can bring Gold Mask and Iron Mask, and Xue can summon minions during combat. In Blue vs Red battles, surviving teammates keep fighting after their boss falls.",
+          "Choose Solo for a duel. To see the Seven-Stars Formation, enable the Chief Disciple’s entourage. Six disciples join him~~ and can perform their joint moves when the game’s usual conditions are met~~. Jade-Face can bring Gold Mask and Iron Mask, and Xue can summon minions during combat. In Blue vs Red battles, surviving teammates keep fighting after their boss falls.",
           "Pick the weather directly or give a preset its own hotkey. Maps with weather controls offer 13 native presets, including clear skies, thunderstorms, blizzards, and sandstorms. Previous, Next, and Restore Original Weather can each have their own hotkey.",
           "Watch a fight through a character’s eyes. Spectate the player or a summoned NPC in first person. Switch to Hun’s view to see how he meets an incoming strike. Player and NPC views have separate hotkeys.",
           "Regular blocks now use the game’s held guard. Perfect guards retain their native Sha-Chi recovery. The top Sha-Chi bar briefly shows the net loss from the last exchange.",
