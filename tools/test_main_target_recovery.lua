@@ -54,3 +54,22 @@ for _,tag in ipairs({'AI.State.Combat','AI.State.Combat.Attack','AI.State.OffCom
     assert(fn({})==expected,'incorrect combat classification: '..tag)
 end
 print('main_target_recovery: PASS (production fallback, readback failures, native targets and exact combat states)')
+do
+    local begin=assert(source:find('function arenaSupport:finalDeath(',1,true))
+    local finish=assert(source:find('combatLock=CombatLock.new',begin,true))
+    local tags={['CharacterState.Dead']=1}
+    local hp,executing,rebirth=0,false,false
+    local support={hunBody={holdsDeath=function()return rebirth end},combatContinuity={inExecution=function()return executing end}}
+    local env=setmetatable({arenaSupport=support,GetHP=function()return hp end,GetCurrentWorld=function()return 1 end,
+        UEObserve={inWorld=function()return true end},onGround={tagCount=function(_,a,tag)return tags[tag] end}},{__index=_G})
+    assert(load(source:sub(begin,finish-1),'terminal death predicate','t',env))()
+    assert(not support:finalDeath(h.actor))
+    tags['CharacterState.Forbid.Vanish.CanRsurrect']=0;tags['CharacterState.AbilityState.Troop.ReadyForResurrection']=0
+    assert(support:finalDeath(h.actor))
+    rebirth=true;assert(not support:finalDeath(h.actor));rebirth=false
+    executing=true;assert(not support:finalDeath(h.actor));executing=false
+    tags['CharacterState.Forbid.Vanish.CanRsurrect']=1;assert(not support:finalDeath(h.actor))
+    tags['Ability.Action']=1;assert(not support:finalDeath(h.actor,true))
+    tags['Ability.Action']=0;assert(support:finalDeath(h.actor,true))
+    hp=1;assert(not support:finalDeath(h.actor,true))
+end

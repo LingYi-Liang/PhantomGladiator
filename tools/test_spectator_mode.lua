@@ -326,3 +326,41 @@ f.mode=Spectator.new(f.opts);f.mode:on();f.mode:applyTo(f.npc);f.mode:tick()
 assert(f.fc.override==nil,'observing a registered arena Hun must preserve its original combat relation')
 assert(f.mode:off().ok and f.fc.override==nil)
 print('PASS spectator target suppression preserves the arena Hun faction used for player attacks')
+
+do
+    local f=fixture();local world,second=object(),object()
+    local at,scans,lookups=0,0,0
+    local processed={}
+    f.player.world=world;f.npc.world=world
+    local late=object({world=world})
+    f.npcs[2]=late
+    f.opts.getWorld=function()return world end
+    f.opts.inWorld=function(a,w)return a.world==w end
+    f.opts.now=function()return at end
+    f.opts.getNPCs=function(w)
+        assert(w==world);scans=scans+1
+        return {table.unpack(f.npcs)}
+    end
+    f.opts.releasePlayerTarget=function(actor)
+        assert(actor.world==world);processed[actor]=(processed[actor] or 0)+1;return true
+    end
+    local orig=StaticFindObject
+    StaticFindObject=function()lookups=lookups+1;return nil end
+    f.npcs[3]=object({world=world})
+    f.mode=Spectator.new(f.opts);f.mode:on()
+    assert(scans==1 and lookups==2,'missing component classes should be looked up once per batch')
+    local added=object({world=world,['Faction Component']=faction(2),BP_PBZHatredManagerComponent=hatred({f.player},true)})
+    f.npcs[4]=added;f.mode:applyTo(added)
+    assert(added['Faction Component'].override==1 and #added.BP_PBZHatredManagerComponent.HatredList==0)
+    late.world=second
+    at=.25;f.mode:tick();at=.75;f.mode:tick()
+    assert(scans==1 and processed[f.npc]==3 and processed[late]==1)
+    f.npcs[3]['Faction Component']=faction(2);at=1;f.mode:tick()
+    assert(scans==2 and f.npcs[3]['Faction Component'].override==1)
+    world=nil;at=1.25;f.mode:tick();assert(scans==2)
+    world=second;f.player.world=world;at=.25;f.mode:tick()
+    assert(scans==3 and processed[late]==2 and processed[f.npc]==4)
+    at=0;f.mode:tick();assert(scans==4,'a clock rewind cannot hold a stale map scan')
+    f.mode:off();f.mode:on();assert(scans==5,'re-enabling must immediately refresh the current map')
+    StaticFindObject=orig
+end

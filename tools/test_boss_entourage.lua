@@ -27,6 +27,11 @@ end
 local task=obj('private task',world);task.TreeAsset=obj('BehaviorTree /PBZCombatAsset/ActorData/Mobs/035_HuaShan/BehaviorTree/Troop/Test.Test')
 task.ControlledPawn=l.actor;callback('ExecuteInternal')(task)
 assert(#task.ActorsToAssign==1 and task.ActorsToAssign[1]==s.actor)
+g.nativeFormation=true
+local nativeList={s.actor,dead.actor};task.ActorsToAssign=nativeList
+callback('ExecuteInternal')(task)
+assert(task.ActorsToAssign==nativeList and nativeList[2]==dead.actor,'the native revival task keeps its downed candidate')
+g.nativeFormation=nil
 local function passive(parent,name,n)
     local a=obj('inst',world);a.class=obj(name)
     function a:GetClass()return self.class end

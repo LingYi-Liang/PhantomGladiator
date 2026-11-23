@@ -378,5 +378,133 @@ window.PG_PREVIEW_NOTES = {
         "en": "The kill option on Mo Yuan’s card takes effect at his final HP floor. Opponents can still perform a regular execution above that floor."
       }
     ]
+  },
+  "0.40.20": {
+    "title": {
+      "zh": "魂的独立外观与擂台对战修复",
+      "en": "Independent Hun outfits and arena fixes"
+    },
+    "added": [
+      [
+        {
+          "since": 1,
+          "zh": "魂的方案新增「外观来源」。默认跟随本体，选「分身独立」可固定默认服装、保留召唤魂原模型或使用绝影分身模型。保存后，按钮和快捷键召唤的新魂都会使用这项设置。",
+          "en": "Choose an appearance source in Hun’s profile. Follow player is the default. Independent clone can wear the default outfit, keep the summoned NPC model, or use the Shadow Double mesh. Summon buttons and hotkeys use the saved choice for new clones.",
+          "legacy": {"zh": "魂的方案可选跟随本体或分身独立。", "en": "Hun can follow the player’s outfit or use an independent look."}
+        }
+      ],
+      [
+        {
+          "since": 2,
+          "zh": "新增「召唤时定格」。穿好一套衣服召一只魂，再换装召下一只，每只都会保留自己出生时已显示的装束和染色。排队召唤同样按每只实际出生时取外观。",
+          "en": "Choose Capture on summon in Hun’s appearance settings. Wear one outfit, summon Hun, then change before summoning the next. Each clone keeps the outfit and dye visible when it spawns, including queued summons."
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "诊断包现在会记录梦华随从的攻击弹打中了谁、冷荼持续隐身时的本体状态，以及玉鼎斩杀时对手有没有打出精闪。",
+          "en": "Diagnostics now record who was hit by companion Menghua’s projectiles, Lengtu’s mesh state during prolonged invisibility, and NPC perfect dodges during Yuding’s execution grab.",
+          "legacy": {"zh": "补充三种战斗诊断。", "en": "Added boss diagnostics."}
+        }
+      ]
+    ],
+    "combat": [
+      [
+        {
+          "since": 4,
+          "zh": "七星剑阵：大师兄和悲痛欲绝的阿瑾在卡片选择「配合阵容：带队」后，召到红蓝擂台会各带六名队员。大师兄使用原版七人起手阵，阿瑾在首次迎敌时使用梅谷湖的「爆脸转化」。同场多组各认自己的队员。",
+          "en": "Enable Entourage on the card for the Chief Disciple of the Seven-Stars Formation or Grief-Stricken Jin to bring six disciples into the arena. The Chief Disciple opens with the seven-person formation. Jin performs her ambush transformation on first engaging an opponent. Each party has its own members.",
+          "legacy": {"zh": "大师兄和阿瑾带队上擂台，使用原版开场和阵位。", "en": "Sword formations use their own openings and positions."}
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "剑阵 AI 可以按原版条件让同组弟子献血，为受伤的主将恢复生命。大师兄也能选中符合复活条件的白衣弟子，接原版起身和回血动作。",
+          "en": "The sword formations use the game’s conditions for members to sacrifice HP and heal their leader. The Chief Disciple can also select a fallen white-robed disciple for the original revival and recovery sequence.",
+          "legacy": {"zh": "接入献血和白衣弟子复起。", "en": "Restored blood donation and white-robed disciple revival."}
+        }
+      ]
+    ],
+    "fixes": [
+      [
+        {
+          "since": 1,
+          "zh": "修复跟随本体时，本体的染色在分身出生后才加载，分身一直停在默认色的问题。分批复查可读取的材质参数，并保留其他 Mod 已接管的分身材质槽。",
+          "en": "Hun now picks up supported dye and material changes that finish loading after a summon. Checks are spread across clones and leave material slots taken over by other mods alone."
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "整队接力开战后，即使首批有单位还没锁定对手，后续候补也会保留，本方这一批打完后照常补位。",
+          "en": "Once a relay fight starts, reserves stay queued even if some opening fighters take longer to acquire a target. Replacements enter when their wave is defeated.",
+          "legacy": {"zh": "接力开战保留候补。", "en": "Relay reserves retained."}
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "烈焰的桩挤在一起时，拿到狮头的 NPC 现在可以在起跳途中连续避开多根木桩，并在落脚前恢复桩体碰撞。",
+          "en": "In Flame’s pole arena, the fighter wearing the lion head can clear several overlapping posts in one jump. The landing post supports the fighter again before touchdown.",
+          "legacy": {"zh": "修复密集木桩挡住首跳。", "en": "Fixed crowded pole jumps."}
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "修复随从弹体换目标失败却仍报告成功的问题。梦华的攻击弹会核对自己锁定的敌人，仍指向玩家或空目标时放弃这次锁定。",
+          "en": "Companion projectiles now verify their target after a failed redirect. If a Menghua projectile still points at the player or has no target, the selector retries the enemy and rejects an unconfirmed lock.",
+          "legacy": {"zh": "随从弹体会核对目标。", "en": "Companion projectile targets are verified."}
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "对手确认阵亡后，参战 NPC 会在当前动作结束后清掉仍指向它的锁定。这也适用于最后一个敌人倒下的情况。",
+          "en": "Arena fighters release a lingering lock on a defeated opponent once their current action finishes, including when the last enemy falls.",
+          "legacy": {"zh": "清理仍指向阵亡敌人的锁定。", "en": "Fighters release dead opponents."}
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "大师兄和阿瑾整组阵亡后，会清理长期留在场上的本组遗体。主将先倒时，活着的小弟继续战斗；组内发生复活会重新计时。",
+          "en": "Lingering bodies are cleaned up after the eldest disciple’s or Ajin’s entire formation falls. Surviving members keep fighting if the leader dies first. A revival restarts the cleanup timer.",
+          "legacy": {"zh": "整组阵亡后清理剑阵遗体。", "en": "Defeated sword formations are cleaned up."}
+        }
+      ],
+      [
+        {
+          "since": 5,
+          "zh": "多人擂台减少重复查询。阿瑾和大师兄多组同场时会共用一次场上名单核对。修复剑阵召唤中断后可能留下隐藏物件的问题，清场遇到游戏暂时拒绝时会稍后重试。",
+          "en": "Crowded arena fights need fewer checks, and Ajin’s and the Chief Disciple’s formations share one battlefield roster scan. Interrupted summons now clean up hidden formation actors. If the game temporarily refuses cleanup, the assistant retries after a short delay.",
+          "legacy": {"zh": "群战减少重复查询，修复剑阵残留。", "en": "Fewer crowd checks. Fixed formation cleanup."}
+        }
+      ],
+      [
+        {
+          "since": 5,
+          "zh": "开启免仇恨观战时，助手会减少全图搜索，继续逐批检查敌人是否锁定玩家。切换地图会立即刷新，刚用助手召出的敌人也会立即处理。",
+          "en": "With no-aggro enabled, the assistant searches the map less often while continuing to check enemies for a lock on the player. It refreshes on map changes and handles enemies summoned by the assistant immediately.",
+          "legacy": {"zh": "减少观战扫图。", "en": "Fewer spectator scans."}
+        }
+      ]
+    ],
+    "details": [
+      {
+        "since": 3,
+        "issue": 31,
+        "zh": "诊断包会记录梦华随从弹体造成伤害时的目标和血量，以及冷荼在后期阶段持续隐身时的本体状态。紫球、落扇和冷荼的现场表现仍待复核。",
+        "en": "Diagnostics record targets and HP during companion Menghua projectile damage calls, and Lengtu’s mesh state if she stays hidden in her later phases. The reported orbs, falling fans and invisibility still need in-game confirmation."
+      },
+      {
+        "since": 3,
+        "issue": 35,
+        "zh": "新增玉鼎斩杀的诊断记录，能查看这次攻击是否读到 NPC 精准闪避，以及游戏是否接受反制请求。",
+        "en": "Diagnostics for Yuding’s execution grab now show whether a matching NPC perfect dodge was observed and whether the game accepted the counter request."
+      }
+    ]
   }
 };

@@ -178,6 +178,9 @@ function C.new(o)
         local class=U.struct(result,'CounterAbility');local action=weak(U.struct(result,'SourceAction'))
         local sourceAbility=call(action,'GetAbility')
         if cast and not same(sourceAbility,cast.ability) then return end
+        local observed=cast or watch[U.key(boss)]
+        if observed and (not same(observed.ability,sourceAbility) or not same(observed.target,actor) or hit<observed.start) then observed=nil end
+        if observed then observed.perfect=true end
         if last and last.hit==hit and last.boss==U.key(boss) and last.action==U.key(action) then return end
         if not exactClass(class,C.JADE_COUNTER) or not same(call(action,'GetAvatarActor'),boss)
             or not same(U.field(action,'CounterAbility'),class) or U.field(action,'DeflectBulletType')~=3
@@ -204,6 +207,7 @@ function C.new(o)
             local granted=call(asc,'K2_GiveAbilityAndActivateOnce',class,1,-1)
             local id=U.struct(granted,'Handle');accepted=finite(id) and id>0
         end
+        if observed and observed.perfect then observed.accepted=accepted end
         log('玉鼎原生精准闪避 来源='..U.key(boss)..' NPC='..key..' HitGameTime='..hit..' 专用反制请求='..tostring(accepted))
     end
     -- This branch plays a victim ability directly instead of calling PlayExactExecution.
@@ -229,10 +233,15 @@ function C.new(o)
     local function sample()
         local now=o.now()
         for key,r in pairs(watch)do
-            if not finite(now) or now<r.start or now-r.start>16 or not members[key] or not U.valid(r.ability) then watch[key]=nil
-            else
+            local expired=not finite(now) or now<r.start or now-r.start>16 or not members[key] or not U.valid(r.ability)
+            if not expired then
                 self:jadeResult(r.target,r.source,r)
-                if U.field(r.ability,'bIsActive')~=true then watch[key]=nil end
+                expired=U.field(r.ability,'bIsActive')~=true
+            end
+            if expired then
+                log('玉鼎斩杀观测结束 来源='..key..' NPC='..r.targetKey..' 本招精闪读回='..tostring(r.perfect==true)
+                    ..' 专用反制请求='..(r.accepted==nil and '未观察到' or tostring(r.accepted)))
+                watch[key]=nil
             end
         end
         if not next(watch) then stopTimer() end
@@ -244,7 +253,10 @@ function C.new(o)
         if not U.valid(target) and U.valid(source) then target=o.assigned(source) end
         local now=o.now()
         if not finite(now) or not pair(target,source,C.JADE) then return end
-        watch[U.key(source)]={ability=ability,target=target,source=source,start=now}
+        local targetKey=U.key(target)
+        if not targetKey then return end
+        watch[U.key(source)]={ability=ability,target=target,targetKey=targetKey,source=source,start=now}
+        log('玉鼎斩杀起手 来源='..U.key(source)..' NPC='..targetKey..' '..tostring(U.className(target)))
         if timer then return end
         generation=generation+1;local token=generation
         local ok,h=pcall(o.loop or LoopInGameThreadWithDelay,40,function()

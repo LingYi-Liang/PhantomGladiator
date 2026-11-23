@@ -36,8 +36,10 @@ local function fmt(v)return v and string.format('%.2f',v) or 'nil' end
 -- Restart All Mods, when the mod no longer knows they are its own (v0.37.6 test: three earlier 三面 at 15, 22 and
 -- 60 were taken for map enemies and HERE gave 60).
 -- A summoned rider sits on a spawner of the mod's (mounts.lua, tagged SpawnerID): that does not make it a map enemy.
+local Formation=require('huashan_formation')
 local function fromSpawner(pawn)
     local spawner=U.field(pawn,'Spawner')
+    if Formation.isSpawner(spawner) then return false end
     return (U.valid(spawner) and not Mounts.isOurs(spawner)) or U.valid((U.field(pawn,'MobGroup')))
 end
 -- Where a HOME or CUSTOM level came from (home_levels.lua), for the log.

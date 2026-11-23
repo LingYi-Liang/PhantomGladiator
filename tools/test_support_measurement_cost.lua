@@ -3,16 +3,18 @@ local f=assert(io.open(arg[1]or'Mods/PhantomGladiator/Scripts/main.lua','rb'));l
 local code=assert(source:match('local observers=%{.-\nend\nfunction arenaSupport:tick')):gsub('\nfunction arenaSupport:tick$','')
 local noop=function()end
 local proxy=setmetatable({},{__index=function()return noop end,__call=noop})
-local formats,logs=0,{}
+local formats,logs,samples=0,{},0
 local now,increment=0,0.000001
 local strings=setmetatable({format=function(...)formats=formats+1;return string.format(...)end},{__index=string})
 local env=setmetatable({os={clock=function()now=now+increment;return now end},string=strings,table=table,pairs=pairs,ipairs=ipairs,pcall=pcall,math=math,tostring=tostring,
+    arena=setmetatable({snapshot=function()samples=samples+1;return {},{state='idle'}end},{__index=proxy}),
     tickMembers={},tickStatus={state='idle'},SLOW_TICK_MS=10,slowTicks=0,
-    log=function(s)logs[#logs+1]=s end,supportMeter={add=function(_,total,started,costs)assert(type(costs.reinforce)=='number')end}},
+    log=function(s)logs[#logs+1]=s end,supportMeter={add=function(_,total,started,costs)assert(type(costs.reinforce)=='number' and type(costs.roster)=='number')end}},
     {__index=function(_,key)return proxy end})
 local tick=assert(load(code..'\nreturn supportSteps','support profiling path','t',env))()
 local support=setmetatable({musicNext=1e20},{__index=function()return proxy end})
 for _=1,200 do tick(support)end
+assert(samples==200,'support must sample the roster exactly once per tick')
 print('MEASURE 200 fast support loops formatted timing strings='..formats)
 assert(formats==0 and #logs==0,'fast ticks should keep numeric measurements without formatting unused log text')
 increment=.01;tick(support)

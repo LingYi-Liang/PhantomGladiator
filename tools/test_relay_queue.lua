@@ -143,6 +143,26 @@ do
 end
 print('relay_queue: PASS (retired battle-start isolation)')
 do
+    local env=setmetatable({arg={[2]='fixture'}},{__index=_G})
+    local makeArena=assert(loadfile('tools/test_arena_controller.lua','t',env))()
+    local h=fixture();h.mode('WAVE',2,2)
+    local calls=0
+    local f=makeArena({now=function()return h.now end,forceAttack=function()
+        calls=calls+1
+        return calls~=1 and calls~=3
+    end})
+    h.options.state=function()return f.arena:status()end
+    h.options.spawn=function(_,team,n)return f.arena:spawn(nil,team,n)end
+    h.options.begin=function()h.began=h.began+1;return f.arena:start()end
+    for i=1,52 do assert(h.q:enqueue('unit',i%2==1 and 'blue' or 'red',1).ok)end
+    assert(h.q:startRelay().ok);h.tick(8)
+    assert(f.arena:status().battle_active and #f.actors==4 and h.began==1 and calls==4)
+    assert(h.q.relayStarted and #h.q.jobs==48,'partial attack readback lost the next waves')
+    for _,u in ipairs(f.arena:members())do if u.team=='red' then u.actor.hp=0 end end
+    h.tick(8)
+    assert(#f.actors==6 and #h.q.jobs==46 and h.began==1,'red replacements should join the existing fight')
+end
+do
     local h=fixture();h.mode('SINGLE');h.q:cancel('relay enabled')
     h.q:enqueue('neutral','neutral',1);h.q:tick()
     assert(#h.calls==1 and not h.q.relayStarted,'unassigned jobs still run while blue/red wait for relay start')

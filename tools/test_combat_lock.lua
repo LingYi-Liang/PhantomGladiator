@@ -315,6 +315,33 @@ do
 end
 -- Leaving the roster releases the corpse ledger, so an actor at a reused address is cleaned normally.
 do
+    local h=harness();local corpse=h.unit('red');local winner=h.unit('blue');local teammate=h.unit('red')
+    local confirmed,ready=false,false
+    local calls=0
+    local guard=h.new({hp=function(a)return a==corpse and 0 or 100 end,
+        finalDeath=function(a)return a==corpse and confirmed end,
+        hates=function()return false end,
+        forgetTargets=function(a,dead,team)
+            assert(a==winner and a~=teammate and dead[tostring(corpse:GetAddress())]=='red' and team=='blue')
+            calls=calls+1;return ready
+        end})
+    guard:tick();assert(calls==0,'hold targets across pending death or resurrection')
+    h.now=5;confirmed=true;guard:tick();assert(calls==1)
+    h.now=10;ready=true;guard:tick();assert(calls==2)
+    h.now=15;guard:tick();assert(calls==2,'verified cleanup also runs once after the fight ends')
+end
+do
+    local h=harness();local gone={};local reads=0
+    for i=1,32 do gone[h.unit('red')]=true end
+    for i=1,10 do h.unit('blue') end
+    local lock=h.new({hp=function(a)return gone[a] and 0 or 100 end,hates=function()return false end,
+        forgetTargets=function(_,corpses,team)
+            assert(team=='blue' and next(corpses));reads=reads+1;return true
+        end})
+    lock:tick();assert(reads==10,'check each survivor once for simultaneous deaths')
+    lock:tick();assert(reads==10)
+end
+do
     local h=harness();local health,lists={},{}
     local lock=h.new({hp=function(actor)return health[actor]end,
         hates=function(manager,actor)return lists[manager] and lists[manager][actor]==true end})

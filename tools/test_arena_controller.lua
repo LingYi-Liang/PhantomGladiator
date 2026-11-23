@@ -235,7 +235,8 @@ local lengtu,enemy=staged.actors[1],staged.actors[2]
 lengtu.outOfReach=true
 local doll={alive=true,name='doll',hp=100,hidden=true}
 assert(staged.arena:adoptSummon(doll,lengtu,'/Catalog/BP_Doll.BP_Doll_C','fixture').ok)
-local s=staged.arena:status()
+local hiddenRows,s=staged.arena:snapshot()
+assert(hiddenRows[3].actor==doll and hiddenRows[3].reserve,'first support tick must exclude a newly hidden summon')
 assert(s.blue_count==1 and s.reserve_count==1 and s.summon_count==1,'a hidden doll is owned but not counted alive')
 assert(staged.arena:start().ok)
 for _,event in ipairs(staged.trace)do
@@ -261,6 +262,9 @@ end
 assert(sentAtScav,'the enemy fights her summon')
 scav.hp=0
 doll.hidden=false
+local visibleRows,visibleStatus=staged.arena:snapshot()
+assert(visibleRows[3].actor==doll and not visibleRows[3].reserve and visibleStatus.reserve_count==0,
+    'the tick that counts a newly visible summon must give the same state to targeting and HUD')
 staged.arena:tickReinforcements()
 local s2=staged.arena:status()
 assert(s2.reserve_count==0 and s2.blue_count==2,'a doll she brings out counts again')
@@ -832,7 +836,63 @@ do
     assert(f.arena:status().red_count==6 and f.arena:status().battle_active)
     assert(f.arena:stop().ok)
 end
+do
+    local t=0
+    local f=escortFixture({formationEnabled=function()return true end,retireFormation=function()return true end,
+        now=function()return t end,finalDeath=function(actor)return actor.hp==0 and actor.dead==true end,
+        escortsFor=function()return {{path=DOG,count=2,formation=true}}end})
+    assert(f.arena:spawn(TAMER,'blue',2).ok)
+    local function tick(time)t=time;f.arena:tickDefeatedFormations()end
+    for i=1,2 do f.actors[i].hp=0;f.actors[i].dead=true end
+    tick(1);tick(20)
+    assert(f.actors[1].alive and f.actors[2].alive,'a surviving formation member can still fight or revive the group')
+    f.actors[3].hp=0;tick(21);tick(40);assert(f.actors[1].alive,'zero HP without terminal death is inconclusive')
+    f.actors[3].dead=true;tick(41);tick(49)
+    f.actors[2].hp=100;tick(50);f.actors[2].hp=0;tick(51);tick(60)
+    assert(f.actors[1].alive and f.actors[2].alive,'a revival must start the grace period over')
+    tick(62);tick(63);tick(64)
+    assert(#f.arena:members()==3 and f.actors[4].alive and f.actors[5].alive and f.actors[6].alive,
+        'retire only the defeated group and verify removal after the arena is idle')
+end
 local tamer=pack.actors[1]
+do
+    local f,enabled,requireGroup=nil,true,true
+    local sequence={}
+    f=escortFixture({formationEnabled=function()return enabled end,retireFormation=function()return true end,
+        escortsFor=function(_,on)if on then return {{path=DOG,count=6,formation=true}}end end,
+        prepareFormation=function(group,rows,w,side)
+            assert((side=='red' or side=='blue') and w==f.world and #rows==7 and #f.arena:members()>=7)
+            for _,row in ipairs(rows)do assert(row.actor.alive and not row.actor.finished and row.transform.Translation)end
+            sequence[#sequence+1]='roster';group.bound=true;return requireGroup,'unconfirmed roster'
+        end,
+        finishSpawn=function(a)sequence[#sequence+1]='finish';a.finished=true;return true end,
+        formationReady=function(group,rows)
+            assert(group.bound and #rows==7)
+            for _,row in ipairs(rows)do assert(row.actor.finished and not row.actor.activated) end
+            sequence[#sequence+1]='ready';return true
+        end,
+        activate=function(a)assert(a.finished);sequence[#sequence+1]='activate';a.activated=true;return true end})
+    assert(f.arena:spawn(TAMER,'red',1).ok)
+    assert(table.concat(sequence,',')=='roster,'..string.rep('finish,',7)..'ready,'..string.rep('activate,',6)..'activate')
+    sequence={};enabled=false;assert(f.arena:spawn(TAMER,'blue',1).ok)
+    assert(table.concat(sequence,',')=='finish,activate','solo keeps normal entry')
+    sequence={};enabled=true;assert(f.arena:spawn(TAMER,'companion',1).ok)
+    assert(#sequence==14 and sequence[2]=='activate','companion keeps its original entry')
+    sequence={};requireGroup=false
+    local res=f.arena:spawn(TAMER,'blue',1)
+    assert(not res.ok and not table.concat(sequence,','):find('activate',1,true) and f.arena:status().state=='cleanup_pending')
+    assert(f.arena:stop().ok)
+end
+do
+    local enabled=false
+    local f=escortFixture({formationEnabled=function()return enabled end,retireFormation=function()return true end,
+        escortsFor=function(_,on)if on then return {{path=DOG,count=6,formation=true}}end end,
+        prepareFormation=function()return false,'roster read failed'end,abortFormation=function()return true end})
+    assert(f.arena:spawn(TAMER,'red',1).ok);enabled=true
+    local result=f.arena:spawn(TAMER,'blue',1)
+    assert(not result.ok and result.spawned_count==0 and result.escort_count==0 and #f.arena:members()==1 and f.actors[1].alive)
+    enabled=false;assert(f.arena:spawn(TAMER,'blue',1).ok and f.arena:start().ok,'failed group leaves earlier and later battles usable')
+end
 assert(pack.leaders[tamer]==false and pack.leaders[pack.actors[2]]==tamer and pack.leaders[pack.actors[3]]==tamer,'escorts finish with the tamer as leader')
 assert(not pack.activated[1].escort and pack.activated[2].escort and pack.activated[3].escort and pack.activated[2].path==DOG)
 local packStatus=pack.arena:status()

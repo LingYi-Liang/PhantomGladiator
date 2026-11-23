@@ -316,6 +316,33 @@ function Lock.new(options)
         end
         return left==0 and unknown==0
     end
+    local function forgetFresh(fresh,living,fighting,now)
+        local terminal,fallenTeams={},{}
+        for _,member in ipairs(fresh)do
+            local key=U.key(member.actor)
+            local checked,dead=true,true
+            if key and options.finalDeath then checked,dead=pcall(options.finalDeath,member.actor) end
+            if key and checked and dead==true then
+                terminal[key]=member.team;fallenTeams[member.team]=true
+                local confirmed=forget(member.actor,living,not fighting)
+                forgotten[key]=confirmed and true or now+FORGET_SECONDS
+                identities[key]=identity(member.actor)
+            elseif key then forgotten[key]=now+FORGET_SECONDS end
+        end
+        if options.forgetTargets and next(terminal) then
+            local retryTeams={}
+            for _,member in ipairs(living)do
+                local other=member.team=='red' and 'blue' or 'red'
+                if fallenTeams[other] then
+                    local ok,cleared=pcall(options.forgetTargets,member.actor,terminal,member.team)
+                    if not ok or cleared~=true then retryTeams[other]=true end
+                end
+            end
+            for key,team in pairs(terminal)do
+                if retryTeams[team] then forgotten[key]=now+FORGET_SECONDS end
+            end
+        end
+    end
     -- Support tick: index the fighting units and their components; install while a fight runs.
     -- Corpses come off the lists with or without a fight running: the death of a side's last unit ends the fight on
     -- that same tick, and that corpse stayed on the winners' lists, so they never left combat (the game ends combat
@@ -378,14 +405,7 @@ function Lock.new(options)
         for key in pairs(dropped)do if not known[key] then dropped[key]=nil end end
         for key in pairs(pendingSense)do if not known[key] then pendingSense[key]=nil end end
         for key in pairs(pendingDrop)do if not known[key] then pendingDrop[key]=nil end end
-        for _,member in ipairs(fresh)do
-            local confirmed=forget(member.actor,living,not fighting)
-            local key=U.key(member.actor)
-            if key then
-                forgotten[key]=confirmed and true or now+FORGET_SECONDS
-                identities[key]=identity(member.actor)
-            end
-        end
+        if #fresh>0 then forgetFresh(fresh,living,fighting,now) end
         for key in pairs(identities)do if not forgotten[key] and not dropped[key] then identities[key]=nil end end
         if next(teams) then
             quietSince=nil

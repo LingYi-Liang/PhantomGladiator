@@ -88,7 +88,8 @@ function Rig.new(o)
     function self:stage(r,mesh,outfit,signature)
         if not actorMesh(r,mesh) or not matchingBones(outfit.bodySource,mesh,false) then return false end
         if not self:discard(r,'pendingRig') then return false end
-        local group={actor=r.actor,name=r.name,parts={},signature=signature,driver=mesh,asset=outfit.body}
+        local group={actor=r.actor,name=r.name,still=r.still,parts={},signature=signature,driver=mesh,asset=outfit.body,
+            snapshotLook=r.snapshotLook}
         r.pendingRig=group
         local function build()
             local root=o.newBody(group,mesh,outfit)

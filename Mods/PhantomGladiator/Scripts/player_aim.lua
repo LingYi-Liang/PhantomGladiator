@@ -31,6 +31,7 @@ for _,name in ipairs({'FlyingSword','FlyingSpear','FlyingHammer_Big','FlyingGun'
     LABEL[start]=name..'起飞';LABEL[finish]=name..'结束'
 end
 local UNHOOK_SECONDS,LINES,SUMMARY_SECONDS=10,12,10
+Aim.paths.menghuaHit='/Script/SGameCombatSystem.BulletAttackModule:DealDamageToAvatar'
 local DEPTH=8
 local STEPS={'Pawn','BulletOwnerAvatar','Owner','Instigator','Source Ability'}
 local UNLISTED_LINES,BULLET_LINES,FLIGHT_LINES,FLIGHT_PER_KIND=40,60,240,3
@@ -309,6 +310,11 @@ function Aim.new(options)
             local object=U.unwrap(context)
             if not U.valid(object) then return nil end
             local cls=className(object)
+            if options.formationPlayerLookup and ((name=='character' and cls=='GA_HuaShan_Troop_Healing_C')
+                or (name=='pawn' and cls=='GA_HuaShan_RedTroop_BigBro_Skill_08_01_C')) and U.unwrap(index)==0 then
+                local answer=options.formationPlayerLookup(object)
+                if answer~=nil then return answer end
+            end
             local unit
             local warning=name=='pawn' and cls=='GAAction_ParticleOnPlayer_C'
             if warning then
@@ -492,16 +498,17 @@ function Aim.new(options)
     -- target, then fly straight, so it decides where they all go. A bullet of a fighting unit aimed at anything but another
     -- fighting unit goes to the unit's opponent, and each skill is named once with what it had, on the player or not.
     local bulletLines,bulletSeen=0,{}
-    local function retarget(_,avatar,_,ability,_,_,out)
+    local function retarget(route,_,avatar,_,ability,_,_,out)
         if not self.alive or not next(fighters) then return nil end
         local owner=U.unwrap(avatar)
         if not U.valid(owner) then return nil end
         local key=U.key(owner)
         if not key or not fighters[key] or phaseBusy(key) or (options.paused and options.paused()) then return nil end
         local okTarget,target=pcall(opponentOf,key)
-        if not okTarget or not U.valid(target) then return nil end
-        local root=U.field(target,'RootComponent')
-        if not U.valid(root) then return nil end
+        if not okTarget or not U.valid(target) then
+            okTarget,target=pcall(lastEnemyOf,key)
+            if not okTarget then target=nil end
+        end
         local current=out and U.unwrap(out)
         local comp=current and U.struct(current,'Component')
         local had='空'
@@ -509,6 +516,9 @@ function Aim.new(options)
             local okOwner,hit=pcall(function()return comp:GetOwner()end)
             if okOwner and U.valid(hit) then
                 had=className(hit)
+                local intended=companions[key] and U.key(target)
+                if intended and U.key(hit)==intended then return nil end
+                if companions[key] and not U.valid(target) and isPlayer(hit) then return false end
                 if fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit)) then
                     local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
                     if not bulletSeen['ok'..where] and bulletLines<BULLET_LINES then
@@ -519,18 +529,34 @@ function Aim.new(options)
                 end
             end
         end
-        local okSet,err=pcall(function()out:set({Component=root,SocketName=FName('None')})end)
-        self.redirected=self.redirected+1
-        self.counts.bullet=self.counts.bullet+1;self.window.bullet=self.window.bullet+1
-        local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
-        if not bulletSeen[where] and bulletLines<BULLET_LINES then
-            bulletSeen[where]=true;bulletLines=bulletLines+1
-            local back=out and U.unwrap(out)
-            local after=back and U.struct(back,'Component')
-            say(string.format('子弹目标改成对手 招式=%s 原目标=%s -> %s 写入=%s%s 读回=%s 累计=%d',where,had,className(target),tostring(okSet),okSet and '' or '('..tostring(err)..')',
-                addr(after)==addr(root) and '生效' or '没读回',self.counts.bullet))
+        if not U.valid(target) then return nil end
+        local root=U.field(target,'RootComponent')
+        local wanted=U.key(root)
+        if not wanted then return false end
+        local function matches()
+            return U.key(U.struct(U.unwrap(out),'Component'))==wanted
         end
-        return true
+        local okSet=pcall(function()out:set({Component=root,SocketName=FName('None')})end)
+        local verified=matches()
+        if not verified then
+            local socket=U.unwrap(out)
+            if U.kind(socket)=='UScriptStruct' and U.valid(root) then
+                okSet=pcall(function()socket.Component=root;socket.SocketName=FName('None')end)
+                verified=matches()
+            end
+        end
+        if verified then
+            self.redirected=self.redirected+1
+            self.counts[route]=self.counts[route]+1;self.window[route]=self.window[route]+1
+        end
+        local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
+        local report=route..where..tostring(verified)
+        if not bulletSeen[report] and bulletLines<BULLET_LINES then
+            bulletSeen[report]=true;bulletLines=bulletLines+1
+            say(string.format('子弹目标改成对手 招式=%s 原目标=%s -> %s 写入=%s 读回=%s 累计=%d',where,had,className(target),tostring(okSet),
+                verified and '生效' or '失败，本次选敌作废',self.counts[route]))
+        end
+        return verified
     end
 
     -- Once a flying weapon starts: a target that is not a fighting unit becomes the opponent, on the bullet itself. When it
@@ -998,6 +1024,8 @@ function Aim.new(options)
         local ability=U.unwrap(context)
         if not U.valid(ability) then return nil end
         local name=className(ability)
+        if options.formationCast and (name=='GA_HuaShan_Story_Intro_C' or name=='GA_HuaShan_Troop_Healing_C'
+            or name=='GA_HuaShan_Troop_Resurrection_C') then options.formationCast(ability,name) end
         local kind=skillKind(ability,name)
         if not kind then return nil end
         local unit=unitOf(ability)
@@ -1008,6 +1036,63 @@ function Aim.new(options)
             self.counts.skillStart=self.counts.skillStart+1;self.window.skillStart=self.window.skillStart+1
         end
         return nil
+    end
+
+    -- Native damage dispatch is synchronous. Keep only the outer pair when identical calls nest.
+    local menghuaHits,pendingHits,removeHitAt=false,{},0
+    local function sampleHit(post,module,...)
+        if not self.alive or not menghuaHits then return end
+        local thread=options.inGameThread or IsInGameThread
+        if type(thread)~='function' then return end
+        local checked,onThread=pcall(thread)
+        if not checked or onThread~=true then return end
+        local n=select('#',...)
+        if n~=5 and not (post and n==6) then return end
+        module=U.unwrap(module)
+        local owner=U.field(module,'LastOwnerAvatar')
+        local caster=U.key(owner)
+        local entry=caster and roster[caster]
+        if not entry or not entry.hitKinds or not companions[caster] then return end
+        local target=U.unwrap(select(n==6 and 2 or 1,...))
+        local moduleKey,targetKey=U.key(module),U.key(target)
+        if not moduleKey or not targetKey then return end
+        local key=moduleKey..'/'..caster..'/'..targetKey
+        local sample=pendingHits[key]
+        if post then
+            if not sample then return end
+            sample.depth=sample.depth-1
+            if sample.depth>0 then return end
+            pendingHits[key]=nil
+            if sample.nested or sample.entry~=entry then return end
+            local after=options.hp(target)
+            say('梦华随从弹体伤害调用 弹体='..sample.data..' 施法者='..caster..' 受击者='..sample.target
+                ..'('..targetKey..') HP='..tostring(sample.hp)..' -> '..tostring(after))
+            return
+        end
+        if sample then sample.depth=sample.depth+1;sample.nested=true;return end
+        if entry.hitCount>=48 then return end
+        local data=nameOf(U.field(module,'BulletData'))
+        local receiver=className(target)
+        local kind=data..'/'..receiver
+        local count=entry.hitKinds[kind] or 0
+        if count>=2 then return end
+        entry.hitCount=entry.hitCount+1;entry.hitKinds[kind]=count+1
+        pendingHits[key]={entry=entry,data=data,target=receiver,hp=options.hp(target),depth=1}
+    end
+    local function syncHitProbe(now)
+        local name='menghuaHit'
+        local path=Aim.paths[name]
+        pendingHits={}
+        if menghuaHits and not hooks[name] and retry:ready(path) then
+            local ok,pre,post=pcall(RegisterHook,path,function(...)sampleHit(false,...)end,function(...)sampleHit(true,...)end)
+            local installed=ok and type(pre)=='number' and type(post)=='number'
+            retry:result(path,installed)
+            if installed then hooks[name]={pre=pre,post=post} end
+        elseif not menghuaHits and hooks[name] and now>=removeHitAt then
+            removeHitAt=now+1
+            local h=hooks[name];local ok,result=pcall(UnregisterHook,path,h.pre,h.post)
+            if ok and result~=false then hooks[name]=nil end
+        end
     end
 
     -- A blueprint that is not loaded yet (a selector comes in with the first bullet data) is tried again while the fight runs.
@@ -1024,7 +1109,8 @@ function Aim.new(options)
         if not okFind or not U.valid(found) then
             return
         end
-        local handler=name=='force' and forced or name=='lock' and relock or (name=='bullet' or name=='bulletAbility') and retarget
+        local handler=name=='force' and forced or name=='lock' and relock
+            or (name=='bullet' or name=='bulletAbility') and function(...)return retarget(name,...)end
             or name=='launch' and launched or name=='skillStart' and skillStarted
             or RAIN_END[name] and retireParticle or name=='iceSpawn' and iceSpawn
             or FLYING[name] and function(context)
@@ -1077,6 +1163,7 @@ function Aim.new(options)
         local units,current,added={},{},false
         flyingWanted=false
         iceWanted=false
+        menghuaHits=false
         local members=options.members()
         if options.prepareMembers then options.prepareMembers(members)end
         companions={}
@@ -1099,6 +1186,11 @@ function Aim.new(options)
                             entry={name=identity,flying=flyingCaster(member.actor),ice=iceCaster(member.actor)}
                         end
                         local caster=entry.flying
+                        if companion and options.hp and type(member.class_path)=='string'
+                            and member.class_path:match('%.BP_Monster_MengHua_C$') then
+                            entry.hitKinds=entry.hitKinds or {};entry.hitCount=entry.hitCount or 0
+                            if entry.hitCount<48 then menghuaHits=true end
+                        end
                         current[key]=entry
                         if caster then flyingWanted=true end
                         if entry.ice then iceWanted=true end
@@ -1120,6 +1212,7 @@ function Aim.new(options)
             quietSince=quietSince or now
             if now-quietSince>=UNHOOK_SECONDS then uninstall('战斗已结束') end
         end
+        if menghuaHits or hooks.menghuaHit then syncHitProbe(now) end
         summaryAt=summaryAt or now
         if now-summaryAt>=SUMMARY_SECONDS then
             if next(hooks) then

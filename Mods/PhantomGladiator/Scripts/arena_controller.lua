@@ -27,6 +27,7 @@ function Arena.new(options)
     assert(finite(maxUnits) and maxUnits%1==0 and maxUnits>=0,'invalid arena unit limit')
     local catalog = options.catalog
     local units, selected, team, count = {}, nil, "blue", 1
+    local corpseGroups,lastCorpseCheck={},nil
     local rosterRevision,indexRevision=0,-1
     local byKey,unkeyed={},{}
     local state, message, busy = "idle", "请选择单位与队伍", false
@@ -229,9 +230,20 @@ function Arena.new(options)
     local function notify_units()
         rosterRevision=rosterRevision+1
         indexRevision=-1;byKey,unkeyed=nil,nil
+        corpseGroups={}
+        local copy={}
+        for _,unit in ipairs(units) do
+            local group=unit.formationGroup
+            if group and group.retire then
+                local rows=corpseGroups[group] or {}
+                rows[#rows+1]=unit;corpseGroups[group]=rows
+            end
+            if options.onUnitsChanged then
+                copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,formation=unit.formation,
+                    formationGroup=group,summoner=unit.summoner,aid=unit.aid==true}
+            end
+        end
         if not options.onUnitsChanged then return true end
-        local copy = {}
-        for _, unit in ipairs(units) do copy[#copy + 1] = { actor = unit.actor, team = unit.team,class_path=unit.class_path,formation=unit.formation,formationGroup=unit.formationGroup,summoner=unit.summoner,aid=unit.aid==true } end
         local ok, err = pcall(options.onUnitsChanged, copy)
         if not ok then log("参赛者同步失败: " .. tostring(err)) end
         return ok
@@ -336,7 +348,8 @@ function Arena.new(options)
     local function next_slot(whichTeam)
         local used = {}
         for _, unit in ipairs(units) do
-            if unit.team == whichTeam and (not relay.enabled or alive_readback(unit)~=false) then used[unit.slot] = true end
+            if unit.team == whichTeam and (not relay.enabled or (unit.formationGroup and unit.formationGroup.forming)
+                or alive_readback(unit)~=false) then used[unit.slot] = true end
         end
         for slot = 1, #units+1 do if not used[slot] then return slot end end
     end
@@ -346,12 +359,16 @@ function Arena.new(options)
         return selected or (catalog and catalog.selectedPath),team,count
     end
 
+    local function memberRow(unit,isStand)
+        return {actor=unit.actor,team=unit.team,class_path=unit.class_path,formation=unit.formation,
+            formationGroup=unit.formationGroup,summoner=unit.summoner,stand=isStand,
+            reserve=unit.dormant==true or isStand,untargetable=unit.untargetable==true,aid=unit.aid==true}
+    end
     function instance:members()
         prune()
         local copy={}
         for _,unit in ipairs(units) do
-            copy[#copy+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,formation=unit.formation,formationGroup=unit.formationGroup,summoner=unit.summoner,
-                stand=stand(unit),reserve=unit.dormant==true or stand(unit),untargetable=unit.untargetable==true,aid=unit.aid==true}
+            copy[#copy+1]=memberRow(unit,stand(unit))
         end
         return copy
     end
@@ -582,6 +599,10 @@ function Arena.new(options)
         if not revision then return false end
         local fallen=unit_by_key(actor_key(old))
         if not fallen or (fallen.team~='red' and fallen.team~='blue') or alive_readback(fallen)~=false then return false end
+        if options.finalDeath then
+            local checked,dead=invoke('finalDeath',old)
+            if not checked or dead~=true then return false end
+        end
         local unit,target=unit_by_key(actor_key(actor)),unit_by_key(actor_key(wanted))
         return unit and target and not unit.aid and not unit.needsJoin and not target.aid and not target.needsJoin
             and (unit.team=='red' or unit.team=='blue') and (target.team=='red' or target.team=='blue')
@@ -633,6 +654,43 @@ function Arena.new(options)
     local function prepare_story_team_actor(actor)
         local called,ready=invoke('prepareStoryTeamActor',actor)
         return called and ready==true
+    end
+
+    -- Keep the original resurrection window. Only a whole, finally defeated summoned party is retired.
+    function instance:tickDefeatedFormations()
+        if busy or not next(corpseGroups) or state=='cleanup_pending' or state=='restore_pending' then return end
+        local got,now=invoke('now')
+        if not got or not finite(now) then return end
+        if lastCorpseCheck and now>=lastCorpseCheck and now-lastCorpseCheck<1 then return end
+        lastCorpseCheck=now
+        local candidate
+        local revision=rosterRevision
+        for group,rows in pairs(corpseGroups) do
+            local ready=true
+            for _,unit in ipairs(rows) do
+                local checked,dead=invoke('finalDeath',unit.actor,true)
+                if not checked or dead~=true or not unit.formationName or actor_name(unit.actor)~=unit.formationName then
+                    ready=false;break
+                end
+            end
+            if not ready then group.deadSince=nil
+            elseif not group.deadSince or now<group.deadSince then
+                group.deadSince=now
+                log('剑阵全员阵亡读回 '..rows[1].formationName..'；等待 10 秒后复核')
+            elseif not candidate and now-group.deadSince>=10 then
+                for _,unit in ipairs(rows) do
+                    if not unit.retireAt or now>=unit.retireAt then
+                        candidate=unit;break
+                    end
+                end
+            end
+        end
+        if not candidate or rosterRevision~=revision or busy then return end
+        candidate.retireAt=now+5
+        local called=invoke('destroy',candidate.actor)
+        local gone,proof=removed(candidate.actor)
+        log('整组阵亡后清理 '..candidate.formationName..' 调用='..tostring(called)..' 读回='..proof)
+        if gone==true then prune() end
     end
 
     function instance:tickReinforcements()
@@ -941,6 +999,50 @@ function Arena.new(options)
             local spawnWarning
             local refusal   -- why a unit was not started (spawnClass outcome not_started), said in the reply
             local cleanupRequired=false
+            local staged
+            local function finish_one(actor,transform,parent)
+                if not options.finishSpawn then return true end
+                local called,done,why=invoke('finishSpawn',actor,transform,world,parent)
+                if called and done==true then return true end
+                failures=failures+1;cleanupRequired=true
+                log('FinishSpawn未确认；保留对象供F4清理: '..tostring(why or done))
+                return false
+            end
+            local function activate_one(actor,unitPath,escort)
+                local ok,active,detail,warning
+                if removed(actor)==false then ok,active,detail,warning=invoke('activate',actor,unitPath,team,escort)
+                else detail='生成后对象已失效、进入销毁或状态不可读' end
+                if ok and active==true then activated=activated+1 else failures=failures+1;cleanupRequired=true end
+                if type(warning)=='string' and warning~='' then spawnWarning=warning end
+                log('召唤读回 actor='..actor_name(actor)..' HP='..health(actor)..' activate='..tostring(ok and active)
+                    ..' detail='..tostring(ok and (detail or 'unknown') or detail or active))
+            end
+            local function formation_step(name,group)
+                local called,ok,why=invoke(name,group,staged,world,team)
+                if called and ok==true then
+                    if type(why)=='string' and why~='' then spawnWarning=why end
+                    return true
+                end
+                failures=failures+1;cleanupRequired=true
+                refusal='原班配合未确认：'..tostring(why or ok)
+                log(refusal);return false
+            end
+            local function rollback_group(group)
+                if unknownSpawn or not options.abortFormation then return end
+                local called,detached=invoke('abortFormation',group)
+                if not called or detached~=true then return end
+                local complete=true
+                for _,row in ipairs(staged)do
+                    if removed(row.actor)==false then invoke('destroy',row.actor)end
+                    if removed(row.actor)==true then
+                        if row.parent then escorted=escorted-1 else spawned=spawned-1 end
+                        if row.activated then activated=activated-1 end
+                    else complete=false end
+                end
+                prune()
+                cleanupRequired=not complete
+                log('本次未完成的剑阵已回收读回='..tostring(complete))
+            end
             -- One unit: spawn, take ownership, finish and activate it. Returns the actor once it is owned and
             -- whether the batch has to stop. escort = {parent=, parent_path=, entry=} for a unit that comes with another.
             local function spawn_one(unitCls,unitPath,slot,transform,escort,group)
@@ -953,31 +1055,27 @@ function Arena.new(options)
                     -- 先接管所有权并通知root，再调用可能失败的登场操作。
                     units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,
                         formationGroup=group }
+                    if group and group.retire then
+                        local got,name=invoke('name',actor)
+                        if got and type(name)=='string' and name~='' then units[#units].formationName=name end
+                        group.deadSince=nil
+                    end
                     if not escort then units[#units].formation=formation end
                     if escort then escorted=escorted+1 else spawned = spawned + 1 end
+                    if group and group.nativeFormation then
+                        staged[#staged+1]={actor=actor,path=unitPath,transform=transform,parent=escort and escort.parent}
+                    end
                     if spawnError~=nil then failures=failures+1; log("生成返回警告: "..tostring(spawnError)) end
                     if not notify_units() then failures = failures + 1; cleanupRequired=true; return actor,true end
                     local ownedConfirmed,ownedError=guard_call('complete')
                     if not ownedConfirmed then
                         unknownSpawn=true; failures=failures+1; log(tostring(ownedError)); return actor,true
                     end
-                    -- FinishSpawn may execute game initialization before throwing. Keep
-                    -- the returned Actor owned, and do not destroy or activate it here.
-                    if options.finishSpawn then
-                        local okFinish,finished,finishError=invoke('finishSpawn',actor,transform,world,escort and escort.parent or nil)
-                        if not okFinish or finished~=true then
-                            failures=failures+1; cleanupRequired=true
-                            log('FinishSpawn未确认；保留对象供F4清理: '..tostring(finishError or finished)); return actor,true
-                        end
+                    if group and group.nativeFormation then
+                        return actor,false
                     end
-                    local okActivate, activation, detail, warning
-                    if removed(actor) == false then okActivate, activation, detail, warning = invoke("activate", actor,unitPath,team,escort~=nil)
-                    else okActivate, activation, detail = false, false, "生成后对象已失效、进入销毁或状态不可读" end
-                    if okActivate and activation == true then activated = activated + 1
-                    else failures = failures + 1; cleanupRequired=true end
-                    if type(warning)=='string' and warning~='' then spawnWarning=warning end
-                    log("召唤读回 actor=" .. actor_name(actor) .. " HP=" .. health(actor)
-                        .. " activate=" .. tostring(okActivate and activation) .. " detail=" .. tostring(okActivate and (detail or "unknown") or ("脚本错误: " .. tostring(activation))))
+                    if not finish_one(actor,transform,escort and escort.parent) then return actor,true end
+                    activate_one(actor,unitPath,escort~=nil)
                     return actor,cleanupRequired
                 end
                 failures = failures + 1
@@ -1030,9 +1128,34 @@ function Arena.new(options)
                 log(string.format("召唤阶段=生成 %d/%d team=%s slot=%d position=%.1f,%.1f,%.1f",
                     index, count, team, slot, transform.Translation.X, transform.Translation.Y, transform.Translation.Z))
                 local group=formation and {} or nil
+                if group and options.retireFormation then group.retire=options.retireFormation(entry.path)==true end
+                staged=nil
+                if group and group.retire and options.prepareFormation and (team=='blue' or team=='red') then
+                    group.nativeFormation=true;group.forming=true;staged={}
+                end
                 local actor,stop=spawn_one(cls,entry.path,slot,transform,nil,group)
-                if stop then break end
-                if actor and options.escortsFor and spawn_escorts(actor,group) then break end
+                if stop then
+                    if staged then rollback_group(group) end
+                    break
+                end
+                if actor and options.escortsFor and spawn_escorts(actor,group) then
+                    if staged then cleanupRequired=true;rollback_group(group) end
+                    break
+                end
+                if actor and staged then
+                    if not formation_step('prepareFormation',group) then rollback_group(group);break end
+                    for _,row in ipairs(staged) do if not finish_one(row.actor,row.transform,row.parent) then break end end
+                    if cleanupRequired or not formation_step('formationReady',group) then rollback_group(group);break end
+                    group.forming=nil
+                    for _,row in ipairs(staged) do
+                        activate_one(row.actor,row.path,row.parent~=nil)
+                        if cleanupRequired then break end
+                        row.activated=true
+                    end
+                    if cleanupRequired or (options.formationActivated and not formation_step('formationActivated',group)) then
+                        rollback_group(group);break
+                    end
+                end
             end
             if relaySide and spawned>0 and not relay.anchor then
                 relay.anchor={location=vector(location),forward=vector(forward)}
@@ -1184,7 +1307,7 @@ function Arena.new(options)
             state = "battle_requested"
             battleActive=true
             return response(failures == 0, string.format("已请求%d名参赛者攻击；失败/未验证=%d；实际伤害仍待读回", requests, failures),
-                { attack_requests = requests, failure_count = failures })
+                { battle_active = battleActive, attack_requests = requests, failure_count = failures })
         end)
     end
 
@@ -1252,7 +1375,7 @@ function Arena.new(options)
         relay.blue=relay.enabled and blue or 0;relay.red=relay.enabled and red or 0
     end
 
-    function instance:status()
+    local function readStatus(members)
         prune()
         local blue, red, neutral, unreadable, dead,neutralOwned,summons = 0, 0, 0, 0, 0,0,0
         local companions,companionOwned,reserve,stands,aids=0,0,0,0,0
@@ -1281,7 +1404,12 @@ function Arena.new(options)
                 log('存活人数更新 team='..unit.team..(unit.aid and '（对面召来的帮手，不计入）' or '')..' actor='..actor_name(unit.actor)
                     ..'；读回='..proof..' alive='..tostring(alive)..'；保留所有权供清理')
             end
+            if unit.countedAlive~=alive and type(alive)=='boolean' and unit.formationGroup
+                and unit.formationGroup.nativeFormation and options.formationLifeChanged then
+                invoke('formationLifeChanged',unit.formationGroup,unit.actor,alive)
+            end
             unit.countedAlive=alive
+            if members then members[#members+1]=memberRow(unit,isStand) end
         end
         local okNow,now=invoke('now')
         if okNow and finite(now) then
@@ -1298,6 +1426,14 @@ function Arena.new(options)
             current_count = count,team_revision=teamRevision, state = state, message = message, busy = busy,
             battle_clock=fight.started and (fight.ended and 'ended' or 'running') or '',
             battle_seconds=fight.started and math.max(0,(fight.ended or fight.now)-fight.started) or 0 }
+    end
+
+    function instance:status()return readStatus()end
+    -- Both consumers in one support tick see the same reserve state. Commands still take fresh reads.
+    function instance:snapshot()
+        local members={}
+        local status=readStatus(members)
+        return members,status
     end
 
     -- Called by the existing panel loop once a second, including before a duel.

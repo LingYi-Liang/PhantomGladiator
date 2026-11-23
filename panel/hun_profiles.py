@@ -9,6 +9,7 @@ ITEMS={r['id']:r for r in CATALOG['items']}
 EFFECTS=json.loads((ROOT/'hun-accessory-effects.json').read_text(encoding='utf-8'))['rows']
 VERSION=1
 LOADOUT_NAME='hun-loadout.tsv'
+INDEPENDENT_LOOKS=('default_outfit','native','clone')
 
 def integer(value,low,high,label):
     if type(value)is not int or not low<=value<=high:raise ValueError(label+'数值无效')
@@ -31,7 +32,7 @@ def stat_range_error(field,value,positive,non_negative):
 
 def default_profile():
     return {'schema':VERSION,'name':'满配魂','items':{key:{'enabled':True,'level':'max','soul':row['soul_option'],'weight':1.0}for key,row in ITEMS.items()},
-        'growth':'native_max','attributes':{},'ai_parameters':{},
+        'growth':'native_max','appearance':'player','attributes':{},'ai_parameters':{},
         'ai':{'deflect_chance':1.0,'red_dodge_chance':1.0,'counter_chance':1.0,'late_weapon_bias':True,
               'repeat_policy':'soft','combo_limit':0},
         'resources':{'medicine_count':'native_max','consume_medicine':True,'consume_skill_resources':True,'cooldown_scale':1.0,'rebirth':'native'},
@@ -43,8 +44,8 @@ def default_profile():
 
 def upgrade(profile):
     # Profiles saved before the trial switches existed load with every trial off.
-    if isinstance(profile,dict)and'experimental'not in profile:return {**profile,'experimental':{'accessory_effects':False}}
-    return profile
+    if not isinstance(profile,dict):return profile
+    return {'experimental':{'accessory_effects':False},'appearance':'player',**profile}
 
 def loadout_text(revision,profile,positive=(),non_negative=()):
     """The saved profile in the form the game side reads (hun_loadout.lua): only what it can apply."""
@@ -55,6 +56,8 @@ def loadout_text(revision,profile,positive=(),non_negative=()):
         return str(value)
     def append(kind,*values):
         lines.append('\t'.join([kind,*(cell(v) for v in values)]))
+    if profile.get('appearance','player')!='player':
+        append('appearance',profile['appearance'])
     # Keep catalog order stable for variants with the same native id. A missing row is disabled.
     ranks={}
     for key,row in ITEMS.items():
@@ -93,6 +96,7 @@ def loadout_text(revision,profile,positive=(),non_negative=()):
 def validate(profile,stat_fields,ai_fields):
     profile=upgrade(profile)
     expected=default_profile();exact(profile,expected,'角色方案')
+    if profile['appearance'] not in ('player','snapshot') and profile['appearance'] not in INDEPENDENT_LOOKS:raise ValueError('外观来源无效')
     exact(profile['experimental'],expected['experimental'],'试验功能')
     if type(profile['experimental']['accessory_effects'])is not bool:raise ValueError('试验开关无效')
     if type(profile['schema'])is not int or profile['schema']!=VERSION:raise ValueError('不支持的方案版本')
@@ -172,17 +176,51 @@ class Store:
         self.path=pathlib.Path(path);self.stat_fields=stat_fields;self.ai_fields=ai_fields or {};self.lock=threading.Lock()
         self.positive=frozenset(positive);self.non_negative=frozenset(non_negative)
         self.loadout_path=self.path.with_name(LOADOUT_NAME)
+        # Earlier assistants validate every value in the first file, even for unrelated revisions.
+        self.appearance_files=((self.path.with_name('hun-appearance.json'),INDEPENDENT_LOOKS),
+                               (self.path.with_name('hun-appearance-v2.json'),('snapshot',)))
         self.profile=default_profile();self.revision=0;self.error=''
         self.resync=False
         self._load()
+
+    def _appearance_records(self,path,allowed):
+        if path.is_symlink():raise ValueError('魂外观记录无效')
+        if not path.exists():return {}
+        if path.stat().st_size>1024:raise ValueError('魂外观记录无效')
+        values=decode(path.read_text(encoding='utf-8'))
+        if not isinstance(values,dict) or len(values)>2 or not all(
+            re.fullmatch('[0-9a-f]{64}',key) and mode in allowed for key,mode in values.items()
+        ):raise ValueError('魂外观记录无效')
+        return values
+
+    def _save_appearance(self,previous,current,mode):
+        # The stable assistant reads the original JSON schema. Bind the new choice to
+        # its exact bytes, retaining the previous choice until the profile transaction completes.
+        old=self.profile['appearance']
+        for path,allowed in self.appearance_files:
+            entries={}
+            if previous is not None and old in allowed:entries[hashlib.sha256(previous).hexdigest()]=old
+            if mode in allowed:entries[hashlib.sha256(current).hexdigest()]=mode
+            if self._appearance_records(path,allowed)==entries:continue
+            raw=json.dumps(entries,sort_keys=True).encode('utf-8')
+            os.replace(_stage(path,raw),path)
+            if path.read_bytes()!=raw:raise OSError('魂外观记录未读回确认')
 
     def _load(self):
         try:
             if self.path.exists():
                 if self.path.is_symlink()or self.path.stat().st_size>MAX_BYTES:raise ValueError('方案文件路径或大小无效')
-                payload=decode(self.path.read_text(encoding='utf-8'))
+                raw=self.path.read_bytes()
+                payload=decode(raw.decode('utf-8'))
                 exact(payload,('revision','profile'),'保存记录');integer(payload['revision'],1,2147483646,'版本')
                 profile=validate(payload['profile'],self.stat_fields,self.ai_fields);revision=payload['revision']
+                if 'appearance' not in payload['profile']:
+                    digest=hashlib.sha256(raw).hexdigest()
+                    for path,allowed in self.appearance_files:
+                        mode=self._appearance_records(path,allowed).get(digest)
+                        if mode is not None:
+                            profile['appearance']=mode
+                            break
                 # Older versions saved these values in JSON but omitted them from the game copy.
                 profile['attributes']={field:value for field,value in profile['attributes'].items()
                                        if not stat_range_error(field,value,self.positive,self.non_negative)}
@@ -225,12 +263,14 @@ class Store:
                     return {'revision':self.revision,'profile':copy.deepcopy(profile),'error':''}
             if request['revision']!=self.revision:raise ValueError('方案已在另一处更新，请重新载入后再保存')
             revision=self.revision+1
-            content=json.dumps({'revision':revision,'profile':profile},ensure_ascii=False,allow_nan=False).encode('utf-8')
+            stored={k:v for k,v in profile.items() if k!='appearance'}
+            content=json.dumps({'revision':revision,'profile':stored},ensure_ascii=False,allow_nan=False).encode('utf-8')
             if len(content)>MAX_BYTES:raise ValueError('方案过大')
             mirror=loadout_text(revision,profile,self.positive,self.non_negative).encode('utf-8')
             tmp=_stage(self.path,content)
             game_tmp=_stage(self.loadout_path,mirror)
             previous=self.path.read_bytes() if self.path.exists() else None
+            self._save_appearance(previous,content,profile['appearance'])
             os.replace(tmp,self.path)
             exported=False
             try:

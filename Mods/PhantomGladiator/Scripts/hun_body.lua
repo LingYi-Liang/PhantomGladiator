@@ -986,7 +986,7 @@ function Body.new(o)
             if records[key]==r and r.phase=='observed' and not r.dead and r.appearance then
                 motionTime=motionTime or gameNow()
                 if motionTime and motionTime>=r.appearance.nextCheck then
-                    outfitSweep=outfitSweep or {}
+                    outfitSweep=outfitSweep or {materialJobs={}}
                     optional(look,'maintainAppearance',r,motionTime,outfitSweep)
                 end
             end
@@ -1010,6 +1010,7 @@ function Body.new(o)
                 end
             end
         end
+        if outfitSweep and #outfitSweep.materialJobs>0 then optional(look,'flushMaterials',outfitSweep.materialJobs,motionTime) end
     end
     -- Whether this actor is a Hun body this module summoned and still follows.
     function self:owns(actor)

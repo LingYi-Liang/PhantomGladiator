@@ -14,13 +14,13 @@ local function object(name,fields)
     return o
 end
 local function harness()
-    local h={lines={},hooks={},unhooked={},now=0,fighting=false,members={},ids=0,targets={},paused=false}
+    local h={lines={},hooks={},posts={},unhooked={},now=0,fighting=false,members={},ids=0,targets={},paused=false}
     local paths={}
     for _,path in pairs(Aim.paths)do paths[path]=true end
     StaticFindObject=function(path)return paths[path] and object(path) or nil end
     RegisterHook=function(path,pre,post)
         assert(paths[path] and type(pre)=='function' and type(post)=='function')
-        h.ids=h.ids+1;h.hooks[path]=pre;return h.ids,100+h.ids
+        h.ids=h.ids+1;h.hooks[path]=pre;h.posts[path]=post;return h.ids,100+h.ids
     end
     UnregisterHook=function(path,pre,post)h.unhooked[#h.unhooked+1]={path,pre,post};h.hooks[path]=nil end
     h.player=object('BP_RenewalPlayer_C')
@@ -50,7 +50,10 @@ local function harness()
         return Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
             world=h.world and function()return h.world end,
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
-            opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
+            opponentOf=function(key)return h.targets[key] end,companionTargetOf=h.mapEnemy and function()return h.mapEnemy end,
+            hp=h.hp,inGameThread=function()return true end,
+            formationPlayerLookup=h.formationPlayerLookup,formationCast=h.formationCast,
+            abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
             paused=function()return h.paused end,phaseBusyKey=h.phaseBusyKey,phaseBusy=h.phaseBusy})
     end
@@ -59,6 +62,19 @@ local function harness()
 end
 local function key(actor)return tostring(actor.GetAddress())end
 local function test(name,fn)fn();print('ok - '..name)end
+
+test('HuaShan support camera and input are scoped to the original lookup and registered ability',function()
+    local h=harness();h.unit('red');h.unit('blue');h.fighting=true
+    local heal=object('GA_HuaShan_Troop_Healing_C');local mapHeal=object('GA_HuaShan_Troop_Healing_C')
+    local counter=object('GA_HuaShan_RedTroop_BigBro_Skill_08_01_C')
+    local empty={IsValid=function()return false end};local casts=0
+    h.formationPlayerLookup=function(a)if a==heal or a==counter then return empty end end
+    h.formationCast=function(a,name)assert(a==heal and name=='GA_HuaShan_Troop_Healing_C');casts=casts+1 end
+    local aim=h.new();aim:tick()
+    assert(h.ask('character',heal)==empty and h.ask('pawn',heal)==h.player)
+    assert(h.ask('character',mapHeal)==h.player and h.ask('pawn',counter)==empty)
+    h.hooks[Aim.paths.skillStart](heal);assert(casts==1)
+end)
 
 test('only the C4 warning action of a fighting unit gets an NPC instead of the player',function()
     local h=harness();local aim=h.new()
@@ -259,6 +275,54 @@ test('a bullet of a fighting unit aimed at the player goes to its opponent; aime
     local during=param(playerRoot)
     assert(select(object('Selector'),red,nil,skill,nil,true,during)==nil and during:read().Component==playerRoot,'an execution keeps its own')
     h.paused=false
+end)
+
+test('companion projectile selectors only accept verified output, including live struct writes',function()
+    FName=function(text)return text end
+    local h=harness()
+    local caster=h.unit('companion')
+    local enemy=object('MapBoss');h.mapEnemy=enemy
+    enemy.RootComponent=object('TargetRoot',{GetOwner=function()return enemy end})
+    local playerRoot=object('PlayerRoot',{GetOwner=function()return h.player end})
+    local aim=h.new();aim:tick()
+    local skill=object('GA_MengHua_Skill_08_Lightning_C')
+    for _,route in ipairs({'bullet','bulletAbility'})do
+        local select=h.hooks[Aim.paths[route]]
+        local value={Component=playerRoot}
+        local out={type=function()return 'RemoteUnrealParam'end,get=function()return value end,set=function()end}
+        local before=aim.counts[route]
+        assert(select(nil,caster,nil,skill,nil,true,out)==false and value.Component==playerRoot)
+        out.set=function()error('setter rejected')end;value={}
+        assert(select(nil,caster,nil,skill,nil,true,out)==false and value.Component==nil)
+        assert(aim.counts[route]==before)
+        value={Component=playerRoot,type=function()return 'UScriptStruct'end}
+        assert(select(nil,caster,nil,skill,nil,true,out)==true and value.Component==enemy.RootComponent)
+        value={Component=playerRoot};out.set=function(_,v)value=v end
+        assert(select(nil,caster,nil,skill,nil,true,out)==true and value.Component==enemy.RootComponent)
+        assert(aim.counts[route]==before+2)
+        value={Component=playerRoot}
+        assert(select(nil,h.player,nil,skill,nil,true,out)==nil and value.Component==playerRoot)
+    end
+end)
+
+test('only companion Meng Hua reports actual bullet targets and pre/post HP, with a per-type limit',function()
+    local h=harness();h.mapEnemy=object('Boss');local actor=h.unit('companion')
+    h.members[1].class_path='/Game/Test/BP_Monster_MengHua.BP_Monster_MengHua_C'
+    h.mapEnemy.hp=500;h.hp=function(a)return a.hp end
+    local aim=h.new();aim:tick()
+    local route=Aim.paths.menghuaHit
+    local data=object('BulletData',{GetFName=function()return {ToString=function()return 'BD_MengHua_CA_02'end}end})
+    local module=object('AttackModule',{LastOwnerAvatar=actor,BulletData=data})
+    local function hit(source)
+        module.LastOwnerAvatar=source
+        h.hooks[route](module,h.mapEnemy,nil,nil,nil,nil)
+        h.mapEnemy.hp=h.mapEnemy.hp-25
+        h.posts[route](module,h.mapEnemy,nil,nil,nil,nil)
+    end
+    hit(actor);hit(actor);hit(actor);hit(h.player)
+    local _,n=h.all():gsub('梦华随从弹体伤害调用','')
+    assert(n==2 and h.all():find('BD_MengHua_CA_02',1,true) and h.all():find('HP=500 -> 475',1,true))
+    h.members={};aim:tick();assert(h.hooks[route]==nil)
 end)
 
 test('a flying weapon holding the player when it starts goes to the opponent; its end says where it was',function()

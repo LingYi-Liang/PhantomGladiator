@@ -135,8 +135,11 @@ function Queue.new(options)
             local revision=self.revision
             local ok,result=pcall(options.begin or function()end)
             if revision~=self.revision or not self.relayStarted then return end
-            if not ok or type(result)~='table' or not result.ok then self:cancel('开战未确认，接力停止，已生成单位保留');return end
-            self.initial=false;pending();log('[SummonQueue] 首批开战读回=true')
+            if not ok or type(result)~='table' or (not result.ok and result.battle_active~=true) then
+                self:cancel('开战未确认，接力停止，已生成单位保留');return
+            end
+            self.initial=false;pending()
+            log('[SummonQueue] 首批开战读回=true'..(result.ok and '' or '；个别开战指令待确认，保留后续候补'))
         end
         if not self.initial then
             for _,team in ipairs({'blue','red'})do

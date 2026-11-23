@@ -43,6 +43,63 @@ function Lock.new(options)
         local key=U.key(actor)
         return ok and key~=nil and U.key(owner)==key
     end
+    function self:forgetDefeated(actor,corpses,team)
+        if not U.valid(actor) then return false end
+        local function defeated(ref)
+            local key=U.key(ref)
+            local side=key and corpses[key]
+            return side~=nil and side~=team
+        end
+        local tc,read=U.field(actor,'Targeting Component')
+        if not U.valid(tc) then return read end
+        local handler,handlerRead=U.field(tc,'DefaultTargetHandler')
+        if not handlerRead then return false end
+        local bb,boardRead=U.field(handler,'Blackboard')
+        if U.valid(handler) and not boardRead then return false end
+        local changed=0
+        local function idle()
+            return U.valid(actor) and (not options.actionBusy or options.actionBusy(actor)==false)
+        end
+        if U.valid(bb) then
+            for _,field in ipairs({'Target Key','LastSensedActorKey'}) do
+                local key,keyRead=U.field(handler,field)
+                if not keyRead then return false end
+                if key~=nil and U.valid(bb) then
+                    local ok,value=pcall(function()return U.unwrap(bb:GetValueAsObject(key))end)
+                    if not ok then return false end
+                    if defeated(value) then
+                        if not idle() or not U.valid(bb) then return false end
+                        local cleared,after=pcall(function()
+                            if defeated(U.unwrap(bb:GetValueAsObject(key))) then bb:ClearValue(key) end
+                            if not U.valid(bb) then error('blackboard unavailable') end
+                            return U.unwrap(bb:GetValueAsObject(key))
+                        end)
+                        if not cleared or defeated(after) then return false end
+                        changed=changed+1
+                    end
+                end
+            end
+        end
+        if not U.valid(tc) then return false end
+        local held,_,_,known=lockOf(tc)
+        if not known then return false end
+        if defeated(held) then
+            if not idle() or not U.valid(tc) then return false end
+            local current,_,_,rechecked=lockOf(tc)
+            if not rechecked then return false end
+            if defeated(current) then
+                local stopped=pcall(function()tc:StopLockTarget()end)
+                if not stopped or not U.valid(tc) then return false end
+                local after,_,_,verified=lockOf(tc)
+                if not verified or defeated(after) then return false end
+                changed=changed+1
+            end
+        end
+        if changed>0 and lines<LINES then
+            lines=lines+1;log('[LockRelease] 清除已阵亡对手 持有者='..name(actor)..' 读回移除='..changed)
+        end
+        return true
+    end
     -- actor: a fighting unit; target: its assigned opponent while in reach, else nil. True once its lock was moved
     -- or dropped and read back; false when there was nothing to do or it did not take.
     function self:release(actor,target)

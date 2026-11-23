@@ -53,6 +53,16 @@ test('a missing or damaged file gives nothing and is reported once',function()
     d.files['rt/hun-loadout.tsv']=text({'HunLoadoutV1\t6','count\t3','accessories\toff'})
     assert(loadout:read().count==3)
 end)
+test('appearance defaults and independent sources use known values in one kit row',function()
+    local header={'HunLoadoutV1\t15','count\t1','kit\t1'}
+    assert(assert(Loadout.parse(text(header))).appearance=='player')
+    for _,mode in ipairs({'native','default_outfit','clone','snapshot'}) do
+        header[4]='appearance\t'..mode
+        assert(assert(Loadout.parse(text(header))).appearance==mode)
+    end
+    header[5]='appearance\tnative';assert(not Loadout.parse(text(header)))
+    header[5]=nil;header[4]='appearance\t/Game/Other';assert(not Loadout.parse(text(header)))
+end)
 test('full profiles retain variant identities, empty pools and zero probabilities',function()
     local id='main_weapon_0123456789abcdef'
     local weapon='weapon\t'..id..'\tTang\t/PBZCombatAsset/ActorData/Players/Hun/Weapon/Tang/Weapon_Hun_Tang.Weapon_Hun_Tang\t12\toff\t0.75\t4\t黑伤'

@@ -23,6 +23,62 @@ class LoadoutTests(unittest.TestCase):
         self.assertTrue(text.endswith('\n') and '\r' not in text)
         return [line.split('\t') for line in text.splitlines()]
 
+    def test_appearance_migrates_and_travels_with_the_profile(self):
+        legacy=self.store.snapshot()['profile'];legacy.pop('appearance',None)
+        decoded=self.store.import_text(0,json.dumps({'format':'PhantomGladiatorHunProfile','version':1,'profile':legacy}))
+        self.assertEqual(decoded['profile']['appearance'],'player')
+        self.assertFalse(any(row[0]=='appearance' for row in self.rows()))
+        for revision,mode in enumerate(('default_outfit','native','clone','snapshot'),1):
+            profile=self.store.snapshot()['profile'];profile['appearance']=mode
+            saved=self.store.save({'revision':revision,'profile':profile})
+            self.assertEqual(hun.Store(self.file,FIELDS,{}).snapshot()['profile']['appearance'],mode)
+            self.assertIn(['appearance',mode],self.rows())
+            stored=json.loads(self.file.read_text(encoding='utf-8'))['profile']
+            self.assertNotIn('appearance',stored,'stable builds must still accept the saved JSON')
+            self.loadout.write_text(hun.loadout_text(saved['revision'],stored),encoding='utf-8')
+            reopened=hun.Store(self.file,FIELDS,{})
+            self.assertEqual(reopened.snapshot()['profile']['appearance'],mode)
+            self.assertIn(['appearance',mode],self.rows())
+            frozen=self.store.immutable_snapshot(saved['revision'])
+            self.assertIn('appearance\t'+mode+'\n',hun.loadout_text(frozen['revision'],frozen['profile']))
+        for bad in (None,{},'/Game/Other',False):
+            profile['appearance']=bad
+            with self.assertRaises(ValueError): self.store.save({'revision':5,'profile':profile})
+        self.assertEqual(self.store.snapshot()['revision'],5)
+
+    def test_snapshot_export_import_and_failure_between_appearance_files(self):
+        from unittest.mock import patch
+        profile=self.store.snapshot()['profile'];profile['appearance']='native'
+        self.store.save({'revision':0,'profile':profile})
+        profile['appearance']='snapshot'
+        package=json.dumps({'format':'PhantomGladiatorHunProfile','version':1,'profile':profile})
+        replace=hun.os.replace
+        def fail_extension(source,target):
+            if target.name=='hun-appearance-v2.json':raise OSError('snapshot setting temporarily unavailable')
+            return replace(source,target)
+        with patch.object(hun.os,'replace',side_effect=fail_extension):
+            with self.assertRaises(OSError):self.store.import_text(1,package)
+        reopened=hun.Store(self.file,FIELDS,{})
+        self.assertEqual((reopened.revision,reopened.profile['appearance']),(1,'native'))
+        self.assertEqual(reopened.import_text(1,package)['profile']['appearance'],'snapshot')
+        legacy=json.loads(self.file.with_name('hun-appearance.json').read_text(encoding='utf8'))
+        self.assertTrue(all(mode in hun.INDEPENDENT_LOOKS for mode in legacy.values()))
+        self.assertEqual(hun.Store(self.file,FIELDS,{}).snapshot()['profile']['appearance'],'snapshot')
+
+    def test_failed_mirror_write_preserves_the_previous_independent_appearance(self):
+        from unittest.mock import patch
+        profile=self.store.snapshot()['profile'];profile['appearance']='native'
+        self.store.save({'revision':0,'profile':profile})
+        profile['appearance']='default_outfit';replace=hun.os.replace
+        def fail_mirror(source,target):
+            if target==self.loadout:raise OSError('mirror unavailable')
+            return replace(source,target)
+        with patch.object(hun.os,'replace',side_effect=fail_mirror):
+            with self.assertRaises(OSError):self.store.save({'revision':1,'profile':profile})
+        reopened=hun.Store(self.file,FIELDS,{})
+        self.assertEqual((reopened.revision,reopened.profile['appearance']),(1,'native'))
+        self.assertIn(['appearance','native'],self.rows())
+
     def test_defaults_are_exported_before_anything_is_saved(self):
         rows = self.rows()
         self.assertEqual(rows[0], ['HunLoadoutV1', '0'])

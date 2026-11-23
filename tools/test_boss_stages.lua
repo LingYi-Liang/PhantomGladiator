@@ -189,6 +189,20 @@ test('her phase marks are logged when they change, and she is out of reach while
     tags['AI.Hatred.IgnoreByNPC']=0
 end)
 
+test('late Leng Tu invisibility is observed without overriding teleport or mesh state',function()
+    local visible=false
+    lengtu.bHidden=false
+    lengtu.Mesh=object({bHiddenInGame=false,IsVisible=function()return visible end},'LengTuMesh')
+    tags['CharacterState.AbilityState.LengTu.Phase.Final']=1
+    now=10;stage:tick();now=11;visible=true;stage:tick()
+    assert(not all():find('冷荼本体显隐',1,true),'a brief native blink must stay quiet')
+    visible=false;now=12;stage:tick();now=15;stage:tick()
+    assert(all():find('网格可见=false',1,true) and not visible)
+    visible=true;now=16;stage:tick()
+    assert(all():find('网格可见=true',1,true))
+    tags['CharacterState.AbilityState.LengTu.Phase.Final']=0
+end)
+
 test('a second one shares the markers, which leave with the last of them',function()
     local second=boss('BP_Monster_LengTu_C')
     local before=#spawned

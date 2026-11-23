@@ -699,6 +699,34 @@ test('an existing link ignore is preserved when the pole controller releases its
     assert(ignores(npc.CapsuleComponent,box) and #npc.CapsuleComponent.MoveIgnoreComponents==1)
 end)
 
+test('a dense cluster of arena poles stays traversable with bounded sweeps per frame',function()
+    local h=fixture()
+    local npc=enemy(h,1,48)
+    local pieces={}
+    for i=1,12 do
+        local pole=object({outer=h.world,Area=h.area})
+        local mesh=collider(pole,1)
+        function mesh:GetOwner()return pole end
+        pole.SM_WoodPost_001=mesh
+        h.area.DeactivatedPoles[#h.area.DeactivatedPoles+1]=pole
+        pieces[i]=mesh
+    end
+    local when,probes,maxProbes=nil,0,0
+    h.block=function(actor,dest,hit)
+        if dest.Z<=actor.at.Z or dest.Z<180 then return false end
+        if when~=h.now then when,probes=h.now,0 end
+        probes=probes+1;maxProbes=math.max(probes,maxProbes)
+        for _,mesh in ipairs(pieces)do
+            if not ignores(actor.CapsuleComponent,mesh)then hit.Component=mesh;hit.bBlockingHit=true;return true end
+        end
+        return false
+    end
+    h:board()
+    assert(#h.resume==1 and npc.CharacterMovement.base==h.poles[1].SM_WoodPost_001)
+    assert(maxProbes<=5 and #npc.teleports==0,'a dense field must not force a long loop or teleport')
+    for _,mesh in ipairs(pieces)do assert(not ignores(npc.CapsuleComponent,mesh))end
+end)
+
 test('a first jump obstructed by a character can retry a different landing site in the same phase',function()
     local h=fixture()
     local npc=enemy(h)

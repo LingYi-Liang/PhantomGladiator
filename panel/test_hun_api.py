@@ -61,6 +61,32 @@ class Tests(unittest.TestCase):
         stored=self.bridge.db.execute("SELECT payload FROM commands WHERE id=?",(job['id'],)).fetchone()[0]
         self.assertNotIn('frozen_loadout',json.loads(stored))
 
+    def test_queued_and_direct_summons_use_their_own_appearance_revision(self):
+        self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_4')
+        _,data=self.request('GET','/api/hun');profile=data['profile'];profile['appearance']='native'
+        self.assertEqual(self.request('POST','/api/hun-profile',{'revision':0,'profile':profile})[0],200)
+        code,job=self.request('POST','/api/command',{'action':'hun_body_probe','team':'companion','count':1,'profile_revision':1})
+        self.assertEqual(code,202);profile['appearance']='default_outfit'
+        self.assertEqual(self.request('POST','/api/hun-profile',{'revision':1,'profile':profile})[0],200)
+        self.bridge.tick()
+        live=(self.bridge.runtime/'hun-loadout.tsv').read_text(encoding='utf8')
+        queued=(self.bridge.runtime/'hun-queued-loadout.tsv').read_text(encoding='utf8')
+        self.assertIn('appearance\tdefault_outfit\n',live)
+        self.assertIn('appearance\tnative\n',queued)
+        self.assertTrue(queued.startswith(f"{job['id']}\tSQ_4\nHunLoadoutV1\t1\n"))
+
+    def test_capture_on_actual_spawn_survives_a_later_profile_edit_in_the_queue(self):
+        self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_4')
+        _,data=self.request('GET','/api/hun');p=data['profile'];p['appearance']='snapshot'
+        self.assertEqual(self.request('POST','/api/hun-profile',{'revision':0,'profile':p})[0],200)
+        code,job=self.request('POST','/api/command',{'action':'hun_body_probe','team':'blue','count':2,'profile_revision':1})
+        self.assertEqual(code,202);p['appearance']='player'
+        self.assertEqual(self.request('POST','/api/hun-profile',{'revision':1,'profile':p})[0],200)
+        self.bridge.tick();saved=(self.bridge.runtime/'hun-queued-loadout.tsv').read_text(encoding='utf8')
+        self.assertTrue(saved.startswith(f"{job['id']}\tSQ_4\nHunLoadoutV1\t1\n"))
+        self.assertIn('appearance\tsnapshot\n',saved)
+        self.assertNotIn('appearance\tsnapshot\n',(self.bridge.runtime/'hun-loadout.tsv').read_text(encoding='utf8'))
+
     def test_queue_epoch_change_discards_hun_snapshot_before_delivery(self):
         self.ready(summon_queue_enabled='true',summon_queue_epoch='SQ_2')
         code,job=self.request('POST','/api/command',{'action':'hun_body_probe','team':'red','count':1,'profile_revision':0})

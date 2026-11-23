@@ -128,8 +128,12 @@ function Continuity.new(options)
         -- Damage-only immunity can keep a native hatred entry while its owner remains targetable.
         return keep==true or (blocked==false and counts(actor,INVULNERABLE)==true)
     end
+    function self:inExecution(actor)
+        if options.executionParticipant and options.executionParticipant(actor) then return true end
+        return executionTags(actor)
+    end
     function self:actionBusy(actor)
-        if (options.executionParticipant and options.executionParticipant(actor)) or executionTags(actor)~=false then return true end
+        if self:inExecution(actor)~=false then return true end
         local blocked=counts(actor,BUSY)
         if blocked~=false then return true end
         local mesh=U.field(actor,'Mesh')

@@ -637,6 +637,39 @@ function Stages.new(options)
         return false
     end
 
+    local function observeLengTu(record,t)
+        if t<(record.nextMeshRead or 0) or (record.meshReports or 0)>=8 then return end
+        record.nextMeshRead=t+1
+        local actor=record.actor
+        local mesh=U.field(actor,'Mesh')
+        if not U.valid(mesh) then return end
+        local ok,visible=pcall(function()return mesh:IsVisible()end)
+        local actorHidden=U.field(actor,'bHidden')
+        local meshHidden=U.field(mesh,'bHiddenInGame')
+        if not ok or type(visible)~='boolean' or type(actorHidden)~='boolean' or type(meshHidden)~='boolean' then return end
+        if actorHidden or meshHidden or not visible then
+            record.hiddenSince=record.hiddenSince or t
+            if record.hiddenReported or t-record.hiddenSince<2 then return end
+            record.hiddenReported=true
+        else
+            record.hiddenSince=nil
+            if not record.hiddenReported then return end
+            record.hiddenReported=nil
+        end
+        record.meshReports=(record.meshReports or 0)+1
+        local montage='?'
+        pcall(function()
+            if not U.valid(mesh) then return end
+            local anim=mesh:GetAnimInstance()
+            if not U.valid(anim) then return end
+            local active=anim:GetCurrentActiveMontage()
+            if U.valid(active) then montage=active:GetFName():ToString() else montage='无' end
+        end)
+        say(string.format('冷荼本体显隐 actor=%s 角色隐藏=%s 网格隐藏=%s 网格可见=%s 原生隐藏标签=%s 持续采样秒数=%.1f 动作=%s',
+            record.key,tostring(actorHidden),tostring(meshHidden),tostring(visible),tostring(count(actor,'CharacterState.AbilityState.Common.Hidden')),
+            record.hiddenSince and t-record.hiddenSince or 0,montage))
+    end
+
     function self:tick()
         local t=now()
         -- A move finished() did not get to (its caller failed): done here, so her checkpoints never go under the old ID.
@@ -670,6 +703,9 @@ function Stages.new(options)
                             #current>0 and table.concat(current,',') or '无',unread>0 and ' 读不到='..unread or ''))
                     end
                     record.tags=on
+                    if record.stage==STAGES.BP_Monster_LengTu and (on[LENGTU..'Phase.P5'] or on[LENGTU..'Phase.Final']) then
+                        observeLengTu(record,t)
+                    else record.hiddenSince,record.hiddenReported=nil,nil end
                 end
             end
         end

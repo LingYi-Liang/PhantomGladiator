@@ -67,11 +67,28 @@ window.PGHun = (() => {
       return `<div class="hun-summon-row"><button type="button" class="btn ${cls}" data-hun-action="summon" data-hun-team="${team}" ${canSummon() ? '' : 'disabled'}>${label}</button><span class="hun-key-slot">${key.control}</span>${key.message}</div>`;
     }).join('') + (window.PGHunKeys?.html('hun_blue').needsUpdate ? `<p class="hun-hint is-warn">${t("hun.updateKeys")}</p>` : '');
   }
+  const independentLooks = {default_outfit:'hun.defaultOutfit', native:'hun.nativeModel', clone:'hun.cloneModel'};
+  const lookHints = {player:'hun.playerLookHint', snapshot:'hun.snapshotLookHint', default_outfit:'hun.defaultLookHint', native:'hun.nativeLookHint', clone:'hun.cloneLookHint'};
+  function appearanceControls() {
+    const look = draft.appearance || 'player', independent = Object.hasOwn(independentLooks, look);
+    return `<div class="hun-appearance">
+      <label class="hun-field"><span>${t('hun.appearance')}</span><select data-hun-appearance-mode>
+        <option value="player" ${look === 'player' ? 'selected' : ''}>${t('hun.followPlayer')}</option>
+        <option value="snapshot" ${look === 'snapshot' ? 'selected' : ''}>${t('hun.snapshotLook')}</option>
+        <option value="independent" ${independent ? 'selected' : ''}>${t('hun.independent')}</option>
+      </select></label>
+      <div data-hun-independent ${independent ? '' : 'hidden'}><label class="hun-field"><span>${t('hun.independentModel')}</span>
+        <select data-hun-path="appearance">${Object.entries(independentLooks).map(([id,label]) => `<option value="${id}" ${look === id ? 'selected' : ''}>${t(label)}</option>`).join('')}</select>
+      </label></div>
+      <p class="hun-hint" data-hun-look-hint>${t(lookHints[look])}</p>
+    </div>`;
+  }
   function side() {
     renderedKeys = summonRows();
     return `<aside class="hun-side card">
       <div class="hun-id"><div class="hun-portrait">${art('HunCharacter', t("hun.soul"), true)}</div><div><p class="hun-eyebrow">${t("hun.subtitle")}</p><h1>${t("hun.soul")}</h1><span class="hun-connection" data-hun-connection>${esc(availability())}</span></div></div>
       <label class="hun-count"><span>${t("hun.count")}</span><input type="number" min="1" max="100" step="1" data-hun-path="count" value="${draft.count}" aria-label="${t("hun.quantity")}"><span>${t("hun.countUnit")}</span></label>
+      ${appearanceControls()}
       <div class="hun-summon" data-hun-keys>${renderedKeys}</div>
       <p class="hun-hint">${t("hun.summonHint")}</p>
       <div class="hun-profile">
@@ -256,7 +273,9 @@ window.PGHun = (() => {
       if (name === 'phase-remove') { undo = clone(draft); draft.phases.splice(Number(button.dataset.hunIndex), 1); render(); return; }
       checkInputs();
       if (name === 'export') {
-        const blob = new Blob([JSON.stringify({format: 'PhantomGladiatorHunProfile', version: 1, profile: draft}, null, 2)], {type: 'application/json'}), url = URL.createObjectURL(blob), link = document.createElement('a');
+        const profile = clone(draft);
+        if (profile.appearance === 'player') delete profile.appearance;
+        const blob = new Blob([JSON.stringify({format: 'PhantomGladiatorHunProfile', version: 1, profile}, null, 2)], {type: 'application/json'}), url = URL.createObjectURL(blob), link = document.createElement('a');
         link.href = url; link.download = (draft.name.replace(/[\\/:*?"<>|]/g, '_') || t("hun.defaultFile")) + '.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showNotice(() => t("hun.exported")); return;
       }
       if (name === 'summon' && !canSummon()) { showNotice(availability, 'error'); return; }
@@ -272,6 +291,14 @@ window.PGHun = (() => {
   }
   function edit(el) {
     if (!root()?.contains(el) || !draft || busy) return;
+    if (el.matches('[data-hun-appearance-mode]')) {
+      const base = root().querySelector('[data-hun-path="appearance"]');
+      const independent = el.value === 'independent';
+      draft.appearance = independent ? base.value : el.value;
+      root().querySelector('[data-hun-independent]').hidden = !independent;
+      root().querySelector('[data-hun-look-hint]').textContent = t(lookHints[draft.appearance]);
+      changedView(); return;
+    }
     if (el.matches('[data-hun-search]')) { query = el.value; root().querySelector('[data-hun-grid]').innerHTML = tiles(); return; }
     if (el.matches('[data-hun-only-on]')) { onlyOn = el.checked; root().querySelector('[data-hun-grid]').innerHTML = tiles(); return; }
     if (el.dataset.hunItemField) {
@@ -286,6 +313,7 @@ window.PGHun = (() => {
         else if (el.value === '' && key === 'medicine_count') obj[key] = 'native_max';
         else obj[key] = Number(el.value) / (Number(el.dataset.hunScale) || 1);
       } else obj[key] = el.value;
+      if (key === 'appearance') root().querySelector('[data-hun-look-hint]').textContent = t(lookHints[draft.appearance]);
     } else return;
     changedView();
   }

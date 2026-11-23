@@ -15,6 +15,10 @@ for _,id in ipairs({'BP_Monster_GoldMaskMan','BP_Monster_IronMaskMan'})do
 end
 M.xiao='BP_Monster_XiaoXue'
 function M.id(path)return type(path)=='string' and path:match('%.(BP_Monster_[%w_]+)_C$')end
+function M.retireFormation(path)
+    local id=M.id(path)
+    return id=='BP_Monster_HuaShan_Blue' or id=='BP_Monster_HuaShan_RedTroop_BigBro'
+end
 local passives={
     [M.xiao]={GA_SummonPassive_XiaoXue_C=4},
     BP_Monster_FemaleVessel_YuZan={GA_YuZan_Passive_Summon_C=3,GA_YuZan_Passive_Summon_P2_C=5},
@@ -74,6 +78,10 @@ function M.new(o)
     local function assign(task)
         task=U.unwrap(task)
         local pawn=U.field(task,'ControlledPawn');local r=member(pawn)
+        if r and type(r.owner)=='table' and r.owner.nativeFormation then
+            if o.nativeAssignment then o.nativeAssignment(task,pawn)end
+            return
+        end
         if not r or (o.hp(pawn) or 0)<=0 or not U.inWorld(task,o.world()) then return end
         local leader=leaders[r.owner]
         if not leader or not member(leader.actor) or (o.hp(leader.actor)or 0)<=0 or not leader.enabled or not M.parties[leader.id] then return end

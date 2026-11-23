@@ -40,6 +40,27 @@ end
 local tests=0
 local function test(name,fn)if not arg[2] or name:find(arg[2],1,true) then fn();tests=tests+1;print('ok - '..name) end end
 
+test('forgetting a defeated opponent clears only references still owned by that corpse',function()
+    local corpse,nextEnemy=unit('Dead'),unit('Next')
+    local actor,tc=fighter('Fighter',corpse)
+    local busy=true
+    local lock=Lock.new({actionBusy=function()return busy end})
+    local bb=object('Blackboard',{primary=corpse,fallback=corpse})
+    function bb:GetValueAsObject(key)return self[key] end
+    function bb:ClearValue(key)
+        if self.deny then return end
+        self[key]=nil
+        if key=='primary' then self.fallback=nextEnemy end
+    end
+    tc.DefaultTargetHandler=object('Handler',{Blackboard=bb,['Target Key']='primary',LastSensedActorKey='fallback'})
+    local dead={[tostring(corpse:GetAddress())]='red'}
+    assert(not lock:forgetDefeated(actor,dead,'blue') and #tc.calls==0 and bb.primary==corpse)
+    busy=false;bb.deny=true;assert(not lock:forgetDefeated(actor,dead,'blue') and bb.primary==corpse)
+    bb.deny=false;assert(lock:forgetDefeated(actor,dead,'blue'))
+    assert(bb.primary==nil and bb.fallback==nextEnemy and tc.LockTarget.Component==nil)
+    local n=#tc.calls;assert(lock:forgetDefeated(actor,dead,'blue') and #tc.calls==n)
+end)
+
 test('a lock on the boss nobody is sent at moves to the opponent, same part and socket, read back',function()
     local h=harness()
     local lengtu,scav=unit('BP_Monster_LengTu_C_1'),unit('BP_Monster_Scavenger_LengTu_C_2')

@@ -20,6 +20,8 @@ function Spectator.new(options)
     local maxHatred = limit(cfg.MaxHatredEntries, 512, 1, 2048)
     local relations, flags = {}, {}
     local componentClasses,componentReports={},{ }
+    local classMiss={}
+    local candidates
     local componentPaths={['Faction Component']='/Script/SGameCombatSystem.FactionComponent',
         BP_PBZHatredManagerComponent='/PBZCombatAsset/Prototypes/AI/BP_PBZHatredManagerComponent.BP_PBZHatredManagerComponent_C'}
     local enabled, silenced, offset, ticks, restoreOffset = false, false, 0, 0, 0
@@ -186,9 +188,10 @@ function Spectator.new(options)
         if ok and valid(result) == true then return result end
         local path=componentPaths[property]
         local cls=componentClasses[property]
-        if path and valid(cls)~=true then
+        if path and valid(cls)~=true and classMiss[property]~=ticks then
             local found,value=pcall(function()return StaticFindObject(path)end)
-            if found and valid(value)==true then cls=value;componentClasses[property]=cls end
+            if found and valid(value)==true then cls=value;componentClasses[property]=cls;classMiss[property]=nil
+            else classMiss[property]=ticks end
         end
         if valid(cls)==true then
             local found,value=pcall(function()return actor:GetComponentByClass(cls)end)
@@ -196,8 +199,7 @@ function Spectator.new(options)
                 local owned,owner=pcall(function()return value:GetOwner()end)
                 local actorKey=key(actor)
                 if owned and actorKey and key(owner)==actorKey then
-                    local id=tostring(key(actor))..property
-                    if not componentReports[id] then componentReports[id]=true;log('按组件类定位 '..property..' actor='..tostring(key(actor)))end
+                    if not componentReports[property] then componentReports[property]=true;log('按组件类定位 '..property..' actor='..actorKey)end
                     return value
                 end
             end
@@ -289,13 +291,14 @@ function Spectator.new(options)
         return false
     end
 
-    local function process_npc(npc, player, playerKey)
+    local function process_npc(npc, player, playerKey,world)
         local usable, reason = actor_valid(npc)
         if usable ~= true then
             if reason == "destroying" then discard_destroying(npc, "npc")
             elseif usable == nil then fail("NPC销毁状态/有效性读回未知，保留快照") end
             return
         end
+        if world and not options.inWorld(npc,world) then return end
         local npcKey = key(npc)
         if not npcKey or npcKey == playerKey then return end
         if player_side(npc) then
@@ -314,7 +317,8 @@ function Spectator.new(options)
         if options.preserveCombatFaction and options.preserveCombatFaction(npc) then return end
         local fc = component(npc, "Faction Component")
         local fcKey = key(fc)
-        local before = relation(npc, fc, player)
+        local before
+        if fcKey then before=relation(npc,fc,player) end
         if not fcKey or before == nil then fail("NPC " .. npcKey .. " 阵营关系不可读")
         elseif before ~= 1 then
             local id = npcKey .. ":" .. fcKey .. ":" .. playerKey
@@ -332,7 +336,8 @@ function Spectator.new(options)
             else fail("NPC中立覆盖未读回") end
         end
         local hm = component(npc, "BP_PBZHatredManagerComponent")
-        local hadPlayer = contains_player(npc, hm, player)
+        local hadPlayer
+        if hm then hadPlayer=contains_player(npc,hm,player) end
         if hadPlayer == nil then fail("NPC " .. npcKey .. " 仇恨成员不可读"); return end
         if hadPlayer == true then
             if actor_valid(npc) ~= true or actor_valid(player) ~= true then fail("移除仇恨前Actor不可用"); return end
@@ -445,6 +450,20 @@ function Spectator.new(options)
         return result
     end
 
+    local function mapNPCs(playerKey,world,worldKey)
+        local get=options.getNPCs
+        if not get then return {} end
+        if not worldKey then return get() end
+        local now=(options.now or os.clock)()
+        local sameMap=candidates and candidates.world==worldKey and candidates.player==playerKey
+        if options.refreshTargets then options.refreshTargets(not sameMap)end
+        if sameMap and now>=candidates.at and now-candidates.at<1 then return candidates.list end
+        if not sameMap then offset=0 end
+        candidates=nil
+        local list=get(world)
+        if type(list)=='table' then candidates={world=worldKey,player=playerKey,at=now,list=list} end
+        return list
+    end
     function instance:tick()
         if silenced then return self:status() end
         recoverJournal()
@@ -466,16 +485,21 @@ function Spectator.new(options)
         local playerUsable, playerReason
         if okPlayer then playerUsable, playerReason = actor_valid(player) end
         if playerReason == "destroying" then
-            discard_destroying(player, "player")
+            candidates=nil;discard_destroying(player, "player")
             playerFlagReadback = "unknown(actor_destroying)"
             return self:status()
         end
-        if playerUsable ~= true then fail("当前玩家Actor状态未知/无效，保留快照"); return self:status() end
+        if playerUsable ~= true then candidates=nil;fail("当前玩家Actor状态未知/无效，保留快照"); return self:status() end
         local playerKey = okPlayer and key(player)
-        if not playerKey then fail("当前玩家无效或身份不可读"); return self:status() end
+        if not playerKey then candidates=nil;fail("当前玩家无效或身份不可读"); return self:status() end
+        local world,worldKey
+        if options.getWorld and options.inWorld then
+            world=options.getWorld();worldKey=key(world)
+            if not worldKey or not options.inWorld(player,world) then candidates=nil;return self:status() end
+        end
         currentPlayerKey = playerKey
         apply_player_flag(player)
-        local okNPCs, npcs = pcall(options.getNPCs or function() return {} end)
+        local okNPCs,npcs=pcall(mapNPCs,playerKey,world,worldKey)
         if not okNPCs or type(npcs) ~= "table" then fail("NPC列表不可读"); return self:status() end
         local n = math.min(#npcs, maxNPCs)
         counters.npc_truncated = #npcs > maxNPCs
@@ -487,7 +511,7 @@ function Spectator.new(options)
                     if currentReason == "destroying" then discard_destroying(player, "player") end
                     fail("处理NPC期间玩家Actor不可用"); break
                 end
-                process_npc(npcs[(offset + step - 1) % n + 1], player, playerKey)
+                process_npc(npcs[(offset + step - 1) % n + 1],player,playerKey,world)
             end
             offset = (offset + math.min(batch, n)) % n
         end
@@ -503,8 +527,14 @@ function Spectator.new(options)
         recoverJournal()
         local ok,player=pcall(options.getPlayer or function()end)
         if not ok or actor_valid(player)~=true then return end
+        local world
+        if options.getWorld and options.inWorld then
+            world=options.getWorld()
+            if valid(world)~=true or not options.inWorld(player,world) then return end
+        end
+        classMiss={}
         apply_player_flag(player)
-        process_npc(npc,player,key(player))
+        process_npc(npc,player,key(player),world)
     end
 
     function instance:setEnabled(value)
@@ -514,6 +544,7 @@ function Spectator.new(options)
             result.message='自由观战正在保持无仇恨、隐身和锁血；请先退出自由观战，再切换独立无仇恨'
             return result
         end
+        if enabled~=value then candidates=nil;offset=0 end
         enabled, silenced = value, false
         message = value and "已请求免仇恨；只报告具体读回，效果待实测" or "已请求关闭；恢复原有效关系和玩家资格"
         log(message)
@@ -527,7 +558,7 @@ function Spectator.new(options)
     function instance:off() return self:setEnabled(false) end
     function instance:silence(reason)
         -- OnUnload只能静默；不访问任何UObject、不注销hook、不伪装已恢复。
-        enabled, silenced = false, true
+        enabled,silenced,candidates=false,true,nil
         message = "Lua已静默；尚存快照未在游戏中恢复: " .. tostring(reason or "unload")
         log(message)
     end

@@ -27,6 +27,8 @@ local options={now=function()return now end,world=function()return world end,pla
     bladeCounter=function(a,b,t)assert(a==foe and b==blade and t==task.CurrentTime);calls=calls+1;return true end,
     log=function()end}
 local c=C.new(options);c:sync(m,true)
+local receipts={}
+options.log=function(text)receipts[#receipts+1]=text end
 blade.tags[C.JUDGE]=1
 c:bladeTick(grab);assert(calls==0,'a grabbed actor unable to act cannot counter')
 foe.canAct=true;foe.at.X=601;c:bladeTick(grab);assert(calls==0)
@@ -74,5 +76,9 @@ local adopted=assert(c:jadePair(counter));assert(adopted.executor==foe and adopt
 victim['Execution Info'].Executor=player;assert(not c:jadePair(counter),'both actual native sides must agree')
 data.HitGameTime=now+0.01;cb();assert(yd==2)
 nextCast.bIsActive=false;assert(cb() and stopped)
+assert(table.concat(receipts,'\n'):find('本招精闪读回=true 专用反制请求=true',1,true))
+now=20;nextCast.bIsActive=true;c:jadeCast(nextCast);cb()
+nextCast.bIsActive=false;cb()
+assert(table.concat(receipts,'\n'):find('本招精闪读回=false 专用反制请求=未观察到',1,true))
 c:sync({},false);now=11;data.HitGameTime=now;c:jadeResult(foe,jade);assert(yd==2)
 print('PASS native Bi Feng judgment, action/range and real Yu Ding perfect-dodge receipt')

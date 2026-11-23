@@ -683,15 +683,21 @@ function LionNPC.new(options)
         end
         local function move(desired,angle,linksOnly)
             local reached,actual,hit=sweep(desired,angle)
-            while not reached and flight.additionalIgnores<4 do
+            local added=0
+            while not reached do
                 local component=hitComponent(hit)
                 local kind=stageHit(seat,component)
                 local owned=kind=='link' and linkCollision(seat,flight.capsule) or flight
                 if not kind or (linksOnly and kind~='link') or not owned
-                    or contains(ignoredComponents(flight.capsule),component)
-                    or not ignoreForFlight(owned,component) then break end
+                    or contains(ignoredComponents(flight.capsule),component) then break end
+                -- Continue from the swept position next frame when several registered poles overlap.
+                if added==4 then return false,actual,hit,true end
+                if not ignoreForFlight(owned,component) then break end
+                added=added+1
                 flight.additionalIgnores=flight.additionalIgnores+1
-                say('跳跃暂让场地部件 actor='..seat.key..' 部件='..tostring(U.key(component))..' 忽略读回=true')
+                if flight.additionalIgnores<=4 then
+                    say('跳跃暂让场地部件 actor='..seat.key..' 部件='..tostring(U.key(component))..' 忽略读回=true')
+                end
                 reached,actual,hit=sweep(desired,angle)
             end
             return reached,actual,hit
@@ -732,7 +738,8 @@ function LionNPC.new(options)
             if flight.descending then
                 local alpha=math.min(1,(time-flight.descending)/0.13)
                 local desired={X=to.X,Y=to.Y,Z=to.Z+clearance*(1-alpha)}
-                local reached,actual,hit=move(desired,angle,true)
+                local reached,actual,hit,deferred=move(desired,angle,true)
+                if deferred then return end
                 if not reached then
                     local onTop=actual and distance2(actual,to)<=8^2 and actual.Z>=to.Z-8
                         and actual.Z<=to.Z+clearance and same(hitComponent(hit),platform.mesh)
@@ -751,12 +758,13 @@ function LionNPC.new(options)
             local horizontal=progress*progress*(3-2*progress)
             local desired={X=from.X+dx*horizontal,Y=from.Y+dy*horizontal,
                 Z=from.Z+(dz+clearance)*progress+4*lift*progress*(1-progress)}
-            local reached,actual,hit=move(desired,angle,false)
+            local reached,actual,hit,deferred=move(desired,angle,false)
+            if deferred then return end
             if not reached then blocked(progress,hit,desired,actual);return end
             if progress>=1 then
                 if not restoreFlightCollision(flight) then fail('落脚前碰撞恢复未读回');return end
                 flight.descending=time
-                say('到达目标桩正上方 actor='..seat.key..' 桩体碰撞已恢复，横杆避让保持，开始落脚')
+                say('到达目标桩正上方 actor='..seat.key..' 桩体碰撞已恢复，横杆避让保持，开始落脚；途中避让='..flight.additionalIgnores)
             end
         end
         local registered,handle=pcall(loop,16,function()

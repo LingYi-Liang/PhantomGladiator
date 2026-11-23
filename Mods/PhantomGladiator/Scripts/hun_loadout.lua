@@ -50,7 +50,7 @@ function Loadout.parse(text)
     if type(text)~='string'or #text>MAX_BYTES or text:sub(-1)~='\n'then return nil,'文件为空、过大或没有结尾换行'end
     local revision=tonumber(text:match('^HunLoadoutV1\t(%d+)\n'))
     if not revision or revision>2147483646 then return nil,'文件头无效'end
-    local out={revision=revision,count=1,attributes={},effects={},accessories=false}
+    local out={revision=revision,count=1,appearance='player',attributes={},effects={},accessories=false}
     local rows,first,seen=0,true,{}
     for line in text:gmatch('([^\n]*)\n')do
         if first then first=false
@@ -63,6 +63,11 @@ function Loadout.parse(text)
                 out.kit=true
                 out.weapons,out.shadows,out.variants,out.phases={},{},{},{}
                 out.ai,out.ai_parameters,out.resources,out.survival={},{},{},{}
+            elseif kind=='appearance' and out.kit then
+                if seen.appearance or (rest~='player' and rest~='snapshot' and rest~='default_outfit' and rest~='native' and rest~='clone') then
+                    return nil,'外观来源无效'
+                end
+                seen.appearance=true;out.appearance=rest
             elseif KITS[kind] and out.kit then
                 local row=parseItem(kind,rest)
                 local target=out[KITS[kind][1]]
@@ -138,7 +143,7 @@ function Loadout.new(options)
         local attributes,n=0,0
         if value then for _ in pairs(value.attributes)do attributes=attributes+1 end;n=#value.effects end
         log('[HunLoadout] 读取方案 revision='..tostring(revision)..'；读回='..(value and('数量='..value.count..' 属性='..attributes..' 项 饰品效果='..n
-            ..' 条（'..(value.accessories and'开'or'关')..'） 主武器='..#(value.weapons or{})..' 影之武装='..#(value.shadows or{})
+            ..' 条 外观='..value.appearance..'（'..(value.accessories and'开'or'关')..'） 主武器='..#(value.weapons or{})..' 影之武装='..#(value.shadows or{})
             ..' 表外='..#(value.variants or{})..' 阶段='..#(value.phases or{}))or('无效：'..tostring(why)..'，未采用')))
         return value
     end
