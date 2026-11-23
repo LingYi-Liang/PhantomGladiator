@@ -138,22 +138,30 @@ function Keys.new(options)
     function self:configure(proposal)
         local checked,why=validate(proposal)
         if not checked then return {ok=false,message=why,spawned_count=0}end
+        local active,errors={},{}
         for _,name in ipairs(Keys.actions)do
             local e=checked[name]
             if e.key_code>0 then
                 local unit=options.unitOwner and options.unitOwner(e.key_code,e.modifiers)
-                if unit then return {ok=false,message=Router.label(e.key_code,e.modifiers)..' 已被单位「'..unit..'」占用',spawned_count=0}end
                 local pool=options.poolOwner and options.poolOwner(e.key_code,e.modifiers)
-                if pool then return {ok=false,message=Router.label(e.key_code,e.modifiers)..' 已被怪物池「'..pool..'」占用',spawned_count=0}end
-                local ok,reason=options.router:ensure(e.key_code,e.modifiers)
-                if not ok then return {ok=false,message=Keys.labels[name]..'：'..tostring(reason),spawned_count=0}end
+                local ok,reason
+                if unit then reason=Router.label(e.key_code,e.modifiers)..' 已被单位「'..unit..'」占用'
+                elseif pool then reason=Router.label(e.key_code,e.modifiers)..' 已被怪物池「'..pool..'」占用'
+                else ok,reason=options.router:ensure(e.key_code,e.modifiers) end
+                if ok then active[name]=true
+                else
+                    local old=self.entries[name]
+                    if old.key_code~=e.key_code or old.modifiers~=e.modifiers then
+                        return {ok=false,message=Keys.labels[name]..'：'..tostring(reason),spawned_count=0}
+                    end
+                    errors[name]=tostring(reason)
+                end
             end
         end
         local rev=self.revision+1
         if not persist(serialize(checked,rev))then return {ok=false,message='快捷键保存未确认，旧绑定继续生效',spawned_count=0}end
-        self.entries,self.revision=checked,rev;self.active,self.errors={},{}
-        for _,name in ipairs(Keys.actions)do if checked[name].key_code>0 then self.active[name]=true end end
-        self.message='快捷键已保存并在游戏端生效';publish()
+        self.entries,self.revision=checked,rev;self.active,self.errors=active,errors
+        self.message=next(errors) and '快捷键已保存，仍有冲突的绑定已停用' or '快捷键已保存并在游戏端生效';publish()
         log('[FunctionKeys] 保存读回成功 revision='..rev..'；旧绑定与旧排队请求已失效')
         for _,name in ipairs(Keys.actions)do local e=checked[name];log('[FunctionKeys] 当前 action='..name..' key='..Router.label(e.key_code,e.modifiers)..' active='..tostring(self.active[name]==true))end
         return {ok=true,message=self.message,spawned_count=0}

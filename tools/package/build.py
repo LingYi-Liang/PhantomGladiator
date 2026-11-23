@@ -212,6 +212,29 @@ def mod_build() -> str:
     return m.group(1)
 
 
+def preview_release_notes(source: Path, version: str, build: str, compact: bool = False) -> dict:
+    match = re.fullmatch(r"v" + re.escape(version) + r"-beta-(\d+)", build)
+    if not match:
+        return {}
+    script = source.read_text(encoding="utf-8-sig")
+    data = script.split("window.PG_PREVIEW_NOTES = ", 1)[1].strip().removesuffix(";")
+    entry = json.loads(data).get(version)
+    if not entry:
+        return {}
+    revision = int(match[1])
+    notes = {"zh": [], "en": []}
+    for group in ("added", "combat", "fixes"):
+        for row in entry[group]:
+            included = [part for part in row if part["since"] <= revision]
+            if included:
+                for language, items in notes.items():
+                    if compact:
+                        items.append(" ".join(part.get("legacy", {}).get(language, part[language]) for part in included))
+                    else:
+                        items.append(" ".join(part[language] for part in included))
+    return notes if notes["zh"] else {}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--deps", type=Path, required=True)
@@ -282,6 +305,16 @@ def main() -> None:
     info = {"appVersion": args.version, "modBuild": mod_build(), "verifiedGameBuild": VERIFIED_GAME_BUILD, "repo": REPO, "manifests": MANIFESTS}
     if nexus:
         info.update(channel="nexus", manifests=[])
+    if args.channel == "github":
+        notes = preview_release_notes(ui / "preview-notes.js", args.version, info["modBuild"])
+        if notes:
+            info["notes"] = notes
+            compact = preview_release_notes(ui / "preview-notes.js", args.version, info["modBuild"], compact=True)
+            if compact != notes:
+                info["legacyNote"] = "\n\n".join(
+                    "\n".join(f"{i}. {line}" for i, line in enumerate(compact[lang], 1))
+                    for lang in ("zh", "en")
+                )
     (app / "version.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # Native window, compiled with the .NET Framework's own compiler.

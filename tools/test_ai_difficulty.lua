@@ -82,7 +82,7 @@ assert(getDifficulty(controller)==4 and getDifficulty(mob)==1 and getDifficulty(
 
 -- The blueprint checks hook once their class is loaded; the game says Easy (1) < 3.
 loaded[CONDITION]=object({},'fn');loaded[DECORATOR]=object({},'fn')
-ai:tick();assert(registered==1,'an unloaded check class is looked up at most every 15 s')
+ai:tick();assert(registered==2,'the second class gets its own support pulse')
 now=15;ai:tick()
 assert(registered==3,'both blueprint checks are hooked once loaded')
 assert(condition:EvaluateCondition(controller)==true,'the shared ability-pool check answers for the unit it evaluates')
@@ -107,7 +107,9 @@ loaded[CONDITION]=nil;loaded[DECORATOR]=nil
 local lookups,find=0,StaticFindObject
 StaticFindObject=function(path)if path==CONDITION or path==DECORATOR then lookups=lookups+1 end;return find(path)end
 now=100;ai:ensure(pawn,'Nightmare');levels[pawn:GetAddress()]='Nightmare'
-for t=100,250,5 do now=t;ai:tick()end
+local worst=0
+for t=100,250,5 do now=t;local before=lookups;ai:tick();worst=math.max(worst,lookups-before) end
+assert(worst==1,'multiple slow blueprint class searches on one support pulse')
 assert(lookups==2*5,'looked up at 0, 15, 30, 45 and 60 s after the summon, then no more: '..lookups)
 now=300;ai:ensure(pawn,'Nightmare')
 for t=300,320,5 do now=t;ai:tick()end
@@ -156,3 +158,43 @@ assert(ai:status().failed==1 and ai:status().failed_total>=1,'a failed unit on t
 levels[haha:GetAddress()]=nil;members={{actor=biyuan},{actor=heihei}};now=441;ai:tick()
 assert(ai:status().failed==0 and ai:status().failed_total>=1,'the warning goes with the unit; the total stays for the log')
 print('ai_difficulty: PASS (no hook without a leveled unit, hooked before spawn finishes, address index for unit/controller/node, readbacks, map and world untouched, removed when units leave, check lookups only after a summon, stuck and dead hooks, warning for units on the field)')
+
+local function difficultyCase(label,run)
+    hooks,failUnhook={},{};loaded[CONDITION]=condition;loaded[DECORATOR]=decorator
+    local h={time=0,ready=true,units={{actor=pawn}},level='Hard',logs={}}
+    h.module=AI.new({clock=function()return h.time end,ready=function()return h.ready end,getWorld=function()return world end,
+        members=function()return h.units end,levelOf=function(a)if a==pawn then return h.level end end,log=function(s)h.logs[#h.logs+1]=s end})
+    local oldReg,oldUnreg,oldFind=RegisterHook,UnregisterHook,StaticFindObject
+    run(h);h.module:silence();RegisterHook,UnregisterHook,StaticFindObject=oldReg,oldUnreg,oldFind
+    print('PASS '..label)
+end
+difficultyCase('a genuine false difficulty threshold reads back as false',function(h)
+    h.level='Easy';h.module:ensure(pawn,h.level);h.module:tick()
+    assert(condition:EvaluateCondition(controller)==false)
+    h.module:tick()
+    assert(h.module:status().failed==0 and table.concat(h.logs,'\n'):find('期望=false 返回=false',1,true),'valid native false was reported as a failure')
+end)
+difficultyCase('steady difficulty queries avoid repeated identity and library reads',function(h)
+    h.module:ensure(pawn,h.level);h.module:tick()
+    local addressReads,libReads=0,0;local getAddr=pawn.GetAddress;local find=StaticFindObject
+    rawset(pawn,'GetAddress',function(self)addressReads=addressReads+1;return getAddr(self)end)
+    StaticFindObject=function(path)if path=='/Script/ProjectPBZ.Default__PBZBlueprintFunctionLibrary' then libReads=libReads+1 end;return find(path)end
+    for i=1,10000 do assert(getDifficulty(pawn)==3) end
+    rawset(pawn,'GetAddress',getAddr)
+    for i=1,60 do h.time=i;h.module:tick()end
+    print('MEASURE 10000 owned difficulty queries: address reads='..addressReads..'; 60 settled ticks: library lookups='..libReads)
+    assert(addressReads<=10000 and libReads==0,'settled callbacks still repeat unused native queries')
+end)
+difficultyCase('a retired difficulty callback cannot override a later session and failed registration retries',function(h)
+    local register=RegisterHook
+    RegisterHook=function(path,...)if path==CONDITION and h.time<2 then return nil,nil end;return register(path,...)end
+    h.module:ensure(pawn,h.level);h.module:tick();local old=hooks[DIFFICULTY].first
+    h.time=16;h.module:tick();h.module:tick();assert(hooks[CONDITION],'an unconfirmed blueprint hook was marked installed forever')
+    local unreg=UnregisterHook
+    UnregisterHook=function(path,...)if path==DIFFICULTY then return false end;return unreg(path,...)end
+    h.units={};h.time=17;h.module:tick();h.time=28;h.module:tick()
+    assert(h.module:status().stale==1,'explicit rejection must remain pending')
+    h.units={{actor=pawn}};h.module:ensure(pawn,h.level);h.module:tick()
+    assert(old(nil,wrap(pawn))==nil and getDifficulty(pawn)==3,'a retired registration answered for a new summon')
+    h.ready=false;h.module:tick();assert(getDifficulty(pawn)==GAME,'world transition kept the previous unit index')
+end)

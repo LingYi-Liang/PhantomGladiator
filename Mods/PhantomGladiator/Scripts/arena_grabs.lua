@@ -2,6 +2,7 @@
 -- BP_BulletEvent_Grab.Trigger branches to GE_GrabHit for non-player targets when
 -- NonPlayerGE is set. The native ToNpc data leaves that optional class empty.
 local U=require('ue_observe')
+local JadeGuard=require('jade_grab_guard')
 local Grabs={}
 local FALLBACK='/PBZCombatAsset/Prototypes/GameplayEffects/Inflictions/GE_GrabHit.GE_GrabHit_C'
 local EVENT_CLASS='/SGameExecution/Bullet/Events/BP_BulletEvent_Grab.BP_BulletEvent_Grab_C'
@@ -45,6 +46,7 @@ local function tags(obj,field)
 end
 function Grabs.new(options)
     local self={records={},observed={},pairs={},ticks=0,signature=nil,scans=0,recovering=false,heldText=''}
+    local jade=JadeGuard.new(options)
     local log=options.log or function()end
     local fs=options.io or io
     local filePath=options.path..'/npc-grab-policy.tsv'
@@ -96,7 +98,7 @@ function Grabs.new(options)
         if not persist() then self.records[name]=prior;log('[NPCGrab] 快照保存未读回，未修改 '..name);return nil end
         return record
     end
-    function self:restore()
+    local function restorePolicy()
         local pending=0;local original
         for name,record in pairs(self.records)do
             local event=record.event
@@ -155,7 +157,7 @@ function Grabs.new(options)
     -- companions whenever they are out, so their grabs work on the map's own enemies too. A change of units within
     -- the same folders (summons coming and going) changes nothing here.
     local steps=options.hunSteps or require('hun_look').STEPS
-    local function scope(members,battleActive)
+    local function scope(members,battleActive,jadeReady)
         local families,owners,listed={}, {}, {};local blue,red,liveCompanion=false,false,false
         local arena,companions={},{}
         local hunTeams={}
@@ -195,6 +197,7 @@ function Grabs.new(options)
         add(companions)
         -- The events are shared by every unit of a family, so a held family stays out whoever else brought it.
         local heldNames={}
+        if not jadeReady then families[JadeGuard.family]=nil end
         for root in pairs(held)do families[root]=nil;heldNames[#heldNames+1]=QTE_FAMILIES[root]..'('..root..')' end
         table.sort(heldNames)
         local heldText=table.concat(heldNames,'、')
@@ -288,15 +291,21 @@ function Grabs.new(options)
         end
         self.observed=kept
     end
+    function self:restore()
+        jade:clear()
+        return restorePolicy()
+    end
+    function self:silence()jade:silence()end
     function self:sync(members,battleActive,force)
-        if self.recovering then if not self:restore() then return false end end
-        local families,owners,signature,active=scope(members,battleActive)
+        local jadeReady=jade:sync(members,battleActive)
+        if self.recovering and not restorePolicy() then return false end
+        local families,owners,signature,active=scope(members,battleActive,jadeReady)
         if not active then
-            if next(self.records) then return self:restore() end
+            if next(self.records) then return restorePolicy() end
             return true
         end
         if self.signature and signature~=self.signature and next(self.records) then
-            if not self:restore() then return false end
+            if not restorePolicy() then return false end
         end
         self.ticks=self.ticks+1
         -- The rescan walks every loaded object (FindAllOf): every 5 s in a fight, every 30 s when only

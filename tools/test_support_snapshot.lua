@@ -27,6 +27,7 @@ assert(reads.attributes==2 and reads.camera==2,'a new support tick must refresh 
 env.arenaSupport.frameContext=nil;assert(getHP(pawns[1])==55);assert(getHP(pawns[1])==55);assert(reads.attributes==4)
 env.arena={members=function()error('fixture failure')end,status=function()return {}end}
 env.supportSteps=function()error('unexpected steps')end
-assert(load(section('function arenaSupport:tick()','function arenaSupport:status()'),'production support cleanup','t',env))()
+local cleanup=assert(text:match('(function arenaSupport:tick%(%).-\nend)'))
+assert(load(cleanup,'production support cleanup','t',env))()
 assert(not pcall(env.arenaSupport.tick,env.arenaSupport));assert(env.arenaSupport.frameContext==nil,'an exception before supportSteps must release the frame snapshot')
 print('support_snapshot: PASS (100 health/camera scans -> 1 each; live HP, next-tick refresh and failure cleanup)')

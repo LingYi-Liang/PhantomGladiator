@@ -165,7 +165,9 @@ function Companion.new(options)
     end
     local function onHatredList(actor,target)
         local key=U.key(target)
-        for _,entry in ipairs(U.array(U.field(U.field(actor,'BP_PBZHatredManagerComponent'),'HatredList')) or {})do
+        local list=U.array(U.field(U.field(actor,'BP_PBZHatredManagerComponent'),'HatredList'))
+        if not list or not key then return nil end
+        for _,entry in ipairs(list)do
             if U.key(entry)==key then return true end
         end
         return false
@@ -348,7 +350,11 @@ function Companion.new(options)
     local function at(actor)
         if not options.getLocation then return nil end
         local ok,p=pcall(options.getLocation,actor)
-        return ok and type(p)=='table' and type(p.X)=='number' and p or nil
+        if not ok or type(p)~='table' then return end
+        for _,v in ipairs({'X','Y','Z'})do
+            local n=p[v];if type(n)~='number' or n~=n or math.abs(n)==math.huge then return end
+        end
+        return {X=p.X,Y=p.Y,Z=p.Z}
     end
     local function metres(a,b)
         if not a or not b then return nil end
@@ -544,13 +550,14 @@ function Companion.new(options)
         return called and U.unwrap(moved)==true
     end
 
-    local function engage(record,actor,ai,player,ours)
+    local function engage(record,actor,ai,player,ours,recovering)
         local perception=U.field(ai,'AIPerception')
         if not U.valid(perception) then return end
         local out={}
         local ok=pcall(function()perception:GetPerceivedHostileActors(out)end)
         local seen=ok and U.array(out.OutActors) or nil
-        if not seen or #seen==0 then return end
+        if not seen then return end
+        if #seen==0 then return false end
         local best,bestDistance
         local playerKey=U.key(player)
         for _,enemy in ipairs(seen)do
@@ -565,13 +572,105 @@ function Companion.new(options)
                 end
             end
         end
-        if not best then return end
+        if not best then return false end
+        if recovering and not options.canRecover(actor,best) then return end
         local called=pcall(function()ai:ForceIntoCombat(best)end)
         self.engages=(self.engages or 0)+1
         if self.engages<=ENGAGE_LINES then
             say('主动迎敌 '..className(actor)..' -> '..className(best)..' 距离='..fmt(bestDistance)..' 感知到敌对='..#seen..' 调用='..tostring(called)
                 ..' 状态读回='..tagName(U.field(ai,'CurrentStateTag')))
         end
+        return called or nil
+    end
+
+    -- Combat may stay set after the last enemy disappears. Track actual movement and native targets,
+    -- then ask navigation to pursue the same enemy, or to follow again when both target lists are empty.
+    local function combatRecovery(record,actor,ai,player,d,now,ours)
+        if not options.combatTarget or not options.canRecover or now<(record.combatProbeAt or 0) then return end
+        record.combatProbeAt=now+2
+        local here=at(actor)
+        local target,known=options.combatTarget(actor)
+        if not known then
+            record.targetUnknownAt=record.targetUnknownAt or now
+            if now-record.targetUnknownAt>=12 and now>=(record.unknownLogAt or 0) then
+                record.unknownLogAt=now+60
+                say('战斗目标未读回 随从='..record.name..' 距玩家='..fmt(d)..'；保留原生状态')
+            end
+        else record.targetUnknownAt=nil end
+        if not here or not known or not d or U.field(ai,'bAIStarted')~=true then record.combatWatch=nil;return end
+        local goal=target or player
+        local gap=target and distance(actor,target) or d
+        local key,name=U.key(goal),identity(goal)
+        if not key or not name or not gap then record.combatWatch=nil;return end
+        local function health(unit)
+            local ok,value=pcall(options.hp,unit)
+            if ok and type(value)=='number' and value>0 and value<math.huge then return value end
+        end
+        local hp=health(actor)
+        local enemyHP=target and health(target)
+        if not hp or target and not enemyHP then record.combatWatch=nil;return end
+        local watch=record.combatWatch
+        local function hurt(old,value)return type(old)=='number' and type(value)=='number' and value<old-.1 end
+        if not watch or watch.key~=key or watch.name~=name or metres(here,watch.from)>=1 or gap<watch.gap-1
+            or hurt(watch.hp,hp) or hurt(watch.enemyHP,enemyHP) then
+            record.combatWatch={key=key,name=name,from=here,gap=gap,hp=hp,enemyHP=enemyHP,since=now,nextAt=now+6,tries=0}
+            return
+        end
+        watch.hp,watch.enemyHP=hp,enemyHP
+        if now<watch.nextAt then return end
+        local controller=U.field(actor,'Controller')
+        if U.key(U.field(controller,'Pawn'))~=U.key(actor) or not options.canRecover(actor,target) then record.combatWatch=nil;return end
+        local ok,status=pcall(function()return controller:GetMoveStatus()end)
+        status=ok and tonumber(U.unwrap(status))
+        if status~=0 and (status~=MOVING or now-watch.since<12) then return end
+        watch.tries=watch.tries+1;watch.nextAt=now+math.min(32,8*watch.tries)
+        local reason,called
+        if not target then
+            local hatred=U.array(U.field(U.field(actor,'BP_PBZHatredManagerComponent'),'HatredList'))
+            if not hatred then return end
+            local world=options.getWorld and options.getWorld()
+            for _,enemy in ipairs(hatred)do
+                if U.valid(enemy) and not ours[U.key(enemy)] and U.key(enemy)~=U.key(player) then
+                    local read,hp=pcall(options.hp,enemy)
+                    if not read or type(hp)~='number' then return end
+                    if hp>0 then
+                        if not U.inWorld(enemy,world) or relation(U.field(actor,'Faction Component'),enemy)~=2
+                            or not options.canRecover(actor,enemy) then return end
+                        reason='恢复已有仇恨目标';goal=enemy
+                        called=pcall(function()ai:ForceIntoCombat(enemy)end)
+                        break
+                    end
+                end
+            end
+            if not reason then
+                if engage(record,actor,ai,player,ours,true)~=false or d<=FOLLOW_START_M then return end
+                if bossFight(actor,player) then return end
+                if watch.walked and d>=STUCK_TELEPORT_M then
+                    return teleport(record,actor,player,d,now,'战斗无目标且寻路仍未移动，返回玩家身边')
+                end
+                reason='恢复跟随'
+            end
+        elseif (watch.chased or watch.reengaged) and d>=STUCK_TELEPORT_M and (distance(target,player) or 0)>ENGAGE_M
+            and onHatredList(player,target)==false and not isBoss(target) and not bossFight(actor,player) then
+            -- The native goal still exists, but a retry made no progress and the player has left this fight.
+            -- Rejoin without changing the target key or removing a single hatred entry.
+            if watch.walked then return teleport(record,actor,player,d,now,'追敌及跟随寻路均未移动，返回玩家身边') end
+            reason='恢复跟随';goal=player
+        elseif gap<=FOLLOW_START_M then
+            -- Give a stationary fighter at melee distance one chance to re-enter its native decision tree.
+            if watch.reengaged or now-watch.since<12 then return end
+            watch.reengaged=true;reason='恢复原目标交战'
+            called=pcall(function()ai:ForceIntoCombat(target)end)
+        else reason='恢复追敌' end
+        if called==nil then
+            local helper=StaticFindObject('/Script/AIModule.Default__AIBlueprintHelperLibrary')
+            called=U.valid(helper) and pcall(function()helper:SimpleMoveToActor(controller,goal)end)
+        end
+        if called and reason=='恢复跟随' then watch.walked=true end
+        if called and reason=='恢复追敌' then watch.chased=true end
+        local statusOK,after=pcall(function()return controller:GetMoveStatus()end)
+        if watch.tries<=2 then say(reason..' 随从='..record.name..' 目标='..tostring(identity(goal))..' 距玩家='..fmt(d)
+            ..' 移动状态='..tostring(status)..'→'..tostring(statusOK and U.unwrap(after))..' 停留秒数='..math.floor(now-watch.since)..' 调用='..tostring(called))end
     end
 
     local function keepUp(record,actor,player,state,d,now)
@@ -718,6 +817,11 @@ function Companion.new(options)
                         if not record.keysLogged then record.keysLogged=true;say('跟随对象键指向玩家 读回='..ok..'/'..#record.followKeys)end
                     end
                     keepUp(record,member.actor,player,state,d,now)
+                    if state:find('Combat',1,true) then
+                        if d and d<TELEPORT_M and record.followState and not member.aid and not member.reserve then
+                            combatRecovery(record,member.actor,ai,player,d,now,ours)
+                        end
+                    else record.combatWatch=nil;record.combatProbeAt=nil;record.targetUnknownAt=nil end
                     -- Running on our orders, or moving fast on its own in combat: sample the animation inputs.
                     if record.speedMode=='run' then sampleAnimation(record,member.actor,ai,'我们让它跑',now)
                     elseif state:find('Combat',1,true) and (record.combatSamples or 0)<4 then
@@ -745,8 +849,8 @@ function Companion.new(options)
                     record.watchAt=now
                     say('跟随观察 '..className(member.actor)..' 距玩家='..fmt(d)..' 状态='..state..' 闲置数据='..(ai and show(idleData(ai)) or '?'))
                 end
-            end
-          end
+            else record.combatWatch=nil;record.combatProbeAt=nil end
+          elseif units[key] then units[key].combatWatch=nil;units[key].combatProbeAt=nil end
         end
         self.count=count
         if count==0 and self.prepared>0 then self.message='随从已全部离场' end
@@ -772,6 +876,7 @@ function Companion.new(options)
                     local moved=teleport(record,actor,player,distance(actor,player),now,'召回到玩家身边',count)
                     local after=distance(actor,player)
                     if moved and after and after<=RECALL_NEAR_M then
+                        record.combatWatch=nil;record.combatProbeAt=nil
                         near=near+1
                     else
                         missed[#missed+1]=className(actor)..'('..fmt(after)..')'

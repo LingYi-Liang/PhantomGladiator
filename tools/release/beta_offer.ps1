@@ -45,14 +45,37 @@ if ($Mode -eq 'Invite') {
         size = $file.Length; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
         url = $Url; note = $Note; expires = $expires
     }
+    if ($version.notes.zh.Count -and $version.notes.en.Count) {
+        $fields['notes'] = $version.notes
+        # Existing assistants read only the 1200-character plain-text field.
+        $localized = foreach ($language in 'zh','en') {
+            $index = 0
+            ($version.notes.$language | ForEach-Object {
+                $index++
+                "$index. $_"
+            }) -join [Environment]::NewLine
+        }
+        $both = $localized -join ([Environment]::NewLine + [Environment]::NewLine)
+        if ($both.Length -le 1200) { $fields.note = $both }
+        elseif ($version.legacyNote -is [string] -and $version.legacyNote.Length -gt 0 -and $version.legacyNote.Length -le 1200) {
+            $fields.note = $version.legacyNote
+        }
+        elseif ($localized[0].Length -le 1200) { $fields.note = $localized[0] }
+        elseif ([string]::IsNullOrWhiteSpace($Note)) {
+            $fields.note = 'Full release notes: https://github.com/LingYi-Liang/PhantomGladiator/releases/tag/beta-preview'
+        }
+    } elseif ([string]::IsNullOrWhiteSpace($Note)) {
+        throw 'This package has no player release notes. Supply -Note for a legacy package.'
+    }
 }
 $rsa = [Security.Cryptography.RSACryptoServiceProvider]::new()
 $rsa.PersistKeyInCsp = $false
 try {
     $rsa.FromXmlString([IO.File]::ReadAllText((Resolve-Path -LiteralPath $KeyFile).Path))
-    $payload = $utf8.GetBytes(($fields | ConvertTo-Json -Compress))
+    $payload = $utf8.GetBytes(($fields | ConvertTo-Json -Depth 6 -Compress))
     $signature = $rsa.SignData($payload,[Security.Cryptography.CryptoConfig]::MapNameToOID('SHA256'))
     $signed = [Convert]::ToBase64String($payload) + '.' + [Convert]::ToBase64String($signature)
+    if ($signed.Length -gt 16384) { throw 'The signed feed exceeds the limit supported by installed assistants.' }
     [IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output),$signed,$utf8)
     "Wrote signed $Mode file."
 } finally { $rsa.Dispose() }

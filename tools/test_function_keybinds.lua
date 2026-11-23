@@ -1,8 +1,8 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Router=require('key_router');local Functions=require('function_keybinds')
-local function fixture(initial)
-    local h={files=initial or {},slots={},queue={},calls={},inGame=false,unitOwner=nil,renameCalls=0}
-    local keys={};for i=1,24 do keys['F'..i]=111+i end;for i=65,90 do keys[string.char(i)]=i end
+local function fixture(initial,occupied)
+    local h={files=initial or {},slots=occupied or {},queue={},calls={},inGame=false,unitOwner=nil,renameCalls=0}
+    local keys={DIVIDE=111};for i=1,24 do keys['F'..i]=111+i end;for i=65,90 do keys[string.char(i)]=i end
     for i=0,9 do keys['DIGIT'..i]=48+i;keys['NUM'..i]=96+i end
     local function slot(vk,mods)local mask=0;for _,v in ipairs(mods or {})do mask=mask+v end;return vk..':'..mask end
     h.router=Router.new({keys=keys,modifiers={CONTROL=1,ALT=2,SHIFT=4},
@@ -75,6 +75,22 @@ test('conflicts identify the function or unit and preserve the previous binding'
     assert(not result.ok and result.message:find('自由观战',1,true) and result.message:find('退出自由观战',1,true))
     h.unitOwner={[113]='测试暴徒'};result=h.functions:configure(h:proposal({cycle_team='F2'}))
     assert(not result.ok and result.message:find('测试暴徒',1,true) and h.functions:token('toggle_camera')=='VK_117_MOD_0')
+end)
+test('an unchanged conflicting time-stop key stays inactive without blocking other edits',function()
+    local original=fixture()
+    assert(original.functions:configure(original:proposal({toggle_time_stop='VK_111_MOD_0'})).ok)
+    local external=function()end
+    local h=fixture(original.files,{['111:0']=external});assert(not h.functions.active.toggle_time_stop)
+    local nextKeys=h:proposal({toggle_time_stop='VK_111_MOD_0',toggle_track='F7'})
+    assert(h.functions:configure(nextKeys).ok,'an old Num/ conflict blocked saving F7 for tracking')
+    assert(h.functions:token('toggle_track')=='VK_118_MOD_0' and h.functions:token('toggle_time_stop')=='')
+    assert(h.functions.entries.toggle_time_stop.key_code==111 and h.functions.errors.toggle_time_stop:find('Num/',1,true))
+    assert(h.slots['111:0']==external and not h.functions:press(111,0))
+    local rev=h.functions.revision
+    h.slots['119:0']=external;nextKeys.toggle_track='F8'
+    assert(not h.functions:configure(nextKeys).ok and h.functions.revision==rev and h.functions:token('toggle_track')=='VK_118_MOD_0')
+    h.slots['111:0']=nil;nextKeys.toggle_track='F7'
+    assert(h.functions:configure(nextKeys).ok and h.functions.active.toggle_time_stop and not h.functions.errors.toggle_time_stop)
 end)
 test('external modifiers and host registration failures never activate or overwrite a key',function()
     local h=fixture();h.slots['119:4']=function()end

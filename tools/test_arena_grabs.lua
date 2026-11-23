@@ -214,4 +214,65 @@ test('a QTE family on the Hun body\'s own side is not held, and the switch off h
     local ok=off.grabs:sync(off.members,true,true);steps.qteGate=true
     assert(ok and qte3.NonPlayerGE==off.emptyClass)
 end)
+test('Yu Ding chooses the native nonlethal branch only against living protected arena victims',function()
+    local h=harness();local world=h:object('/Map');local player=h:object('/Map/Player')
+    local jadeRoot=ROOT..'YuDing_00/'
+    local sourcePath=jadeRoot..'BP_Monster_FemaleVessel_YuDing.BP_Monster_FemaleVessel_YuDing_C'
+    local hooks={};local inThread=true;local floor,max=6400,8000
+    h.options.staticFind=function(path)return h:object(path)end
+    h.options.registerHook=function(path,cb)hooks[path]=cb;return 21,22 end
+    h.options.unregisterHook=function(path)hooks[path]=nil;return true end
+    h.options.inGameThread=function()return inThread end;h.options.world=function()return world end
+    h.options.player=function()return player end
+    local attrs=h:object('/Map/Blue.Attrs',{GetOuter=function()return h.blue end})
+    h.blue.AttributeSetBase=setmetatable(attrs,{__index=function(_,field)
+        local value=field=='Health_Max' and max or field=='Health_Min' and floor
+        if type(value)=='number' then return {BaseValue=value,CurrentValue=value} end
+    end})
+    local function typed(obj,path)
+        local cls=h:object(path,nil,'LegoAbilityBlueprintGeneratedClass');obj.GetClass=function()return cls end
+        obj.GetOuter=function()return world end
+    end
+    local event=h:event('Jade',jadeRoot,h.original)
+    for _,spec in ipairs({{'054_ZuoShang','BP_Monster_ZuoShang',8000,6400},{'078_MengHua','BP_Monster_MengHua',871200,357192}})do
+        max,floor=spec[3],spec[4];h.blue.hp=max
+        local targetPath=ROOT..spec[1]..'/'..spec[2]..'.'..spec[2]..'_C'
+        typed(h.red,sourcePath);typed(h.blue,targetPath);h.members[1].class_path=targetPath;h.members[2].class_path=sourcePath
+        h.grabs=h:new();assert(h.grabs:sync(h.members,true,true));assert(event.NonPlayerGE==h.emptyClass)
+        local paths=require('jade_grab_guard').paths
+        for ix=1,2 do
+            local ka=paths[ix]:match('^(.*):IsKill$');local target=h.blue
+            local ability=h:object('grab'..ix,{bIsActive=true,GetAvatarActorFromActorInfo=function()return h.red end,
+                ['Lock Target']={Component=h:object('Root',{GetOwner=function()return target end})},
+                ['Execution Info']={Executor=h.red,Target=h.blue}});typed(ability,ka)
+            local out={value=true,type=function()return 'RemoteUnrealParam'end,get=function(self)return self.value end,set=function(self,v)self.value=v end}
+            if ix==2 then
+                local component=ability['Lock Target'].Component
+                ability['Lock Target'].Component={type=function()return 'TWeakObjectPtr' end,Get=function()return component end}
+            end
+            local callback=assert(hooks[paths[ix]])
+            callback(ability,out);assert(out.value==false,'use the native nonlethal branch even above the protected floor')
+            target=player;out.value=true;callback(ability,out);assert(out.value,'real player remains native')
+            target=h.blue;floor=1;callback(ability,out);assert(out.value,'the ordinary final floor is not a phase lock')
+            floor=spec[4];inThread=false;callback(ability,out);assert(out.value);inThread=true
+        end
+        local victim=h:object('receiver',{bIsActive=true,GetAvatarActorFromActorInfo=function()return h.blue end,
+            ['Execution Info']={Executor=h.red,Target=h.blue}})
+        typed(victim,jadeRoot..'Ability/Abilities/Grab/GA_YuDing_GEd_01.GA_YuDing_GEd_01_C')
+        local owner=h.blue;local stops=0
+        local slow=h:object('slow',{Multiplier=0.01,['Slomo ID']='Ability',GetAbility=function()return victim end,
+            Handles={ForEach=function(_,visit)visit(owner,{})end},['Stop Slomo Handles']=function()stops=stops+1 end})
+        typed(slow,paths[3]:match('^(.*):'))
+        local cb=assert(hooks[paths[3]]);cb(slow);assert(stops==1)
+        owner=player;cb(slow);assert(stops==1,'other slow handles never touched')
+        owner=h.blue;slow.Multiplier=0.5;cb(slow);assert(stops==1,'other hit stops remain native')
+        slow.Multiplier=0.01;h.blue.hp=0;cb(slow);assert(stops==1,'a genuinely dead victim keeps the native finale')
+        h.blue.hp=max;assert(h.grabs:restore());cb(slow);assert(stops==1,'retained callbacks are inert after stop')
+        assert(h.grabs:sync(h.members,true,true));cb(slow);assert(stops==1,'a retired callback cannot act in the next fight')
+        assert(h.grabs:restore())
+    end
+    h.options.registerHook=function()return nil,nil end
+    h.grabs=h:new();assert(h.grabs:sync(h.members,true,true))
+    for _,event in ipairs(h.events)do if event.path:find(jadeRoot,1,true) then assert(event.NonPlayerGE==h.original) end end
+end)
 print('arena_grabs: PASS ('..count..' scope, native observation and restoration regressions)')

@@ -59,8 +59,15 @@ namespace PhantomGladiator
                     Check(reads==0,"invalid passes do not query the beta feed");
                     Check(beta.Check(pass,installation,now).Version=="0.40.11" && reads==1,"manual check shows the selected signed version");
                     offerData["version"]="0.40.12";
+                    offerData["notes"]=new Dictionary<string,object> {
+                        { "zh",new string[] {"First zh","Second zh"} },{ "en",new string[] {"First en","Second en"} }
+                    };
                     signed=Sign(issuer,offerData);
-                    Check(beta.Check(pass,installation,now).Version=="0.40.12" && reads==2,"same pass can check a changed publisher offer");
+                    var localized=beta.Check(pass,installation,now);
+                    var notes=localized.Describe()["notes"] as Dictionary<string,object>;
+                    Check(notes!=null && new JavaScriptSerializer().Serialize(notes["en"])=="[\"First en\",\"Second en\"]","localized offer preserves the ordered player notes");
+                    Check(localized.Note=="fixture","older clients keep the signed plain-text note");
+                    Check(localized.Version=="0.40.12" && reads==2,"same pass can check a changed publisher offer");
                     signed=signed.Substring(0,signed.IndexOf('.')+1)+Convert.ToBase64String(new byte[256]);
                     Refuses(() => beta.Check(pass,installation,now),"betaOffer","tampered feed cannot supply a package");
                     offerData["url"]="http://example.test/package.zip";

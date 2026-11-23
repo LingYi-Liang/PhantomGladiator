@@ -39,6 +39,11 @@ local EFFECT_AIMS={BD_ZuoShang_Skill_19={use='UE_UseTestTargetPos',pos='UE_TestT
 Aim.effectAims=EFFECT_AIMS
 Aim.paths.launch='/PBZDeflectSystem/Actions/GAA_DelayDeflectProjectileBullet.GAA_DelayDeflectProjectileBullet_C:Go go go'
 ORDER[#ORDER+1]='launch';LABEL.launch='特效目标'
+local RAIN_END={rainFinished=true,rainDeactivated=true}
+for _,entry in ipairs({{'rainFinished','OnParticleSystemFinished'},{'rainDeactivated','OnParticleDeactivated'}})do
+    Aim.paths[entry[1]]='/Script/PBZCombatAsset.PBZ_ParticleBullet:'..entry[2]
+    ORDER[#ORDER+1]=entry[1];LABEL[entry[1]]=entry[2]
+end
 local PARTICLE_CLASS,EFFECT_MS,EFFECT_SECONDS,READY,RUNNING='PBZ_ParticleBullet',50,15,1,2
 -- Skill 19 launches five particle emitters at 0.62 s and its action ends at 3.97 s.
 local RAIN_SCANS={[1]=true,[2]=true,[3]=true,[8]=true,[14]=true,[20]=true,[30]=true,[50]=true,[80]=true}
@@ -626,13 +631,98 @@ function Aim.new(options)
         local ok,name=pcall(function()return object:GetFullName()end)
         return ok and type(name)=='string'and name or nil
     end
-    local function particleComponent(bullet,spec)
-        local comp=U.field(bullet,'ParticleComponent')
-        if not U.valid(comp)then return nil end
-        local got,owner=pcall(function()return comp:GetOwner()end)
+    local function effectCall(obj,method,...)
+        if not U.valid(obj)then return nil end
+        local args=table.pack(...);local ok,v=pcall(function()return obj[method](obj,table.unpack(args,1,args.n))end)
+        if ok then return U.unwrap(v)end
+    end
+    local function effectAsset(comp,spec)
         local asset=U.field(comp,'Asset')
-        if not got or U.key(owner)~=U.key(bullet)or not U.valid(asset)or nameOf(asset)~=spec.system then return nil end
-        return comp,asset
+        if nameOf(asset)==spec.system then return asset end
+        asset=effectCall(comp,'GetAsset')
+        if nameOf(asset)==spec.system then return asset end
+    end
+    local function attached(comp,bullet)
+        local key=U.key(bullet)
+        if not key or not U.valid(comp) then return false end
+        if U.key(effectCall(comp,'GetOwner'))==key then return true end
+        local parent=effectCall(comp,'GetAttachParent')
+        return U.valid(parent) and (U.key(parent)==U.key(U.field(bullet,'SceneRoot')) or U.key(effectCall(parent,'GetOwner'))==key)
+    end
+    local niagaraClass,niagaraRetryAt=nil,0
+    local function componentClass()
+        if U.valid(niagaraClass) then return niagaraClass end
+        if clock()<niagaraRetryAt then return end
+        niagaraRetryAt=clock()+3
+        local ok,cls=pcall(StaticFindObject,'/Script/Niagara.NiagaraComponent')
+        if ok and objectName(cls)=='Class /Script/Niagara.NiagaraComponent' then niagaraClass=cls;return cls end
+    end
+    local function particleComponent(bullet,spec,previous,unique,frame)
+        local direct=U.field(bullet,'ParticleComponent')
+        local asset=effectAsset(direct,spec)
+        if asset then
+            if attached(direct,bullet) then return direct,asset,'attached' end
+            -- A world-pooled Niagara component need not have the projectile as its UObject owner.
+            -- Require the projectile's live native slot, declared system and exclusive binding.
+            local owner=U.field(bullet,'BulletOwnerAvatar')
+            local source=U.field(bullet,'BulletSourceAbility');local data=U.field(bullet,'BulletData')
+            local fxOwner=effectCall(direct,'GetOwner')
+            local key,sourceKey=U.key(owner),U.key(source)
+            if not frame.worldChecked then
+                frame.worldChecked=true
+                frame.world=options.world and options.world()
+                frame.worldKey=U.key(frame.world)
+            end
+            local world=frame.world
+            local binding=previous and previous.route=='pooled' and U.key(previous.comp)==U.key(direct)
+                and previous.owner==key and (not sourceKey or previous.sourceKey==sourceKey) and previous.asset==U.key(asset)
+                and previous.dataKey==U.key(data) and previous.worldKey==frame.worldKey and previous.compName==objectName(direct)
+            if key and fighters[key] and U.key(U.field(data,'Particle'))==U.key(asset)
+                and frame.worldKey and (binding or (U.inWorld(bullet,world) and U.inWorld(direct,world)))
+                and effectCall(direct,'IsActive')==true
+                and (not sourceKey or unitOf(source)==key)
+                and (U.key(fxOwner)==key or (not U.valid(U.field(fxOwner,'AbilitySystemComponent')) and U.field(fxOwner,'BulletStatus')==nil))
+                and hooks.rainFinished and hooks.rainDeactivated and (binding or unique and unique(direct,bullet)) then
+                return direct,asset,'pooled'
+            end
+        end
+        -- Read only the projectile's own component list, never search the world for an effect.
+        if previous and previous.route=='actorList' then
+            local component=previous.comp
+            local system=effectAsset(component,spec)
+            if system and U.key(system)==previous.asset and attached(component,bullet) and effectCall(component,'IsActive')==true then
+                return component,system,'actorList'
+            end
+        end
+        if not unique and not (previous and previous.route=='secondary') then
+            return nil,nil,asset and 'ownership' or U.valid(direct) and 'system' or 'component'
+        end
+        local found,system,ambiguous
+        local function consider(candidate)
+            if not U.valid(candidate) or not attached(candidate,bullet) then return end
+            local sys=effectAsset(candidate,spec)
+            if sys then
+                if found and U.key(found)~=U.key(candidate)then ambiguous=true end
+                found,system=candidate,sys
+            end
+        end
+        local instances=U.struct(U.field(bullet,'EffectInstanceData'),'InstanceData')
+        if instances then pcall(function()instances:ForEach(function(_,row)
+            for _,v in ipairs(U.array(U.struct(U.unwrap(row),'NiagaraComponents')) or {})do consider(v)end
+        end)end) end
+        local root=U.field(bullet,'SceneRoot')
+        if U.valid(root) then for _,v in ipairs(U.array(U.field(root,'AttachChildren')) or {})do consider(v)end end
+        if found and not ambiguous then return found,system,'secondary' end
+        if not found and unique then
+            local cls=componentClass()
+            if cls then
+                for _,candidate in ipairs(U.array(effectCall(bullet,'K2_GetComponentsByClass',cls)) or {})do
+                    if effectCall(candidate,'IsActive')==true then consider(candidate)end
+                end
+                if found and not ambiguous then return found,system,'actorList' end
+            end
+        end
+        return nil,nil,ambiguous and 'ambiguous' or asset and 'ownership' or U.valid(direct) and 'system' or 'component'
     end
     local function setVariable(comp,method,name,value)
         if not U.valid(comp)then return false end
@@ -643,10 +733,37 @@ function Aim.new(options)
     end
     -- What each search saw, kept on its request, so a volley that was never found says where it stopped.
     local function seen(request,field)request.seen=request.seen or {};request.seen[field]=(request.seen[field] or 0)+1 end
-    local function scanEffects()
+    local function poolSlots(frame,list)
+        if frame.slots~=nil then return frame.slots end
+        if not list then
+            local ok,value=pcall(FindAllOf,PARTICLE_CLASS)
+            if not ok or type(value)~='table' then frame.slots=false;return false end
+            list=value
+        end
+        local slots={}
+        for _,bullet in ipairs(list)do
+            local status=statusOf(bullet)
+            if status==RUNNING or status==READY then
+                local id=U.key(U.field(bullet,'ParticleComponent'))
+                if id then slots[id]=slots[id]==nil and U.key(bullet) or false end
+            end
+        end
+        frame.slots=slots
+        return slots
+    end
+    local function scanEffects(frame)
         local ok,list=pcall(FindAllOf,PARTICLE_CLASS)
         for _,request in pairs(rainSearch)do seen(request,'scans');if not ok or type(list)~='table' then seen(request,'empty') end end
         if not ok or type(list)~='table' then return end
+        local function unique(comp,bullet)
+            return poolSlots(frame,list)[U.key(comp)]==U.key(bullet)
+        end
+        -- Native pooling can move a still-live slot between two casts before a finish callback.
+        for key,item in pairs(effects)do
+            if item.route=='pooled' and not unique(item.comp,item.bullet) then
+                effects[key]=nil
+            end
+        end
         for _,bullet in ipairs(list)do
             local key=addr(bullet)
             if key and not effects[key] then
@@ -662,10 +779,16 @@ function Aim.new(options)
                         local spec=EFFECT_AIMS[dataName]
                         if spec then seen(request,'data')else request.otherData=dataName end
                         if spec then
-                            local comp,asset=particleComponent(bullet,spec)
-                            if comp then seen(request,'adopted')end
+                            local comp,asset,route=particleComponent(bullet,spec,nil,unique,frame)
+                            seen(request,comp and 'adopted' or route)
+                            if not comp and not request.rejected then
+                                local direct=U.field(bullet,'ParticleComponent')
+                                local owner=effectCall(direct,'GetOwner')
+                                request.rejected=' 首次拒绝='..route..' 组件='..nameOf(direct)..' 属主='..nameOf(owner)
+                                    ..' 系统='..nameOf(U.field(direct,'Asset'))
+                            end
                             if comp then
-                                effects[key]={bullet=bullet,bulletKey=key,comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0,cast=request}
+                                effects[key]={bullet=bullet,bulletKey=key,route=route,worldKey=frame.worldKey,sourceKey=U.key(U.field(bullet,'BulletSourceAbility')),dataKey=U.key(U.field(bullet,'BulletData')),comp=comp,compName=objectName(comp),asset=U.key(asset),owner=ownerKey,data=dataName,spec=spec,since=clock(),writes=0,cast=request}
                                 request.left=request.left-1
                             end
                         end
@@ -697,20 +820,22 @@ function Aim.new(options)
         spots[cast]=result
         return result
     end
-    local function aimEffect(item,spots)
+    local function aimEffect(item,spots,frame)
         local owner=U.field(item.bullet,'BulletOwnerAvatar')
         local key=U.key(owner)
         local data=U.field(item.bullet,'BulletData')
         local dataName=U.valid(data) and nameOf(data) or nil
         if not key or not fighters[key] or not EFFECT_AIMS[dataName] then return false end
         if phaseBusy(key) then return false end
-        local comp,asset=particleComponent(item.bullet,EFFECT_AIMS[dataName])
+        local comp,asset,route=particleComponent(item.bullet,EFFECT_AIMS[dataName],item,nil,frame)
         if not comp then return false end
         -- Pooled bullets can change owner or component while their previous wrappers still look valid.
-        if item.owner~=key or item.data~=dataName or addr(item.comp)~=addr(comp) then
-            if item.switched then releaseEffect(item) end
-            if item.owner~=key or item.data~=dataName then item.cast=rainSearch[key] or {} end
+        local sourceKey=U.key(U.field(item.bullet,'BulletSourceAbility'))
+        if item.owner~=key or item.dataKey~=U.key(data) or item.sourceKey~=sourceKey or item.asset~=U.key(asset) or addr(item.comp)~=addr(comp) then
+            if item.switched then releaseEffect(item,frame) end
+            if item.owner~=key or item.dataKey~=U.key(data) or item.sourceKey~=sourceKey then item.cast=rainSearch[key] or {} end
             item.owner,item.data,item.spec,item.comp=key,dataName,EFFECT_AIMS[dataName],comp
+            item.route,item.sourceKey,item.dataKey,item.worldKey=route,sourceKey,U.key(data),frame.worldKey
             item.asset,item.compName=U.key(asset),objectName(comp)
             item.switched=nil;item.since=clock();item.writes=0
             sayEffect('刷新特效归属 读回施法者='..key..' 组件='..tostring(addr(comp))..' 数据='..dataName)
@@ -729,6 +854,7 @@ function Aim.new(options)
         if not item.switched then
             local okUse=setVariable(item.comp,'SetVariableBool',item.spec.use,true)
             item.switched=okUse
+            if not okUse then return end
             self.redirected=self.redirected+1
             self.counts.launch=self.counts.launch+1;self.window.launch=self.window.launch+1
             local okPlayer,player=pcall(function()return options.player and options.player()end)
@@ -739,17 +865,34 @@ function Aim.new(options)
                 okPlayer and U.valid(player) and metres(from,place(player)) or '?'))
         end
     end
-    releaseEffect=function(item)
+    releaseEffect=function(item,frame)
         if not item.switched then return end
         local ok=false
         if U.valid(item.comp)and objectName(item.comp)==item.compName then
-            local got,owner=pcall(function()return item.comp:GetOwner()end)
-            local asset=U.field(item.comp,'Asset')
-            if got and U.key(owner)==item.bulletKey and U.key(asset)==item.asset and nameOf(asset)==item.spec.system then
+            local asset=effectAsset(item.comp,item.spec)
+            local pooled=item.route=='pooled' and options.world and U.key(options.world())==item.worldKey
+                and U.key(U.field(item.bullet,'ParticleComponent'))==U.key(item.comp)
+                and U.key(U.field(item.bullet,'BulletOwnerAvatar'))==item.owner
+                and (not U.valid(U.field(item.bullet,'BulletSourceAbility')) or U.key(U.field(item.bullet,'BulletSourceAbility'))==item.sourceKey)
+                and U.key(U.field(item.bullet,'BulletData'))==item.dataKey
+            if pooled then
+                local slots=poolSlots(frame or {})
+                local id=U.key(item.comp)
+                pooled=slots and (slots[id]==nil or slots[id]==U.key(item.bullet))
+            end
+            if ((item.route~='pooled' and attached(item.comp,item.bullet)) or pooled) and U.key(asset)==item.asset then
                 ok=setVariable(item.comp,'SetVariableBool',item.spec.use,false)
             end
         end
         sayEffect(string.format('特效目标还原 子弹=%s 跟随对手写入=%d次 关开关=%s',item.data,item.writes,tostring(ok==true)))
+    end
+    local function retireParticle(context,parameter)
+        if not self.alive or not next(effects) then return end
+        local thread=options.inGameThread or IsInGameThread
+        if type(thread)=='function' and not thread() then return end
+        local bullet,comp=U.unwrap(context),U.unwrap(parameter);local key=U.key(bullet)
+        local item=key and effects[key]
+        if item and U.key(comp)==U.key(item.comp) then effects[key]=nil;releaseEffect(item) end
     end
     local function effectTick()
         if not self.alive then stopEffectLoop();return end
@@ -760,30 +903,32 @@ function Aim.new(options)
                 -- A cast whose emitters were not all found: what the searches saw (the rain then keeps the game's own target).
                 if request.cast and request.left>0 then
                     local s=request.seen or {}
-                    sayEffect(string.format('剑雨发射器没找全：还差%d个；搜索%d轮（读不到列表%d轮） 属于施法者的特效子弹=%d 其中在运行=%d 数据对得上=%d 组件对得上=%d%s%s',
-                        request.left,s.scans or 0,s.empty or 0,s.owned or 0,s.live or 0,s.data or 0,s.adopted or 0,
+                    sayEffect(string.format('剑雨发射器没找全：还差%d个；搜索%d轮（读不到列表%d轮） 属于施法者的特效子弹=%d 其中在运行=%d 数据对得上=%d 组件对得上=%d 缺组件=%d 系统不符=%d 归属不符=%d 多组件=%d%s%s%s',
+                        request.left,s.scans or 0,s.empty or 0,s.owned or 0,s.live or 0,s.data or 0,s.adopted or 0,s.component or 0,s.system or 0,s.ownership or 0,s.ambiguous or 0,request.rejected or '',
                         request.otherData and(' 见到别的数据='..tostring(request.otherData))or'',
                         not fighters[owner] and' 施法者已不在名单'or phaseBusy(owner)and' 施法者在转阶段'or''))
                 end
                 rainSearch[owner]=nil
             elseif RAIN_SCANS[request.tick] then search=true end
         end
-        if search then scanEffects() end
+        local frame={}
+        if search then scanEffects(frame) end
         local now,spots=clock(),{}
         local paused=options.paused and options.paused()
         for key,item in pairs(effects)do
             local status=statusOf(item.bullet)
             if (status==RUNNING or status==READY) and now-item.since<EFFECT_SECONDS then
                 local owner=U.key(U.field(item.bullet,'BulletOwnerAvatar'))
-                if not fighters[owner] or phaseBusy(owner) or paused and owner~=item.owner or not paused and aimEffect(item,spots)==false then
-                    releaseEffect(item);effects[key]=nil
+                if not fighters[owner] or phaseBusy(owner) or paused and owner~=item.owner or not paused and aimEffect(item,spots,frame)==false then
+                    releaseEffect(item,frame);effects[key]=nil
                 end
             else
-                releaseEffect(item);effects[key]=nil
+                releaseEffect(item,frame);effects[key]=nil
             end
         end
         if not next(rainSearch) and not next(effects) then stopEffectLoop() end
     end
+    local register
     local function watchRain(unit,cast)
         local request=rainSearch[unit]
         if cast then rainSearch[unit]={tick=0,left=5,cast=true}
@@ -796,6 +941,7 @@ function Aim.new(options)
             local target=self:targetOf(unit)
             volley.target,volley.targetName=target,objectName(target)
         end
+        register('rainFinished');register('rainDeactivated')
         if not effectLoop then
             effectGeneration=effectGeneration+1;local generation=effectGeneration
             local ok,handle=pcall(LoopInGameThreadWithDelay,EFFECT_MS,function()
@@ -867,9 +1013,9 @@ function Aim.new(options)
     -- A blueprint that is not loaded yet (a selector comes in with the first bullet data) is tried again while the fight runs.
     local function needed(name)
         return next(fighters)~=nil and not hooks[name] and (not FLYING[name] or flyingWanted)
-            and (name~='iceSpawn' or iceWanted)
+            and (name~='iceSpawn' or iceWanted) and (not RAIN_END[name] or next(rainSearch) or next(effects))
     end
-    local function register(name)
+    register=function(name)
         if not needed(name) then return end
         local path=Aim.paths[name]
         if not retry:ready(path) then return end
@@ -880,7 +1026,7 @@ function Aim.new(options)
         end
         local handler=name=='force' and forced or name=='lock' and relock or (name=='bullet' or name=='bulletAbility') and retarget
             or name=='launch' and launched or name=='skillStart' and skillStarted
-            or name=='iceSpawn' and iceSpawn
+            or RAIN_END[name] and retireParticle or name=='iceSpawn' and iceSpawn
             or FLYING[name] and function(context)
                 self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
                 return flight(FLYING[name],context)
@@ -907,8 +1053,9 @@ function Aim.new(options)
             uninstallAt=clock()+1
         end
         stopEffectLoop(force);rainSearch={}
+        local frame={}
         for key,item in pairs(effects)do
-            if restore~=false then releaseEffect(item) end
+            if restore~=false then releaseEffect(item,frame) end
             effects[key]=nil
         end
         local kept={}

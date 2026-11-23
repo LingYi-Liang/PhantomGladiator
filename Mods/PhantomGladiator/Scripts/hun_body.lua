@@ -339,30 +339,40 @@ function Body.new(o)
                 and (r.team=='neutral' or U.key(target)~=U.key(o.player())) then return target end
         end})
     -- One timer for all brains and no idle timer after the last NPC leaves.
-    local brainHandle
-    local function stopBrains()
-        if brainHandle then pcall(o.cancel or CancelDelayedAction,brainHandle);brainHandle=nil end
+    local brainTimer=require('hun_combat_timer').new(100,o.loop,o.cancel or CancelDelayedAction,gameNow,say)
+    local function stopBrains()brainTimer:stop() end
+    local function decide(record)
+        if owned(record) then brain:tick(record) end
     end
-    local function startBrain(r)
-        if not r.usedPhases then brain:start(r) end
-        if brainHandle or not o.loop then return end
-        brainHandle=o.loop(100,function()
-            local count=0
-            for _,record in pairs(records)do
-                if record.intent and not record.brainFailed and not record.dead then
-                    count=count+1
-                    local idleTeam=(record.team=='blue' or record.team=='red') and not battle and record.wasIdle
-                    if (not idleTeam or record.shadowBusy or record.supplyBusy) and owned(record) then
-                        local ok,err=pcall(brain.tick,brain,record)
-                        if not ok then
-                            record.brainFailed=true;record.intent.busy=true
-                            say('战斗决策已停用 '..record.name..' '..tostring(err))
+    local function tickBrains()
+        if not self.alive then return end
+        local count,now=0,nil
+        for _,record in pairs(records)do
+            if record.intent and not record.kitStopping and not record.dead then
+                count=count+1
+                local waiting=(record.team=='blue' or record.team=='red') and not battle and record.wasIdle
+                if not waiting or record.shadowBusy or record.supplyBusy then
+                    if record.brainErrorAt then now=now or gameNow() end
+                    if not record.brainErrorAt or (now and (now<record.brainErrorAt or now-record.brainErrorAt>=record.brainRetryDelay)) then
+                        local ok,err=pcall(decide,record)
+                        if ok then
+                            if record.brainErrorAt then say('战斗决策恢复 '..record.name) end
+                            record.brainErrorAt,record.brainRetryDelay=nil,nil
+                        else
+                            if not record.brainErrorAt then say('战斗决策稍后重试 '..record.name..' '..tostring(err)) end
+                            record.brainErrorAt=now or gameNow() or 0
+                            record.brainRetryDelay=math.min(4,(record.brainRetryDelay or .25)*2)
+                            record.intent.busy=true
                         end
                     end
                 end
             end
-            if count==0 then stopBrains()end
-        end)
+        end
+        if count==0 then stopBrains() end
+    end
+    local function startBrain(r)
+        if not r.usedPhases then brain:start(r) end
+        r.brainTimerPending=not brainTimer:ensure(tickBrains)
     end
     local function skeletonOf(actor)
         local _,asset=call(U.field(actor,'Mesh'),'GetSkeletalMeshAsset')
@@ -581,8 +591,10 @@ function Body.new(o)
             ..' 销毁中='..tostring(destroying)..' 有效=true'..(parts~=''and('；新部件可见=['..parts..']')or''))
         local hide=steps.deathHide==true and t-d.at>=DEATH_HIDE_AFTER
         if steps.deathHide=='follow' and not d.hidden then
-            local readVisible,visible=call(U.field(d.actor,'Mesh'),'IsVisible')
-            hide=hidden(d.actor)==true or (readVisible and visible==false)
+            local mesh=U.field(d.actor,'Mesh')
+            local readVisible,visible=call(mesh,'IsVisible')
+            hide=hidden(d.actor)==true or U.field(mesh,'bHiddenInGame')==true
+                or (not (d.record and d.record.rigBaseline) and readVisible and visible==false)
         end
         if hide and not d.hidden and d.record then
             d.hidden=true;optional(look,'hideParts',d.record)
@@ -783,6 +795,7 @@ function Body.new(o)
         return result
     end
     local function stopKit(r,why)
+        r.kitStopping=true
         role:restore(r)
         executionImmunity(r,true)
         optional(grabGuard,'stop',r)
@@ -872,7 +885,7 @@ function Body.new(o)
         if next(dying)then tickDeaths()end
     end
     function self:follow(members)
-        local motionTime
+        local motionTime,outfitSweep
         local owned={};for _,m in ipairs(members or{})do local key=U.key(m.actor);if key then owned[key]=true end end
         for key,r in pairs(records)do
             if not owned[key]or not current(r.actor,r)then
@@ -897,6 +910,7 @@ function Body.new(o)
                     watchDeath(key,r)
                 elseif r.dead and dead==0 and hp and hp>0 then
                     r.dead,r.deathWatched=false,false
+                    r.brainErrorAt,r.brainRetryDelay=nil,nil
                     if dying[key] then endDeath(key,dying[key],'死亡标签已解除且生命为正') end
                     optional(look,'restoreDeathVisibility',r)
                     if r.suspendedRegen then
@@ -962,6 +976,18 @@ function Body.new(o)
                 if r.checks==WATCH then
                     say('复查结束：实例='..r.name..'；'..text_..'；两项都为0='..tostring(zero)..'；'..describe(r))
                     self.message=zero and'魂标签持续为0；外观和战斗表现以画面为准'or'魂的隐藏或不可仇恨标签没能保持为0，见日志'
+                end
+            end
+            if records[key]==r and r.phase=='observed' and not r.dead and not r.kitStopping then
+                if r.brainTimerPending then startBrain(r) end
+                if r.defenseTimerPending then optional(defense,'retryTimer',r) end
+                if r.weaponTimerPending then optional(weapons,'retryTimer',r) end
+            end
+            if records[key]==r and r.phase=='observed' and not r.dead and r.appearance then
+                motionTime=motionTime or gameNow()
+                if motionTime and motionTime>=r.appearance.nextCheck then
+                    outfitSweep=outfitSweep or {}
+                    optional(look,'maintainAppearance',r,motionTime,outfitSweep)
                 end
             end
             if records[key]==r and r.phase=='observed' and not r.dead and r.motion then

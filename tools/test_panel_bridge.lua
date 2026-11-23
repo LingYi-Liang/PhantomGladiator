@@ -236,6 +236,24 @@ test("heartbeat status reserves protocol fields and preserves scalar false", fun
     assert(status:find("game_running\tfalse\n", 1, true) and status:find("alive\t4\n", 1, true))
 end)
 
+test("identical heartbeat payloads avoid redundant rewrites but repair a missing or damaged file",function()
+    local fs=filesystem();local open=fs.open;local writes,second,value=0,0,1
+    fs.open=function(path,mode)
+        if path=="runtime/status.tsv" and mode=="wb" then writes=writes+1 end
+        return open(path,mode)
+    end
+    local bridge=create(fs,nil,{clock=function()return second end,status=function()return {alive=value}end})
+    for i=0,239 do second=math.floor(i/4);bridge:tick()end
+    print("MEASURE 60 seconds of unchanged status at 4 Hz: file rewrites="..writes)
+    assert(writes==60,"identical payloads are still truncating the status file")
+    value=2;bridge:tick();assert(writes==61 and fs.files['runtime/status.tsv']:find('alive\t2',1,true))
+    for _,bad in ipairs({'missing','truncated'})do
+        fs.files['runtime/status.tsv']=bad=='truncated' and 'incomplete' or nil
+        bridge:tick();assert(fs.files['runtime/status.tsv']:find('heartbeat_unix\t59',1,true))
+    end
+    assert(writes==63)
+end)
+
 test("every status entry the panel reports is written, well past the old cap of 100", function()
     local fs = filesystem()
     fs.files["runtime/command-journal.tsv"] = ""

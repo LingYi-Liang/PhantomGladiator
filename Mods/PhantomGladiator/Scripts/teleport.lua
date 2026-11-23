@@ -68,18 +68,33 @@ function Teleport.new(o)
     end
     function self:busy()return pending~=nil end
     -- A fast timer of its own while a teleport is being read back or held; the support loop's tick is the fallback.
-    local timer
+    local timer,lastTick
     local function stopTimer()
-        if timer~=nil then pcall(o.cancel or function()end,timer);timer=nil end
+        local old=timer;timer=nil;lastTick=nil
+        if old and old.handle and o.cancel then pcall(o.cancel,old.handle) end
     end
     local function startTimer()
         if timer~=nil or type(o.loop)~='function'then return end
+        local ticket={}
+        timer=ticket
         local ok,handle=pcall(o.loop,Teleport.TICK_MS,function()
-            if not self.alive or not pending then stopTimer();return end
+            if timer~=ticket or not ticket.handle or not self.alive or not pending then return end
+            local t=clock()
+            if lastTick and t>=lastTick and t-lastTick<Teleport.TICK_MS*.00075 then return end
+            local request=pending
             local ticked,why=pcall(self.tick,self)
-            if not ticked then say('读回中断：'..tostring(why));pending=nil;stopTimer()end
+            if not ticked and request==pending then say('读回中断：'..tostring(why));pending=nil;stopTimer()end
         end)
-        if ok and handle~=nil and handle~=false then timer=handle end
+        if timer~=ticket then
+            if ok and handle and o.cancel and (not timer or timer.handle~=handle) then pcall(o.cancel,handle) end
+        elseif ok and handle then ticket.handle=handle
+        else timer=nil end
+    end
+    function self:needsSupportTick()
+        if not pending then return false end
+        if not timer or not timer.handle then return true end
+        local elapsed=clock()-(lastTick or pending.started)
+        return elapsed<0 or elapsed>=.5
     end
     -- Stops the fall and puts the player back at the target; returns whether the position read back near it.
     local function pull(p,now)
@@ -119,6 +134,7 @@ function Teleport.new(o)
             return {ok=false,message=self.last.message}
         end
         pending={place=place,label=label,before=before,started=clock(),lines=0}
+        lastTick=nil
         startTimer()
         self.back=before
         self.last={ok=true,pending=true,message='已发起传送，等待游戏加载',place=label}
@@ -135,13 +151,15 @@ function Teleport.new(o)
     function self:tick()
         if not pending then return end
         local p=pending
+        lastTick=clock()
         local now=self:here()
+        if pending~=p then return end
         if p.hold then
             local done=clock()>=p.hold.untilTime
-            if now and now.world==p.place.world and now.z<p.place.z-Teleport.FALL_CM then
+            if not done and now and now.world==p.place.world and now.z<p.place.z-Teleport.FALL_CM then
                 if p.hold.pulls<Teleport.MAX_PULLS then pull(p,now)else done=true end
             end
-            if done then
+            if done and pending==p then
                 pending=nil;stopTimer()
                 say('防坠观察结束 '..p.label..' 拉回'..p.hold.pulls..'次 当前='..text(now))
                 self.last={ok=true,message=p.hold.pulls>0 and('已到达（落下去过，拉回'..p.hold.pulls..'次）')or'已到达',place=p.label}

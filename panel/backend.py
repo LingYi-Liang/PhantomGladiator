@@ -200,7 +200,7 @@ BINDING_LABELS = dict(zip(V6_BINDING_NAMES, ("召唤所选单位", "开始交战
 BINDING_LABELS.update(eyes_player="玩家第一人称观战",eyes_npc="NPC第一人称观战")
 BINDING_LABELS.update(zip(WEATHER_BINDING_NAMES, ['天气：上一个', '天气：下一个', '天气：恢复地图天气', '天气：晴天', '天气：局部多云', '天气：多云', '天气：阴天', '天气：雾', '天气：小雨', '天气：雨', '天气：雷雨', '天气：小雪', '天气：雪', '天气：暴风雪', '天气：浮尘', '天气：沙尘暴']))
 # Schemas 2/3/4 carry eight/ten/thirteen keys; 5 appends companion dismissal; 6 the four Hun summon keys.
-FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5", "6")
+FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5", "6", "7", "8")
 # 镜头跟踪 (camera_track.lua).
 TRACK_FRAMINGS = ("side", "shoulder", "orbit", "eyes")
 TRACK_RESUME_MAX = 10
@@ -1220,6 +1220,7 @@ class Bridge:
             if values.get('function_keys_schema') not in ('4','5','6','7','8'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
             pool_keys=self._pool_owners()
+            previous_bindings=None
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
                 if name=='dismiss_companions' and values.get('function_keys_schema') not in ('5','6','7','8'):
@@ -1240,10 +1241,17 @@ class Bridge:
                     chord=(vk,mods)
                     if chord in seen:raise ValidationError('同一组合键同时用于「'+BINDING_LABELS[seen[chord]]+'」和「'+BINDING_LABELS[name]+'」')
                     seen[chord]=name
-                    if chord in pool_keys:raise ValidationError('该键已被怪物池「'+pool_keys[chord]+'」占用')
                     owner=next((unit for unit,binding in units.items()
                                 if (binding['key_code'],binding['modifiers'])==chord),None)
-                    if owner:
+                    if chord in pool_keys or owner:
+                        if previous_bindings is None:
+                            previous_bindings=self.function_keybinds(game)['bindings']
+                        previous=previous_bindings[name]
+                        if (previous['key_code'],previous['modifiers'])==chord:
+                            parsed[name]=entry
+                            continue
+                        if chord in pool_keys:
+                            raise ValidationError('该键已被怪物池「'+pool_keys[chord]+'」占用')
                         row=next((unit for unit in self.catalog()['units'] if unit['id']==owner),{})
                         label=row.get('display_name') or row.get('name') or owner.rsplit('.',1)[-1]
                         raise ValidationError('该键已被单位「'+label+'」占用，请先解除该单位的绑定')
@@ -1670,7 +1678,11 @@ class Bridge:
             rows=list(tsv_rows(state))
             if rows and rows[0]==['FunctionKeyStateV2',str(revision),epoch]:
                 for row in rows[1:]:
-                    if len(row)==3 and row[0] in bindings and row[2]:bindings[row[0]]['message']=row[2]
+                    if len(row)==3 and row[0] in bindings and row[2]:
+                        entry=bindings[row[0]]
+                        entry['message']=row[2]
+                        if row[1]=='0' and entry['key_code'] and not entry['active']:
+                            entry['error']=row[2]
         return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5','6','7','8') and epoch),
                 'dismiss_supported':bool(game['online'] and values.get('function_keys_schema') in ('5','6','7','8') and epoch),
                 'eyes_supported':bool(game['online'] and values.get('function_keys_schema')=='8' and epoch),

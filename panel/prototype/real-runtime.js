@@ -518,7 +518,11 @@ const RealRuntime = (() => {
     s.eyesKeysSupported = online && data.function_keys?.eyes_supported === true;
     s.weatherKeysSupported = online && data.function_keys?.weather_supported === true;
     s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
-    for (const k of [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS]) s.keys[k] = bindings[k]?.key_code ? { code: bindings[k].key_code, mods: bindings[k].modifiers || 0 } : null;
+    for (const k of [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS]) {
+      const binding = bindings[k];
+      s.keys[k] = binding?.key_code ? { code: binding.key_code, mods: binding.modifiers || 0 } : null;
+      if (s.keys[k] && online && binding.error) s.keys[k].error = binding.error;
+    }
 
     const updates = new Map();
     for (const q of [...(data.watched_commands || []), ...(data.queue || [])]) {

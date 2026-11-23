@@ -500,4 +500,46 @@ test('running diagnostics never call native methods on invalid mesh or ASC compo
     here:tick();clockNow=clockNow+1;here:tick()
     assert(invalidCalls==0,'pcall cannot replace IsValid before native component methods')
 end)
-print('companion: PASS (official follow state, player faction, friendly relation, AI restart, gated assist, follow watch, roster, missing class, follow keys, walk/run, stuck fallback, teleport and boss fights, always friendly, mounts, stuck teleport, recall)')
+test('a companion left in Combat can resume pursuing its enemy or following the player',function()
+    local oldFind=StaticFindObject
+    local function scenario(kind)
+        local actor,ai=unit(true);local enemy=object({},'Bandit')
+        local target=enemy
+        if kind=='empty' or kind=='unknown' then target=nil end
+        player.BP_PBZHatredManagerComponent.HatredList=kind=='live' and {enemy} or {}
+        local clock=0;local orders={};local tp=0;local reengaged=0
+        locations[player]={X=0,Y=0,Z=0};locations[actor]={X=4240,Y=0,Z=0}
+        locations[enemy]={X=5650,Y=0,Z=0}
+        actor.Controller.Pawn=actor;actor.Controller.GetMoveStatus=function()return 0 end
+        ai.CurrentStateTag=tag('AI.State.Combat');ai.bAIStarted=true
+        ai.ForceIntoCombat=function(_,v)assert(v==enemy);reengaged=reengaged+1 end
+        ai.AIPerception=object({GetPerceivedHostileActors=function(_,t)t.OutActors={}end},'Senses')
+        if kind=='hatred' then target=nil;actor.BP_PBZHatredManagerComponent.HatredList={enemy} end
+        local nav=object({SimpleMoveToActor=function(_,controller,goal)assert(controller==actor.Controller);orders[#orders+1]=goal end},'Nav')
+        StaticFindObject=function(path)if path=='/Script/AIModule.Default__AIBlueprintHelperLibrary' then return nav end;return oldFind(path)end
+        actor.K2_GetActorRotation=function()return {Pitch=0,Yaw=0,Roll=0}end
+        actor.K2_TeleportTo=function(_,pos)tp=tp+1;locations[actor]=pos;return true end
+        local comp=Companion.new({clock=function()return clock end,getPlayer=function()return player end,
+            members=function()return {{team='companion',actor=actor}}end,getLocation=function(a)return locations[a]end,
+            hp=function()return 100 end,combatTarget=function()return target,kind~='unknown' end,
+            canRecover=function()return kind~='protected' end})
+        comp:prepare(actor,'/Mobs/Hun.Hun_C')
+        for i=0,34 do
+            clock=i
+            if kind=='moving' then locations[actor]={X=4240+i*110,Y=0,Z=0}end
+            comp:tick()
+        end
+        StaticFindObject=oldFind
+        if kind=='empty' then
+            assert(orders[1]==player and tp==1,'no enemy, no progress at 42.4 m: request a path, then recover near the player')
+        elseif kind=='live' then
+            assert(orders[1]==enemy and #orders<=3 and tp==0,'retry the same enemy without dragging a fighting unit to the player')
+        elseif kind=='stranded' then
+            assert(orders[1]==enemy and orders[2]==player and tp==1,'keep the enemy but rejoin after both routes fail')
+        elseif kind=='hatred' then
+            assert(orders[1]~=player and tp==0 and #actor.BP_PBZHatredManagerComponent.HatredList==1)
+        else assert(#orders==0 and tp==0 and reengaged==0,'unknown, protected and moving units keep their native behaviour')end
+    end
+    for _,kind in ipairs({'empty','live','stranded','moving','unknown','protected','hatred'})do scenario(kind)end
+end)
+print('companion: PASS (follow, faction, combat recovery, roster, movement, recall and protection)')

@@ -30,7 +30,7 @@ function Targets.new(options)
         for key in pairs(seen)do if not owned[key]then seen[key]=nil end end
         for key in pairs(last)do if not owned[key]then last[key]=nil end end
     end
-    function self:current(actor,castTarget,castName)
+    local function query(actor,castTarget,castName)
         local key=U.key(actor);local record=key and owned[key]
         if not record or record.name~=nameOf(actor) or not alive(options,actor) then return nil end
         if options.stillOwned and options.stillOwned(actor)~=true then return nil end
@@ -51,31 +51,42 @@ function Targets.new(options)
         local faction=U.field(actor,'Faction Component')
         if not U.valid(faction) then return nil end
         local function hostile(target,field,remember)
-            local targetId=U.key(target)
-            if targetId and targetId~=key and targetId~=playerKey and not owned[targetId]
-                and U.inWorld(target,world) and alive(options,target) and U.npcPath(target) then
-                local related,relation=pcall(function()return faction:GetFactionRelation(target)end)
-                if related and tonumber(U.unwrap(relation))==2 then
-                    local enemyName=nameOf(target)
-                    if enemyName and seen[key]~=enemyName then
-                        seen[key]=enemyName
-                        log('[CompanionTarget] 当前敌人读回 '..record.name..' -> '..enemyName..'；来源='..field..'；敌对=2')
-                    end
-                    if remember then last[key]={target=target,name=enemyName or nameOf(target),at=clock()}end
-                    return target
-                end
+            local id=U.key(target)
+            if not id or id==key or id==playerKey or owned[id] then return nil,true end
+            if not U.inWorld(target,world) then return nil,false end
+            local ok,hp=pcall(options.hp,target)
+            if not ok or type(hp)~='number' or hp~=hp or math.abs(hp)==math.huge then return nil,false end
+            if hp<=0 then return nil,true end
+            if not U.npcPath(target) then return nil,false end
+            local related,value=pcall(function()return faction:GetFactionRelation(target)end)
+            local relation=related and tonumber(U.unwrap(value))
+            if relation~=2 then return nil,relation==0 or relation==1 end
+            local enemyName=nameOf(target)
+            if enemyName and seen[key]~=enemyName then
+                seen[key]=enemyName
+                log('[CompanionTarget] 当前敌人读回 '..record.name..' -> '..enemyName..'；来源='..field..'；敌对=2')
             end
+            if remember then last[key]={target=target,name=enemyName,at=clock()}end
+            return target,true
         end
+        local empty=true
         for _,field in ipairs({'Target Key','LastSensedActorKey'})do
             local targetKey,known=U.field(handler,field)
             if not known or targetKey==nil then return nil end
             local ok,target=pcall(function()return U.unwrap(bb:GetValueAsObject(targetKey))end)
             if not ok then return nil end
-            local enemy=hostile(target,field,true)
-            if enemy then return enemy end
+            local enemy,known=hostile(target,field,true)
+            if enemy then return enemy,true end
+            if not known then empty=false end
         end
         -- An already launched volley may outlast the AI's target key. Revalidate its own enemy.
-        if castName and castName==nameOf(castTarget) then return hostile(castTarget,'本次施法或刚才的敌人') end
+        if castName and castName==nameOf(castTarget) then return hostile(castTarget,'本次施法或刚才的敌人'),false end
+        return nil,empty
+    end
+    function self:inspect(actor)return query(actor)end
+    function self:current(actor,castTarget,castName)
+        local target=query(actor,castTarget,castName)
+        return target
     end
     -- For a skill that takes its own lock while the AI's target key is empty for a moment (左殇's 万剑归宗 keeps the
     -- first target it selects, and the game's own choice then can be the player): the current enemy, else the enemy

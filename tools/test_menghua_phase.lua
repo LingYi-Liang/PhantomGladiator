@@ -435,6 +435,26 @@ test('skip prevents later reactivation of the exact linked native passives',func
     assert(not h.nativePhase.bIsActive and not h.summon.bIsActive and h.phase:busy(h.parent))
     h:tick();assert(h.asc.lock==0 and not h.phase:busy(h.parent))
 end)
+test('confirmed End survives the native passive dropping its avatar or being collected',function()
+    for _,collected in ipairs({false,true})do
+        local h=harness();h.rule='skip'
+        for _,ability in ipairs({h.nativePhase,h.summon})do
+            ability.GetAvatarActorFromActorInfo=function(self)if self.bIsActive then return h.parent end end
+        end
+        h:sync();h.callbacks[Phase.paths.summonPassive](h.summon)
+        assert(not h.nativePhase.bIsActive and not h.summon.bIsActive)
+        if collected then h.nativePhase.valid=false;h.summon.valid=false end
+        h:tick()
+        assert(not h.phase:busy(h.parent) and h.phase:status().state=='ready','acknowledged Ends must release the combat gate')
+    end
+end)
+test('owned ASC spec distinguishes an inactive passive from a still-active unresolved instance',function()
+    local h=harness();h.rule='skip';h:sync()
+    h.asc.GetOwner=function()return h.parent end
+    local spec={Ability=object('CDO /Summon',S),ActiveCount=1};h.asc.ActivatableAbilities={Items={spec}}
+    h.summon.valid=false;h:tick();assert(h.phase:busy(h.parent))
+    spec.ActiveCount=0;h:tick();assert(not h.phase:busy(h.parent))
+end)
 test('skip unknown lock or absent passive evidence remains pending instead of claiming ready',function()
     local h=harness();h.rule='skip';h.badLock=true;h:sync();h:tick()
     assert(h.phase:busy(h.parent) and h.phase:status().state=='pending')

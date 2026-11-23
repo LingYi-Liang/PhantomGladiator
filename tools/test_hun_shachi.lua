@@ -282,8 +282,8 @@ check('an equipped shadow opener cannot replace a weapon swing even when its inp
     input.InActionPhase=false;assert(h:tick(4.5) and h.casts==2)
 end)
 check('reinforced Blood Guillotine chains through native input only inside its own live combo window',function()
-    for _,delivery in ipairs({'immediate','delayed','interrupted'}) do
-        local delayed=delivery~='immediate'
+    for _,delivery in ipairs({'immediate','delayed','interrupted','sync-interrupt','sync-cleanup','changed','delayed-change'}) do
+        local delayed=delivery=='delayed' or delivery=='interrupted' or delivery=='delayed-change'
         local disc
         for _,item in ipairs(Data.items) do if item.normal:find('/XueDiZi/',1,true) then disc=item;break end end
         local h=fixture(assert(disc),false);h.tags={['CharacterState.Space.Ground']=1}
@@ -302,6 +302,9 @@ check('reinforced Blood Guillotine chains through native input only inside its o
                     transitions=transitions+1
                     if delayed then pending=spec
                     else h.rows[first.handle].ActiveCount=0;h.tags[first.move.tag]=0;spec.ActiveCount=1 end
+                    if delivery=='sync-interrupt' then h.mod:interrupt(h.r)
+                    elseif delivery=='sync-cleanup' then h.mod:cleanup(h.r)
+                    elseif delivery=='changed' then h.targetReadback=h.r.actor end
                     return true
                 end
             end
@@ -309,8 +312,14 @@ check('reinforced Blood Guillotine chains through native input only inside its o
         end
         local spirit=h.attrs.SpiritShadow;assert(h:tick(.2) and transitions==0)
         input.ActionPhase.TagName='CharacterState.Action.Phase.Combo'
-        assert(h:tick(.45) and transitions==1)
-        if delivery=='interrupted' then
+        local busy=h:tick(.45);assert(transitions==1)
+        if delivery=='sync-interrupt' or delivery=='sync-cleanup' or delivery=='changed' then
+            assert(h.cancels==1 and (not h.r.shadowState or not h.r.shadowState.running),'interrupted follow-up was adopted: '..delivery)
+            assert(h.attrs.SpiritShadow==spirit and not h.r.shadowSubmitting)
+        elseif delivery=='delayed-change' then
+            assert(busy and pending);h.rows[first.handle].ActiveCount=0;pending.ActiveCount=1;h.targetReadback=h.r.actor
+            h:tick(.51);assert(h.cancels==1 and pending.ActiveCount==0 and not h.r.shadowState.running,'queued follow-up changed opponents')
+        elseif delivery=='interrupted' then
             h.mod:interrupt(h.r);assert(h.cancels==1 and h.r.shadowState.quarantine)
             assert(not h:tick(.51));pending.ActiveCount=1
             assert(not h:tick(1.6) and h.cancels==2 and pending.ActiveCount==0 and not h.r.shadowState.quarantine)

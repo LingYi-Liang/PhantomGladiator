@@ -899,6 +899,22 @@ class BridgeTests(unittest.TestCase):
         for action in ('toggle_camera','exit_camera','cycle_team','toggle_spectator','recall_companions','toggle_time_stop'):
             self.assertEqual(entries[action]['key_code'],0)
 
+    def test_current_key_schemas_report_confirmed_success_and_only_current_session_errors(self):
+        self.write('function-keybinds.tsv', 'FunctionKeysV2\t3\n'+''.join(
+            f"{action}\t{111 if action=='toggle_time_stop' else 118 if action=='toggle_track' else 0}\t0\n"
+            for action in backend.BINDING_NAMES))
+        for schema in ('7','8'):
+            self.write('status.tsv', f'schema_version\t1\nheartbeat_unix\t100\ngame_session\tsession-A\ngame_ready\ttrue\nfunction_keys_schema\t{schema}\nfunction_keys_epoch\tkeys\nfunction_keys_revision\t3\nkey_toggle_track\tVK_118_MOD_0\n')
+            self.write('function-keybinds-state.tsv','FunctionKeyStateV2\t3\tkeys\ntoggle_time_stop\t0\tNum/ 已被其它Mod或UE4SS占用\n')
+            bindings=self.bridge.function_keybinds()['bindings']
+            self.assertTrue(bindings['toggle_track']['active'])
+            self.assertFalse(bindings['toggle_time_stop']['active'])
+            self.assertIn('Num/',bindings['toggle_time_stop']['message'])
+            self.assertEqual(bindings['toggle_time_stop']['error'],bindings['toggle_time_stop']['message'])
+            self.assertNotIn('error',bindings['toggle_track'])
+            self.write('function-keybinds-state.tsv','FunctionKeyStateV2\t3\told-session\ntoggle_time_stop\t0\tNum/ old conflict\n')
+            self.assertNotIn('error',self.bridge.function_keybinds()['bindings']['toggle_time_stop'])
+
     def test_an_eight_key_save_from_before_recall_keeps_its_keys_and_leaves_recall_unbound(self):
         # Written by the mod up to v0.38.1: no recall_companions line. It must not count as incomplete.
         self.write('function-keybinds.tsv','FunctionKeysV2\t4\nspawn\t120\t0\nstart\t114\t0\nstop\t115\t0\nrefresh_catalog\t0\t0\n'

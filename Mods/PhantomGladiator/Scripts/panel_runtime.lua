@@ -9,9 +9,9 @@ Runtime.__index = Runtime
 local ACTIONS = FunctionKeys.actions
 local GLOBAL_KEYS={stop=true,exit_camera=true,refresh_catalog=true,cycle_team=true}
 
-local function read(path)
+local function read(path,limit)
     local file=io.open(path,'r');if not file then return nil end
-    local text=file:read('*a');file:close();return text
+    local text=file:read(limit);file:close();return text
 end
 
 function Runtime.new(options)
@@ -320,18 +320,12 @@ function Runtime.new(options)
         end,
         refresh_catalog=function()
             if options.references then options.references:silence('重新核对目录');self.referencesStarted=false end
-            if options.spawnCatalog and not readyError() then options.spawnCatalog:export() end
-            if options.tableCatalog and not readyError() then options.tableCatalog:export() end
-            if options.areaLevels and not readyError() then options.areaLevels:export() end
-            if options.homeLevels and not readyError() then options.homeLevels:refresh() end
-            if options.codex and not readyError() then
-                local codex=options.codex:export()
-                self.log("原生图鉴读取="..tostring(codex.ok).."；"..tostring(codex.message))
-            end
+            if self.requestCatalogRefresh then self:requestCatalogRefresh() end
             if options.exporter:status().active then
                 return {ok=true,message="正在读取单位目录，请等待进度更新",spawned_count=0}
             end
             local ok,status=options.exporter:start()
+            if ok then self.catalogStarted=true end
             return {ok=ok,message=ok and "已开始读取游戏资源目录" or tostring(status.message or status.error or status.reason or "目录扫描未启动"),spawned_count=0}
         end,
         configure_keys=function(command)
@@ -437,6 +431,7 @@ function Runtime.new(options)
             catalog_started_at=catalog.started_at,
             catalog_coverage=catalog.coverage,catalog_candidates=catalog.candidates}
         local session=sessionStatus()
+        self.catalogSession=session
         self.poolKeys:refresh(session.game_session)
         out.monster_pool_keys_schema=1
         local queue=self.summonQueue
@@ -908,48 +903,88 @@ function Runtime:start()
         return false
     end
     -- 宿主持有一个稳定的周期回调引用；每轮不再注册新的游戏线程闭包。
-    local function pumpBody()
-        if not self.codexChecked and self.options.codex and self.options.session
-            and self.options.session:status().game_ready==true then
-            self.codexChecked=true
-            local result=self.options.codex:export()
-            self.log("原生中文图鉴首次读取="..tostring(result.ok).."；"..tostring(result.message))
-        end
-        if not self.spawnCatalogChecked and self.options.spawnCatalog and self.options.session
-            and self.options.session:status().game_ready==true then
-            self.spawnCatalogChecked=true
-            local result=self.options.spawnCatalog:export()
-            self.log('已加载地图刷怪配置读取='..tostring(result.ok)..'；不是全部World分区覆盖')
-        end
-        if not self.tableCatalogChecked and self.options.tableCatalog and self.options.session
-            and self.options.session:status().game_ready==true then
-            self.tableCatalogChecked=true;self.options.tableCatalog:export()
-        end
-        if not self.areaLevelsChecked and self.options.areaLevels and self.options.session
-            and self.options.session:status().game_ready==true then
-            self.areaLevelsChecked=true;self.options.areaLevels:export()
-            -- The codex and area exports above are what each unit's home level is worked out from.
-            if self.options.homeLevels then self.options.homeLevels:refresh() end
-        end
-        -- The level a summon would get, for the app: map enemies stream in after the world is ready, so it is looked
-        -- up every 10 s until some are found, then every 60 s to follow the player into another area.
-        if self.options.spawnLevel and self.options.session and self.options.session:status().game_ready==true then
-            local now=os.clock()
-            if not self.spawnLevelAt or now-self.spawnLevelAt>=(self.spawnLevelFound and 60 or 10) then
-                self.spawnLevelAt=now
-                self.spawnLevelFound=self.options.spawnLevel:refresh() or self.spawnLevelFound
+    local sources={}
+    local function add(label,module,method,perWorld)
+        if not module then return end
+        local task={label=label,module=module,method=method,perWorld=perWorld}
+        sources[#sources+1]=task
+        return task
+    end
+    local codex=add('图鉴',self.options.codex,'export')
+    add('当前地图刷怪配置',self.options.spawnCatalog,'export',true)
+    add('原生数据表',self.options.tableCatalog,'export')
+    local areas=add('区域等级',self.options.areaLevels,'export',true)
+    local homes=add('单位归属等级',self.options.homeLevels,'refresh')
+    local pending,manual=true,false
+    self.requestCatalogRefresh=function()
+        if manual then
+            for _,task in ipairs(sources)do
+                if not task.done and not task.retryAt then return end
             end
         end
-        if not self.initialScanChecked and (not self.options.fullInventory or (self.options.session and self.options.session:status().game_ready==true)) then
+        for _,task in ipairs(sources)do task.done=false;task.retryAt=nil;task.failures=nil end
+        pending=true;manual=true
+    end
+    local function maintainCatalog(session)
+        local now=os.clock()
+        if session and session.game_ready==true then
+            if self.catalogWorld~=session.game_session then
+                self.catalogWorld=session.game_session;self.spawnLevelAt=nil
+                for _,task in ipairs(sources)do
+                    if task.perWorld then task.done=false;task.retryAt=nil;task.failures=nil end
+                end
+                pending=true
+            end
+            if pending then
+                local waiting=false
+                for _,task in ipairs(sources)do
+                    if not task.done then
+                        waiting=true
+                        if not task.retryAt or now>=task.retryAt then
+                            local ok,result=pcall(task.module[task.method],task.module)
+                            if ok and (result==true or type(result)=='table' and result.ok==true) then
+                                task.done=true;task.retryAt=nil;task.failures=nil
+                                if homes and (task==codex or task==areas) then homes.done=false;homes.retryAt=nil end
+                            else
+                                task.failures=math.min((task.failures or 0)+1,6)
+                                task.retryAt=now+math.min(60,2^task.failures)
+                                if task.failures<=2 then self.log(task.label..'读取未确认，稍后重试：'..
+                                    tostring(type(result)=='table' and result.message or result))end
+                            end
+                            return true
+                        end
+                    end
+                end
+                pending=waiting
+            end
+            if self.options.spawnLevel and (not self.spawnLevelAt or now>=self.spawnLevelAt) then
+                self.spawnLevelAt=now+10
+                local ok,found=pcall(self.options.spawnLevel.refresh,self.options.spawnLevel)
+                if ok and found then self.spawnLevelAt=now+60 end
+                if not ok and self.lastLevelError~=tostring(found) then self.log('附近等级读取未确认：'..tostring(found)) end
+                self.lastLevelError=not ok and tostring(found) or nil
+                return true
+            end
+        end
+        if self.options.autoScan and not self.initialScanChecked and (not self.options.fullInventory or session and session.game_ready==true) then
             self.initialScanChecked=true
-            local inventoryStatus=self.options.fullInventory and read(self.options.path..'/asset-index-status.tsv') or nil
+            local inventoryStatus=self.options.fullInventory and read(self.options.path..'/asset-index-status.tsv',8192) or nil
             local needed=self.options.fullInventory and (not inventoryStatus or not inventoryStatus:find('\ncomplete\ttrue\n',1,true))
-                or (not self.options.fullInventory and not read(self.options.path..'/catalog.tsv'))
-            if self.options.autoScan and needed then
+                or (not self.options.fullInventory and not read(self.options.path..'/catalog.tsv',1))
+            if needed and not self.options.exporter:status().active then
                 local started,state=self.options.exporter:start()
                 self.log("首次目录自动读取="..tostring(started).."；读回状态="..tostring(state.reason))
+                return true
             end
         end
+    end
+    local lastWasCatalog=false
+    local function catalogTick()
+        if self.catalogStarted then self.catalogStarted=nil;lastWasCatalog=true;return end
+        if not (lastWasCatalog and self.options.exporter:status().active) and maintainCatalog(self.catalogSession) then
+            lastWasCatalog=true;return
+        end
+        lastWasCatalog=false
         self.options.exporter:tick()
         if self.options.references then
             local inventory=self.options.exporter:status()
@@ -959,30 +994,45 @@ function Runtime:start()
             end
             self.options.references:tick()
         end
+    end
+    local function supportTick()
         if self.options.spectator then self.options.spectator:tick() end
         self:tickPoolQueue()
         self.healthTicks=(self.healthTicks or 0)+1
         if self.healthTicks%4==0 and self.options.arena.sampleHealth then self.options.arena:sampleHealth() end
         if self.healthTicks%2==0 and self.options.support then self.options.support:tick() end
-        self.bridge:tick()
     end
+    local function bridgeTick()self.bridge:tick()end
     -- A whole pump slower than 15 ms is logged (at most 60 times per Lua lifetime) to find stutter; every minute a summary
     -- of all pumps keeps coming after that (perf_meter.lua). Pumps run every 250 ms: a gap of 400 ms is a stalled game thread.
     local slowPumps=0
     local pumpMeter=require('perf_meter').new({label='面板轮询',log=function(line)self.log(line)end,slow=15,hitch=400})
+    local phaseErrors,phaseTimes={},{}
+    local function runPhase(label,fn)
+        if not self.alive then phaseTimes[label]=0;return end
+        local start=os.clock()
+        local ok,err=xpcall(fn,debug.traceback)
+        phaseTimes[label]=(os.clock()-start)*1000
+        if ok then phaseErrors[label]=nil
+        elseif phaseErrors[label]~=tostring(err) then
+            phaseErrors[label]=tostring(err);self.log("面板轮询失败 "..label.."："..tostring(err))
+        end
+    end
     self.pumpCallback=function()
         if not self.alive or not self.pumpReady then return end
         local started=os.clock()
-        local ok,err=xpcall(pumpBody,debug.traceback)
+        self.catalogSession=nil
+        runPhase('战斗',supportTick)
+        runPhase('指令',bridgeTick)
+        runPhase('目录',catalogTick)
+        self.catalogSession=nil
         local spent=(os.clock()-started)*1000
         if spent>=15 and slowPumps<60 then
             slowPumps=slowPumps+1
-            self.log(string.format('[Perf] 面板轮询耗时 %.1fms',spent))
+            self.log(string.format('[Perf] 面板轮询耗时 %.1fms：战斗=%.1f 指令=%.1f 目录=%.1f',
+                spent,phaseTimes['战斗'],phaseTimes['指令'],phaseTimes['目录']))
         end
-        pumpMeter:add(spent,started)
-        if not ok and self.lastError~=tostring(err) then
-            self.lastError=tostring(err); self.log("面板轮询失败: "..tostring(err))
-        end
+        pumpMeter:add(spent,started,phaseTimes)
         -- 此API忽略回调返回值；停止必须明确CancelDelayedAction(handle)。
     end
     local ok,handle=pcall(LoopInGameThreadWithDelay,250,self.pumpCallback)

@@ -12,7 +12,7 @@ end
 local function cls(name)
     return obj{GetFName=function() return {ToString=function()return name end} end}
 end
-local function fixture(ai,wrongOwner,resources)
+local function fixture(ai,wrongOwner,resources,rejectFirst)
     local t={time=5,allowed=true,battle=true,presses=0,dodges={},frames={},clears=0,angles={},roll=0.5}
     local inputs,dc,asc=obj(),obj(),obj()
     local r={actor=obj(),name='NPC',loadout={ai=ai or {},resources=resources}};t.r=r
@@ -78,7 +78,10 @@ local function fixture(ai,wrongOwner,resources)
         unregister=function(_,a,b) assert(a==11 and b==12);t.result=nil end,
         log=function(message) t.logs=t.logs or {};t.logs[#t.logs+1]=message end,
         now=function()return t.time end, random=function()return t.roll end,
-        loop=function(ms,callback) assert(ms==20); t.callback=callback;return 41 end,
+        loop=function(ms,callback)
+            assert(ms==20);t.callback=callback
+            if rejectFirst and not t.rejected then t.rejected=callback;return false end
+            return 41 end,
         cancel=function(h) assert(h==41);t.cancelled=true;t.callback=nil end,
     }
     t.module:start(r)
@@ -86,6 +89,21 @@ local function fixture(ai,wrongOwner,resources)
 end
 local function frame(hit,dodge,strength)
     return {HitGameTime=hit,IsDodge=dodge,IsHit=false,DeflectStrength={TagName=strength or 'Light'}}
+end
+do
+    local denied=fixture(nil,nil,nil,true);local initial=#denied.asc.ActivatableAbilities.Items
+    denied.frames[1]=frame(denied.time+.04,false);denied.rejected();assert(denied.presses==0)
+    denied.time=6;denied.frames[1]=frame(6.04,false)
+    if denied.module.retryTimer then denied.module:retryTimer(denied.r) end
+    assert(#denied.asc.ActivatableAbilities.Items==initial,'timer retry must not grant new passives')
+    denied.rejected();assert(denied.presses==0);if denied.callback then denied.callback() end
+    assert(denied.presses==1,'a rejected defense timer never resumed')
+end
+do
+    local h=fixture();local old=h.callback;h.module:stop(h.r);h.module:start(h.r)
+    h.frames[1]=frame(h.time+.04,false)
+    old();assert(h.presses==0,'a retired defense timer acted on the new lifetime')
+    h.callback();assert(h.presses==1)
 end
 do
     local h=fixture();local specs=h.asc.ActivatableAbilities.Items

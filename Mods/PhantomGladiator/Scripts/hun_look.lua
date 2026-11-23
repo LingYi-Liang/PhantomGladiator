@@ -13,6 +13,7 @@
 -- Hun_Body_Simple has no head.
 local U=require('ue_observe')
 local Vitals=require('hun_vitals')
+local VisualRig=require('hun_visual_rig')
 local Look={}
 -- Switches of this build's Hun body steps. hun_body, arena_executions and arena_grabs read the ones that concern them.
 -- The weapon steps have their own table, hun_weapons.lua Weapons.STEPS.
@@ -102,6 +103,7 @@ local function truthy(v)return v==true or v==1 end
 
 function Look.new(o)
     local self={off={},streak={},skipped={}}
+    local rig
     local steps=o.steps or Look.STEPS
     local find=o.find or StaticFindObject
     local load=o.load or LoadAsset
@@ -214,15 +216,28 @@ function Look.new(o)
             type(bx)~='number' or type(by)~='number' or type(bz)~='number' then return nil end
         return math.sqrt((ax-bx)^2+(ay-by)^2+(az-bz)^2)
     end
-    -- How far the head part's head socket is from the body's (cm), or nil when either cannot be read.
+    local function socketPoint(comp,bone)
+        local ok,v=call(comp,'GetSocketLocation',bone)
+        if not ok then return end
+        local point={}
+        for _,axis in ipairs({'X','Y','Z'})do
+            local n=U.struct(v,axis)
+            if type(n)~='number' or n~=n or math.abs(n)==math.huge then return end
+            point[axis]=n
+        end
+        return point
+    end
+    -- Copy returned vectors before querying another component.
     local function headGap(head,mesh)
-        local gotA,a=call(head,'GetSocketLocation',fname('head'))
-        local gotB,b=call(mesh,'GetSocketLocation',fname('head'))
-        if not gotA or not gotB then return nil end
-        return distance(a,b)
+        for _,comp in ipairs({head,mesh})do
+            local ok,exists=call(comp,'DoesSocketExist',fname('head'))
+            if ok and exists==false then return nil end
+        end
+        local bone=fname('head')
+        return distance(socketPoint(head,bone),socketPoint(mesh,bone))
     end
 
-    -- A dynamic material instance belongs to the component it was made for (dissolve, hit flash): its parent is taken.
+    -- The source MID belongs to the player. Copy its overrides into a separate MID on the clone.
     local function baseMaterial(m)
         for _=1,4 do
             if not U.valid(m)then return nil end
@@ -236,20 +251,32 @@ function Look.new(o)
         local got,count=call(source,'GetNumMaterials')
         if not got or type(count)~='number'then return end
         local wrote,failed=0,0
-        for i=0,math.min(count,32)-1 do
+        local destOK,destCount=call(comp,'GetNumMaterials')
+        for i=0,math.min(count,destOK and type(destCount)=='number' and destCount or count,32)-1 do
             local _,theirs=call(source,'GetMaterial',i)
             local want=baseMaterial(theirs)
             local _,mine=call(comp,'GetMaterial',i)
-            if want and U.key(want)~=U.key(mine)and not short(want):find(PHANTOM,1,true)then
+            if want and (U.key(want)~=U.key(mine) or U.key(theirs)~=U.key(want)) and not short(want):find(PHANTOM,1,true)then
                 if wrote+failed==0 then say('即将 抄材质 实例='..r.name..' '..label..' SetMaterial（槽 '..i..' 起，玩家只读）')end
+                if U.key(theirs)~=U.key(want) then
+                    local _,mid=call(comp,'CreateDynamicMaterialInstance',i,want,fname('None'))
+                    local _,outer=call(mid,'GetOuter')
+                    if U.key(mid) and U.key(mid)~=U.key(theirs) and U.key(outer)==U.key(comp)
+                        and call(mid,'K2_CopyMaterialInstanceParameters',theirs,true) then want=mid end
+                end
                 call(comp,'SetMaterial',i,want)
                 local _,now=call(comp,'GetMaterial',i)
-                if U.key(now)==U.key(want)then wrote=wrote+1 else failed=failed+1 end
+                if U.key(now)==U.key(want)then
+                    wrote=wrote+1
+                    if label=='身体' and r.bodyOverrides then r.bodyOverrides.written[i]=want end
+                else failed=failed+1 end
             end
         end
         if wrote+failed>0 then say('抄材质 读回 实例='..r.name..' '..label..' 写入='..wrote..' 没读回='..failed)end
     end
     local function assetOf(comp)
+        local _,current=call(comp,'GetSkeletalMeshAsset')
+        if U.valid(current) then return current end
         for _,property in ipairs({'SkinnedAsset','SkeletalMeshAsset','ClothAsset','Asset'})do
             local value=U.field(comp,property)
             if U.valid(value)then return value end
@@ -260,12 +287,42 @@ function Look.new(o)
         local got,visible=call(comp,'IsVisible')
         return got and visible==false
     end
+    local function transform(t)
+        if not t then return end
+        local result={}
+        for _,part in ipairs({'Translation','Rotation','Scale3D'})do
+            local source=U.struct(t,part);local v={}
+            for _,axis in ipairs(part=='Rotation' and {'X','Y','Z','W'} or {'X','Y','Z'})do
+                local n=U.struct(source,axis)
+                if type(n)~='number' or n~=n or math.abs(n)==math.huge then return end
+                v[axis]=n
+            end
+            result[part]=v
+        end
+        return result
+    end
+    local function relative(comp)
+        local ok,t=call(comp,'GetRelativeTransform')
+        if ok then return transform(t) end
+    end
+    local function sameTransform(a,b)
+        if not a or not b then return false end
+        for _,part in ipairs({'Translation','Scale3D'})do
+            if distance(a[part],b[part])>.001 then return false end
+        end
+        local p,q=a.Rotation,b.Rotation
+        return math.abs(math.abs(p.X*q.X+p.Y*q.Y+p.Z*q.Z+p.W*q.W)-1)<.001
+    end
+    local function placePart(comp,spec)
+        if not spec.relative or sameTransform(spec.relative,IDENTITY) then return true end
+        return call(comp,'K2_SetRelativeTransform',spec.relative,false,{},true) and sameTransform(relative(comp),spec.relative)
+    end
     -- Read only. What the real player wears now, as the same kind of list the default look is: the body mesh, the
     -- head, skeletal parts and cloth parts, each with the asset object, attach parent and socket, how it is posed,
     -- its tags and the component it was read from. Walks the attach tree under the player's CharacterMesh0 and keeps
     -- the player's own skeletal and cloth components that have an asset and are shown. Returns nil and a reason when
     -- the player cannot be followed (unreadable, hidden, another skeleton).
-    local function readOutfit(r,mesh)
+    local function readOutfit(r,mesh,visual)
         local player=playerOf()
         if not U.valid(player)then return nil,'玩家不可读'end
         local source=U.field(player,'Mesh')
@@ -275,7 +332,7 @@ function Look.new(o)
         if not body then return nil,'读不到玩家身体网格'end
         local _,mine=call(mesh,'GetSkeletalMeshAsset')
         local theirs,ours=U.field(body,'Skeleton'),U.field(mine,'Skeleton')
-        if not U.key(theirs)or U.key(theirs)~=U.key(ours)then
+        if not U.key(theirs) or not U.key(ours) or (not visual and U.key(theirs)~=U.key(ours))then
             return nil,'玩家身体 '..short(body)..' 的骨架（'..short(theirs)..'）和魂的（'..short(ours)..'）不同'
         end
         local meshClass,clothClass=object(Look.PATHS.meshClass),object(Look.PATHS.clothClass)
@@ -283,7 +340,7 @@ function Look.new(o)
         local playerKey=U.key(player)
         local outfit={source='玩家当前',followed=true,body=body,bodySource=source,parts={},cloth={}}
         local used,left,count={[HEAD_NAME]=false},{},0
-        local queue,seen,i={{comp=source,name='Mesh'}},{},1
+        local queue,seen,i={{comp=source,name='Mesh',kept=source}},{},1
         while i<=#queue do
             local node=queue[i];i=i+1
             if #queue>512 then return nil,'玩家身上的挂接太多，没读完'end
@@ -300,16 +357,20 @@ function Look.new(o)
                     if Look.NOT_OUTFIT[name]then
                         -- the player's own props: neither copied nor walked
                     elseif not isMesh and not isCloth then
-                        if (U.className(child)or''):find('Groom',1,true)then left[#left+1]=name..'（发丝，本版不抄）'end
+                        if (U.className(child)or''):find('Groom',1,true)then left[#left+1]=name..'（发丝，本版不抄）'
+                        elseif U.field(child,'AttachChildren') then
+                            queue[#queue+1]={comp=child,name=node.name,kept=node.kept}
+                        end
                     else
                         local asset=assetOf(child)
                         local parentName=node.name
+                        local kept=node.kept
                         if not asset then left[#left+1]=name..'（空）'
                         elseif hiddenPart(child)then
                             -- A hidden hat is the outfit's own setting; a hidden head is a temporary state of the player.
                             if name==HEAD_NAME then return nil,'玩家的头当前被隐藏（过场或特殊状态），照抄会没有头'end
                             left[#left+1]=name..'（隐藏）'
-                        elseif count>=Look.MAX_FOLLOWED then left[#left+1]=name..'（超过 '..Look.MAX_FOLLOWED..' 件）'
+                        elseif count>=Look.MAX_FOLLOWED then return nil,'外观超过 '..Look.MAX_FOLLOWED..' 件，无法完整复制'
                         else
                             count=count+1
                             local unique=name
@@ -317,8 +378,20 @@ function Look.new(o)
                             used[unique]=true
                             local tags={}
                             for _,t in ipairs(U.array(U.field(child,'ComponentTags'))or{})do local s=text(t);if s then tags[#tags+1]=s end end
-                            local spec={name=unique,object=asset,parent=parentName,source=child,tags=tags}
+                            local spec={name=unique,object=asset,parent=parentName,source=child,tags=tags,relative=relative(child)}
+                            local omitted=U.key(node.comp)~=U.key(kept)
+                            if omitted then
+                                local _,to=call(kept,'K2_GetComponentToWorld')
+                                local _,from=call(child,'K2_GetComponentToWorld')
+                                if not to or not from then return nil,'部件 '..name..' 的挂接偏移未读回' end
+                                local _,localPose=call(object('/Script/Engine.Default__KismetMathLibrary'),'MakeRelativeTransform',from,to)
+                                spec.relative=transform(localPose)
+                                if not spec.relative then return nil,'部件 '..name..' 的相对变换未读回' end
+                            end
                             if isCloth then
+                                local _,socket=call(child,'GetAttachSocketName')
+                                socket=text(socket)
+                                if socket and socket~='None' then spec.socket=socket end
                                 spec.hair=name==HAIR_NAME
                                 outfit.cloth[#outfit.cloth+1]=spec
                             else
@@ -330,12 +403,18 @@ function Look.new(o)
                                     local cls=U.field(child,'AnimClass')
                                     if U.valid(cls)then spec.animClass=cls end
                                 else spec.static=true end
-                                if name==HEAD_NAME and parentName=='Mesh'and not outfit.head then spec.head=true;outfit.head=spec
+                                local leader=VisualRig.leader(child)
+                                if leader then
+                                    if U.key(leader)==U.key(source) then spec.poseParent='Mesh'
+                                    elseif U.key(leader)==U.key(node.comp) then spec.poseParent=parentName end
+                                end
+                                if (name==HEAD_NAME or U.key(child)==U.key(U.field(player,HEAD_NAME))) and parentName=='Mesh'and not outfit.head then spec.head=true;outfit.head=spec
                                 else outfit.parts[#outfit.parts+1]=spec end
                             end
-                            parentName=unique
+                            if omitted then spec.socket=nil end
+                            parentName,kept=unique,child
                         end
-                        queue[#queue+1]={comp=child,name=parentName}
+                        queue[#queue+1]={comp=child,name=parentName,kept=kept}
                     end
                 end
             end
@@ -374,11 +453,16 @@ function Look.new(o)
         return verified
     end
     -- 1-2: the body mesh becomes Hun_Clone (hair cards, hat, band) on the same skeleton.
+    local destroyParts
     local function meshStep(r,mesh,still,before)
         local target=object(Look.PATHS.clone)
         if not target then say('换网格 实例='..r.name..'；Hun_Clone 没载入，不换');return false end
         local gotAsset,old=call(mesh,'GetSkeletalMeshAsset')
         if not gotAsset or not U.valid(old)then say('换网格 实例='..r.name..'；读不到原网格，不换');return false end
+        local skeleton=U.key(U.field(old,'Skeleton'))
+        if not skeleton or skeleton~=U.key(U.field(target,'Skeleton')) then
+            say('保留原战斗网格 实例='..r.name..'；备用身体的骨架不匹配');return false
+        end
         r.undo.mesh=r.undo.mesh or old
         if not still()then say('换网格 实例='..r.name..'；实例已变化，不换');return false end
         say('即将 换网格 实例='..r.name..' '..short(mesh)..':SetSkeletalMeshAsset('..short(target)..') 原网格='..short(old))
@@ -392,7 +476,14 @@ function Look.new(o)
         say('换网格 读回 实例='..r.name..' 调用='..tostring(called==true)..' 网格='..short(after)..' 材质=['..mats..'] hatSocket='..tostring(hat)
             ..' 武器挂接=['..sockets..']'..(sockets==before and''or'（原=['..before..']）')..' 插槽都在='..tostring(exist)..(missing and'（缺 '..missing..'）'or'')
             ..' verified='..tostring(verified))
-        if verified then r.lookKind='clone';r.appliedMesh=target;return true end
+        if verified then
+            if r.deferPartRemoval then
+                destroyParts(r);r.deferPartRemoval=nil;r.full=nil;r.headName=nil;r.followed=nil
+            end
+            r.lookKind='clone';r.appliedMesh=target
+            if r.lookDriver then r.lookAsset=U.key(target) end
+            return true
+        end
         if still()then
             local back=call(mesh,'SetSkeletalMeshAsset',old)
             local _,now=call(mesh,'GetSkeletalMeshAsset')
@@ -435,7 +526,7 @@ function Look.new(o)
         if done then part.gone=true end
         return part.name..'=调用'..tostring(called)..'/销毁中'..tostring(valid and after or'无效')..'/'..(done and'已销毁'or'未确认')
     end
-    local function destroyParts(r,filter)
+    destroyParts=function(r,filter)
         local texts,all={},true
         for i=#(r.parts or{}),1,-1 do
             local part=r.parts[i]
@@ -457,6 +548,8 @@ function Look.new(o)
         say('即将 新建部件 实例='..r.name..' '..spec.name..' AddComponentByClass('..short(cls)..')')
         local ok,comp=call(r.actor,'AddComponentByClass',cls,true,IDENTITY,false)
         if not ok or not U.valid(comp)then return nil,'AddComponentByClass 调用='..tostring(ok)..' 返回无效'end
+        local _,owner=call(comp,'GetOwner')
+        if not U.key(owner) or U.key(owner)~=U.key(r.actor) then return nil,'新部件的归属未读回' end
         return register(r,comp,spec,kind)
     end
     local function parentOf(r,mesh,spec)
@@ -483,7 +576,15 @@ function Look.new(o)
         local attached=call(comp,'K2_AttachToComponent',parent,fname(socket),SNAP,SNAP,SNAP,false)
         local assigned=call(comp,'SetSkeletalMeshAsset',asset)
         local animated
-        if spec.static then
+        local poseParent=spec.poseParent
+        if r.driver and spec.head and spec.static and not poseParent then
+            local _,driverAsset=call(parent,'GetSkeletalMeshAsset')
+            local skeleton=U.key(U.field(asset,'Skeleton'))
+            if skeleton and skeleton==U.key(U.field(driverAsset,'Skeleton')) then poseParent=spec.parent end
+        end
+        if poseParent then
+            animated=rig:bind(comp,parentOf(r,mesh,{parent=poseParent}))
+        elseif spec.static then
             animated=call(comp,'SetAnimationMode',CUSTOM_MODE,false)
             call(comp,'SetEnableAnimation',false)
         else
@@ -497,22 +598,77 @@ function Look.new(o)
         local _,gotAsset=call(comp,'GetSkeletalMeshAsset')
         local _,visible=call(comp,'IsVisible')
         local classText,modeText,animOK
-        if spec.static then
+        if poseParent then
+            animOK=animated;classText='本体姿势'
+        elseif spec.static then
             local _,mode=call(comp,'GetAnimationMode')
             modeText='动画模式='..tostring(mode);animOK=mode==CUSTOM_MODE
         else
             classText=instanceClass(comp);animOK=classText==short(animClass)
+            if not animOK and r.driver and spec.head then
+                local _,driverAsset=call(parent,'GetSkeletalMeshAsset')
+                local skeleton=U.key(U.field(asset,'Skeleton'))
+                if skeleton and skeleton==U.key(U.field(driverAsset,'Skeleton')) then
+                    animated=rig:bind(comp,parent);animOK=animated
+                end
+            end
         end
         local socketText=text(gotSocket)or'?'
-        local verified=attached==true and assigned==true and animated==true and U.key(gotParent)==U.key(parent)
+        local verified=attached==true and assigned==true and animated==true and U.key(gotParent)==U.key(parent) and placePart(comp,spec)
             and socketText==socket and U.key(gotAsset)==U.key(asset)and animOK
-        local gap=not spec.static and headGap(comp,mesh)or nil
+        local gap=(spec==Look.HEAD or spec.head) and not spec.static and headGap(comp,mesh) or nil
         say('部件 读回 实例='..r.name..' '..spec.name..' 挂在='..short(gotParent)..'@'..socketText..'（应为 '..short(parent)..'@'..socket..'） 资源='..short(gotAsset)
             ..' '..(modeText or('动画实例='..tostring(classText)))..' 可见='..tostring(visible)..' 常驻姿势='..tostring(ticked)..' 标签='..tags
             ..((spec==Look.HEAD or spec.head)and(' 头骨距离='..(gap and string.format('%.2fcm',gap)or'不可读')..'（立即读，姿势下一帧才抄）')or'')
             ..' verified='..tostring(verified))
         if verified and spec.source then copyMaterials(r,comp,spec.source,spec.name)end
         return verified
+    end
+    local function signature(source,body,head)
+        local b=U.key(body)
+        if not b then return end
+        local pieces={U.key(source) or '',b,U.key(assetOf(head)) or ''}
+        local _,owner=call(source,'GetOwner')
+        for _,parent in ipairs({source,head})do
+            local slots=U.array(U.field(parent,'OverrideMaterials')) or {}
+            for i=1,math.min(#slots,32)do pieces[#pieces+1]=U.key(baseMaterial(slots[i])) or '-' end
+            local attached={}
+            for i,child in ipairs(U.array(U.field(parent,'AttachChildren')) or {})do
+                if i>64 then break end
+                local name=short(child)
+                if not Look.NOT_OUTFIT[name] and not hiddenPart(child) then
+                    local _,childOwner=call(child,'GetOwner')
+                    local asset=U.field(child,'SkinnedAsset')
+                    if not U.valid(asset) then asset=U.field(child,'ClothAsset') end
+                    if U.key(owner) and U.key(childOwner)==U.key(owner) and U.key(asset) then
+                        attached[#attached+1]=name..'='..U.key(asset)
+                    end
+                end
+            end
+            table.sort(attached);pieces[#pieces+1]=table.concat(attached,',')
+        end
+        return table.concat(pieces,':')
+    end
+    -- Most outfits finish loading at spawn. A player replacement may install its meshes later, or replace
+    -- them at a checkpoint. Share a cheap player-side observation across the clones in a support tick.
+    local sampleAt,samplePlayer,sampleKey
+    local function playerSignature(now)
+        local player=playerOf()
+        local pk=U.key(player)
+        if not pk then return end
+        if now and pk==samplePlayer and sampleAt and now>=sampleAt and now-sampleAt<.5 then return sampleKey end
+        sampleAt,samplePlayer,sampleKey=now,pk,nil
+        local source=U.field(player,'Mesh')
+        if not U.valid(source) or hiddenPart(source) then return end
+        local head=U.field(player,HEAD_NAME)
+        if not U.valid(head) then
+            for _,child in ipairs(U.array(U.field(source,'AttachChildren')) or {})do
+                if short(child)==HEAD_NAME then head=child;break end
+            end
+        end
+        if not assetOf(head) then head=nil elseif hiddenPart(head) then return end
+        sampleKey=signature(source,assetOf(source),head)
+        return sampleKey
     end
     -- One cloth part: add, attach, asset (SetClothAsset, else SetAsset), pose from the attach parent, simulation on.
     local function clothPart(r,mesh,spec,still,assets)
@@ -524,7 +680,8 @@ function Look.new(o)
         local part,why=newComponent(r,assets.clothClass,spec,'cloth')
         if not part then say('布料 '..spec.name..' 实例='..r.name..'；'..why);return false end
         local comp=part.comp
-        local attached=call(comp,'K2_AttachToComponent',parent,fname('None'),SNAP,SNAP,SNAP,false)
+        local attached=call(comp,'K2_AttachToComponent',parent,fname(spec.socket or 'None'),SNAP,SNAP,SNAP,false)
+        if attached then attached=placePart(comp,spec) end
         say('即将 布料 '..spec.name..' 实例='..r.name..' SetClothAsset('..short(asset)..')')
         local set,how=call(comp,'SetClothAsset',asset),'SetClothAsset'
         local _,got=call(comp,'GetClothAsset')
@@ -557,19 +714,79 @@ function Look.new(o)
         if verified and spec.source then copyMaterials(r,comp,spec.source,spec.name)end
         return verified
     end
+    local function visualAssets()
+        return {meshClass=object(Look.PATHS.meshClass),clothClass=object(Look.PATHS.clothClass),copyPose=object(Look.PATHS.copyPose)}
+    end
+    rig=VisualRig.new({call=call,owns=ownsPart,find=findPart,destroy=destroyParts,fname=fname,distance=distance,position=socketPoint,headGap=headGap,
+        newBody=function(group,driver,outfit)
+            group.assets=visualAssets()
+            if not group.assets.meshClass then return end
+            local p=newComponent(group,group.assets.meshClass,{name='外观身体'},'mesh')
+            if not p or not ownsPart(p) then return end
+            local comp=p.comp
+            call(comp,'SetCollisionEnabled',0)
+            local _,collision=call(comp,'GetCollisionEnabled')
+            if collision~=0 or not call(comp,'K2_AttachToComponent',driver,fname('None'),SNAP,SNAP,SNAP,false) then return end
+            local _,parent=call(comp,'GetAttachParent')
+            if U.key(parent)~=U.key(driver) or not call(comp,'SetSkeletalMeshAsset',outfit.body) then return end
+            local _,asset=call(comp,'GetSkeletalMeshAsset')
+            if U.key(asset)~=U.key(outfit.body) then return end
+            comp.VisibilityBasedAnimTickOption=TICK_ALWAYS
+            copyMaterials(group,comp,outfit.bodySource,'外观身体')
+            return comp
+        end,
+        addMesh=function(group,root,spec,still)return meshPart(group,root,spec,still,group.assets)end,
+        addCloth=function(group,root,spec,still)return clothPart(group,root,spec,still,group.assets)end,
+    })
+    local function restoreMaterials(r,mesh,newAsset)
+        local snapshot=r.bodyOverrides
+        if not snapshot then return end
+        for i,material in pairs(snapshot.written)do
+            local _,current=call(mesh,'GetMaterial',i)
+            if U.key(current) and U.key(current)==U.key(material)then
+                local old=not newAsset and snapshot.original[i+1]
+                call(mesh,'SetMaterial',i,U.valid(old) and old or nil)
+            end
+        end
+        r.bodyOverrides=nil
+    end
+    local function externalDriver(r,mesh,leaving)
+        if not r.lookDriver then return false end
+        local key=U.key(mesh)
+        local _,asset=call(mesh,'GetSkeletalMeshAsset')
+        local assetKey=U.key(asset)
+        if (not key or not assetKey) and not leaving then return true end
+        if key==r.lookDriver and assetKey==r.lookAsset then return false end
+        if not r.still or not r.still() then return not leaving end
+        -- Another system took the actor's presentation. Release only our component/slot changes;
+        -- neither the old costume nor its animation class belongs on the replacement mesh.
+        if not rig:restore(r,mesh) then return true end
+        if key==r.lookDriver then restoreMaterials(r,mesh,true) end
+        local _,removed=destroyParts(r)
+        if not removed then return true end
+        r.appearance,r.motion,r.lookDriver,r.bodyOverrides=nil,nil,nil,nil
+        r.appliedMesh,r.appliedAnim,r.full,r.followed=nil,nil,nil,nil
+        r.lookResult={}
+        say('外部已更换身体，旧外观部件已回收 实例='..r.name..' 当前网格='..short(asset))
+        return true
+    end
     -- Undo of the full look: every added part destroyed and read back, the body mesh back to the one recorded before.
     local function undoFull(r,mesh,still,why)
-        local destroyed,all=destroyParts(r)
-        say('还原完整外观 实例='..r.name..' 原因='..why..' 销毁部件：'..(destroyed~=''and destroyed or'无')..' 全部确认='..tostring(all))
+        if still() then restoreMaterials(r,mesh) end
         local _,asset=call(mesh,'GetSkeletalMeshAsset')
         if r.undo.mesh and U.key(asset)~=U.key(r.undo.mesh)then
             if still()then
                 local back=call(mesh,'SetSkeletalMeshAsset',r.undo.mesh)
                 local _,now=call(mesh,'GetSkeletalMeshAsset')
                 say('还原身体网格 实例='..r.name..' 调用='..tostring(back==true)..' 读回='..short(now)..' 已还原='..tostring(U.key(now)==U.key(r.undo.mesh)))
+                if U.key(now)~=U.key(r.undo.mesh) then r.deferPartRemoval=true;return false end
+                if r.lookDriver then r.lookAsset=U.key(now) end
             else say('还原身体网格 实例='..r.name..'；实例已变化，不写')end
         end
+        local destroyed,all=destroyParts(r)
+        say('还原完整外观 实例='..r.name..' 原因='..why..' 销毁部件：'..(destroyed~=''and destroyed or'无')..' 全部确认='..tostring(all))
         r.full=nil;r.lookKind=nil;r.headName=nil;r.followed=nil
+        return all
     end
     -- A step on one body; the breaker counts bodies in a row on which it failed.
     local function record(step,passed)
@@ -618,6 +835,7 @@ function Look.new(o)
     -- the player has none, as with a whole-model replacement).
     local DEFAULT_OUTFIT={source='默认',head=Look.HEAD,parts=Look.PARTS,cloth=Look.CLOTH}
     local function fullStep(r,mesh,still,before,outfit)
+        if r.deferPartRemoval then return false end
         outfit=outfit or DEFAULT_OUTFIT
         local assets={meshClass=object(Look.PATHS.meshClass),clothClass=object(Look.PATHS.clothClass),copyPose=object(Look.PATHS.copyPose),body=outfit.body or object(Look.PATHS.body)}
         local missing={}
@@ -625,7 +843,14 @@ function Look.new(o)
         if #missing>0 then say('完整外观 实例='..r.name..'；没载入：'..table.concat(missing,'、')..'，不做');return false end
         local gotAsset,old=call(mesh,'GetSkeletalMeshAsset')
         if not gotAsset or not U.valid(old)then say('完整外观 实例='..r.name..'；读不到原网格，不做');return false end
+        local skeleton=U.key(U.field(old,'Skeleton'))
+        if not skeleton or skeleton~=U.key(U.field(assets.body,'Skeleton')) then
+            say('保留原战斗网格 实例='..r.name..'；外观身体需要独立显示');return false
+        end
         r.undo.mesh=old
+        if outfit.bodySource then
+            r.bodyOverrides={original=U.array(U.field(mesh,'OverrideMaterials')) or {},written={}}
+        end
         if not still()then say('完整外观 实例='..r.name..'；实例已变化，不做');return false end
         if outfit.head then
             local headOK=meshPart(r,mesh,outfit.head,still,assets)
@@ -646,6 +871,10 @@ function Look.new(o)
         if not verified then undoFull(r,mesh,still,'身体没读回');return false end
         r.full=true;r.lookKind='full';r.appliedMesh=assets.body
         r.headName=outfit.head and outfit.head.name or nil;r.followed=outfit.followed
+        if outfit.followed then
+            r.expectedGap=outfit.head and headGap(outfit.head.source,outfit.bodySource) or 0
+            r.baseSignature=signature(outfit.bodySource,outfit.body,outfit.head and outfit.head.source)
+        end
         if outfit.bodySource then copyMaterials(r,mesh,outfit.bodySource,'身体')end
         local extras={}
         for _,spec in ipairs(outfit.parts)do
@@ -809,6 +1038,10 @@ function Look.new(o)
         r.undo.physics=physicsOf(mesh)
         local result={}
         if steps.look=='full'and steps.follow==true then
+            local key=playerSignature()
+            if key and key~=self.lastOutfit then
+                self.lastOutfit=key;self.off.follow=nil;self.streak.follow=0;self.skipped.follow=nil
+            end
             if self.off.follow then
                 if not self.skipped.follow then
                     self.skipped.follow=true
@@ -855,6 +1088,11 @@ function Look.new(o)
         if not patched then say('受击碰撞 中断：实例='..r.name..' 原因='..tostring(why))end
         if steps.anim then result.anim=run('anim',r,function()return animStep(r,actor,mesh,still,before)end)end
         r.lookResult=result
+        if steps.look=='full' and steps.follow then r.appearance={nextCheck=0} end
+        if r.appearance or result.full or result.look or result.anim then
+            local _,installed=call(mesh,'GetSkeletalMeshAsset')
+            if U.key(installed) then r.lookDriver,r.lookAsset=U.key(mesh),U.key(installed)end
+        end
         return result
     end
     -- The parts still present on a body, with their visibility. One text.
@@ -870,9 +1108,10 @@ function Look.new(o)
     end
     -- A second readback one support cycle later: what the body shows now. A head that does not follow the body by then
     -- undoes the full look (and the body takes Hun_Clone).
-    function self:recheck(r)
+    function self:recheck(r,persistent)
         if not r.lookResult then return end
         local mesh=U.field(r.actor,'Mesh')
+        if externalDriver(r,mesh) then return end
         local _,asset=call(mesh,'GetSkeletalMeshAsset')
         local mm,item=object(Look.PATHS.mm),object(Look.PATHS.item)
         say('复读 实例='..r.name..' 网格='..short(asset)..' 动画实例='..instanceClass(mesh)..' ABP_MM_Monster='..tostring(layer(mesh,mm))
@@ -892,18 +1131,105 @@ function Look.new(o)
                 cloth[#cloth+1]=part.name..' 模拟='..tostring(sim)..' 暂停='..tostring(sus)
             end
         end
-        local follows=head~=nil and U.valid(head.comp)and(gap==nil or gap<HEAD_FOLLOW_CM)
+        local follows=head~=nil and ownsPart(head) and (gap==nil or math.abs(gap-(r.expectedGap or 0))<HEAD_FOLLOW_CM)
         say('复读 头部跟随 实例='..r.name..' 头骨距离='..(gap and string.format('%.2fcm',gap)or'不可读')..' 跟随='..tostring(follows)
             ..(#cloth>0 and(' 布料：'..table.concat(cloth,'；'))or''))
         if not follows then
+            if r.followed and not persistent and head and ownsPart(head) then
+                r.headFailures=1
+                return
+            end
             local still=r.still or function()return true end
             local step=r.followed and'follow'or'head'
             undoFull(r,mesh,still,'复读时头没跟随身体（>'..HEAD_FOLLOW_CM..'cm 或头已无效）')
             record(step,false)
-            r.lookResult.full=false
+            r.baseSignature=nil; r.lookResult.full=false
             if not self.off.look then r.lookResult.look=run('look',r,function()return meshStep(r,mesh,still,r.socketsBefore or'')end)end
+            r.lookResult.full=r.full==true
             local patched,why=pcall(ensurePhysics,r,mesh,still,'复读退回后')
             if not patched then say('受击碰撞 中断：实例='..r.name..' 原因='..tostring(why))end
+        end
+    end
+    local nextRigAssemblyAt
+    function self:maintainAppearance(r,now,sweep)
+        local w=r.appearance
+        if not w or r.dead or type(now)~='number' or now<w.nextCheck or not r.still or not r.still() then return end
+        w.nextCheck=now+4
+        local mesh=U.field(r.actor,'Mesh')
+        if not U.valid(mesh) or externalDriver(r,mesh) then return end
+        local key
+        if sweep then
+            if not sweep.sampled then sweep.key=playerSignature(now);sweep.sampled=true end
+            key=sweep.key
+        else key=playerSignature(now) end
+        if not key then return end
+        if w.candidate~=key then
+            w.candidate,w.failures,w.retryAt,w.badPose=key,0,nil,0;w.nextCheck=now+.75
+            if r.pendingRig then rig:discard(r,'pendingRig') end
+            return
+        end
+        local function occupied()return U.valid(VisualRig.leader(mesh)) or Vitals.actionState(r.actor)end
+        if key==r.baseSignature then
+            if r.activeRig or r.pendingRig or r.retiredRig or r.rigBaseline then
+                if occupied() or (sweep and playerSignature()~=key) or not rig:restore(r,mesh) then return end
+            end
+            if r.followed and r.full and r.headName then
+                local head=findPart(r,r.headName)
+                local gap=head and ownsPart(head) and headGap(head.comp,mesh)
+                if gap and math.abs(gap-(r.expectedGap or 0))>=HEAD_FOLLOW_CM then
+                    if occupied() then return end
+                    w.nextCheck=now+.5;r.headFailures=(r.headFailures or 0)+1
+                    if r.headFailures==2 and U.key(U.field(assetOf(head.comp),'Skeleton')) and
+                        U.key(U.field(assetOf(head.comp),'Skeleton'))==U.key(U.field(assetOf(mesh),'Skeleton')) then
+                        local linked=rig:bind(head.comp,mesh)
+                        say('头部姿势重新绑定 实例='..r.name..' 头骨距离='..string.format('%.2fcm',gap)..' 读回='..tostring(linked))
+                    elseif r.headFailures>=3 then self:recheck(r,true) end
+                elseif head and ownsPart(head) then r.headFailures=0
+                elseif not occupied() then self:recheck(r,true) end
+            end
+            return
+        end
+        if r.retiredRig then rig:discard(r,'retiredRig') end
+        if r.pendingRig then
+            if occupied() then return end
+            if playerSignature()~=key then rig:discard(r,'pendingRig');w.candidate=nil;return end
+            w.nextCheck=now+.75
+            if rig:commit(r,mesh) then
+                w.failures,w.retryAt=0,nil
+                w.poseAt=now+4
+                say('已换上整套外观 实例='..r.name..' 本体网格='..short(assetOf(mesh))..' 外观网格='..short(assetOf(r.activeRig.root))..' 骨骼及头部已对齐')
+                return
+            end
+            local pending=r.pendingRig
+            pending.checks=(pending.checks or 0)+1
+            if pending.checks<3 then return end
+            rig:discard(r,'pendingRig')
+        elseif r.activeRig and r.activeRig.signature==key then
+            if rig:driverReady(r,mesh) and (now<(w.poseAt or 0) or rig:aligned(r.activeRig,false)) then
+                if now>=(w.poseAt or 0) then w.poseAt=now+6 end
+                w.badPose=0;return
+            end
+            if occupied() then return end
+            w.nextCheck=now+.75
+            w.badPose=(w.badPose or 0)+1
+            if w.badPose<2 then return end
+            rig:restore(r,mesh);w.badPose=0
+        else
+            if now<(w.retryAt or 0) or occupied() then return end
+            w.nextCheck=now+.75
+            if nextRigAssemblyAt and now<nextRigAssemblyAt and nextRigAssemblyAt-now<=.25 then return end
+            nextRigAssemblyAt=now+.25
+            local outfit=readOutfit(r,mesh,true)
+            if outfit and signature(outfit.bodySource,outfit.body,outfit.head and outfit.head.source)==key
+                and rig:stage(r,mesh,outfit,key) then
+                say('复查玩家换装，等待整套外观姿势 实例='..r.name..' 外观网格='..short(outfit.body))
+                return
+            end
+        end
+        w.failures=math.min(6,(w.failures or 0)+1);w.retryAt=now+math.min(120,6*2^(w.failures-1))
+        if w.failures<=2 or now>=(w.reportAt or 0) then
+            say('整套外观未确认，保留已验证外观 实例='..r.name..' 下次复查间隔='..(w.retryAt-now))
+            w.reportAt=now+120
         end
     end
     local function partVisible(comp)
@@ -914,6 +1240,7 @@ function Look.new(o)
         if read and type(visible)=='boolean' then return visible end
     end
     function self:hideParts(r)
+        rig:death(r,true)
         local list={}
         for _,part in ipairs(r.parts or{})do
             if not part.gone and ownsPart(part) and partVisible(part.comp)==true then
@@ -926,6 +1253,7 @@ function Look.new(o)
         if #list>0 then say('死亡隐藏部件 实例='..r.name..' '..table.concat(list,' '))end
     end
     function self:restoreDeathVisibility(r)
+        rig:death(r,false)
         local restored={}
         for _,part in ipairs(r.parts or {}) do
             if part.hiddenOnDeath then
@@ -941,13 +1269,21 @@ function Look.new(o)
     -- The body left the arena or its death readback ended: every part still registered is destroyed and read back.
     function self:cleanup(r,why)
         local mesh=U.field(r.actor,'Mesh')
+        if U.valid(mesh) and externalDriver(r,mesh,true) then return end
+        if r.activeRig or r.pendingRig or r.retiredRig or r.rigBaseline then
+            if U.valid(mesh) and r.still and r.still() then
+                if not rig:restore(r,mesh) then say('整套外观还原未确认，保留配套部件 '..r.name);return end
+            else rig:discard(r,'pendingRig');rig:discard(r,'activeRig');rig:discard(r,'retiredRig') end
+        end
         if r.undo and r.still and r.still() and U.valid(mesh) then
             local _,now=call(mesh,'GetSkeletalMeshAsset')
+            if U.key(now)==U.key(r.appliedMesh) then restoreMaterials(r,mesh) end
             if U.valid(r.appliedMesh) and U.key(now)==U.key(r.appliedMesh) and U.valid(r.undo.mesh) and U.key(now)~=U.key(r.undo.mesh) then
                 say('即将还原离场魂的原始身体 '..r.name)
                 call(mesh,'SetSkeletalMeshAsset',r.undo.mesh)
                 local _,back=call(mesh,'GetSkeletalMeshAsset')
                 if U.key(back)~=U.key(r.undo.mesh) then say('原始身体未读回，保留配套头部 '..r.name);return end
+                if r.lookDriver then r.lookAsset=U.key(back) end
                 say('原始身体已读回 '..r.name)
             end
             if U.valid(r.appliedAnim) and U.key(U.field(mesh,'AnimClass'))==U.key(r.appliedAnim) and U.valid(r.undo.anim)

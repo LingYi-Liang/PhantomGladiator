@@ -7,6 +7,8 @@ Music.paths={
     '/Script/ProjectPBZ.MusicSubsystem:SetMusicState',
     '/Script/ProjectPBZ.MusicSubsystem:ClearMusic',
 }
+Music.phaseAction='/SGameCombatSystem/Weapon/Action/GAA_MusicChange.GAA_MusicChange_C:SetMusic'
+local PHASE_CLASS='/PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_SwitchPhase.GA_MoTian_SwitchPhase_C'
 local function call(object,method,...)
     if not U.valid(object) then return false end
     local args={...}
@@ -110,7 +112,30 @@ function Music.new(options)
             if ok and result~=false then hooks[path]=nil else log('unhook:'..path,'注销音乐观察未确认 '..path)end
         end
     end
-    local function ensureHooks()
+    local function phaseRequest(path,event,setting,kind)
+        if path==Music.paths[2] then kind,setting,event=setting,event,nil
+        elseif path~=Music.paths[1] then return false end
+        local spec=Catalog.tracks.MOYUAN_P2
+        return U.unwrap(kind)==1 and nameOf(U.unwrap(setting))=='AkStateValue '..spec.state
+            and (path==Music.paths[2] or nameOf(U.unwrap(event))=='AkAudioEvent '..spec.event)
+    end
+    local function phaseAction(context)
+        local held=self.lease
+        if not self.alive or not held or not held.phaseRequest or self.suspended or not gameThread() then return end
+        local action=U.unwrap(context);local got,ability=call(action,'GetAbility')
+        if not got then return end
+        ability=U.unwrap(ability)
+        local _,actor=call(ability,'GetAvatarActorFromActorInfo')
+        local _,cls=call(ability,'GetClass')
+        local class=nameOf(U.unwrap(cls))
+        if U.key(U.unwrap(actor))==held.ownerKey and nameOf(U.unwrap(actor))==held.ownerName
+            and type(class)=='string' and class:match('^%S+ (/.+)$')==PHASE_CLASS
+            and phaseRequest(Music.paths[1],U.field(action,'Music Event'),U.field(action,'Music State'),1) then
+            held.phaseOwner=true
+        end
+    end
+    local phaseHookRetryAt=0
+    local function ensureHooks(phaseBoss)
         if clock()<hookRetryAt then return false end
         local complete=true
         for _,path in ipairs(Music.paths)do
@@ -118,16 +143,33 @@ function Music.new(options)
                 local found,fn=pcall(find,path)
                 if not found or not U.valid(fn) then complete=false
                 else
-                    local ok,pre,post=pcall(register,path,function(ctx)
+                    local ok,pre,post=pcall(register,path,function(ctx,event,setting,kind)
                         if not self.alive or nativeDepth>0 or not(self.lease or localMusic and localMusic:owns())then return end
                         if not gameThread() then self.suspended=true;return end
                         local object=U.unwrap(ctx)
                         if localMusic and localMusic:yield(U.key(object),nameOf(object))then self.suspended=true end
-                        if self.lease and U.key(object)==self.lease.subKey and nameOf(object)==self.lease.subName then self.suspended=true end
+                        local held=self.lease
+                        if held and U.key(object)==held.subKey and nameOf(object)==held.subName then
+                            if not self.suspended and held.phaseBoss and not held.stopAt and (self.mode=='AUTO' or self.mode=='NATIVE') and phaseRequest(path,event,setting,kind) then
+                                -- The native phase action reuses the XiGu event and may keep its playing ID.
+                                held.phaseRequest=true;held.phaseOwner=nil
+                            else
+                                if held.phaseRequest then self.lease=nil end
+                                held.phaseRequest=nil;held.phaseOwner=nil;self.suspended=true
+                            end
+                        end
                     end)
                     if ok and type(pre)=='number' and type(post)=='number' then hooks[path]={pre,post}
                     else complete=false end
                 end
+            end
+        end
+        if complete and phaseBoss and not hooks[Music.phaseAction] and clock()>=phaseHookRetryAt then
+            phaseHookRetryAt=clock()+3
+            local found,fn=pcall(find,Music.phaseAction)
+            if found and U.valid(fn) then
+                local ok,pre,post=pcall(register,Music.phaseAction,phaseAction)
+                if ok and type(pre)=='number' and type(post)=='number' then hooks[Music.phaseAction]={pre,post} end
             end
         end
         if not complete then hookRetryAt=clock()+3 end
@@ -165,6 +207,22 @@ function Music.new(options)
         self.restorePending=nil
         return true
     end
+    local function settlePhaseRequest(ctx,current)
+        local held=self.lease
+        if not held or not held.phaseRequest then return true end
+        local ours=held.phaseOwner and not self.suspended and current.story==0 and not current.blocked
+            and current.id>0 and ctx.world==held.world and ctx.key==held.subKey and current.eventName==held.eventName
+            and U.key(held.ownerActor)==held.ownerKey and nameOf(held.ownerActor)==held.ownerName
+        held.phaseRequest=nil;held.phaseOwner=nil
+        if ours then
+            held.id=current.id;held.track='MOYUAN_P2'
+            log('phase','本场魔渊二阶段动作与播放事件读回；ID='..current.id)
+            return true
+        end
+        -- An unverified native request owns its playback, even when it reused our ID.
+        self.lease=nil;self.suspended=true;state('native','原版阶段配乐已接管')
+        return false
+    end
     local function release(ctx,restore)
         local held=self.lease
         if not held then return not self.restorePending end
@@ -174,6 +232,7 @@ function Music.new(options)
         end
         local before=snapshot(ctx)
         if not before then state('waiting','音乐播放读回未知，保留恢复记录');return false end
+        if not settlePhaseRequest(ctx,before) then return true end
         if before.id~=held.id or before.eventName~=held.eventName then
             self.lease=nil
             if before.id==0 and held.stopAt then
@@ -231,6 +290,7 @@ function Music.new(options)
             return
         end
         if not current then state('waiting','等待当前世界音乐系统读回');return end
+        if not settlePhaseRequest(ctx,current) then return end
         if self.suspended or current.story>0 or current.blocked then
             log('yield','交还原版：外部请求='..tostring(self.suspended)..'；剧情ID='..current.story..'；原版禁用标记='..tostring(current.blocked))
             if not release(ctx,current.story==0 and not current.blocked)then return end
@@ -247,23 +307,34 @@ function Music.new(options)
             if eligible(member) and (not nativeBoss or unitId(member)=='BP_Monster_MoTian') then
                 local id=self.mode=='TRACK' and self.track or Catalog.units[unitId(member)]
                 if id then
-                    if nativeBoss and options.moYuanPhaseTwo and options.moYuanPhaseTwo(member.actor) then id='MOYUAN_P2' end
                     local actor=actorState(member,ctx)
+                    local phaseBoss=(self.mode=='NATIVE' or self.mode=='AUTO') and unitId(member)=='BP_Monster_MoTian'
+                    if actor then actor.phaseBoss=phaseBoss end
+                    if phaseBoss and actor and actor.alive and options.moYuanPhaseTwo and options.moYuanPhaseTwo(member.actor) then id='MOYUAN_P2' end
                     if actor and self.lease and actor.key==self.lease.ownerKey and actor.name==self.lease.ownerName then
                         if not actor.known then state('waiting','配乐来源血量未确认，暂不切换');return end
-                        if actor.alive and id==self.lease.track then state('playing','正在播放 '..Catalog.tracks[id].label);return end
+                        if actor.alive then
+                            if phaseBoss and self.lease.track=='MOYUAN_P2' then id='MOYUAN_P2' end
+                            if id==self.lease.track then
+                                if phaseBoss and not hooks[Music.phaseAction] and clock()>=phaseHookRetryAt then ensureHooks(true) end
+                                state('playing','正在播放 '..Catalog.tracks[id].label);return
+                            end
+                            selected,owner=id,actor;break
+                        end
                     end
                     if not selected and actor and actor.alive then selected,owner=id,actor end
                 end
             end
         end
-        if self.lease and not release(ctx,selected==nil) then return end
+        local samePhaseEvent=selected=='MOYUAN_P2' and self.lease and self.lease.track=='MOYUAN_P1'
+            and owner.key==self.lease.ownerKey and owner.name==self.lease.ownerName and not self.lease.stopAt
+        if self.lease and not samePhaseEvent and not release(ctx,selected==nil) then return end
         if not selected then state('waiting','暂无可用的存活参战来源，可手动指定曲目');return end
         local key=ctx.world..'|'..owner.key..'|'..owner.name..'|'..selected
         if attemptKey~=key then attemptKey=key;attempts=0 end
         if attempts>=3 then state('failed','音乐连续读回失败，本场暂停重试；可重新保存设置再试');return end
         if clock()<retryAt then return end
-        if not supported() or not ensureHooks() then state('waiting','音乐接口或观察挂钩尚未就绪');return end
+        if not supported() or not ensureHooks(owner.phaseBoss) then state('waiting','音乐接口或观察挂钩尚未就绪');return end
         attempts=attempts+1
         local track=Catalog.tracks[selected]
         local event,setting=asset(track.event,'AkAudioEvent'),asset(track.state,'AkStateValue')
@@ -275,7 +346,7 @@ function Music.new(options)
         local after=context();after=after and after.key==ctx.key and after.world==ctx.world and snapshot(after)
         log('play','请求曲目='..selected..'；调用='..tostring(ok)..'；读回ID='..tostring(after and after.id)..'；事件='..tostring(after and after.eventName))
         if ok and after and after.id>0 and after.eventName==nameOf(event) then
-            self.lease={id=after.id,eventName=after.eventName,subKey=ctx.key,subName=ctx.name,world=ctx.world,ownerKey=owner.key,ownerName=owner.name,track=selected}
+            self.lease={id=after.id,eventName=after.eventName,subKey=ctx.key,subName=ctx.name,world=ctx.world,ownerKey=owner.key,ownerName=owner.name,ownerActor=owner.actor,phaseBoss=owner.phaseBoss,track=selected}
             state('playing','播放对象已读回 '..track.label)
         else
             retryAt=clock()+5

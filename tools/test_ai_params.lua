@@ -7,6 +7,7 @@ local function object(name,fields)
     o.alive=true
     o.IsValid=function(self)return self.alive end
     o.GetAddress=function()return a end
+    o.GetFullName=function()return name..' /Fixture.'..a end
     local class={GetFName=function()return {ToString=function()return name end}end,IsValid=function()return true end}
     o.GetClass=function()return class end
     return o
@@ -58,10 +59,12 @@ local function harness(opts)
         local comp=object('AIComp',{bAIStarted=started~=false,AIController=controller,
             MergedParameterCollection={FloatParameters=map(store,opts.broken),BoolParameters=map(store,opts.broken),IntParameters=map(store,opts.broken)}})
         local actor=object(name,{comp=comp})
+        controller.Pawn=actor
         h.members[#h.members+1]={actor=actor,team='blue',boss=boss}
         return actor,comp,controller,store
     end
     local function ask(kind,library,controller,name)
+        h.findCalls=(h.findCalls or 0)+1
         local hook=h.hooks['/Script/SGameAI.SGameAIFunctionLibrary:'..kind]
         if hook then
             local answer=hook(library,controller,name)
@@ -257,7 +260,7 @@ test('when the map write does not take, the Find functions are hooked for these 
     assert(h.all():find('读回 BP_Monster_B_C 游戏给的 近距离进攻概率=0.2',1,true),'with the hook on, what the game gave is still read: '..h.all())
     assert(h.params:status().failures==0,h.all())
     assert(h.all():find('近距离进攻概率 原值=0.4 %-> 目标=1 写表=false%(.-%) 读回=1 结果=生效'),h.all())
-    h.params:silence();assert(next(h.hooks)==nil)
+    h.params:silence(true);assert(next(h.hooks)==nil)
     h.restore()
 end)
 
@@ -284,6 +287,84 @@ test('a gone unit is forgotten; a unit logs the tension meter now and then',func
     h.step(5);assert(#h.logs==count,'not every second')
     actor.alive=false;h.step(20)
     h.step(20);assert(h.params:status().applied==0)
+    h.restore()
+end)
+test('confirmed fallback answers do not re-read the entire preset on every tick',function()
+    local h=harness({broken=true});local _,_,controller=h.unit('Hun',true,{})
+    local body={};for i=1,27 do body[i]=Params.fields[i][1]..'\t1' end
+    assert(h.send('R1',table.concat(body,'\n')).ok);h.step()
+    local start=h.findCalls
+    for i=1,60 do h.step()end
+    print('MEASURE 27 confirmed fallback parameters, 60 seconds: extra Find calls='..(h.findCalls-start))
+    assert(h.findCalls==start,'the hook was repeatedly asked for its own answer')
+    assert(h.library:FindFloatParameter(controller,FName(Params.fields[1][1]))==1)
+    local foreign=object('MapNPC');controller.Pawn=foreign
+    assert(h.library:FindFloatParameter(controller,FName(Params.fields[1][1]))==nil,'a controller re-possessing a different pawn must not inherit the preset')
+    h.restore()
+end)
+test('steady direct readback is bounded and still finds a later changed field on every unit',function()
+    local h=harness();local stores,body={},{}
+    for i,row in ipairs(Params.fields)do body[i]=row[1]..'\t1'end
+    for i=1,12 do local _,_,_,s=h.unit('Unit'..i,true,{});stores[i]=s end
+    assert(h.send('R1',table.concat(body,'\n')).ok);h.step()
+    local started,peak=h.findCalls,0
+    for i=1,20 do
+        local n=h.findCalls;h.step();peak=math.max(peak,h.findCalls-n)
+    end
+    print('MEASURE 12 units, 65 direct parameters, 20 seconds: '..(h.findCalls-started)..' Find calls; peak='..peak)
+    assert(peak<=32,'steady readback exceeds the roster budget')
+    local key=Params.fields[#Params.fields][1]
+    for _,s in ipairs(stores)do s[key]=false end
+    for i=1,40 do h.step()end
+    for i,s in ipairs(stores)do assert(s[key]==true,'skipped drift at unit '..i)end
+    h.restore()
+end)
+test('a missing fallback hook can recover without duplicating successful hooks',function()
+    local h=harness({broken=true});local _,_,controller=h.unit('Hun',true,{})
+    local register=RegisterHook;local available=false;local attempts={}
+    RegisterHook=function(path,...)
+        attempts[path]=(attempts[path] or 0)+1
+        if path:find('FindBoolParameter',1,true) and not available then return nil,nil end
+        return register(path,...)
+    end
+    local flag='减帧时允许格挡';assert(h.send('R1','近距离进攻概率\t1\n'..flag..'\t1').ok);h.step()
+    available=true
+    for i=1,16 do h.step()end
+    assert(h.library:FindBoolParameter(controller,FName(flag))==true,'the failed hook never retried')
+    assert(attempts['/Script/SGameAI.SGameAIFunctionLibrary:FindFloatParameter']==1)
+    h.restore()
+end)
+test('an interrupted restore eventually returns every original entry without rewriting other fields',function()
+    local h=harness();local field='远距离进攻概率'
+    local _,comp,_,store=h.unit('Hun',true,{[field]=.1})
+    assert(h.send('R1',field..'\t1').ok);h.step()
+    local map=comp.MergedParameterCollection.FloatParameters;local add=map.Add;local attempts=0
+    map.Add=function(...)attempts=attempts+1;error('native map is being rebuilt')end
+    assert(h.send('R2','').ok)
+    for i=1,80 do h.step()end
+    assert(attempts>=5 and attempts<12 and store[field]==1,'back off while native storage is unavailable')
+    map.Add=add
+    for i=1,31 do h.step()end
+    assert(store[field]==.1,'exhausting normal drift retries must not abandon a saved original')
+    h.restore()
+end)
+test('a failed unregister is inert, can be retried, and cannot override a replacement pawn',function()
+    local h=harness({broken=true});local actor,_,controller=h.unit('Hun',true,{})
+    local field='近距离进攻概率';assert(h.send('R1',field..'\t1').ok);h.step()
+    local path='/Script/SGameAI.SGameAIFunctionLibrary:FindFloatParameter'
+    local cb=assert(h.hooks[path]);local unregister=UnregisterHook;local attempts=0
+    local staleReads=0
+    local stale={IsValid=function()return false end,GetAddress=function()staleReads=staleReads+1;error('invalid object')end}
+    assert(cb(h.library,stale,FName(field))==nil and staleReads==0,'invalid native controller must not be dereferenced')
+    UnregisterHook=function(...)attempts=attempts+1;if attempts==1 then return false end;return unregister(...)end
+    h.members={};h.step();assert(cb(h.library,controller,FName(field))==nil)
+    for i=1,5 do h.step()end
+    assert(h.hooks[path]==nil and attempts==2)
+    h.members={{actor=actor,team='companion'}};h.step()
+    assert(h.library:FindFloatParameter(controller,FName(field))==1 and cb(h.library,controller,FName(field))==nil)
+    h.params:silence(false)
+    assert(h.hooks[path] and h.hooks[path](h.library,controller,FName(field))==nil,'off-thread shutdown must silence without entering the engine')
+    h.params:silence(true);assert(next(h.hooks)==nil)
     h.restore()
 end)
 print('ai_params: all tests passed')

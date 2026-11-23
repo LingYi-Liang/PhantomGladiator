@@ -11,7 +11,7 @@ end
 local function fixture()
     local h={logs={},calls={},pulls={},timers={},cancelled=0,now=0,world='PBZ_Xigu_WP',at={X=100,Y=200,Z=300},yaw=90}
     h.player=object()
-    function h.player:K2_GetActorLocation()return h.at end
+    function h.player:K2_GetActorLocation()h.positionReads=(h.positionReads or 0)+1;return h.at end
     function h.player:K2_GetActorRotation()return {Pitch=0,Yaw=h.yaw,Roll=0}end
     h.movement=object();h.stops=0
     function h.movement:StopMovementImmediately()h.stops=h.stops+1 end
@@ -45,6 +45,23 @@ test('a place is checked before anything is called',function()
         assert(not Teleport.check(bad))
         local h=fixture();assert(not h.mod:go(bad).ok and #h.calls==0 and #h.logs==0)
     end
+end)
+test('a late timer cannot drive a new teleport and a stopped native clock has a support fallback',function()
+    local h=fixture();assert(h.mod:go(PLACE).ok);local old=h.timers[1].fn
+    h.now=41;old();assert(not h.mod:busy());assert(h.mod:go(PLACE).ok)
+    h.world=PLACE.world;h.at={X=PLACE.x,Y=PLACE.y,Z=PLACE.z};h.now=41.2
+    local before=h.positionReads;old()
+    assert(h.positionReads==before and h.mod:status().pending,'previous timer sampled a new teleport')
+    assert(not h.mod:needsSupportTick(),'normal fast timer was duplicated by support')
+    h.now=42;assert(h.mod:needsSupportTick(),'an acknowledged timer that stopped firing needs a fallback')
+    h.mod:tick();assert(not h.mod:status().pending);before=h.positionReads
+    h.timers[2].fn();assert(h.positionReads==before,'native callback repeated the same support read')
+end)
+test('expired fall protection never pulls the player back after the window',function()
+    local h=fixture();assert(h.mod:go(PLACE).ok)
+    h.world=PLACE.world;h.at={X=PLACE.x,Y=PLACE.y,Z=PLACE.z};h.mod:tick()
+    h.now=Teleport.HOLD_SECONDS+1;h.at.Z=PLACE.z-800;h.mod:tick()
+    assert(not h.mod:busy() and #h.pulls==0,'expired fall protection moved the player')
 end)
 test('the game teleport is called as the teleporter device calls it, announced first',function()
     local h=fixture();local result=h.mod:go(PLACE)

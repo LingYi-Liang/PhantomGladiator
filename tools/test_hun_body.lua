@@ -446,17 +446,20 @@ test('weapons are equipped at the second support cycle, once; a body leaving ali
     h.mod:tick({})
     assert(h:has('stop NPC Hun 1 实例离场') and h:has('look cleanup NPC Hun 1 实例离场') and h:has('weapons cleanup NPC Hun 1 实例离场'))
 end)
-test('motion checks continue after spawn checks end and stop when the registered fighter leaves',function()
-    local h=scheduleFixture();local t,calls=0,0
+test('motion and outfit checks continue after spawn checks end and stop when the registered fighter leaves',function()
+    local h=scheduleFixture();local t,calls,outfits=0,0,0
     h.options.now=function()return t end
-    h.options.look.apply=function(_,r)r.motion={nextCheck=0};return {} end
+    h.options.look.apply=function(_,r)r.motion={nextCheck=0};r.appearance={nextCheck=0};return {} end
+    h.options.look.maintainAppearance=function(_,r,now)
+        assert(h.mod:owns(r.actor));outfits=outfits+1;r.appearance.nextCheck=now+4
+    end
     h.options.look.maintainMotion=function(_,r,now)
         assert(h.mod:owns(r.actor));calls=calls+1;r.motion.nextCheck=now+1
     end
     h.mod=Body.new(h.options);assert(h:run().ok)
-    h:tick(24);assert(calls==1)
-    t=10;h:tick(3);assert(calls==2)
-    t=11;h.mod:tick({});t=12;h.mod:tick({});assert(calls==2)
+    h:tick(24);assert(calls==1 and outfits==1)
+    t=10;h:tick(3);assert(calls==2 and outfits==2)
+    t=11;h.mod:tick({});t=15;h.mod:tick({});assert(calls==2 and outfits==2)
 end)
 test('a body that died and left is cleaned only when its death readback ends; the readback lists the parts',function()
     local h=scheduleFixture();assert(h:run().ok);h:tick(2)
@@ -575,9 +578,16 @@ do
     local r,defender,shadowTarget
     h.options.now=function()return now end
     h.options.steps={probe=false,anim=false,look=false}
-    h.options.loop=function(ms,fn)assert(ms==100);callback=fn;return 42 end
+    local rejected,reads,throwOnce=nil,0,false
+    h.options.loop=function(ms,fn)
+        assert(ms==100)
+        if not rejected then rejected=fn;return false end
+        callback=fn;return 42
+    end
     h.options.cancel=function()callback=nil end
-    h.options.target=function(actor,team)assert(actor==h.actor and team=='blue');return h.other end
+    h.options.target=function(actor,team)assert(actor==h.actor and team=='blue');reads=reads+1
+        if throwOnce then throwOnce=false;error('transient target read') end
+        return h.other end
     h.options.stats={read=function(_,_,field)return {current=field=='Health_Max' and 400 or 100}end}
     h.options.weapons={equip=function(_,rec)r=rec end}
     h.options.defense={start=function(_,rec)defender=rec end}
@@ -593,17 +603,22 @@ do
     assert(not h.mod:spawn(arena,'blue',1,'9',saved).ok and spawns==0)
     assert(h.mod:spawn(arena,'blue',1,'8',saved).ok)
     local members={{actor=h.actor,team='blue'},{actor=h.other,team='red'}}
-    h.mod:tick(members,true);h.mod:tick(members,true);assert(r and defender==r and callback)
-    callback()
+    h.mod:tick(members,true);h.mod:tick(members,true);assert(r and defender==r and rejected)
+    rejected();assert(reads==0,'an unconfirmed brain callback acted on this body')
+    now=2;h.mod:tick(members,true);assert(callback,'brain timer was never retried')
+    throwOnce=true;callback();now=4;callback()
     assert(r.intent.weapon_id==weapon and shadowTarget==h.other and not r.brainFailed)
     assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='blue'})=='魂')
     assert(h.mod:teamBarName({actor=h.other,class_path=Body.path,team='red'})==nil)
     assert(h.mod:teamBarName({actor=h.actor,class_path=Body.path,team='companion'})==nil)
     r.usedPhases.reached=true
+    local oldBrain=callback
     h.counts['CharacterState.Dead']=1;h.mod:tick(members,true);callback()
     assert(not callback and r.dead,'the idle brain timer stops when the last body is dead')
     h.counts['CharacterState.Dead']=0;now=now+2;h.mod:tick(members,true)
-    assert(callback and r.usedPhases.reached and not r.dead);callback()
+    assert(callback and r.usedPhases.reached and not r.dead)
+    local before=reads;oldBrain();assert(reads==before,'old brain acted after revival')
+    callback();assert(reads==before+1)
     h.mod:cancel();assert(callback==nil and not h.mod:owns(h.actor))
     print('PASS a frozen full profile reaches the combat modules and the arena opponent on the scheduled game loop')
 end

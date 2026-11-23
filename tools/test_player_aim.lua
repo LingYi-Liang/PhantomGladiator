@@ -48,6 +48,7 @@ local function harness()
     end
     function h.new()
         return Aim.new({log=function(s)h.lines[#h.lines+1]=s end,clock=function()return h.now end,
+            world=h.world and function()return h.world end,
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
             opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
@@ -523,5 +524,72 @@ test('failed unregistration is paced and its bookkeeping survives explicit false
     failure=false;h.now=17.1;aim:tick();assert(attempts==16 and aim:status().state=='idle')
     assert(next(h.hooks)==nil,'successful retry removes every retained native hook')
     UnregisterHook=original
+end)
+test('Skill 19 tracks five native pooled or attached emitters and never writes to a shared or unrelated effect',function()
+    for _,mode in ipairs({'worldPool','casterPool','attachedChild','lifecycle','actorList','laterShared','sharedAtFinish','shared','wrongSystem','wrongSource','otherWorld'})do
+        local h=harness();h.world=object('World')
+        local shooter,target=h.unit('blue'),h.unit('red')
+        h.targets[key(shooter)]=target;h.targets[key(target)]=shooter
+        local function named(n)return object(n,{GetFName=function()return {ToString=function()return n end}end})end
+        FName=function(n)return n end
+        local expected=named('NS_ZuoShang_SwordShooting_001');local unrelated=named('OtherNiagara')
+        local cls=object('Class',{GetFullName=function()return 'Class /Script/Niagara.NiagaraComponent' end})
+        local baseFind=StaticFindObject
+        StaticFindObject=function(path)if path=='/Script/Niagara.NiagaraComponent' then return cls end;return baseFind(path)end
+        local data=named('BD_ZuoShang_Skill_19');data.Particle=expected
+        local ability=object('GA_ZuoShang_Skill_19_C',{GetAvatarActorFromActorInfo=function()return shooter end,outer=shooter})
+        target.K2_GetActorLocation=function()return {X=375,Y=0,Z=0}end
+        local loop;local list,components={},{};local writes=0
+        for _=1,5 do
+            local bullet=object('PBZ_ParticleBullet',{outer=h.world,BulletData=data,BulletStatus=2,BulletSourceAbility=ability,BulletOwnerAvatar=shooter})
+            local root=object('SceneComponent',{outer=bullet,GetOwner=function()return bullet end});bullet.SceneRoot=root
+            local comp=object('NiagaraComponent',{outer=mode=='otherWorld' and object('DifferentWorld') or h.world,IsActive=function()return true end,
+                GetAsset=function()return mode=='wrongSystem' and unrelated or expected end,
+                GetOwner=function()return mode=='casterPool' and shooter or h.world end,
+                SetVariablePosition=function(self,_,p)self.x=p.X end,SetVariableVec3=function(self,_,p)self.x=p.X end,
+                SetVariableBool=function(self,_,v)self.redirect=v;if v then writes=writes+1 end end})
+            bullet.ParticleComponent=comp
+            if mode=='attachedChild' or mode=='lifecycle' then
+                bullet.ParticleComponent=nil;comp.GetAttachParent=function()return root end
+                if mode=='attachedChild' then root.AttachChildren={comp}
+                else bullet.EffectInstanceData={InstanceData={ForEach=function(_,fn)fn('start',{NiagaraComponents={comp}})end}} end
+            end
+            if mode=='actorList' then
+                bullet.ParticleComponent=nil;comp.GetOwner=function()return bullet end
+                bullet.K2_GetComponentsByClass=function(_,c)assert(c==cls);return {comp}end
+            end
+            if mode=='wrongSource' then bullet.BulletSourceAbility=object('GA_ZuoShang_Skill_19_C',{outer=h.player})end
+            list[#list+1]=bullet;components[#components+1]=comp
+            if mode=='shared' then list[#list+1]=object('PBZ_ParticleBullet',{outer=h.world,BulletData=data,BulletStatus=2,BulletOwnerAvatar=h.player,ParticleComponent=comp})end
+        end
+        LoopInGameThreadWithDelay=function(_,fn)loop=fn;return 31 end
+        CancelDelayedAction=function()loop=nil;return true end
+        FindAllOf=function(n)assert(n=='PBZ_ParticleBullet');return list end
+        local aim=h.new();h.fighting=true;aim:tick();h.ask('pawn',ability);assert(loop)
+        for i=1,81 do h.now=i*0.05;if loop then loop()end end
+        local ok=mode=='worldPool' or mode=='casterPool' or mode=='attachedChild' or mode=='lifecycle' or mode=='actorList' or mode=='laterShared' or mode=='sharedAtFinish'
+        assert(writes==(ok and 5 or 0),mode..' '..h.all())
+        if ok then
+            for _,comp in ipairs(components)do assert(comp.x==375 and comp.redirect==true,mode) end
+            if mode=='laterShared' or mode=='sharedAtFinish' then
+                local c=components[5];c.x=0;c.redirect=nil
+                list[#list+1]=object('PBZ_ParticleBullet',{outer=h.world,BulletData=data,BulletStatus=2,BulletOwnerAvatar=h.player,ParticleComponent=c})
+                if mode=='sharedAtFinish' then
+                    h.hooks[Aim.paths.rainFinished](list[5],c)
+                else
+                    h.now=6;h.ask('pawn',ability)
+                    for i=1,8 do h.now=h.now+0.05;if loop then loop()end end
+                end
+                assert(c.x==0 and c.redirect==nil,'discard a reassigned pool slot without writing to its new owner')
+                components[5]=nil
+            end
+            h.hooks[Aim.paths.rainFinished](list[1],components[2]);assert(components[2].redirect==true)
+            h.hooks[Aim.paths.rainDeactivated](list[1],components[1]);assert(components[1].redirect==false)
+            aim:silence('test',true)
+            for _,comp in ipairs(components)do assert(comp.redirect==false,mode..' restore')end
+        else
+            assert(h.all():find('首次拒绝=',1,true));aim:silence('test',true)
+        end
+    end
 end)
 print('player_aim: all tests passed')

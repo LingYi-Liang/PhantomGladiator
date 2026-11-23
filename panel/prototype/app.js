@@ -1539,7 +1539,7 @@
   // A function key set in the row that uses it: the hotkeys page's capture, drawn here, a clash too, with its swap.
   function keyLineHTML(action) {
     const capturing = ui.capture?.kind === "global" && ui.capture.action === action && ui.capture.host === "view";
-    const note = ui.keyNote?.action === action && ui.keyNote.host === "view" ? ui.keyNote : null;
+    const note = ui.keyNote?.action === action && ui.keyNote.host === "view" ? ui.keyNote : savedKeyError(action);
     const body = capturing
       ? `<span class="capture-box">${icon("keyboard", "icon-sm")}${esc(t("keys.capture"))}</span><button class="btn-link" type="button" data-action="key-cancel">${esc(t("common.cancel"))}</button>`
       : note?.type === "saving"
@@ -1675,6 +1675,8 @@
   }
   // Translated text for known codes; otherwise the game's or backend's own answer, which is Chinese.
   function reasonText(code, detail = "") {
+    const keyConflict = /(?:^|：)([^：]+) 已被其它Mod或UE4SS占用$/.exec(detail);
+    if (keyConflict) return t("keys.externalConflict", { key: keyConflict[1] });
     if (/^(?:weather|eyes)\.[A-Za-z]+$/.test(detail)) return t(detail);
     const translatedDetail = PGLanguageSupport.message(detail);
     if (translatedDetail !== detail) return translatedDetail;
@@ -1920,7 +1922,8 @@
   function keyRowHTML(action) {
     const usable = RT.online() && !keyNeedsUpdate(action);
     const capturing = ui.capture?.kind === "global" && ui.capture.action === action;
-    const note = ui.keyNote?.action === action ? ui.keyNote : null;
+    const transient = ui.keyNote?.action === action ? ui.keyNote : null;
+    const note = transient && transient.type !== "ok" ? transient : savedKeyError(action) || transient;
     let noteHTML = "";
     if (capturing && note?.type === "err") noteHTML = `<div class="key-note err">${esc(note.text)}</div>`;
     else if (note?.type === "conflict") noteHTML = `<div class="key-note err">${esc(note.text)} <button class="btn-link" type="button" data-action="key-swap">${icon("swap", "icon-sm")} ${esc(t(S.keys[action] ? "keys.swap" : "keys.take"))}</button></div>`;
@@ -1944,7 +1947,7 @@
   function hunKeyHTML(action) {
     const needsUpdate = keyNeedsUpdate(action), usable = RT.online() && !needsUpdate && !ui.keysSaving;
     const capturing = ui.capture?.kind === "global" && ui.capture.action === action && ui.capture.host === "hun";
-    const note = ui.keyNote?.action === action && ui.keyNote.host === "hun" ? ui.keyNote : null;
+    const note = ui.keyNote?.action === action && ui.keyNote.host === "hun" ? ui.keyNote : savedKeyError(action);
     const key = S.keys[action];
     let control;
     if (capturing) control = `<span class="capture-box">${icon("keyboard", "icon-sm")}${esc(t("keys.capture"))}</span><button class="btn-link" type="button" data-action="key-cancel">${esc(t("common.cancel"))}</button>`;
@@ -1956,6 +1959,14 @@
     return { control, message, needsUpdate: RT.online() && needsUpdate };
   }
   // A function key the game in use cannot take yet: only a newer mod knows these actions.
+  function savedKeyError(action) {
+    const k = S.keys[action];
+    if (!k?.error || !RT.online()) return null;
+    const conflict = /^(.+) 已被其它Mod或UE4SS占用$/.exec(k.error);
+    const text = conflict ? t("keys.externalConflict", { key: conflict[1] })
+      : I18N.lang === "zh" ? k.error : t("keys.savedInactive", { key: keyLabel(k) });
+    return { type: "err", text };
+  }
   function keyNeedsUpdate(action) { return (action.startsWith("eyes_") && !S.eyesKeysSupported) || (action.startsWith("weather_") && !S.weatherKeysSupported) || (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
   function hotkeysHTML() {
     const unitKeys = Object.entries(S.unitKeys), bound = Object.values(S.keys).filter(Boolean).length;
@@ -2579,8 +2590,11 @@
     const identity = v.installation ? `<p class="muted">${esc(t("beta.identity"))} <code>${esc(v.installation)}</code>
       <button class="btn-link" type="button" data-action="copy-beta-id">${esc(t("common.copy"))}</button></p>` : "";
     const error = v.error ? `<p class="callout callout-amber">${esc(v.error)}</p>` : "";
+    const notes = v.offer ? releaseNotes(v.offer) : [];
+    const hasNotes = Array.isArray(notes) && notes.length > 0 && notes.every(n => typeof n === "string");
     const offer = v.offer ? `<div class="callout callout-green"><div class="callout-body"><strong>${esc(t("beta.offer"))} ${esc(v.offer.version)}</strong>
-      <span>${esc(v.offer.build)} · ${fmtBytes(v.offer.size)}</span><span>${esc(v.offer.note)}</span></div></div>` : "";
+      <span>${esc(v.offer.build)} · ${fmtBytes(v.offer.size)}</span>${!hasNotes && v.offer.note ? `<span>${esc(v.offer.note)}</span>` : ""}</div></div>
+      ${hasNotes ? `<div class="section-label">${esc(t("update.notes"))}</div>${updateNoteList(notes)}` : ""}` : "";
     return header + `<div class="dialog-body">${identity}${error}${offer}
       <p>${esc(t("beta.help"))}</p>
       <input id="manual-beta-code" type="password" autocomplete="off" maxlength="16384"
@@ -2831,6 +2845,7 @@
   // Every released version this copy of the app has received (changelog.js), newest first, in the app's language.
   // ~~text~~ in a note: said fixed in that version but it was not, kept visible and struck out.
   const noteHTML = n => esc(n).replace(/~~(.+?)~~/g, "<s>$1</s>");
+  const updateNoteList = notes => `<ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>`;
   function installedAnnouncement() {
     const match = /^(\d+\.\d+\.\d+)-beta-(\d+)$/.exec(installedVersion());
     if (!match || match[1] !== S.appVersion) return null;
@@ -2921,7 +2936,7 @@
           <div class="dialog-foot"><span class="muted grow" style="font-size:12px;display:flex;gap:6px;align-items:center">${icon("shield", "icon-sm")}${esc(t("update.safe"))}</span><button class="btn btn-ghost" type="button" data-action="update-check">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="update-download" data-autofocus>${icon("download", "icon-sm")}${esc(t("update.rollback.confirm"))}</button></div>`;
         }
         const installedNotes = info.switchToStable && info.version === S.appVersion ? installedNotesHTML() : "";
-        const targetNotes = info.notes?.length ? `<ul class="notes">${info.notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : `<p class="muted">${esc(t("update.notesUnavailable"))} <a href="${REPO}/releases/tag/v${encodeURIComponent(info.version)}" target="_blank" rel="noopener noreferrer">${esc(t("update.manual"))}</a></p>`;
+        const targetNotes = info.notes?.length ? updateNoteList(info.notes) : `<p class="muted">${esc(t("update.notesUnavailable"))} <a href="${REPO}/releases/tag/v${encodeURIComponent(info.version)}" target="_blank" rel="noopener noreferrer">${esc(t("update.manual"))}</a></p>`;
         return head(t("update.title")) + `<div class="dialog-body">
             <div class="update-head"><span class="state-badge new">${icon("sparkles")}</span><div><h3>${esc(t(info.switchToStable ? "update.stableTitle" : "update.available.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: installed }))}</div></div></div>
             ${info.switchToStable ? `<p class="callout">${esc(t(installedNotes ? "update.returnToBaseBody" : "update.stableBody", { build: info.currentBuild, v: info.version }))}</p>` : ""}

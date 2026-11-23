@@ -228,8 +228,9 @@ function Camera.new(options)
         local track=trackOf()
         if track then pcall(track.stop,track,'退出自由观战') end
         if self.handle then
-            local ok=pcall(CancelDelayedAction,self.handle)
-            if ok then self.handle=nil end
+            local handle=self.handle;self.handle=nil
+            local ok,ret=pcall(CancelDelayedAction,handle)
+            if not ok or ret==false then log('[FreeCamera] 退出后忽略未摘除的镜头回调') end
         end
         local record=self.record
         if not record then return true end
@@ -535,12 +536,23 @@ function Camera.new(options)
             self.active=true
             -- Once a frame. Up to v0.38.1 a 16 ms timer ran out of step with the frames: some frames moved the view twice,
             -- the next not at all, and the mouse of a frame could be read twice (the view juddered).
-            if type(LoopInGameThreadAfterFrames)=='function' then
-                self.handle,self.loop=LoopInGameThreadAfterFrames(1,function()self:tick()end),'frame'
-            else
-                self.handle,self.loop=LoopInGameThreadWithDelay(16,function()self:tick()end),'16ms'
+            local ticket={}
+            self.session.timer=ticket
+            local function updateView()
+                if self.session and self.session.timer==ticket and ticket.ready then self:tick() end
             end
-            assert(self.handle~=nil and self.handle~=false,'camera timer registration not confirmed')
+            local handle
+            if type(LoopInGameThreadAfterFrames)=='function' then
+                handle,self.loop=LoopInGameThreadAfterFrames(1,updateView),'frame'
+            else
+                handle,self.loop=LoopInGameThreadWithDelay(16,updateView),'16ms'
+            end
+            assert(handle~=nil and handle~=false,'camera timer registration not confirmed')
+            if not self.session or self.session.timer~=ticket then
+                if self.handle~=handle then pcall(CancelDelayedAction,handle) end
+                return
+            end
+            self.handle=handle;ticket.ready=true
             log('[FreeCamera] 已进入；原控制器/Player/Pawn关联读回=true；view_target='..record.camera..'；更新='..self.loop
                 ..'；面板或自定义键退出，WASD移动、E或空格上升、Q或Ctrl下降、Shift加速、鼠标转向')
         end)
@@ -549,7 +561,7 @@ function Camera.new(options)
             local restored,why=pcall(function()return self:stop('进入失败')end)
             if not restored then log('[FreeCamera] 失败回滚待确认：'..tostring(why)) end
         end
-        return ok
+        return ok and self.active
     end
     -- 时停 on or off, only while observing (the camera keeps moving on real time); stop() resumes the game.
     function self:freeze(on)

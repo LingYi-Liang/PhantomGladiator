@@ -404,8 +404,11 @@ function Bridge:_writeStatus()
     for key in pairs(values) do keys[#keys + 1] = key end
     table.sort(keys)
     for _, key in ipairs(keys) do lines[#lines + 1] = key .. "\t" .. values[key] end
-    local written, errorText = self:_writeVerified("status.tsv", table.concat(lines, "\n") .. "\n", false)
-    if not written then self:_unknown("status write not confirmed: " .. errorText) end
+    local payload=table.concat(lines,"\n").."\n"
+    if payload==self.lastStatus and self:_read("status.tsv",65536)==payload then return end
+    local written,errorText=self:_writeVerified("status.tsv",payload,false)
+    if written then self.lastStatus=payload
+    else self.lastStatus=nil;self:_unknown("status write not confirmed: "..errorText) end
 end
 
 function Bridge:tick()

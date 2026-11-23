@@ -12,7 +12,25 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_preview_notes(build):
+    source = ROOT / "panel/prototype/preview-notes.js"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / source.name
+        first = {"since": 1, "zh": "旧修复", "en": "First fix"}
+        second = {"since": 2, "zh": "新增细节", "en": "Added detail", "legacy": {"zh": "细节", "en": "Detail"}}
+        third = {"since": 2, "zh": "新修复", "en": "Next fix"}
+        record = {"added": [], "combat": [], "fixes": [[first, second], [third]]}
+        path.write_text("window.PG_PREVIEW_NOTES = " + json.dumps({"1.2.3": record}) + ";", encoding="utf-8")
+        assert build(path, "1.2.3", "v1.2.3-beta-1") == {"zh": ["旧修复"], "en": ["First fix"]}
+        assert build(path, "1.2.3", "v1.2.3-beta-2") == {
+            "zh": ["旧修复 新增细节", "新修复"], "en": ["First fix Added detail", "Next fix"]}
+        assert build(path, "1.2.3", "v1.2.3-beta-2", compact=True) == {
+            "zh": ["旧修复 细节", "新修复"], "en": ["First fix Detail", "Next fix"]}
+        assert build(path, "1.2.3", "v1.2.3") == {}
+
+
 def main():
+    test_preview_notes(runpy.run_path(str(ROOT / "tools/package/build.py"))["preview_release_notes"])
     with tempfile.TemporaryDirectory(prefix="pg-release-feed-") as scratch:
         repo = Path(scratch).resolve()
         release = repo / "release"

@@ -68,9 +68,10 @@ local function fixture()
     end
     t.module=Supply.new{
         fname=function(x)return x end,now=function()return t.time end,
-        current=function(x)return x==r and t.allows end, fighting=function()return t.inBattle end,
+        current=function(x)return x==r and t.allows end, fighting=function()t.fightReads=(t.fightReads or 0)+1;return t.inBattle end,
         stat=function(actor,key)
             assert(actor==r.actor)
+            if key=='Health' then t.healthReads=(t.healthReads or 0)+1 end
             return ({Health=t.hp,Health_Max=t.max,Shachi=22})[key]
         end,
         find=function(path)
@@ -83,6 +84,33 @@ local function fixture()
     function t:tick(ctx) return self.module:tick(r,ctx or {distance=600}) end
     function t:hold()return self.module:holdsDeath(r)end
     return t
+end
+do
+    local h=fixture();h.r.loadout.resources.medicine_count=0
+    for i=1,100 do h.time=i/10;assert(not h:tick()) end
+    print('MEASURE empty flask, 100 decisions: health='..(h.healthReads or 0)..', fighting='..(h.fightReads or 0))
+    assert(not h.healthReads and not h.fightReads,'an empty flask still polls health and combat')
+end
+do
+    local h=fixture();h.hp=0;h:addPassive().AbilityInput=obj()
+    assert(h:hold());h.time=2;assert(not h:hold())
+    h.asc.tags['CharacterState.Dead']=1;h.hp=1;h:hold();h:tick()
+    h.hp=0;assert(not h:hold(),'health flicker with Dead still set reopened rebirth')
+    h.hp=40;h.asc.tags['CharacterState.Dead']=0;h:hold()
+    h.hp=0;assert(h:hold(),'an actual new life should get its own native rebirth window')
+end
+do
+    for _,interruptAt in ipairs({'before','after'}) do
+        local h=fixture();local play=h.r.actor.PlayAnimMontage
+        function h.r.actor:PlayAnimMontage(...)
+            if interruptAt=='before' then h.module:interrupt(h.r) end
+            local duration=play(self,...)
+            if interruptAt=='after' then h.module:interrupt(h.r) end
+            return duration
+        end
+        assert(not h:tick() and h.module:remaining(h.r)==4 and h.drinks==0 and not h.playing
+            and not h.asc.tags['CharacterState.AbilityState.Medicine.InHitCooldown'],'interruption during playback start committed a drink')
+    end
 end
 local f=fixture();assert(f.module:remaining(f.r)==4)
 assert(not f:tick{distance=200});assert(f:tick{distance=200,opening=true});assert(f.module:remaining(f.r)==3)

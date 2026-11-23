@@ -124,7 +124,7 @@ local function fixture(opts)
     end
     h.mod=Weapons.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,clock=function()return h.t end,
         find=function(p)return h.loaded[p]end,load=function(p)local v=h.assets[p];h.loaded[p]=v;return v end,
-        loop=function(ms,fn)assert(ms==200);h.loops[#h.loops+1]=fn;return #h.loops end,cancel=function(handle)h.cancelled[handle]=true end,
+        loop=function(ms,fn)assert(ms==200 or ms==50);h.periods=h.periods or {};h.periods[#h.periods+1]=ms;h.loops[#h.loops+1]=fn;if h.rejectTimer then return false end;return #h.loops end,cancel=function(handle)h.cancelled[handle]=true end,
         stats=function()return h.stats end,hp=function(actor)return h.hp[actor]end,battle=function()return h.battle end,
         opponents=function()return h.opponents or {h.enemy}end,qteFamily=function(actor)return h.qte==actor end,
         construct=opts.construct,
@@ -157,6 +157,36 @@ local function steps(over)
 end
 local n=0;local function test(label,fn)fn();n=n+1;print('PASS '..label)end
 
+test('24 equipped souls share the weapon timer and keep independent lifetimes',function()
+    local h=fixture();local all={}
+    for i=1,24 do
+        if i>1 then h:body() end
+        all[i]=h.r;h.mod:equip(h.r)
+    end
+    local active,dispatch=0,nil
+    for i,fn in ipairs(h.loops) do if not h.cancelled[i] then active=active+1;dispatch=fn end end
+    local previous,peak=0,0
+    for i=1,4 do
+        h.t=i*.05
+        for _,fn in ipairs(h.loops) do fn() end
+        local seen=0;for _,r in ipairs(all) do if r.wep.fightStart then seen=seen+1 end end
+        peak=math.max(peak,seen-previous);previous=seen
+    end
+    print('MEASURE 24 equipped souls: active weapon timers='..active..', peak fighters per pulse='..peak..', fighters served='..previous)
+    assert(active==1 and peak==6 and previous==24,'weapon work must be shared and spread across four pulses')
+    for _,r in ipairs(all) do h.mod:stop(r,'leave') end
+    for i in ipairs(h.loops) do assert(h.cancelled[i]) end
+    h:body();h.mod:equip(h.r);dispatch()
+    assert(h.r.wep.fightStart==nil);h.loops[#h.loops]();assert(h.r.wep.fightStart==h.t)
+end)
+test('failed weapon timer retries without equipping or accepting its stale callback',function()
+    local h=fixture();h.rejectTimer=true;h.mod:equip(h.r)
+    local first=h.loops[1];first();assert(h.r.wep.fightStart==nil)
+    local initial=h:count('slot direct');h.rejectTimer=false;h.t=2;h.mod:retryTimer(h.r)
+    assert(#h.loops==2 and h:count('slot direct')==initial)
+    first();assert(h.r.wep.fightStart==nil);h.loops[2]();assert(h.r.wep.fightStart==2)
+    h.mod:stop(h.r);assert(h.cancelled[2])
+end)
 test('precondition read back, the Tang goes into slot 1 as a direct object, and the fight loop starts',function()
     local h=fixture();h.mod:equip(h.r)
     assert(h:logged('前提 读回 实例='..h.r.name..' AbilityInputComponent有效=true 其AbilitySystem有效=true 武器组件有效=true 其AbilitySystem有效=true 其AbilityInput有效=true')==1)

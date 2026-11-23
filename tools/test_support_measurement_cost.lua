@@ -1,12 +1,12 @@
 -- The worktree may hold main.lua with Windows line endings; the pattern below is written for LF.
 local f=assert(io.open(arg[1]or'Mods/PhantomGladiator/Scripts/main.lua','rb'));local source=(f:read('*a'):gsub('\r\n','\n'));f:close()
-local code=assert(source:match('local function supportSteps%(self%).-\nend\nfunction arenaSupport:tick')):gsub('\nfunction arenaSupport:tick$','')
+local code=assert(source:match('local observers=%{.-\nend\nfunction arenaSupport:tick')):gsub('\nfunction arenaSupport:tick$','')
 local noop=function()end
 local proxy=setmetatable({},{__index=function()return noop end,__call=noop})
 local formats,logs=0,{}
 local now,increment=0,0.000001
 local strings=setmetatable({format=function(...)formats=formats+1;return string.format(...)end},{__index=string})
-local env=setmetatable({os={clock=function()now=now+increment;return now end},string=strings,table=table,pairs=pairs,ipairs=ipairs,
+local env=setmetatable({os={clock=function()now=now+increment;return now end},string=strings,table=table,pairs=pairs,ipairs=ipairs,pcall=pcall,math=math,tostring=tostring,
     tickMembers={},tickStatus={state='idle'},SLOW_TICK_MS=10,slowTicks=0,
     log=function(s)logs[#logs+1]=s end,supportMeter={add=function(_,total,started,costs)assert(type(costs.reinforce)=='number')end}},
     {__index=function(_,key)return proxy end})

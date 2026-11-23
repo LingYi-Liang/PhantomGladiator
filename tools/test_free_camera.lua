@@ -149,6 +149,19 @@ test('observer blocks player actions while raw movement remains available and re
     assert(h.cameraController:stop('F6'));h:pressAction();assert(h.actions==2)
 end)
 
+test('retired and unconfirmed frame callbacks cannot move a later free camera',function()
+    for _,rejected in ipairs({false,true}) do
+        local h=harness();local c=h.cameraController;h.rejectTimer=rejected
+        assert(c:enter()==not rejected)
+        local old=h.timers[1].callback
+        if not rejected then CancelDelayedAction=function()return false end;assert(c:stop('exit')) end
+        h.rejectTimer=false;assert(c:enter())
+        local x=h.camera.position.X;h.input.W=1;h.time=h.time+.05
+        old();assert(h.camera.position.X==x,'a previous observer session moved the new camera')
+        h.timers[2].callback();assert(h.camera.position.X>x)
+        c:stop('done')
+    end
+end)
 test('E or Space raises the camera, Q or Ctrl lowers it',function()
     local h=harness();assert(h.cameraController:enter())
     local function height(keys)

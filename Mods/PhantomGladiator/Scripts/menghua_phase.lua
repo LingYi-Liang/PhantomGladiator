@@ -204,20 +204,49 @@ function Phase.new(options)
             end
         end
     end
-    local function endParentStage(parent)
-        -- Explicit cleanup or the birth-frozen skip rule uses the original passive's End.
-        local phase=scopedPassive(parent,PASSIVE,'phasePassive')
-        if U.valid(phase) and U.field(phase,'bIsActive')~=false then call(phase,'K2_CancelAbility') end
-        local summon=scopedPassive(parent,SUMMON,'summonPassive')
-        if U.valid(summon) and U.field(summon,'bIsActive')~=false then call(summon,'K2_CancelAbility') end
+    local function inactiveSpec(parent,path)
+        local asc=U.field(parent.actor,'AbilitySystemComponent')
+        if not same(call(asc,'GetOwner'),parent.actor) or not hooks.passive or not hooks.summonPassive then return false end
+        local specs=U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
+        if not specs or #specs==0 then return false end
+        local matched=false
+        for _,spec in ipairs(specs)do
+            local cls=classPath(U.struct(spec,'Ability'))
+            if not cls then return false end
+            if cls==path then
+                if U.struct(spec,'ActiveCount')~=0 then return false end
+                matched=true
+            end
+        end
+        -- A known inactive spec, or one confirmed End plus an initialized list without the other passive.
+        return matched or (parent.phasePassive and parent.phasePassive.ended==true) or (parent.summonPassive and parent.summonPassive.ended==true)
+    end
+    local function endPassive(parent,path,field,requireReceipt)
+        -- Confirmed End is tied to this parent's exact instance, even after GAS drops its avatar.
+        local record=parent[field]
+        if record and record.ended then
+            local previous=record.ability
+            if not U.valid(previous) or (record.name==full(previous) and classPath(previous)==path and U.field(previous,'bIsActive')==false) then return true end
+        end
+        local ability=scopedPassive(parent,path,field)
+        if not U.valid(ability) then return not requireReceipt or inactiveSpec(parent,path) end
+        record=parent[field]
+        if U.field(ability,'bIsActive')~=false then call(ability,'K2_CancelAbility') end
+        if parent[field]~=record or U.field(ability,'bIsActive')~=false then return false end
+        record.ended=true
+        return true
+    end
+    local function endParentStage(parent,requireReceipt)
+        local phase=endPassive(parent,PASSIVE,'phasePassive',requireReceipt)
+        local summon=endPassive(parent,SUMMON,'summonPassive',requireReceipt)
         local count=lockCount(parent.actor)
-        local confirmed=count==0 and (not U.valid(phase) or U.field(phase,'bIsActive')==false)
-            and (not U.valid(summon) or U.field(summon,'bIsActive')==false)
-        say('restore','清理时结束本父原生阶段被动；专属锁数量读回='..tostring(count)..' 被动结束确认='..tostring(confirmed))
-        if confirmed and U.valid(phase) then parent.nativeStageEnded=true end
+        local confirmed=count==0 and phase and summon
+        say('restore','清理时结束本父原生阶段被动；专属锁数量读回='..tostring(count)..' 被动结束确认='..tostring(confirmed)
+            ..' 联动='..tostring(phase)..' 召唤='..tostring(summon))
+        if confirmed and parent.phasePassive and parent.phasePassive.ended then parent.nativeStageEnded=true end
         return confirmed
     end
-    local function prepareCleanup(parent)
+    local function prepareCleanup(parent,requireReceipt)
         -- Pair actors must finish/cancel before the summon's passive is allowed to destroy the helper.
         for _,entry in pairs(pairRecords)do
             if entry.child.parent==parent and not entry.ended and U.valid(entry.ability) then call(entry.ability,'K2_CancelAbility') end
@@ -225,13 +254,14 @@ function Phase.new(options)
         for _,entry in pairs(pairRecords)do
             if entry.child.parent==parent and not entry.ended and U.valid(entry.ability) and U.field(entry.ability,'bIsActive')~=false then return false end
         end
-        return parentDead(parent) or endParentStage(parent)
+        return parentDead(parent) or endParentStage(parent,requireReceipt)
     end
     local callbacks={}
-    local function stageActivated(ability,parent)
+    local function stageActivated(ability,parent,record)
         if parent.skip then
-            parent.skipReady=false;parent.busy=true
+            parent.skipReady=false;parent.busy=true;parent.nativeStageEnded=false
             call(ability,'K2_CancelAbility')
+            record.ended=U.field(ability,'bIsActive')==false
             say('skip-activate','跳过本次直召剧情被动；原生结束读回='..tostring(U.field(ability,'bIsActive')==false))
         elseif parent.stopping then call(ability,'K2_CancelAbility') end
     end
@@ -239,36 +269,40 @@ function Phase.new(options)
         local ability=U.unwrap(context);if classPath(ability)~=PASSIVE then return end
         local parent=parentOf(call(ability,'GetAvatarActorFromActorInfo'));if not parent then return end
         parent.phasePassive={ability=ability,name=full(ability)}
-        stageActivated(ability,parent)
+        stageActivated(ability,parent,parent.phasePassive)
     end
     callbacks.summonPassive=function(context)
         local ability=U.unwrap(context);if classPath(ability)~=SUMMON then return end
         local parent=parentOf(call(ability,'GetAvatarActorFromActorInfo'));if not parent then return end
         parent.summonPassive={ability=ability,name=full(ability)}
-        stageActivated(ability,parent)
+        stageActivated(ability,parent,parent.summonPassive)
+    end
+    local function pendingSkip(parent,reason)
+        if parent.skipReason~=reason then parent.skipReason=reason;say('skip-wait','跳过联动等待 '..parent.name..' '..reason)end
+        return false
     end
     local function skipStage(parent)
         -- Empty/failed discovery is not proof that the actor's native stage has been disabled.
-        if not U.valid(scopedPassive(parent,PASSIVE,'phasePassive')) or not U.valid(scopedPassive(parent,SUMMON,'summonPassive')) then return false end
-        if not prepareCleanup(parent) then return false end
+        if not prepareCleanup(parent,true) then return pendingSkip(parent,'被动结束、配对或专属血线未确认') end
         local complete=true
         for _,row in pairs(children)do
             if row.parent==parent and not row.retired and not cleanup(row,true) then complete=false end
         end
-        if not complete then return false end
+        if not complete then return pendingSkip(parent,'本组帮手尚未回收')end
         local asc=U.field(parent.actor,'AbilitySystemComponent');local utils=lookup(UTILS)
-        if not U.valid(asc) or not U.valid(utils) then return false end
+        if not U.valid(asc) or not U.valid(utils) then return pendingSkip(parent,'能力组件或标签接口未就绪') end
         for _,tag in ipairs(SKIP_TAGS)do
-            local made,name=pcall(fname,tag);if not made then return false end
+            local made,name=pcall(fname,tag);if not made then return pendingSkip(parent,tag) end
             local value={TagName=name};local before=call(asc,'GetGameplayTagCount',value)
-            if type(before)~='number' then return false end
+            if type(before)~='number' then return pendingSkip(parent,'无法读取 '..tag) end
             if before>0 then
                 call(utils,'SetLooseGameplayTagCount',parent.actor,value,0)
                 local after=call(asc,'GetGameplayTagCount',value)
                 say('skip-tags','清理本次跳过联动标记 '..tag..'；数量读回='..tostring(before)..'→'..tostring(after))
-                if after~=0 then return false end
+                if after~=0 then return pendingSkip(parent,'仍有联动标签 '..tag) end
             end
         end
+        parent.skipReason=nil
         say('skip-ready','本次梦华跳过联动；原生被动结束、专属锁0、帮手和联动标记清理读回=true')
         return true
     end

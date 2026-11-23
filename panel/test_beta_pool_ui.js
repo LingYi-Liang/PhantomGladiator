@@ -18,9 +18,9 @@ const ui = { legacyPool: ["alpha"], poolQuery: "alp", count: 3, team: "red", bus
 const S = { summonLimits: { alpha: 100, beta: 1 }, gameRunning: false,
   monsterPools: { revision: 0, pools: [] }, poolStatus: { scope: "fixture", keys: {} } };
 const values = new Map(), calls = [], button = { disabled: true };
-let code = "", nexus = false;
+let code = "", nexus = false, offerNotes = null;
 const context = {
-  t: (key, params) => i18n.t(key, params),
+  I18N: i18n, t: (key, params) => i18n.t(key, params),
   ui, S, UNITS: units, byId: new Map(units.map(u => [u.id, u])),
   RT: { ready: () => true, online: () => false, demo: true, poolUnitId: id => id, poolUnitPath: id => id,
     async saveMonsterPools(pools, revision) { S.monsterPools = { revision: revision + 1, pools }; },
@@ -29,7 +29,7 @@ const context = {
     check: async invite => {
       calls.push(["check", invite]);
       if (invite !== "test-pass") throw { detail: "签名无效" };
-      return { id: "offer", version: "0.40.11", build: "queue-test", size: 42, note: "选定版本" };
+      return { id: "offer", version: "0.40.11", build: "queue-test", size: 42, note: "选定版本", notes: offerNotes };
     },
     install: async id => calls.push(["install", id]),
   } },
@@ -43,6 +43,7 @@ const context = {
   reasonText: (key, detail) => detail || key,
 };
 vm.createContext(context);
+vm.runInContext(section("  const releaseNotes =", "  function installedAnnouncement()"), context);
 vm.runInContext(section("  function poolList()", "  function settingsHTML()"), context);
 
 (async () => {
@@ -112,6 +113,16 @@ vm.runInContext(section("  function poolList()", "  function settingsHTML()"), c
   assert.deepEqual(calls.splice(0), [["check", "test-pass"]]);
   assert.equal(values.get("manualBetaInvite"), "test-pass");
   assert.match(context.dialog, /指定内测版 0\.40\.11/);
+  assert.match(context.dialog, /选定版本/);
+  offerNotes = { zh: ["修复一", "修复二"], en: ["First fix", "Second fix"] };
+  for (const [lang, expected] of Object.entries(offerNotes)) {
+    i18n.set(lang);
+    await context.checkManualBeta("test-pass");
+    assert.deepEqual(calls.splice(0), [["check", "test-pass"]]);
+    assert(context.dialog.includes(i18n.t("update.notes")));
+    assert(context.dialog.includes(expected.map(n => "<li>" + n + "</li>").join("")));
+  }
+  i18n.set("zh");
   S.gameRunning = true;
   await context.installManualBeta();
   assert.equal(calls.length, 0);

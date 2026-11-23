@@ -557,9 +557,9 @@ test("unconfirmed registration leaves any host callback inert",function()
 end)
 test("a tick exception does not wedge future ticks or claim a repair",function()
     local h=harness();h.runtime:start();h.failExportOnce=true
-    h:tick();assert(count(h,"bridge_tick")==0 and #h.loops==1)
+    h:tick();assert(count(h,"bridge_tick")==1 and #h.loops==1)
     assert(table.concat(h.logs," "):find("面板轮询失败",1,true))
-    h:tick();assert(count(h,"bridge_tick")==1 and #h.queue==0 and h.legacyCalls==0)
+    h:tick();assert(count(h,"bridge_tick")==2 and #h.queue==0 and h.legacyCalls==0)
 end)
 test("cancel failure is logged while the retained callback remains silent",function()
     local h=harness(nil,true);h.runtime:start();h.cancelError=true
@@ -599,6 +599,49 @@ test("missing session and non-boolean readiness fail closed for hotkeys",functio
         assert(count(h,"spawn")==0 and count(h,"start")==0 and count(h,"toggle_spectator")==0,mode)
     end
 end)
+test("the first ready pump and manual refresh spread the five catalog reads over separate callbacks",function()
+    local h=harness();local countReads,maxPerPump=0,0;local order={}
+    local function source(name)
+        local function read()countReads=countReads+1;order[#order+1]=name;return {ok=true,message=name}end
+        return {export=read,refresh=read,status=function()return {}end}
+    end
+    h.runtime=h.new({codex=source("codex"),spawnCatalog=source("spawners"),tableCatalog=source("tables"),
+        areaLevels=source("areas"),homeLevels=source("home")})
+    h.runtime:start()
+    for i=1,16 do
+        if i==9 then h.inbox={action="refresh_catalog"}end
+        local previous=countReads;h:tick();maxPerPump=math.max(maxPerPump,countReads-previous)
+    end
+    print("MEASURE startup and manual refresh: total exports="..countReads.."; max in a single pump="..maxPerPump)
+    assert(countReads==10 and maxPerPump==1 and count(h,"bridge_tick")==16)
+    assert(table.concat(order,",")=="codex,spawners,tables,areas,home,codex,spawners,tables,areas,home")
+end)
+test("catalog work is spread across heartbeats and failed sources can be retried without blocking input",function()
+    local h=harness();local reads={};local generation,homes=0,{}
+    local function work(name)
+        return function()
+            assert(h.inGame);reads[#reads+1]=name
+            if name=="codex" then
+                generation=generation+1
+                if generation==1 then error("catalog source temporarily unavailable") end
+            elseif name=="home" then homes[#homes+1]=generation end
+            return {ok=true,message=name}
+        end
+    end
+    local function source(name)return {export=work(name),status=function()return {}end}end
+    h.env.os.clock=function()return h.now or 0 end
+    h.runtime=h.new({codex=source("codex"),spawnCatalog=source("spawners"),tableCatalog=source("tables"),
+        areaLevels=source("areas"),homeLevels={refresh=work("home"),status=function()return {}end}})
+    h.runtime:start();h.inbox={action="select_unit",unit_id="chosen",team="red",count=1}
+    for i=1,32 do
+        local before=#reads;h.now=i*.5;h:tick()
+        assert(#reads-before<=1,"several directory exports still ran in one callback")
+        if i==1 then assert(count(h,"select_unit")==1,"optional data failure swallowed the command")end
+    end
+    local seen={};for _,s in ipairs(reads)do seen[s]=(seen[s] or 0)+1 end
+    assert(generation==2 and seen.spawners==1 and seen.tables==1 and seen.areas==1 and homes[#homes]==2,"retry, then rebuild dependent home levels")
+    assert(count(h,"bridge_tick")==32,"one heartbeat for each timer callback")
+end)
 test("automatic codex export waits for the first ready tick and runs only once",function()
     local h=harness(nil,false,true);h.sessionState.game_ready=false;h.runtime:start()
     h:tick();h:tick();assert(count(h,"codex_export")==0)
@@ -607,6 +650,18 @@ test("automatic codex export waits for the first ready tick and runs only once",
     h.sessionState.game_ready=false;h:tick();h.sessionState.game_ready=true;h:tick()
     assert(count(h,"codex_export")==1)
     local without=harness();without.runtime:start();without:tick();assert(count(without,"codex_export")==0)
+end)
+test("a new world refreshes local levels promptly, without rescanning the codex or blocking a heartbeat",function()
+    local h=harness(nil,false,true);local now,reads=0,0
+    h.env.os.clock=function()return now end
+    h.runtime=h.new({spawnLevel={status=function()return {}end,refresh=function()reads=reads+1;return true end}})
+    h.runtime:start()
+    for i=1,5 do now=i*.25;h:tick()end
+    assert(reads==1 and count(h,"codex_export")==1)
+    h.sessionState.game_ready=false;now=2;h:tick();assert(reads==1)
+    h.sessionState.game_session="other-map";h.sessionState.game_ready=true
+    for i=1,4 do now=2+i*.25;h:tick()end
+    assert(reads==2 and count(h,"codex_export")==1 and count(h,"bridge_tick")==10)
 end)
 test("stat matching toggle uses native settings and status; missing module fails visibly",function()
     local h=harness();local enabled=false

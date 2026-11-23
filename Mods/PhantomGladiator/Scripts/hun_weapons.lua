@@ -132,6 +132,12 @@ function Weapons.new(o)
     local combos=o.combos or require('hun_weapon_combos')
     local loops,alive={},true
     local function say(s)(o.log or function()end)('[HunWeapon] '..s)end
+    local Timer=require('hun_combat_timer')
+    local register,cancel=o.loop or LoopInGameThreadWithDelay,o.cancel or CancelDelayedAction
+    local normal=Timer.new(LOOP_MS,register,cancel,clock,say)
+    local staggered=Timer.new(math.floor(LOOP_MS/4),register,cancel,clock,say)
+    local activeTimer,roster,slice,bodyCount=nil,nil,0,0
+    local bucketSizes={0,0,0,0}
     local function once(key,line)if not self.announced[key]then self.announced[key]=true;say(line)end end
     local function object(p)
         local ok,found=pcall(find,p)
@@ -1166,8 +1172,8 @@ function Weapons.new(o)
         failedPick(r,item,t,swapped and '切换未读回' or '非当前槽未写入')
         return true
     end
-    local function fight(r)
-        local w=r.wep;local actor=r.actor;local t=clock()
+    local function fight(r,t)
+        local w=r.wep;local actor=r.actor
         if type(t)~='number' then return end
         local fighting=not r.dead and o.battle and o.battle(r)
         if not fighting then w.fightStart=nil end
@@ -1268,7 +1274,13 @@ function Weapons.new(o)
         local entry=loops[r]
         if not entry then return end
         loops[r]=nil
-        if entry.handle then pcall(o.cancel or CancelDelayedAction,entry.handle)end
+        r.weaponTimerPending=nil;roster=nil
+        bodyCount=bodyCount-1
+        bucketSizes[entry.bucket]=bucketSizes[entry.bucket]-1
+        if bodyCount==0 then normal:stop();staggered:stop();activeTimer=nil;slice=0
+        elseif alive and bodyCount==3 and activeTimer==staggered then
+            self:retryTimer(next(loops))
+        end
         return true
     end
     function self:stop(r,why)
@@ -1323,19 +1335,58 @@ function Weapons.new(o)
         end
         say('武器循环结束 实例='..r.name..' 原因='..tostring(why))
     end
+    local function runWeapon(r,t)
+        if not still(r) then self:stop(r,'实例离场或已变化');return end
+        fight(r,t)
+    end
+    local function tickWeapons(timer,bucket)
+        if not alive or timer~=activeTimer then return end
+        if not roster then
+            roster={{},{},{},{}}
+            for _,entry in pairs(loops) do
+                local group=roster[entry.bucket]
+                group[#group+1]=entry
+            end
+        end
+        -- Keep this pass stable when a native call summons or removes another fighter.
+        local snapshot,t,wall=roster,clock(),os.clock()
+        for i=bucket or 1,bucket or 4 do
+            for _,entry in ipairs(snapshot[i]) do
+                local r=entry.record
+                if loops[r]==entry and (not entry.timer or entry.timer==timer or wall-entry.lastTick>=.19) then
+                    entry.timer,entry.lastTick=timer,wall
+                    local ok,why=pcall(runWeapon,r,t)
+                    if not ok then
+                        say('武器循环中断 实例='..r.name..' 原因='..tostring(why))
+                        self:stop(r,'中断')
+                    end
+                end
+            end
+        end
+    end
+    local function tickSmall()tickWeapons(normal) end
+    local function tickGroup()
+        slice=slice%4+1
+        tickWeapons(staggered,slice)
+    end
+    function self:retryTimer(r)
+        if not alive or not loops[r] then return end
+        local split=bodyCount>=8 or (activeTimer==staggered and bodyCount>3)
+        local wanted=split and staggered or normal
+        if wanted~=activeTimer and wanted:ensure(split and tickGroup or tickSmall) then
+            local previous=activeTimer
+            activeTimer=wanted
+            if previous then previous:stop() end
+        end
+        r.weaponTimerPending=activeTimer~=wanted
+    end
     local function start(r)
-        local loop=o.loop or LoopInGameThreadWithDelay
-        if type(loop)~='function'then say('武器循环没启动 实例='..r.name..'：没有循环函数');return end
-        local entry={}
-        loops[r]=entry
-        local ok,handle=pcall(loop,LOOP_MS,function()
-            if loops[r]~=entry then return end
-            if not still(r)then self:stop(r,'实例离场或已变化');return end
-            local ran,why=pcall(fight,r)
-            if not ran then say('武器循环中断 实例='..r.name..' 原因='..tostring(why));self:stop(r,'中断')end
-        end)
-        if not ok or handle==nil or handle==false then loops[r]=nil;say('武器循环没登记 实例='..r.name..' '..tostring(handle));return end
-        entry.handle=handle
+        if not alive or loops[r] then return end
+        local bucket=1
+        for i=2,4 do if bucketSizes[i]<bucketSizes[bucket] then bucket=i end end
+        bucketSizes[bucket]=bucketSizes[bucket]+1;bodyCount=bodyCount+1
+        loops[r]={record=r,bucket=bucket};roster=nil
+        self:retryTimer(r)
     end
 
     -- The second support cycle after birth: precondition, 3-1, probes; then the fight loop.

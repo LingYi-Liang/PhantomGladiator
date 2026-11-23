@@ -573,9 +573,11 @@ function Shachi.new(o)
         if not read then return false end
         if not spec or spec.active==0 then return true end
         if type(spec.active)~='number' or action.retireAttempted then return false end
-        action.retireAttempted=true
-        say(r,'即将结束该魂未收招的影武 '..action.move.tag)
-        ownedInstances(r,spec,function(instance)call(instance,'K2_CancelAbility')end)
+        ownedInstances(r,spec,function(instance)
+            action.retireAttempted=true
+            say(r,'即将结束该魂未收招的影武 '..action.move.tag)
+            call(instance,'K2_CancelAbility')
+        end)
         spec,read=activeSpec(asc,action)
         say(r,'影武中止读回 活动数='..tostring(spec and spec.active))
         return read and (not spec or spec.active==0)
@@ -677,9 +679,19 @@ function Shachi.new(o)
         if not input or objectPath(class)~=move.cls then return false,false end
         return call(aic,'TryActivateExternalActionAbilityByClass',class,input,move.priority)
     end
+    local function sameOpponent(r,cast,ctx)
+        if cast.target~=U.key(ctx.target) then return false end
+        if cast.targetName then
+            local ok,name=call(ctx.target,'GetFullName')
+            if not ok or name~=cast.targetName then return false end
+        end
+        -- A paired animation can temporarily clear the native blackboard target.
+        if ctx.pairProtected then return livingTarget(ctx.target) end
+        return matchesTarget(r,ctx.target)
+    end
     local function continueCast(r,s,asc,now,ctx)
         local cast=s.running
-        if cast.followTried or cast.pendingUntil or cast.cancelled or cast.hold or cast.move.release or cast.move.ongoing>0
+        if not cast or cast.followTried or cast.pendingUntil or cast.cancelled or cast.hold or cast.move.release or cast.move.ongoing>0
             or ctx.busy or ctx.pairProtected or ctx.allowAction==false or ctx.allowShadow==false or cast.target~=U.key(ctx.target) then return end
         -- Only offer a free follow-up explicitly naming this live predecessor.
         if not cast.followups then
@@ -708,18 +720,35 @@ function Shachi.new(o)
         cast.followTried=true
         local nextCast=castRecord(cast.choice,move,spec,now,spirit,ctx.target,move.duration)
         say(r,'即将 原生影武接段 '..cast.move.tag..' → '..move.tag)
+        cast.queued=nextCast
+        r.shadowSubmitting=nextCast
         local sent,result=inputFollowup(aic,move)
+        if r.shadowSubmitting==nextCast then r.shadowSubmitting=nil end
+        local live=current(r) and ownedComponent(r.actor,'AbilitySystemComponent')
+        if r.shadowState~=s or s.running~=cast or r.dead or U.key(live)~=nextCast.ascKey or not sameOpponent(r,nextCast,ctx) then
+            if r.shadowState==s and s.running==cast then self:interrupt(r) end
+            -- The native input can start the follow-up after a synchronous interruption.
+            if U.key(live)==nextCast.ascKey then
+                local retired=retireCast(r,live,nextCast)
+                if r.shadowState==s and (not retired or (sent and result==true and not nextCast.retireAttempted)) then
+                    cast.queued=nextCast;s.quarantine=cast;s.checkQuarantineAt=nil
+                end
+                if s.payment and s.payment.cast==cast then settleFree(r,s,live,nil,true) end
+            end
+            return
+        end
         local read=activeSpec(asc,nextCast)
         local active=read and type(read.active)=='number' and read.active>0
         say(r,'影武接段读回 返回='..tostring(result)..' 活动数='..tostring(read and read.active))
-        if active then s.running=nextCast
-        elseif sent and result==true then cast.queued=nextCast end
+        if active then cast.queued=nil;s.running=nextCast
+        elseif not (sent and result==true) then cast.queued=nil end
     end
     local function observe(r,s,asc,now,ctx)
         local cast=s.running
         if not cast then return false end
         if cast.queued then
             local nextCast=cast.queued
+            if not sameOpponent(r,nextCast,ctx) then self:interrupt(r);return false end
             local read=activeSpec(asc,nextCast)
             if read and type(read.active)=='number' and read.active>0 then
                 say(r,'影武接段延后读回 活动数='..read.active)
@@ -782,6 +811,7 @@ function Shachi.new(o)
         if (lost or now>=cast.deadline or (cast.hold and not cast.released and now>cast.started+cast.profile.limit+.5)) and not cast.cancelled then
             cast.cancelled=true;cast.cancelledAt=now
             ownedInstances(r,spec,function(instance)
+                cast.retireAttempted=true
                 say(r,'即将取消影武 '..cast.choice.meta.label..(lost and ' 目标丢失' or ' 等待超时'))
                 call(instance,'K2_CancelAbility')
             end)
@@ -829,8 +859,9 @@ function Shachi.new(o)
         if s.running and s.running.starting then return true end
         observeResources(r,s,now)
         if observe(r,s,asc,now,ctx) then
+            if r.shadowState~=s or not s.running or r.dead then return false end
             continueCast(r,s,asc,now,ctx)
-            return true
+            return r.shadowState==s and s.running~=nil and not r.dead
         end
         if r.shadowState~=s or r.dead then return false end
         if s.payment then
@@ -846,7 +877,8 @@ function Shachi.new(o)
                 s.quarantine.queued=nil
             end
             local old,readable=activeSpec(asc,s.quarantine)
-            if not readable or (old and old.active~=0) then return false end
+            if not readable then return false end
+            if old and old.active~=0 and not retireCast(r,asc,s.quarantine) then return false end
             s.quarantine=nil;s.checkQuarantineAt=nil
         end
         if now<s.nextAt or ctx.busy or ctx.allowAction==false or ctx.allowShadow==false or not U.valid(ctx.target)

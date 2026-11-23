@@ -16,11 +16,12 @@ namespace PhantomGladiator
         public readonly string Id=Guid.NewGuid().ToString("N");
         public string Version, Build, Note, Sha256, Url;
         public long Size, Expires;
+        public Dictionary<string, object> Notes;
 
         public Dictionary<string, object> Describe()
         {
             return new Dictionary<string, object> {
-                { "id", Id }, { "version", Version }, { "build", Build }, { "size", Size }, { "note", Note }
+                { "id", Id }, { "version", Version }, { "build", Build }, { "size", Size }, { "note", Note }, { "notes", Notes }
             };
         }
     }
@@ -150,6 +151,8 @@ namespace PhantomGladiator
                 Sha256=Text(manifest,"sha256").ToLowerInvariant(), Url=Text(manifest,"url"),
                 Size=Integer(manifest,"size"), Expires=Math.Min(until,Integer(manifest,"expires"))
             };
+            object notes;
+            if (manifest.TryGetValue("notes",out notes)) offer.Notes=notes as Dictionary<string,object>;
             if (now>=offer.Expires) throw new HostError("betaOffer","指定内测版已到期。");
             if (!Regex.IsMatch(offer.Version,@"\A[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}\z") ||
                 !Regex.IsMatch(offer.Build,@"\A[A-Za-z0-9._-]{1,100}\z") ||

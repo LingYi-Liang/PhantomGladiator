@@ -43,7 +43,7 @@ local function className(object)
 end
 local function addr(object)
     if object==nil then return nil end
-    local ok,key=pcall(function()return object:GetAddress()end)
+    local ok,key=pcall(function()if object:IsValid() then return object:GetAddress() end end)
     return ok and key~=nil and tostring(key) or nil
 end
 local function same(kind,a,b)
@@ -74,7 +74,11 @@ function Params.new(options)
     local units,classes,hooks,controllers={},{},{},{}
     local lines,classLines,tensionLines,nextAt,tensionAt=0,0,0,0,0
     local function say(text)log('[AIParams] '..text)end
-    local function fname(name)return FName(name)end
+    local names={}
+    local function fname(name)
+        if names[name]==nil then names[name]=FName(name)end
+        return names[name]
+    end
     local function lib()
         local ok,found=pcall(function()return options.lib and options.lib() or StaticFindObject(LIB)end)
         return ok and U.valid(found) and found or nil
@@ -147,32 +151,66 @@ function Params.new(options)
     end
 
     -- The fallback: the Find functions answer for this mod's units.
-    local function answer(_,controller,name)
+    local requested,retryHook={},{}
+    local hookVersion,auditStart=0,1
+    local witness,witnessName,answered
+    local function checkedValue(unit,library,name)
+        witness,witnessName,answered=unit,name,false
+        local back=find(library,unit.controller,name)
+        local observed=answered
+        witness,witnessName,answered=nil,nil,false
+        return back,observed
+    end
+    local function answer(kind,controller,name)
         if bypass or not self.alive or not next(controllers) then return nil end
+        if type(IsInGameThread)=='function' and not IsInGameThread() then return nil end
         local c=U.unwrap(controller)
         local key=addr(c)
         local unit=key and controllers[key]
-        if not unit or not U.valid(c) then return nil end
+        if not unit then return nil end
         local ok,text=pcall(function()return U.unwrap(name):ToString()end)
         local value=ok and unit.values[text]
-        if value==nil or value==false then return nil end
-        if unit.private and (options.privateValues(unit.actor)~=unit.values
-            or U.key(U.field(unit.comp,'AIController'))~=key) then return nil end
-        return wire(KIND[text],value)
-    end
-    local function hook()
-        if self.hooked or type(RegisterHook)~='function' then return end
-        self.hooked=true
-        for _,fn in pairs(FIND)do
-            local ok,pre,post=pcall(RegisterHook,HOOKS..fn,answer,function()end)
-            if ok and type(pre)=='number' then hooks[fn]={pre=pre,post=post}
-            else say('挂钩失败 '..fn..'：'..tostring(pre)) end
+        if value==nil or value==false or KIND[text]~=kind then return nil end
+        if not U.valid(c) then return nil end
+        local read,pawn=pcall(function()return U.unwrap(c.Pawn)end)
+        if not read or U.key(pawn)~=unit.key then return nil end
+        if unit.identity then
+            local got,full=pcall(function()return pawn:GetFullName()end)
+            if not got or full~=unit.identity then return nil end
         end
-        say('写入没读回，改用挂钩回答参数读取 挂钩数='..(next(hooks) and 3 or 0))
+        if unit.private then
+            if addr(U.field(unit.comp,'AIController'))~=key then return nil end
+            local current,values=pcall(options.privateValues,unit.actor)
+            if not current or values~=unit.values then return nil end
+        end
+        if unit==witness and text==witnessName then answered=true end
+        return wire(kind,value)
     end
-    local function unhook()
-        for fn,h in pairs(hooks)do pcall(UnregisterHook,HOOKS..fn,h.pre,h.post) end
-        hooks={};self.hooked=false
+    local function hook(kind,now)
+        requested[kind]=true
+        if hooks[kind] then hooks[kind].active=true;return true end
+        if now<(retryHook[kind] or 0) or type(RegisterHook)~='function' then return false end
+        local h={}
+        local ok,pre,post=pcall(RegisterHook,HOOKS..FIND[kind],function(_,controller,name)
+            if h.active then return answer(kind,controller,name)end
+        end,function()end)
+        if ok and type(pre)=='number' and type(post)=='number' then
+            h.pre,h.post,h.active=pre,post,true;hooks[kind]=h
+            retryHook[kind]=nil;hookVersion=hookVersion+1;self.hooked=true
+            say('参数挂钩注册读回 '..FIND[kind]..' pre='..pre..' post='..post)
+            return true
+        end
+        retryHook[kind]=now+3;say('挂钩未确认 '..FIND[kind]..'：'..tostring(pre))
+        return false
+    end
+    local function retire(kind,now)
+        requested[kind]=nil;retryHook[kind]=nil
+        local h=hooks[kind]
+        if not h then return end
+        h.active=false
+        if now<(h.releaseAt or 0) then return end
+        local ok,result=pcall(UnregisterHook,HOOKS..FIND[kind],h.pre,h.post)
+        if ok and result~=false then hooks[kind]=nil else h.releaseAt=now+3 end
     end
 
     -- A parameter name that does not survive FName would read back from its own wrong key and look fine, so the names are
@@ -185,7 +223,6 @@ function Params.new(options)
         local ok,text=pcall(function()return fname(sample):ToString()end)
         namesBroken=not ok or text~=sample
         say('参数名读回 写='..sample..' 读='..tostring(text)..' 一致='..tostring(not namesBroken))
-        if namesBroken then hook() end
     end
     local function mapOf(unit,kind)
         return U.struct(U.field(unit.comp,'MergedParameterCollection'),MAP[kind])
@@ -214,71 +251,97 @@ function Params.new(options)
     local function describeEntry(value)
         return value==ABSENT and '无条目' or tostring(value)
     end
-    local function write(unit,library,name,value)
+    local function write(unit,library,name,value,now)
         local kind=KIND[name]
         local wanted=wire(kind,value)
-        if namesBroken then return true,'挂钩回答',false,'参数名用不了' end
-        if self.hooked then
-            local back=find(library,unit.controller,name)
-            return same(kind,back,wanted),back,false,'已改用挂钩'
+        local called,err=false,'已改用挂钩'
+        if not namesBroken and not (hooks[kind] and hooks[kind].active) then
+            if unit.original[name]==nil then unit.original[name]=readEntry(unit,name) end
+            if unit.original[name]~=nil then
+                called,err=writeEntry(unit,name,wanted)
+                local back=find(library,unit.controller,name)
+                if same(kind,back,wanted) then return true,back,called,err,false end
+            end
+            called,err=false,'写表没读回，已改用挂钩'
         end
-        if unit.original[name]==nil then
-            local before=readEntry(unit,name)
-            if before==nil then return false,nil,false,'原条目不可读' end
-            unit.original[name]=before
-        end
-        local ok,err=writeEntry(unit,name,wanted)
-        local back=find(library,unit.controller,name)
-        return same(kind,back,wanted),back,ok,err
+        if not hook(kind,now) then return false,nil,false,'参数挂钩未就绪',false end
+        if namesBroken then return false,nil,false,'等游戏使用原参数名',false end
+        local back,observed=checkedValue(unit,library,name)
+        return same(kind,back,wanted),back,called,err,observed
     end
-    local function apply(unit,library)
-        local done,bad=0,0
-        for name,value in pairs(unit.values)do
-            local good,back,called,err=write(unit,library,name,value)
-            if not good and not self.hooked then
-                hook()
-                back=find(library,unit.controller,name)
-                good=same(KIND[name],back,wire(KIND[name],value))
-                err='写表没读回，已改用挂钩'
-                called=false
-            end
-            if good then done=done+1 else bad=bad+1 end
-            if lines<APPLY_LINES then
-                lines=lines+1
-                local original=unit.original[name]
-                if original==nil and not namesBroken then original=gameValue(library,unit.controller,name) end
-                say(string.format('%s %s 原值=%s -> 目标=%s 写表=%s%s 读回=%s 结果=%s',unit.name,name,describeEntry(original),tostring(value),tostring(called),
-                    called and '' or '('..tostring(err)..')',tostring(back),good and '生效' or '没生效'))
-            end
-        end
-        unit.restorePending=false
+    local function restoreRemoved(unit,now)
+        local bad=0
         for name,before in pairs(unit.original)do
             if unit.values[name]==nil then
-                -- Restore the map even if a later override had to fall back to the hook.
                 local called=writeEntry(unit,name,before)
                 local back=readEntry(unit,name)
                 local verified=back==before or (back~=ABSENT and before~=ABSENT and same(KIND[name],back,before))
-                if verified then
-                    unit.original[name]=nil
-                else
-                    unit.restorePending=true
-                    bad=bad+1
-                end
+                if verified then unit.original[name]=nil else bad=bad+1 end
                 if lines<APPLY_LINES then
                     lines=lines+1
-                    say(string.format('%s %s 恢复原值=%s 调用=%s 读回=%s 已确认=%s',unit.name,name,describeEntry(before),
-                        tostring(called),describeEntry(back),tostring(verified)))
+                    say(string.format('%s %s 恢复原值=%s 调用=%s 读回=%s 已确认=%s',unit.name,name,describeEntry(before),tostring(called),describeEntry(back),tostring(verified)))
                 end
             end
         end
-        self.applied=self.applied+done;self.failures=self.failures+bad
-        unit.generation=self.generation
-    end
-    local function drifted(unit,library)
-        for name,value in pairs(unit.values)do
-            if not same(KIND[name],find(library,unit.controller,name),wire(KIND[name],value)) then return true end
+        if bad==0 then unit.restoreAt=nil;unit.restoreDelay=nil
+        else
+            unit.restoreDelay=math.min(30,(unit.restoreDelay or .5)*2)
+            unit.restoreAt=now+unit.restoreDelay
         end
-        return false
+        return bad
+    end
+    local function apply(unit,library,now)
+        local done,bad=0,0
+        unit.audit={};unit.auditIndex=1;unit.repairs={}
+        for _,field in ipairs(Params.fields)do
+            local name=field[1];local value=unit.values[name]
+            if value~=nil then
+                local good,back,called,err,observed=write(unit,library,name,value,now)
+                if good then done=done+1 else bad=bad+1 end
+                if not (observed and good) and not namesBroken then unit.audit[#unit.audit+1]=name end
+                if lines<APPLY_LINES then
+                    lines=lines+1
+                    local original=unit.original[name]
+                    if original==nil and not namesBroken then original=gameValue(library,unit.controller,name) end
+                    say(string.format('%s %s 原值=%s -> 目标=%s 写表=%s%s 读回=%s 结果=%s',unit.name,name,describeEntry(original),tostring(value),tostring(called),
+                        called and '' or '('..tostring(err)..')',tostring(back),good and '生效' or '没生效'))
+                end
+            end
+        end
+        bad=bad+restoreRemoved(unit,now)
+        self.applied=self.applied+done;self.failures=self.failures+bad
+        unit.generation,unit.hookVersion=self.generation,hookVersion
+    end
+    local function auditUnits(list,library,now)
+        if #list==0 then auditStart=1;return end
+        local remaining=32
+        local index=(auditStart-1)%#list+1
+        for _=1,#list do
+            local unit=list[index]
+            index=index%#list+1
+            local fields=unit.audit
+            for _=1,math.min(#fields,8,remaining)do
+                local slot=unit.auditIndex;local name=fields[slot]
+                remaining=remaining-1
+                local finished=false
+                if not same(KIND[name],find(library,unit.controller,name),wire(KIND[name],unit.values[name])) then
+                    local tries=(unit.repairs[name] or 0)+1;unit.repairs[name]=tries
+                    local good,_,_,_,observed=write(unit,library,name,unit.values[name],now)
+                    self.rewritten=self.rewritten+1
+                    if good then self.applied=self.applied+1 else self.failures=self.failures+1 end
+                    finished=(good and observed) or tries>=RETRIES
+                end
+                if finished then
+                    table.remove(fields,slot)
+                    if #fields==0 then unit.auditIndex=1;break end
+                    unit.auditIndex=slot<=#fields and slot or 1
+                else
+                    unit.auditIndex=slot%#fields+1
+                end
+            end
+            if remaining==0 then break end
+        end
+        auditStart=index
     end
     local function probe(unit,library)
         if classes[unit.name] or classLines>=CLASS_LINES then return end
@@ -334,55 +397,93 @@ function Params.new(options)
         local now=clock()
         if now<nextAt then return end
         nextAt=now+SECONDS
+        local members=options.members() or {}
+        controllers={}
+        if #members==0 then
+            units={}
+            for kind in pairs(FIND)do retire(kind,now) end
+            self.hooked=false;return
+        end
         local library=lib()
         if not library then return end
         checkNames()
-        local seen={}
-        controllers={}
-        for _,member in ipairs(options.members() or {})do
-            local actor=member.actor
-            local key=U.valid(actor) and U.key(actor)
-            if key then
+        local seen,inUse,audits={},{},{}
+        for _,member in ipairs(members)do
+            local actor=member.actor;local key=U.key(actor)
+            if key and not seen[key] then
                 seen[key]=true
+                local okName,identity=pcall(function()return actor:GetFullName()end)
+                identity=okName and identity or nil
                 local unit=units[key]
-                if not unit then
-                    unit={actor=actor,name=className(actor),original={},generation=-1,retries=0}
+                if not unit or unit.identity~=identity then
+                    unit={actor=actor,key=key,name=className(actor),identity=identity,original={},generation=-1}
                     units[key]=unit
                 end
+                unit.actor=actor
                 local profileValues=options.privateValues and options.privateValues(actor)
                 local values=profileValues or self.values
                 unit.private=profileValues~=nil
-                if unit.values~=values then unit.values=values;unit.generation=-1 end
-                local comp=options.aiComp(actor)
-                if U.key(comp)~=U.key(unit.comp) then
-                    unit.actor=actor
-                    unit.comp=comp
-                    unit.original={}
-                    unit.generation=-1
-                end
-                if U.valid(comp) and U.field(comp,'bAIStarted')==true then
-                    local controller=U.field(comp,'AIController')
-                    if U.valid(controller) then
-                        unit.controller=controller
-                        local caddr=addr(controller)
-                        if caddr then controllers[caddr]=unit end
-                        probe(unit,library)
-                        if unit.generation~=self.generation then
-                            unit.retries=0
-                            apply(unit,library)
-                        elseif unit.retries<RETRIES and (unit.restorePending or (next(values) and drifted(unit,library))) then
-                            unit.retries=unit.retries+1;self.rewritten=self.rewritten+1
-                            apply(unit,library)
-                        end
+                if unit.values~=values then
+                    unit.values=values;unit.generation=-1;unit.kinds={}
+                    for name in pairs(values)do
+                        local kind=KIND[name];if kind then unit.kinds[kind]=true end
                     end
                 end
+                local comp=options.aiComp(actor)
+                local componentKey=U.key(comp)
+                if componentKey~=unit.componentKey then
+                    unit.componentKey=componentKey;unit.original={};unit.generation=-1
+                    unit.restoreAt=nil;unit.restoreDelay=nil
+                end
+                unit.comp=comp
+                if componentKey and U.field(comp,'bAIStarted')==true then
+                    local controller=U.field(comp,'AIController')
+                    local controllerKey=U.key(controller)
+                    if controllerKey and U.key(U.field(controller,'Pawn'))==key then
+                        if controllerKey~=unit.controllerKey then unit.generation=-1 end
+                        unit.controller,unit.controllerKey=controller,controllerKey
+                        if next(values) then
+                            controllers[controllerKey]=unit
+                            for kind in pairs(unit.kinds)do inUse[kind]=true end
+                        end
+                        for kind in pairs(requested)do
+                            if inUse[kind] and not (hooks[kind] and hooks[kind].active) then hook(kind,now) end
+                        end
+                        probe(unit,library)
+                        if unit.generation~=self.generation or unit.hookVersion~=hookVersion then
+                            apply(unit,library,now)
+                        else
+                            if unit.restoreAt and now>=unit.restoreAt then
+                                self.failures=self.failures+restoreRemoved(unit,now)
+                            end
+                            if #unit.audit>0 then audits[#audits+1]=unit end
+                        end
+                    else unit.controllerKey=nil end
+                else unit.controllerKey=nil end
             end
         end
         for key in pairs(units)do if not seen[key] then units[key]=nil end end
+        self.hooked=false
+        for kind in pairs(FIND)do
+            if not inUse[kind] or (hooks[kind] and not hooks[kind].active and not requested[kind]) then retire(kind,now)
+            elseif hooks[kind] and hooks[kind].active then self.hooked=true end
+        end
+        auditUnits(audits,library,now)
         if next(seen) then tension(now) end
     end
     function self:status()return {count=count(),applied=self.applied,failures=self.failures,rewritten=self.rewritten,hooked=self.hooked,message=self.message} end
-    function self:silence()unhook();self.alive=false end
+    function self:silence(onGameThread)
+        self.alive=false;controllers={}
+        if onGameThread==nil then
+            local ok,gameThread=pcall(IsInGameThread)
+            onGameThread=ok and gameThread==true
+        end
+        for kind,h in pairs(hooks)do
+            h.active=false
+            if onGameThread then retire(kind,math.huge) end
+        end
+        self.hooked=false
+    end
     return self
 end
 return Params

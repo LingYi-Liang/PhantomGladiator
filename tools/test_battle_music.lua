@@ -167,7 +167,7 @@ test('partial hook readiness, wrong threads and unload cannot issue uncontrolled
     h.thread=true;h.music:tick();assert(h:count('play')==1)
     h.music:silence();h.actor.hp=0;h.music:tick();assert(h:count('clear')==0)
 end)
-print('battle_music: PASS ('..passed..' ownership, death, recovery and session checks; no game accessed)')
+
 
 test('native mode plays Mo Yuan only during an arena fight and restores on exit',function()
     local h=fixture()
@@ -178,3 +178,52 @@ test('native mode plays Mo Yuan only during an arena fight and restores on exit'
     h.music:tick(h.members,{battle_active=true});assert(h.music.lease.track=='MOYUAN_P2' and h:count('play')==2)
     h.music:tick({}, {battle_active=false});assert(not h.music.lease and h:count('restore')==1)
 end)
+
+test('auto and native follow the current Mo Yuan through P2 without clearing his still-playing ID',function()
+    for _,mode in ipairs({'AUTO','NATIVE'})do
+        local h=fixture();local phase=false
+        h.options.moYuanPhaseTwo=function(a)return a==h.actor and phase end
+        assert(h.music:set(mode,'MOYUAN_P1').ok)
+        h.music:tick(h.members,{battle_active=true});assert(h.music.lease.track=='MOYUAN_P1')
+        local other=object(531,'BP_Monster_ZuoShang Test.Other',h.world);other.hp=150
+        table.insert(h.members,1,{actor=other,team='red',class_path='/Test/Z.BP_Monster_ZuoShang_Ending_C'})
+        phase=true;h.music:tick(h.members,{battle_active=true})
+        assert(h.music.lease.track=='MOYUAN_P2' and h.music.lease.ownerKey==tostring(h.actor:GetAddress()))
+        assert(h:count('play')==2 and h:count('clear')==0 and h:count('restore')==0)
+    end
+end)
+test('native P2 in the same event may reuse or replace the ID; only the owned action transfers the lease',function()
+    for _,ours in ipairs({false,true})do for _,newID in ipairs({false,true})do
+        local h=fixture();assert(h.music:set('AUTO','MOYUAN_P1').ok)
+        local spec=Catalog.tracks.MOYUAN_P2
+        local ev,st=h.assets[spec.event],h.assets[spec.state]
+        local id=h.music.lease.id
+        if newID then h.hooks[Music.paths[2]](h.sub,st,1,true)
+        else h.hooks[Music.paths[1]](h.sub,ev,st,1,true) end
+        if newID then h.sub.CurPlayingID_Gameplay=id+7 end
+        local source=ours and h.actor or h.world
+        local cls=object(541,'LegoAbilityBlueprintGeneratedClass /PBZCombatAsset/ActorData/Mobs/067_MoTian/Ability/GA_MoTian_SwitchPhase.GA_MoTian_SwitchPhase_C',h.world)
+        local ability=object(542,'Phase ability',h.world);ability.GetClass=function()return cls end
+        ability.GetAvatarActorFromActorInfo=function()return source end
+        local action=object(543,'Music action',h.world);action.GetAbility=function()return ability end
+        action['Music Event']=ev;action['Music State']=st
+        assert(h.hooks[Music.phaseAction])(action)
+        h.music:tick(h.members,{battle_active=true})
+        assert(h:count('clear')==0 and h:count('restore')==0 and h:count('play')==1,'never clear or restart the phase request')
+        if ours then
+            assert(h.music.lease and h.music.lease.track=='MOYUAN_P2' and h.music.lease.id==h.sub.CurPlayingID_Gameplay)
+            h.music:tick(h.members,{battle_active=true});assert(h.music.lease.track=='MOYUAN_P2','late phase tag must not restart P1')
+        else assert(h.music.suspended and not h.music.lease)end
+        h.active=false;h.music:tick({}, {battle_active=false})
+        assert(h:count('clear')==(ours and 1 or 0),'only stop owned playback at battle end')
+    end end
+end)
+test('an intervening native request keeps the same playing ID when the phase owner has not settled',function()
+    local h=fixture();assert(h.music:set('AUTO','MOYUAN_P1').ok)
+    local spec=Catalog.tracks.MOYUAN_P2
+    h.hooks[Music.paths[2]](h.sub,h.assets[spec.state],1,true)
+    h.hooks[Music.paths[1]](h.sub,h.assets[spec.event],h.assets[Catalog.tracks.MOYUAN_P1.state],1,true)
+    h.music:tick(h.members,{battle_active=true})
+    assert(not h.music.lease and h.music.suspended and h:count('clear')==0)
+end)
+print('battle_music: PASS ('..passed..' ownership, death, recovery and session checks; no game accessed)')

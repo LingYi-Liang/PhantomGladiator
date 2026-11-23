@@ -78,9 +78,10 @@ function Defense.new(o)
     local loop, cancel = o.loop or LoopInGameThreadWithDelay, o.cancel or CancelDelayedAction
     local clock = o.now or o.clock
     local fname = o.fname or FName
-    local timer, resultHook
+    local resultHook,lastWorldTime,pausedAt
     local observing,alive={},true
     local function say(r, message) log('[HunDefense] '..tostring(r.name)..' '..message) end
+    local timer=require('hun_combat_timer').new(20,loop,cancel,clock,log)
     local function asset(path)
         if U.valid(assets[path]) then return assets[path] end
         local ok, obj = pcall(find, path)
@@ -97,8 +98,9 @@ function Defense.new(o)
         if resultHook then return end
         local register=o.register or RegisterHook
         if type(register)~='function' then return end
+        local ticket={}
         local function result(context,source,_,perfect)
-            if not alive then return end
+            if not alive or resultHook~=ticket then return end
             local thread=o.inGameThread or IsInGameThread
             if type(thread)=='function' then local ok,yes=pcall(thread);if not ok or yes~=true then return end end
             local instance=U.unwrap(context)
@@ -115,7 +117,7 @@ function Defense.new(o)
             say(pending.record,'无反击闪避原生命中回执 handle='..pending.handle..' Perfect='..tostring(outcome))
         end
         local ok,a,b=pcall(register,DASH_RESULT,function(...) pcall(result,...) end)
-        if ok and type(a)=='number' and type(b)=='number' then resultHook={a,b} end
+        if ok and type(a)=='number' and type(b)=='number' then ticket[1],ticket[2]=a,b;resultHook=ticket end
     end
     local function tag(asc, name)
         local ok, count = call(asc, 'GetGameplayTagCount', {TagName=fname(name)})
@@ -530,7 +532,8 @@ function Defense.new(o)
     end
     function self:stop(r)
         local s = records[r]
-        if not s then return end
+        if not s or s.stopping then return end
+        s.stopping=true
         release(r,s)
         if s.cost and o.current(r) and owned(s.block,r.actor) then
             restoreCosts(r,s)
@@ -540,10 +543,34 @@ function Defense.new(o)
         records[r]=nil
         for key,w in pairs(observing) do if w.record==r then observing[key]=nil end end
         if not next(records) then releaseObserver() end
-        if not next(records) and timer then pcall(cancel,timer);timer=nil end
+        r.defenseTimerPending=nil
+        if not next(records) then timer:stop();lastWorldTime,pausedAt=nil,nil end
+    end
+    local function tickDefense()
+        if not alive then return end
+        local now=clock()
+        if type(now)~='number' then return end
+        if lastWorldTime==now and (pausedAt==now or (o.paused and o.paused())) then
+            pausedAt=now
+            return
+        end
+        pausedAt=nil
+        lastWorldTime=now
+        for body,state in pairs(records) do
+            if not state.stopping and (state.releaseAt or (state.fighting and not body.dead) or not state.nextCombatCheck or now>=state.nextCombatCheck) then
+                if not U.valid(body.actor) then self:stop(body)
+                else
+                    local worked,why=pcall(update,body,state,now)
+                    if not worked then say(body,'停用防御 '..tostring(why));self:stop(body) end
+                end
+            end
+        end
+    end
+    function self:retryTimer(r)
+        if alive and records[r] then r.defenseTimerPending=not timer:ensure(tickDefense) end
     end
     function self:start(r)
-        if records[r] or not o.current(r) or type(clock)~='function' or type(loop)~='function' then return end
+        if not alive or records[r] or not o.current(r) or type(clock)~='function' or type(loop)~='function' then return end
         local s={grants={},handles={},guardPlans={}}
         records[r]=s
         local ai = (r.loadout or {}).ai or {}
@@ -576,35 +603,13 @@ function Defense.new(o)
         if not s.canDodge then clearGrant(r,s,PASSIVES[2]..'_C') end
         say(r,'防御就绪读回 格挡='..tostring(s.canBlock==true)..' 闪避='..tostring(s.canDodge==true))
         if not s.canBlock and not s.canDodge then self:stop(r);return end
-        if timer then return end
-        local lastWorldTime,pausedAt
-        local ok,handle=pcall(loop,20,function()
-            if not alive then return end
-            local now=clock()
-            if type(now)~='number' then return end
-            if lastWorldTime==now and (pausedAt==now or (o.paused and o.paused())) then
-                pausedAt=now
-                return
-            end
-            pausedAt=nil
-            lastWorldTime=now
-            for body,state in pairs(records) do
-                if state.releaseAt or (state.fighting and not body.dead) or not state.nextCombatCheck or now>=state.nextCombatCheck then
-                    if not U.valid(body.actor) then self:stop(body)
-                    else
-                        local worked,why=pcall(update,body,state,now)
-                        if not worked then say(body,'停用防御 '..tostring(why));self:stop(body) end
-                    end
-                end
-            end
-        end)
-        if ok and handle then timer=handle else self:stop(r) end
+        self:retryTimer(r)
     end
     function self:silence(restore)
         alive=false
         if restore~=false then for r in pairs(records) do self:stop(r) end end
         records,observing,assets={},{},{}
-        if timer then pcall(cancel,timer);timer=nil end
+        timer:stop()
         releaseObserver()
     end
     return self

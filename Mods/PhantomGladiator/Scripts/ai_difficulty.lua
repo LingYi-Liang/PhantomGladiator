@@ -61,8 +61,9 @@ function AI.new(options)
     local clock=options.clock or os.time
     local self={state='idle',alive=true,overrides=0,verified=0,failed=0,message='还没有按所选难度召唤的单位',
         calls={},answers={}}
-    local hooks,cache,logged,lines,counts,checked,installed,samples={},{},{},0,{},{},{},{}
+    local hooks,cache,logged,lines,installed,samples={},{},{},0,{},{}
     local index={}
+    local nextCheck,retryChecks=nil,{}
     -- stale: hooks whose removal failed, tried again every STALE_RETRY s. results/checkResults: the last readback
     -- of each unit on the field and of each check, so the app warns about what is wrong now, not since load.
     local stale,results,checkResults,currentFailed={},{},{},0
@@ -70,7 +71,6 @@ function AI.new(options)
     local function say(m)log('[AIDifficulty] '..m)end
     -- The message is built only the first time a signature is seen.
     local function note(signature,message)
-        counts[signature]=(counts[signature] or 0)+1
         if not logged[signature] and lines<MAX_LINES then
             logged[signature]=true;lines=lines+1
             say(type(message)=='function' and message() or message)
@@ -80,18 +80,18 @@ function AI.new(options)
 
     local function addr(object)
         if object==nil then return nil end
-        local ok,key=pcall(function()return object:GetAddress()end)
+        local ok,key=pcall(function()if object:IsValid() then return object:GetAddress() end end)
         return ok and key~=nil and tostring(key) or nil
     end
     -- The level of the unit a context object belongs to: the unit or its controller, or an object whose
     -- outer (or the outer's outer, e.g. a behaviour-tree node under the controller's tree component) is
-    -- one of them. Objects the game passes in are alive for the call, so no validity calls here.
+    -- one of them. Guard the wrapper before reading its address or outer; avoid a world lookup on this hot path.
     -- Results, misses included, are cached until the next tick.
     local function resolve(object)
         local key=addr(object)
         if not key then return nil end
         local level=cache[key]
-        if level~=nil then return level or nil end
+        if level~=nil then return level or nil,key end
         level=index[key]
         local current=object
         for _=1,2 do
@@ -102,47 +102,57 @@ function AI.new(options)
             level=index[outerKey];current=outer
         end
         cache[key]=level or false
-        return level
+        return level,key
     end
 
     local function difficultyCallback(name,phase)
+        local counter=name..'.'..phase
+        local seen={}
         return function(_,contextObject)
             if not self.alive or self.state~='running' then return nil end
-            bump(self.calls,name..'.'..phase)
+            bump(self.calls,counter)
             local object=U.unwrap(contextObject)
-            local level=resolve(object)
+            local level,key=resolve(object)
             local value=level and VALUES[level]
             if value==nil then return nil end
             self.overrides=self.overrides+1
-            note(name..'|'..phase..'|'..level..'|'..tostring(addr(object)),function()
-                return '改写 '..name..'('..phase..') 上下文='..className(object)..' → '..level..'('..value..')' end)
+            if lines<MAX_LINES and seen[key]~=level then
+                seen[key]=level
+                local signature=counter..'|'..level..'|'..key
+                if not logged[signature] then note(signature,'改写 '..name..'('..phase..') 上下文='..className(object)..' → '..level..'('..value..')') end
+            end
             return value
         end
     end
 
     local function checkCallback(spec)
+        local argsKey='args|'..spec.name
         return function(context,...)
             if not self.alive or self.state~='running' then return nil end
             bump(self.calls,spec.name)
-            local args=table.pack(...)
             local node=U.unwrap(context)
-            if not logged['args|'..spec.name] then
+            if lines<MAX_LINES and not logged[argsKey] then
+                local args=table.pack(...)
                 local kinds={}
                 for i=1,args.n do kinds[#kinds+1]=i..'='..U.kind(args[i])..':'..show(args[i])end
-                note('args|'..spec.name,'检查节点参数 '..spec.name..' 节点='..className(node)..' '..table.concat(kinds,' '))
+                note(argsKey,'检查节点参数 '..spec.name..' 节点='..className(node)..' '..table.concat(kinds,' '))
             end
-            local subject=spec.subject(U.unwrap(args[1]),U.unwrap(args[2]))
+            local first,second=...
+            local controller,pawn=U.unwrap(first),U.unwrap(second)
+            local subject=spec.subject(controller,pawn)
             local level=resolve(subject)
             if not level then return nil end
-            local okThreshold,threshold=pcall(function()return node.Difficulty end)
-            threshold=okThreshold and tonumber(U.unwrap(threshold)) or nil
+            local rawThreshold=U.field(node,'Difficulty')
+            local threshold=tonumber(rawThreshold)
             if not threshold then return nil end
             local answer=VALUES[level]>=threshold
             self.overrides=self.overrides+1
             bump(self.answers,spec.name..' 门槛='..threshold..' → '..tostring(answer))
-            samples[spec.name]=samples[spec.name] or {node=node,args={U.unwrap(args[1]),U.unwrap(args[2])},threshold=threshold,level=level}
-            note(spec.name..'|'..threshold..'|'..level,function()
-                return '改写 '..spec.name..' 单位='..className(subject)..'/'..level..' 门槛='..threshold..' → '..tostring(answer) end)
+            if checkResults[spec.name]==nil and not samples[spec.name] then
+                samples[spec.name]={node=node,args={controller,pawn},threshold=threshold,level=level}
+            end
+            if lines<MAX_LINES then note(spec.name..'|'..threshold..'|'..level,function()
+                return '改写 '..spec.name..' 单位='..className(subject)..'/'..level..' 门槛='..threshold..' → '..tostring(answer) end) end
             return answer
         end
     end
@@ -152,12 +162,17 @@ function AI.new(options)
         local okFind,found=pcall(StaticFindObject,path)
         if not okFind or not U.valid(found) then return false end
         local ok,preId,postId
-        if post then ok,preId,postId=pcall(RegisterHook,path,pre,post) else ok,preId,postId=pcall(RegisterHook,path,pre) end
+        local hook={path=path,kind=kind}
+        local function dispatch(...)if hook.enabled then return pre(...) end end
+        if post then ok,preId,postId=pcall(RegisterHook,path,dispatch,post) else ok,preId,postId=pcall(RegisterHook,path,dispatch) end
         if ok and type(preId)=='number' and type(postId)=='number' then
-            hooks[#hooks+1]={path=path,pre=preId,post=postId,kind=kind}
+            hook.pre,hook.post,hook.enabled=preId,postId,true
+            hooks[#hooks+1]=hook
             say('挂钩注册ID读回 '..label..' pre='..preId..' post='..postId)
-        else say('挂钩注册失败 '..label..'：'..tostring(preId))end
-        return true
+            return true
+        end
+        say('挂钩注册失败 '..label..'：'..tostring(preId))
+        return false,true
     end
     local function registerDifficulty()
         for _,name in ipairs(FUNCTIONS)do
@@ -175,7 +190,11 @@ function AI.new(options)
         self.message='已挂钩，等待读回'
         checksUntil=clock()+CHECK_WINDOW
     end
-    local function unhook(hook)return pcall(UnregisterHook,hook.path,hook.pre,hook.post)end
+    local function unhook(hook)
+        hook.enabled=false
+        local ok,result=pcall(UnregisterHook,hook.path,hook.pre,hook.post)
+        return ok and result~=false,result
+    end
     -- A hook that would not come off goes to `stale` and the module goes idle anyway, so the next summon hooks
     -- afresh. v0.38.2 stayed 'running' with a GetDifficulty hook that no longer ran, and the units summoned in
     -- the next ten minutes got the game's AI difficulty with the chosen stats.
@@ -187,7 +206,7 @@ function AI.new(options)
         end
         say('摘除挂钩 reason='..reason..' 摘除='..(#hooks-#failed)..' 失败='..#failed
             ..(#failed>0 and '（'..table.concat(failed,'；')..'；每 '..STALE_RETRY..' 秒再试，下次召唤重新挂钩）' or ''))
-        hooks={};installed={};checkResults={}
+        hooks={};installed={};checkResults={};samples={};checksAt=nil;nextCheck=nil;retryChecks={}
         self.state='idle'
         self.message='没有按所选难度召唤的单位，挂钩已摘除'
     end
@@ -195,7 +214,13 @@ function AI.new(options)
         if #stale==0 or (staleAt and clock()-staleAt<STALE_RETRY) then return end
         staleAt=clock()
         local kept={}
-        for _,hook in ipairs(stale)do if not unhook(hook) then kept[#kept+1]=hook end end
+        for _,hook in ipairs(stale)do
+            local reused=false
+            for _,active in ipairs(hooks)do
+                if active.path==hook.path and active.pre==hook.pre and active.post==hook.post then reused=true;break end
+            end
+            if not reused and not unhook(hook) then kept[#kept+1]=hook end
+        end
         if #kept<#stale then say('补摘挂钩 '..(#stale-#kept)..' 个，剩 '..#kept..' 个')end
         stale=kept
     end
@@ -203,7 +228,7 @@ function AI.new(options)
     local function rehook()
         local kept={}
         for _,hook in ipairs(hooks)do
-            if hook.kind=='difficulty' then stale[#stale+1]=hook else kept[#kept+1]=hook end
+            if hook.kind=='difficulty' then hook.enabled=false;stale[#stale+1]=hook else kept[#kept+1]=hook end
         end
         hooks=kept
         registerDifficulty()
@@ -214,7 +239,7 @@ function AI.new(options)
     function self:ensure(actor,level)
         if not self.alive or not VALUES[level] then return end
         local key=addr(actor)
-        if key then index[key]=level;cache={} end
+        if key then index[key]=level;results[key]=nil;cache={} end
         emptySince=nil
         if self.state=='idle' then install() end
         checksUntil=clock()+CHECK_WINDOW
@@ -246,7 +271,7 @@ function AI.new(options)
         local ok=unit==VALUES[level] and game~=nil
         if ok then self.verified=self.verified+1 else self.failed=self.failed+1 end
         local key=U.key(actor)
-        if key then results[key]=ok end
+        if key then results[key]={level=level,ok=ok,retryAt=not ok and clock()+CHECK_EVERY or nil} end
         -- Which of the character's two AI configs its AI ended up with (PDA_ActorConfig: AIConfig  Default /
         -- AIConfig Nightmare); read only.
         local config=U.field(actor,'Actor Config')
@@ -257,9 +282,12 @@ function AI.new(options)
             ..' 当前='..show((U.field(ai,'AIConfig')))..repaired)
     end
     local function readbackCheck(spec,sample)
-        if not U.valid(sample.node) then return end
+        if not U.valid(sample.node) or not U.valid(sample.args[1]) or (sample.args[2] and not U.valid(sample.args[2]))
+            or resolve(spec.subject(sample.args[1],sample.args[2]))~=sample.level then return end
+        local threshold=U.field(sample.node,'Difficulty')
+        if tonumber(threshold)~=sample.threshold then return end
         local okCall,result=pcall(spec.call,sample.node,sample.args[1],sample.args[2])
-        result=okCall and U.unwrap(result) or nil
+        if okCall then result=U.unwrap(result) else result=nil end
         local expected=VALUES[sample.level]>=sample.threshold
         local game=gameValue()
         local gameAnswer=game and game>=sample.threshold
@@ -285,8 +313,8 @@ function AI.new(options)
     local function countFailed(leveled)
         local kept,bad={},0
         for _,unit in ipairs(leveled)do
-            local key=U.key(unit.actor)
-            if key and results[key]~=nil then kept[key]=results[key];if results[key]==false then bad=bad+1 end end
+            local result=results[unit.key]
+            if result then kept[unit.key]=result;if not result.ok then bad=bad+1 end end
         end
         results=kept
         for _,ok in pairs(checkResults)do if ok==false then bad=bad+1 end end
@@ -297,21 +325,27 @@ function AI.new(options)
         if not self.alive then return end
         cache={}
         retryStale()
-        if options.ready and not options.ready() then return end
-        local leveled,fresh={},{}
+        if options.ready and not options.ready() then
+            index={};results={};samples={};checkResults={};currentFailed=0;nextCheck=nil
+            return
+        end
+        local leveled,fresh,pending={},{},false
         for _,entry in ipairs(options.members and options.members() or {})do
             local level=options.levelOf(entry.actor)
-            if level and VALUES[level] then
-                leveled[#leveled+1]={actor=entry.actor,level=level}
-                local key=addr(entry.actor)
-                if key then fresh[key]=level end
+            local key=level and VALUES[level] and addr(entry.actor)
+            if key then
+                fresh[key]=level
+                local previous=results[key]
+                local needsRead=not previous or previous.level~=level or (previous.retryAt and clock()>=previous.retryAt)
+                leveled[#leveled+1]={actor=entry.actor,level=level,key=key,needsRead=needsRead}
+                pending=pending or needsRead
                 local controllerKey=addr(U.field(entry.actor,'Controller'))
                 if controllerKey then fresh[controllerKey]=level end
             end
         end
         index=fresh
         if #leveled==0 then
-            results={};currentFailed=0
+            results={};samples={};checkResults={};currentFailed=0;nextCheck=nil
             emptySince=emptySince or clock()
             if self.state=='running' and clock()-emptySince>=UNHOOK_SECONDS then uninstall('召唤单位已全部离场') end
             return
@@ -323,20 +357,35 @@ function AI.new(options)
         -- Looking up a function whose class is not loaded is slow in UE4SS (60–70 ms a tick in v0.35.5
         -- with only 魔渊 out, whose AI does not use these checks), so try every 15 s, and only in the minute
         -- after a leveled unit was summoned.
-        if checksUntil and clock()<=checksUntil and (not checksAt or clock()-checksAt>=CHECK_EVERY) then
-            checksAt=clock()
-            for _,spec in ipairs(CHECKS)do
-                if not installed[spec.name] and register(spec.path,spec.name,checkCallback(spec)) then installed[spec.name]=true end
+        local now=clock()
+        local discover=checksUntil and now<=checksUntil
+        if not nextCheck and (discover or next(retryChecks)) and (not checksAt or now-checksAt>=CHECK_EVERY) then
+            checksAt=now;nextCheck=1
+        end
+        while nextCheck do
+            local i=nextCheck
+            local spec=CHECKS[i]
+            nextCheck=i<#CHECKS and i+1 or nil
+            if not installed[spec.name] and ((checksUntil and checksAt<=checksUntil) or retryChecks[spec.name]) then
+                local ok,rejected=register(spec.path,spec.name,checkCallback(spec))
+                installed[spec.name]=ok;retryChecks[spec.name]=rejected
+                break
             end
         end
-        library=StaticFindObject(DEFAULT);world=options.getWorld and options.getWorld()
-        if not U.valid(library) or not U.valid(world) then return end
-        for _,unit in ipairs(leveled)do
-            local key=U.key(unit.actor)
-            if key and not checked[key] then checked[key]=true;readbackUnit(unit.actor,unit.level)end
-        end
-        for _,spec in ipairs(CHECKS)do
-            if samples[spec.name] and not checked[spec.name] then checked[spec.name]=true;readbackCheck(spec,samples[spec.name])end
+        if pending or next(samples) then
+            local found,lib=pcall(StaticFindObject,DEFAULT)
+            library=found and lib
+            world=options.getWorld and options.getWorld()
+            if U.valid(library) and U.valid(world) then
+                for _,unit in ipairs(leveled)do
+                    if unit.needsRead then readbackUnit(unit.actor,unit.level) end
+                end
+                for _,spec in ipairs(CHECKS)do
+                    local sample=samples[spec.name]
+                    if sample then readbackCheck(spec,sample);samples[spec.name]=nil end
+                end
+            end
+            library,world=nil,nil
         end
         countFailed(leveled)
         -- A running tally once a minute while it changes, so a fight is readable without a reload.

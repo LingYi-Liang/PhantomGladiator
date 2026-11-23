@@ -87,6 +87,60 @@ do
     got=run(fname('EncounterSummons'),{},{plain})[plain]
     assert(got and got.opposing==false,'not in the passive\'s list: no mode')
 end
+do
+    local tick,fullScans,passives,idle=0,0,{},true
+    local parent=object(60,{outer=level,class=cls,full='NPC Follower',Children={}})
+    local stray=object(61,{outer=level,class=cls,Instigator=parent})
+    local child2=object(62,{outer=level,class=cls,Owner=parent})
+    local npcs={}
+    for i=1,240 do npcs[i]=object(100+i,{outer=level,class=cls})end
+    local roster={{actor=parent,team='companion'}}
+    local scan=Links.new({getWorld=function()return world end,clock=function()return tick*.5 end,
+        localNPC=function()return true end,idleOwner=function()return idle end,findAll=function()return passives end,
+        getNPCs=function()fullScans=fullScans+1;return npcs end})
+    local function has(items,actor)for _,e in ipairs(items)do if e.actor==actor then return true end end;return false end
+    for i=0,119 do tick=i;assert(#scan:scan(roster,nil,true)==0)end
+    print("MEASURE 120 companion ticks, 240 map NPCs: world enumerations="..fullScans)
+    assert(fullScans<=30,"the map was enumerated again on every stable companion tick")
+    tick=120;scan:scan(roster,nil,true)
+    tick=121;parent.Children={child2};npcs[#npcs+1]=child2;npcs[#npcs+1]=stray
+    assert(has(scan:scan(roster,nil,true),child2),"actor-owned child appears on the first tick")
+    local discovered=false
+    for i=122,124 do tick=i;discovered=has(scan:scan(roster,nil,true),stray) or discovered end
+    assert(discovered,"periodic full sweep finds instigator-only summons")
+    local lastMoment=object(63,{outer=level,class=cls,Instigator=parent})
+    tick=125;npcs[#npcs+1]=lastMoment
+    assert(has(scan:scan(roster),lastMoment),"cleanup must see new instigator-only summons immediately")
+    local last=fullScans;roster[1].team='red';tick=126;scan:scan(roster,nil,true);tick=127;scan:scan(roster,nil,true)
+    assert(fullScans==last+2,"the arena always checks full ownership")
+    roster[1].team='companion';parent.Children=nil;tick=128;scan:scan(roster,nil,true);tick=129;scan:scan(roster,nil,true)
+    assert(fullScans==last+4,"unreadable actor children require the complete discovery path")
+    parent.Children={};idle=false
+    for i=130,132 do tick=i;scan:scan(roster,nil,true)end
+    assert(fullScans==last+7,"a companion in combat or playing a move keeps the full scan cadence")
+end
+do
+    local parent=object(378,{outer=level,class=cls});local other=object(379,{outer=level,class=cls})
+    local child2=object(380,{outer=level,class=cls,Owner=parent})
+    local function passive(id,owner,mode,pending)
+        return object(id,{GetAvatarActorFromActorInfo=function()return owner end,SummonCombatTargetMode=mode,
+            SpawnedSummonInstances={{Pawn=child2,bPawnPending=pending}}})
+    end
+    local function match(a,b)
+        local scan=Links.new({getWorld=function()return world end,findAll=function()return {a,b}end,getNPCs=function()return {child2}end})
+        return scan:scan({{actor=parent},{actor=other}})
+    end
+    local fight=passive(381,parent,'Summoner',true);local stranger=passive(382,other,'InheritedHatred',true)
+    for _,pair in ipairs({{fight,stranger},{stranger,fight}})do
+        local out=match(pair[1],pair[2]);assert(#out==1 and out[1].opposing,"a second passive cannot erase the owner's pending summon rule")
+    end
+    fight.SpawnedSummonInstances[1].bPawnPending=false
+    local friendly=passive(383,parent,'InheritedHatred',false)
+    assert(#match(fight,friendly)==0 and #match(friendly,fight)==0,"contradictory full proofs must never pick a side by scan order")
+    local sameSide=passive(384,parent,'EncounterSummons',false)
+    local x,y=match(fight,sameSide)[1],match(sameSide,fight)[1]
+    assert(x and y and x.opposing and y.opposing and x.evidence==y.evidence,"different native modes that agree on the side remain usable")
+end
 root.alive=false;enemy.alive=false
 assert(#scanner:scan({{actor=root},{actor=enemy}})==0,'invalid owners must not be dereferenced or used to claim map actors')
 print('arena_summon_links: PASS (native list, false pending flag, exact owner, conflicts, world boundary, duplicate and invalid exclusions, summon combat side)')

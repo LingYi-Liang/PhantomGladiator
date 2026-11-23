@@ -3,7 +3,7 @@ const i18n = require('./test_i18n_runtime')();
 const source = fs.readFileSync(__dirname + '/prototype/app.js', 'utf8');
 assert(source.includes('["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]'));
 const context = { S: { keys: {}, dismissKeySupported: false }, ui: { capture: null, keyNote: null, keysSaving: false },
-  RT: { online: () => true }, t: (key, p) => i18n.t(key, p), esc: String, icon: () => '', keyCap: () => '', KEY_ICONS: {} };
+  RT: { online: () => true }, I18N: i18n, t: (key, p) => i18n.t(key, p), esc: String, icon: () => '', keyCap: () => '', KEY_ICONS: {} };
 vm.createContext(context);
 const first = source.indexOf('  function keyRowHTML('), last = source.indexOf('  function hotkeysHTML()', first);
 vm.runInContext(source.slice(first, last), context);
@@ -15,6 +15,12 @@ for (const lang of ['zh', 'en']) {
   const row = context.keyRowHTML('dismiss_companions');
   assert(row.includes(i18n.t('keys.action.dismiss_companions')) && row.includes(i18n.t('keys.unbound')) && !row.includes('disabled'));
   context.S.dismissKeySupported = false;
+  context.S.keys.toggle_time_stop={code:111,mods:0,error:'Num/ 已被其它Mod或UE4SS占用'};
+  context.ui.keyNote={action:'toggle_time_stop',type:'ok',text:'older confirmation'};
+  const error=i18n.t('keys.externalConflict',{key:'Num/'});
+  assert(context.keyRowHTML('toggle_time_stop').includes(error));
+  assert(!context.keyRowHTML('toggle_track').includes(error));
+  context.ui.keyNote=null;delete context.S.keys.toggle_time_stop;
 }
 i18n.set('zh');
 for (const action of ['hun_blue', 'hun_red', 'hun_companion', 'hun_neutral']) {

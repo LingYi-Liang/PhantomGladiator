@@ -113,7 +113,7 @@ function Supply.new(o)
         local _,anim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
         local pos,playing=readPosition(d.anim,d.montage)
         if pos~=nil and (not playing or d.lastPosition~=pos) then d.progressAt=now;d.lastPosition=pos end
-        if r.dead or blocked(asc) or U.key(anim)~=U.key(d.anim) or pos==nil or now-(d.progressAt or d.start)>4 then
+        if r.dead or U.key(asc)~=d.ascKey or blocked(asc) or U.key(anim)~=U.key(d.anim) or pos==nil or now-(d.progressAt or d.start)>4 then
             say(r,'喝药结束或被打断，已服用='..tostring(d.used)..' 余药='..s.remaining)
             return finishDrink(r,s,d)
         end
@@ -133,7 +133,7 @@ function Supply.new(o)
             end
             if payload then
                 emit(r,'GameplayEvent.Medicine.PreActivate',payload)
-                if s.drink~=d or not o.current(r) or not U.valid(asc) then return false end
+                if s.drink~=d or not o.current(r) or U.key(U.field(r.actor,'AbilitySystemComponent'))~=d.ascKey then return finishDrink(r,s,d) end
                 local use=U.field(payload,'Use Count')
                 if use==0 and s.consume then s.remaining=s.remaining+1 end
             end
@@ -150,21 +150,41 @@ function Supply.new(o)
         if pos>=END then return finishDrink(r,s,d) end
         return s.drink==d
     end
+    local function liveAgain(asc)
+        return count(asc,'CharacterState.Dead')==0 and count(asc,REBORN)==0 and count(asc,IMMORTAL)==0
+    end
+    local function stopMontage(r,d)
+        if o.current(r) and readPosition(d.anim,d.montage) then
+            local _,ownerAnim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
+            if U.key(ownerAnim)==U.key(d.anim) then
+                say(r,'即将 停止此魂未结束的喝药动作')
+                call(d.anim,'Montage_Stop',0.1,d.montage)
+                say(r,'喝药停止读回 已停止='..tostring(readPosition(d.anim,d.montage)==nil))
+            end
+        end
+    end
     function self:tick(r,ctx)
+        local s=records[r]
+        if s and (s.starting or (not s.drink and not s.death and s.remaining<=0)) then return false end
         if not o.current(r) or not U.valid(r.actor) then return false end
-        local s,now=state(r),clock()
+        s=s or state(r)
+        local now=ctx and ctx.now or clock()
         if type(now)~='number' then return false end
-        local asc=U.field(r.actor,'AbilitySystemComponent')
-        if s.drink then return advance(r,s,asc,now) end
-        local hp=o.stat(r.actor,'Health')
-        if type(hp)~='number' or hp<=0 then return false end
-        if s.death and count(asc,'CharacterState.Dead')==0 and count(asc,REBORN)==0 and count(asc,IMMORTAL)==0 then
+        local asc,hp
+        if s.drink or s.death then
+            asc=U.field(r.actor,'AbilitySystemComponent')
+            if s.drink then return advance(r,s,asc,now) end
+            hp=o.stat(r.actor,'Health')
+            if type(hp)~='number' or not (hp>0) or not liveAgain(asc) then return false end
             s.death=nil
         end
-        s.death=nil
-        if not o.fighting(r) or s.remaining<=0 or now<(s.nextDrink or 0) or (ctx and ctx.busy)
+        if r.dead or s.remaining<=0 or now<(s.nextDrink or 0) or (ctx and ctx.busy)
             or (r.intent and now<(r.intent.busyUntil or 0)) then return false end
         if ctx and not ctx.opening and (type(ctx.distance)~='number' or ctx.distance<500) then return false end
+        if not o.fighting(r) then return false end
+        hp=hp or o.stat(r.actor,'Health')
+        if type(hp)~='number' or not (hp>0) then return false end
+        asc=asc or U.field(r.actor,'AbilitySystemComponent')
         local maxHP=o.stat(r.actor,'Health_Max')
         if type(maxHP)~='number' or maxHP<=0 or hp>maxHP*0.5 or blocked(asc)
             or count(asc,'CharacterState.AbilityState.Medicine.InHitCooldown')~=0 then return false end
@@ -177,13 +197,29 @@ function Supply.new(o)
             return false
         end
         say(r,'即将 播放服药动作，余药='..s.remaining)
+        local d={start=now,anim=anim,montage=montage,heal=heal,ascKey=U.key(asc),busyUntil=now+END}
+        if not d.ascKey then return false end
+        s.starting=d
         local ok,duration=call(r.actor,'PlayAnimMontage',montage,1.0,fname('None'))
         local pos=readPosition(anim,montage)
         say(r,'服药动作读回 时长='..tostring(duration)..' 位置='..tostring(pos))
+        if records[r]~=s or s.starting~=d then
+            local current=records[r]
+            if d.interrupted and (not current or (current==s and not s.drink and not s.starting)) then stopMontage(r,d) end
+            return false
+        end
+        s.starting=nil
         if not ok or type(duration)~='number' or duration<=0 or not pos or not o.current(r) then return false end
+        local _,ownerAnim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
+        local liveHP=o.stat(r.actor,'Health')
+        if r.dead or type(liveHP)~='number' or not (liveHP>0) or U.key(ownerAnim)~=U.key(anim)
+            or U.key(U.field(r.actor,'AbilitySystemComponent'))~=d.ascKey or blocked(asc) then
+            stopMontage(r,d)
+            return false
+        end
         s.nextDrink=now+math.max(END,duration)
         if s.consume then s.remaining=s.remaining-1 end
-        s.drink={start=now,anim=anim,montage=montage,heal=heal,busyUntil=now+END}
+        s.drink=d
         r.intent=r.intent or {}
         r.intent.busyUntil=math.max(r.intent.busyUntil or 0,now+END)
         say(r,'即将 施加喝药受击冷却')
@@ -220,7 +256,10 @@ function Supply.new(o)
         if not U.valid(asc) then return waiting end
         local hp=o.stat(r.actor,'Health')
         if type(hp)~='number' or hp~=hp then return waiting end
-        if hp>0 then if s then s.death=nil end;return false end
+        if hp>0 then
+            if d and liveAgain(asc) then s.death=nil end
+            return false
+        end
         if d and d.done then return false end
         local reborn,immortal=count(asc,REBORN),count(asc,IMMORTAL)
         local active=(reborn or 0)>0 or (immortal or 0)>0
@@ -272,17 +311,13 @@ function Supply.new(o)
     function self:silence()records,assets={},{} end
     function self:interrupt(r)
         local s=records[r]
-        local d=s and s.drink
+        if not s then return end
+        local d=s.drink or s.starting
         if not d then return end
+        if s.starting==d then d.interrupted=true end
+        s.starting=nil
         finishDrink(r,s,d)
-        if o.current(r) and readPosition(d.anim,d.montage) then
-            local _,ownerAnim=call(U.field(r.actor,'Mesh'),'GetAnimInstance')
-            if U.key(ownerAnim)==U.key(d.anim) then
-                say(r,'即将 停止此魂未结束的喝药动作')
-                call(d.anim,'Montage_Stop',0.1,d.montage)
-                say(r,'喝药停止读回 已停止='..tostring(readPosition(d.anim,d.montage)==nil))
-            end
-        end
+        stopMontage(r,d)
     end
     function self:stop(r)
         self:interrupt(r)

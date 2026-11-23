@@ -33,12 +33,13 @@ local function fixture(opts)
     h.nativePhysics=object('PhysicsAsset '..P.physics)
     h.skin=object('SkeletalMesh /Game/Hun_Skin.Hun_Skin',{PhysicsAsset=not opts.skinNoPhysics and h.nativePhysics or nil})
     h.skeleton=object('Skeleton /Game/Hun_Skin_Skeleton.Hun_Skin_Skeleton');h.skin.Skeleton=h.skeleton
-    h.clone=object('SkeletalMesh '..P.clone)
+    h.clone=object('SkeletalMesh '..P.clone,{Skeleton=h.skeleton})
     h.player=class('/HuaShira/Characters/Hero/Hero_Hun/Animation/PBZ_ABP_Hun_Base.PBZ_ABP_Hun_Base_C')
     h.npc=class(P.anim);h.mm=class(P.mm);h.item=class(P.item)
     h.assets={[P.clone]=h.clone,[P.anim]=h.npc,[P.mm]=h.mm,[P.item]=h.item}
     if opts.full~=false then
         h.body_=object('SkeletalMesh '..P.body,{PhysicsAsset=not opts.bodyNoPhysics and object('PhysicsAsset /Game/PA_Hun.PA_Hun') or nil})
+        h.body_.Skeleton=h.skeleton
         h.copyPose=class(P.copyPose);h.meshClass=class(P.meshClass);h.clothClass=class(P.clothClass)
         h.assets[P.body]=h.body_;h.assets[P.copyPose]=h.copyPose;h.assets[P.meshClass]=h.meshClass;h.assets[P.clothClass]=h.clothClass
         for _,spec in ipairs({Look.HEAD,table.unpack(Look.PARTS)})do h.assets[spec.asset]=object('SkeletalMesh '..spec.asset)end
@@ -145,7 +146,7 @@ local function fixture(opts)
     end
     h:body(opts)
     h.still=true
-    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,steps=opts.steps or CLONE,player=function()return h.wearer end,
+    h.look=Look.new({log=function(s)h.logs[#h.logs+1]=s end,fname=function(s)return s end,steps=opts.steps or CLONE,player=function()h.playerReads=(h.playerReads or 0)+1;return h.wearer end,
         find=function(path)return h.loaded[path]end,
         load=function(path)local a=h.assets[path];h.loaded[path]=a;return a end,
         findAll=function(kind)
@@ -561,5 +562,147 @@ test('follow: materials that differ are taken from the player, a dynamic one by 
     assert(h:logged('即将 抄材质 实例=Hun_1 身体 SetMaterial')==1 and h:logged('抄材质 读回 实例=Hun_1 身体 写入=2 没读回=0')==1)
     h=fixture({steps={look='full',cloth=true,anim=true,follow=true,materials=false}});w=wearer(h,{wholeModel=true});w.CharacterMesh0.mats={m1}
     h:apply();assert(h:logged('抄材质')==0)
+end)
+test('a followed part preserves its local offset, scale and socket on skeletal and cloth components',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h)
+    local pose={Translation={X=0,Y=1,Z=-8},Rotation={X=0,Y=0,Z=0,W=1},Scale3D={X=.95,Y=.95,Z=.95}}
+    w.meshhead.GetRelativeTransform=function()return pose end
+    w.CA_Hun_Hair.GetRelativeTransform=function()return pose end
+    w.CA_Hun_Hair.GetAttachSocketName=function()return 'head' end
+    local add=h.actor.AddComponentByClass
+    h.actor.AddComponentByClass=function(self,...)
+        local v=add(self,...)
+        v.K2_SetRelativeTransform=function(self,t,sweep,hit,tp)assert(not sweep and tp);self.relative=t end
+        v.GetRelativeTransform=function(self)return self.relative end
+        return v
+    end
+    assert(h:apply().follow)
+    local head,hair=partOf(h,w.assets.Hun_Head_Mod),partOf(h,w.assets.CA_MoTian_Hair)
+    assert(head.relative and hair.relative and head.relative.Translation.Z==-8 and hair.relative.Scale3D.X==.95 and hair.socket=='head','preserve offsets and the cloth socket')
+end)
+test('skin parameter overrides are copied into a clone-owned material and removed on restoration',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h,{wholeModel=true})
+    local material=object('MaterialInstanceConstant /Mod/BaseSkin')
+    local source=object('MaterialInstanceDynamic /Game/Player.Skin',{Parent=material,tint=.4})
+    function source:GetClass()return class('/Script/Engine.MaterialInstanceDynamic')end
+    w.CharacterMesh0.mats={source}
+    local old=object('MaterialInstanceConstant /Game/Original')
+    h.mesh.OverrideMaterials={old};h.mesh.slot=old
+    function h.mesh:SetMaterial(i,m)assert(i==0);self.slot=m end
+    function h.mesh:GetMaterial(i)return i==0 and self.slot or nil end
+    function h.mesh:CreateDynamicMaterialInstance(i,parent)
+        assert(i==0 and parent==material)
+        local mid=object('MaterialInstanceDynamic /Game/Clone.Skin',{GetOuter=function()return self end})
+        function mid:K2_CopyMaterialInstanceParameters(other,quick)assert(quick);self.tint=other.tint end
+        self.slot=mid;return mid
+    end
+    assert(h:apply().follow and h.mesh.slot~=source and h.mesh.slot.tint==.4,'clone gets its own material with the player skin parameters')
+    h.mesh.slot.tint=.8;assert(source.tint==.4)
+    h.look:cleanup(h.r,'test');assert(h.mesh.slot==old)
+end)
+test('a replacement of the default and fallback assets cannot replace the combat mesh with a foreign skeleton',function()
+    local h=fixture({steps=FOLLOW});local foreign=object('Skeleton /Mod/Custom.Rig')
+    wearer(h,{skeleton=foreign});h.body_.Skeleton=foreign;h.clone.Skeleton=foreign
+    h:apply();assert(h.mesh.asset==h.skin and #h.parts==0 and h.r.appearance)
+end)
+test('an inherited head can initialize one pose late without losing the whole outfit',function()
+    local h=fixture({steps=FOLLOW});local w=wearer(h);h:apply()
+    h.headGap=28.62;h.look:recheck(h.r)
+    assert(h.r.full and h.mesh.asset==w.assets.Hun_MoTian_Body_Simple,'one late sample is not a failed skin')
+    h.headGap=0;h.look:maintainAppearance(h.r,1)
+    assert(h.r.full and not partOf(h,w.assets.Hun_Head_Mod).destroying)
+end)
+local function activeRigFixture()
+    local h=fixture({steps=FOLLOW});local w=wearer(h)
+    local function bone(self,name)
+        return ({head=5,pelvis=1,hand_l=9,hand_r=10,foot_l=12,foot_r=14})[name] or -1
+    end
+    local function socket(_,name)
+        if name=='head' then return h.headAt end
+        return vec(0,0,name=='pelvis' and 80 or 10)
+    end
+    local function parentBone(_,name)
+        if name=='root' then return 'None' end
+        return name=='pelvis' and 'root' or 'pelvis'
+    end
+    h.mesh.GetBoneIndex=bone;w.CharacterMesh0.GetBoneIndex=bone
+    h.mesh.GetParentBone=parentBone;w.CharacterMesh0.GetParentBone=parentBone
+    h.mesh.bVisible=true;h.mesh.IsVisible=function(self)return self.bVisible end
+    h.mesh.SetVisibility=function(self,v,children)assert(children==false);self.bVisible=v end
+    h.mesh.VisibilityBasedAnimTickOption=2
+    local add=h.actor.AddComponentByClass
+    h.actor.AddComponentByClass=function(self,...)
+        local v=add(self,...);v.GetBoneIndex=bone
+        function v:SetLeaderPoseComponent(parent,force,tick)assert(parent~=w.CharacterMesh0 and force);self.LeaderPoseComponent=parent end
+        v.GetSocketLocation=socket
+        function v:SetCollisionEnabled(which)self.collision=which end
+        function v:GetCollisionEnabled()return self.collision or 0 end
+        return v
+    end
+    h.mesh.GetSocketLocation=socket
+    assert(h:apply().follow);h.look:recheck(h.r)
+    local driverAsset=h.mesh.asset
+    local foreign=object('Skeleton /Mod/Foreign.Rig')
+    local newBody=object('SkeletalMesh /Mod/Late.Body',{Skeleton=foreign})
+    local newHead=object('SkeletalMesh /Mod/Late.Head',{Skeleton=foreign})
+    w.CharacterMesh0.SkinnedAsset=newBody;w.meshhead.SkinnedAsset=newHead
+    h.actor['Ability Input Component']=object('Input',{InActionPhase=true})
+    for i=0,2 do h.look:maintainAppearance(h.r,i)end
+    assert(not partOf(h,newBody),'leave native combat actions alone during a costume change')
+    h.actor['Ability Input Component']=nil
+    for i=3,12 do h.look:maintainAppearance(h.r,i)end
+    local body,head=partOf(h,newBody),partOf(h,newHead)
+    assert(body and head and body.LeaderPoseComponent==h.mesh and head.parent==body,'body and head switch together, parented to the clone')
+    assert(h.mesh.asset==driverAsset and not h.mesh.bVisible and body.visible and head.visible,'native combat mesh still animates under the complete outfit')
+    return h,w,body,head,newBody,foreign,parentBone,socket
+end
+test('a late body replacement uses the clone as pose source and keeps its combat mesh and independent head',function()
+    local h,w,body,head,newBody,foreign,parentBone,socket=activeRigFixture()
+    local count=#h.parts
+    h.mesh.VisibilityBasedAnimTickOption=1
+    for i=13,25 do h.look:maintainAppearance(h.r,i)end
+    assert(#h.parts==count and h.mesh.VisibilityBasedAnimTickOption==0,'a stable outfit keeps animating without a rebuild')
+    h.look:hideParts(h.r);assert(not body.visible and not head.visible)
+    h.look:restoreDeathVisibility(h.r);assert(body.visible and head.visible and not h.mesh.bVisible)
+    local unfit=object('SkeletalMesh /Mod/Unmapped.Body',{Skeleton=foreign})
+    w.CharacterMesh0.SkinnedAsset=unfit
+    w.CharacterMesh0.GetParentBone=function(_,name)return name=='head' and 'DifferentNeck' or parentBone(nil,name)end
+    for i=26,42 do h.look:maintainAppearance(h.r,i)end
+    assert(h.r.activeRig.root==body and body.visible and not partOf(h,unfit),'do not put a mismatched hierarchy on the combat mesh')
+    w.CharacterMesh0.SkinnedAsset=newBody;w.CharacterMesh0.GetParentBone=parentBone
+    body.GetSocketLocation=function(_,key)if key=='foot_r' then return vec(300,0,0) end;return socket(nil,key)end
+    for i=43,60 do
+        h.look:maintainAppearance(h.r,i)
+        if not h.r.activeRig then break end
+    end
+    assert(not h.r.activeRig and h.mesh.bVisible and body.destroying,'persistent pose loss returns to a complete baseline')
+    h.look:cleanup(h.r,'test');assert(h.mesh.bVisible and body.destroying and head.destroying and h.mesh.VisibilityBasedAnimTickOption==1)
+end)
+test('simultaneous outfit checks share a source snapshot only for their own support sweep',function()
+    local host=fixture({steps=FOLLOW});wearer(host);local sweep={}
+    for i=1,24 do
+        local h=fixture({steps=FOLLOW});h.r.appearance={nextCheck=0};h.r.still=function()return true end
+        host.look:maintainAppearance(h.r,20,sweep)
+    end
+    local reads=host.playerReads or 0
+    print('MEASURE concurrent outfit checks=24, player resolutions='..reads)
+    assert(reads==1,'the viewport player was resolved separately for each clone')
+    host.wearer=nil
+    local h=fixture({steps=FOLLOW});h.r.appearance={nextCheck=0};h.r.still=function()return true end
+    host.look:maintainAppearance(h.r,20,{})
+    assert(host.playerReads==2 and not h.r.appearance.candidate,'a new sweep in the same game-time instant must see player loss')
+end)
+test('an externally replaced combat mesh never regains the old head or gets overwritten on unload',function()
+    for _,immediate in ipairs({false,true})do
+        local h,w,body,head=activeRigFixture()
+        local oldHead=partOf(h,w.assets.Hun_Head_Mod)
+        local external=object('SkeletalMesh /Mod/Foreign.Replacement',{Skeleton=h.skeleton})
+        h.mesh.asset=external
+        if immediate then h.look:cleanup(h.r,'leave')
+        else for t=13,28 do h.look:maintainAppearance(h.r,t,{})end end
+        assert(h.mesh.asset==external and h.mesh.bVisible and body.destroying and head.destroying and oldHead.destroying,
+            'retire owned pieces and release the hidden driver without assembling the old outfit over the new body')
+        h.look:cleanup(h.r,'leave');assert(h.mesh.asset==external and h.mesh.AnimClass==h.npc,'cleanup cannot rewrite the external presentation')
+    end
 end)
 print('hun look: PASS '..n..' mesh/anim-class/full-look/cloth/readback/undo/breaker checks; native gameplay remains unverified')
