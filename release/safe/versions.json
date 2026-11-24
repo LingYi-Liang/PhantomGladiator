@@ -1,6 +1,362 @@
 {
   "versions": [
     {
+      "version": "0.40.22",
+      "modBuild": "v0.40.22",
+      "date": "2026-11-25T05:05:06+08:00",
+      "size": 109227129,
+      "sha256": "d232d667f342a9d1425c2886796ba8f6776a6866fec4fd1440635caff7f04505",
+      "downloads": [
+        {
+          "id": "cn1",
+          "url": "https://ghfast.top/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.22/PhantomGladiator-0.40.22-win64.zip"
+        },
+        {
+          "id": "cn2",
+          "url": "https://gh-proxy.com/https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.22/PhantomGladiator-0.40.22-win64.zip"
+        },
+        {
+          "id": "github",
+          "url": "https://github.com/LingYi-Liang/PhantomGladiator/releases/download/v0.40.22/PhantomGladiator-0.40.22-win64.zip"
+        }
+      ],
+      "notes": {
+        "zh": [
+          "沐小葵双阶段随从、随从设置与 Xbox 手柄快捷键",
+          "新增内容",
+          "设置快捷键时可以直接按 Xbox 手柄按钮，或从列表选择。支持单键、LB 或 RB 加另一键，以及两个肩键一起加另一键。魂、单位卡、怪物池、天气和传送地点都沿用各自的绑定和冲突提示。",
+          "右栏保留随从摘要、召回和遣散。通行、不倒下、处决及完整属性表移入「随从设置」。原属性入口可直接打开对应页，切页或刷新状态时保留输入。",
+          "对战调整",
+          "沐小葵可以作为一名双阶段随从召唤。少主和铁玉女王仍能单独召唤。双阶段可选脱战还原、变身后持续、手动切换或固定任一形态。变身血线由助手设置，铁玉女王仍受原有剧情进度保护。",
+          "在随从设置里可以选择主动迎敌、受攻击时反击或和平跟随，调整跟随距离、自动脱困、新仇恨与脱战回血。支持设置默认值、沐小葵角色配置或单个场上随从。沐小葵可在安全的非战斗时刻尝试原生合影动作。",
+          "问题修复",
+          "玉鼎抓住处于阶段锁血的序章左殇或梦华后，按实际受招者判断是否致死。技能的锁定对象变化时，已抓住的角色仍有阶段保护。序章左殇的 4% 血线补救也会等原生抓取结束再解除。",
+          "梦华在红蓝擂台卡在 41% 血线时，如果已经满足原版召唤条件，助手会等手头的动作结束，再请求她召出自己的虚空。后续配对与阶段解锁沿用原版流程。",
+          "切换形态时先核对阵营、生命和杀气比例，再回收旧形态和它的配合单位。受处决、传送或目标变化影响时会暂缓。新形态切换、合影及多人长时间跟随仍待游戏内验证。",
+          "多名沐小葵同时达到变身条件时会轮流切换，轮到之前重新检查血量和战斗状态。多名女王同时倒下时分批回收替身，集中遣散时合并归属检查。",
+          "修复随从待命后目标暂时读不到，或从和平切回主动时可能原地不动的问题。多人交战时减少重复索敌、仇恨和回血查询；替身的诊断记录达到上限后停止额外动作采样。",
+          "随从血条、通行碰撞或状态读取失败时会延迟重试。切换玩家碰撞通道会先恢复原通道；单只随从读回异常时，其余随从可继续更新。",
+          "修复属性读取失败时设置页反复刷新的问题。现在可以手动重新读取；在名单读取期间召唤或遣散，窗口会补上最新名单并保留输入。"
+        ],
+        "en": [
+          "Dual-form Mu Xiaokui, companion settings and Xbox shortcuts",
+          "What's new",
+          "Bind Xbox buttons by pressing them or choosing from the list. Use one button or hold LB, RB, or both with another button. Hun, unit cards, pools, weather and teleport destinations use their existing binding and conflict controls.",
+          "Open Companion settings from the right sidebar for passage, Undying, executions and the full stat form. Recall and dismiss are still in the sidebar. Stat shortcuts open the relevant section and drafts survive status refreshes.",
+          "Combat adjustments",
+          "Summon Mu Xiaokui as one dual-form companion or use either original card. Choose automatic transformation with or without returning after combat, manual switching, or a fixed form. Set the HP threshold yourself. The second form still requires the existing story-progress check.",
+          "Set combat behavior, following distance, automatic rescue, eligibility for new aggro and out-of-combat healing for future summons, Mu Xiaokui, or one live companion. Both forms can try their own photo pose outside combat.",
+          "Fixes",
+          "Yu Ding’s grabs check the fighter actually caught when prologue Zuo Shang or Menghua is protected by a phase HP floor, even if the lock-on target changes. The prologue’s 4% recovery waits for the native grab to end before releasing the floor.",
+          "If Menghua stalls at her 41% HP floor in the arena after meeting the game’s summon requirements, the assistant waits for her current action to finish and requests her own Xu Kong. The game handles the pairing and phase unlock.",
+          "Form changes check allegiance and HP and Sha-Chi ratios before retiring the old body and its helpers. Executions, travel or a target change can defer a switch. Form changes, photo poses and extended group play await in-game verification.",
+          "Mu Xiaokui companions take turns changing form and recheck HP and combat before each change. When several queens fall at once, cleanup is spread out. Dismissing a group checks helper ownership together.",
+          "Companions can resume following when their target is temporarily unreadable and release a mod-owned pause after leaving peaceful mode. Crowds need fewer targeting and healing queries. Stand diagnostics stop sampling poses once their detail limit is reached.",
+          "Missing health bars, denied collision changes and unreadable companion state retry with a delay. Changing the player collision channel restores the original one. One unreadable companion no longer interrupts updates for the others.",
+          "A failed stat read now offers a retry instead of repeatedly refreshing the form. If companions are summoned or dismissed during a pending read, the window fetches the latest roster and keeps your edits."
+        ]
+      },
+      "parts": {
+        "sources": [
+          {
+            "id": "fastly",
+            "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+          },
+          {
+            "id": "gcore",
+            "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+          },
+          {
+            "id": "testingcf",
+            "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+          },
+          {
+            "id": "cdn",
+            "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+          },
+          {
+            "id": "ghfast",
+            "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+          },
+          {
+            "id": "ghproxy",
+            "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+          },
+          {
+            "id": "github",
+            "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+          }
+        ],
+        "files": [
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.000",
+            "size": 2097152,
+            "sha256": "f4c0261fca1971546b0050e00b136b700b7a0a0d35962c331dfffd1e8caecd3e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.001",
+            "size": 2097152,
+            "sha256": "c73deec4b4fb45ba6d82365511a58fe6f01b24aaffcc10b118ee20c7ac7cb01d"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.002",
+            "size": 2097152,
+            "sha256": "019cf2363bb6cbfb7dd580f867fecd8626961a0e48e0a5c5bfe70c0799d11397"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.003",
+            "size": 2097152,
+            "sha256": "6a965ad3e73d88a600f7b72ee823c7e642710ab62d1daf8c74af91456bd62926"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.004",
+            "size": 2097152,
+            "sha256": "9be51d24081cbd1d922cf2be24360ae85f7b32d060306e36148f6b827dcd8053"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.005",
+            "size": 2097152,
+            "sha256": "f355bcdad63e0f4f9de90dd2798c465cd212dab7b7a0bb92342691b429dd0c71"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.006",
+            "size": 2097152,
+            "sha256": "b974d41a473ad2c0654525216f0e8069508849eff08581eb0af544f80d0e8039"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.007",
+            "size": 2097152,
+            "sha256": "3652f83d5d4a0fa61cd590f5e5df0127e461a3d9d38f4b73ddbd201cd01a5cae"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.008",
+            "size": 2097152,
+            "sha256": "4cbb590fc3c99de44d0eb5f57a821cd01b938b607ffaf638b5ae02bf8e916322"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.009",
+            "size": 2097152,
+            "sha256": "e0d0126edc2eb0c9aca1342207cadb71485dcabbe8a2d51ed55034582e1282a5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.010",
+            "size": 2097152,
+            "sha256": "695ec58b15995d701f801555168708acbde99997d74b559658687564c18763a4"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.011",
+            "size": 2097152,
+            "sha256": "50eb470c5ec7ae273ed1cb0338e3decb1d4b0ca47141766c3f6e9fb093fb5bb5"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.012",
+            "size": 2097152,
+            "sha256": "0d8185bca0983cc8bd22201dec42bda10ececfa998500c97c3230870d28d7fbe"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.013",
+            "size": 2097152,
+            "sha256": "e498700578c437b9331e9f454d1563633004aa98cf76cb2ff5438bd3ed0f932f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.014",
+            "size": 2097152,
+            "sha256": "713a264787c3df7212d5cc851cdda2a68c2f3779177d218db7af9b15db8af6f6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.015",
+            "size": 2097152,
+            "sha256": "9358ca8f1818d1b00c92038d11ab6166a54e49608177ffcf89beb351a0ff5d3e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.016",
+            "size": 2097152,
+            "sha256": "210f4c53f5f80064a4450e243cee04464ba15712164b9f76d1b4e61fc3a55781"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.017",
+            "size": 2097152,
+            "sha256": "5ad9021a4272cf5c953216825a82f4e84f39708a6a5a1752a20601c78b68d517"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.018",
+            "size": 2097152,
+            "sha256": "7667f1460a68d4f73485226ebb93beadd61b89229f28ef6f4df4a3e21dd16113"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.019",
+            "size": 2097152,
+            "sha256": "d073c6f145664edc1993861079ca84d972ae57d7f745d8dad738d8e9baf0a041"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.020",
+            "size": 2097152,
+            "sha256": "d7c90fd8b6903b0c3fed2d800dbb918cade2e2cbb25134283c1eaab6670194c9"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.021",
+            "size": 2097152,
+            "sha256": "fe239490a74cd0ec9bac15969e29851cb46701d0a7f397ec353e8c661176645f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.022",
+            "size": 2097152,
+            "sha256": "40dee9e0551e0259e04550eb7156f28ac6bedb80523f23befe9a0134a3643f45"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.023",
+            "size": 2097152,
+            "sha256": "63b2693cf0fb3f18fc9ec1628278c2df5f5b041ec162432306b4854ef2f08150"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.024",
+            "size": 2097152,
+            "sha256": "739c0105fb4d84bde1213d2729d200afaa91f5192cca2cb0ea700c5fe22f56ed"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.025",
+            "size": 2097152,
+            "sha256": "0a9a5116da7500b47d075966d6c90d0b666550de6bb0aa4f1713220fd40ee081"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.026",
+            "size": 2097152,
+            "sha256": "96051b3ec01e4b3e645a4d0f1ddf7c408c2bc389dff9517962ca5627bec22606"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.027",
+            "size": 2097152,
+            "sha256": "a425b132b312fcb6d2f9f7a5703185abdd7dde0c2e0fbace649f9391c031f35e"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.028",
+            "size": 2097152,
+            "sha256": "de617153ebffa517a2c841ba2d1921342aa96fec44b3c221c38b0810b2f15fef"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.029",
+            "size": 2097152,
+            "sha256": "bd75e2646f7482026de87288593fd0a5c9ef3bae5a1903a755fa053012410836"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.030",
+            "size": 2097152,
+            "sha256": "5142edc2294dc5cb8fec2cd6c091b53c4b1eac26ac31aa93ab8232f0300e54c6"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.031",
+            "size": 2097152,
+            "sha256": "bc902c59e2049bd25102622f335921bc7c872918d9b0ebbab2d5d496cbb71679"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.032",
+            "size": 2097152,
+            "sha256": "5e75a2b1aedac2fdfee9fea63f6b98f2fb12d869c728b913d8f31700c3f8e445"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.033",
+            "size": 2097152,
+            "sha256": "da5fc86c5de80a44c2f02b0d44040f5599e7ab95b796ef9a4a3b50942d2eb47a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.034",
+            "size": 2097152,
+            "sha256": "0c2000654364a6360e4013941deefb88c5fdd456d9b838f206067e8039fc1faa"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.035",
+            "size": 2097152,
+            "sha256": "87d56c7a36e7c6af218b5ac15e646722e467c8017ab25c9a23a64a7f869882cc"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.036",
+            "size": 2097152,
+            "sha256": "cfa00b2b0bf9f96bcde97881bb7d330b660f9ab72c39f14deaefe44fd43bc710"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.037",
+            "size": 2097152,
+            "sha256": "c25f00af5f02d4a7a219d23f076db36c5ac568a61c61b27c0f8809a8c19dbd51"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.038",
+            "size": 2097152,
+            "sha256": "c8dc0a176c54ce49590567600e0afe0f43673b3d7912057d5fcdb649ae995928"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.039",
+            "size": 2097152,
+            "sha256": "af5be499448229bd2b7324006b9e7806f71a0d0c682865aeb1214d6db1179ac1"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.040",
+            "size": 2097152,
+            "sha256": "bfa8b7960976645d4e1440feb5ae05d9a21381ebcd39ccf7f46c2f1f2ca669ab"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.041",
+            "size": 2097152,
+            "sha256": "f5c4d9bdb794d5027fabd71ff04a3d321ee85730d0db3ca16acbf3c30e5a2263"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.042",
+            "size": 2097152,
+            "sha256": "761a8508e617009fea276aec5a8088ddf36c9d95f12c1fa28162b09ace143f2c"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.043",
+            "size": 2097152,
+            "sha256": "a83b185df8b6a9a8e66ab7245b7d8565951b2326c45449e35f0fde7a9e14b9e7"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.044",
+            "size": 2097152,
+            "sha256": "33d9db6aae4e50ebfb31d53bb4776780dba32f96f1f4807e92542727f03ce73f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.045",
+            "size": 2097152,
+            "sha256": "05da9cb820f835c82d2ed3b19038a493466a092affdb849e259d21c51fe0d132"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.046",
+            "size": 2097152,
+            "sha256": "d0090924bdf9049574f472040f7ee4288411d059f9305f478f8c4c13eeac8ec3"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.047",
+            "size": 2097152,
+            "sha256": "c0dc92a0d40924f2c9f633cb216704b5e794794f10f5ab7908ebee00503d0c45"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.048",
+            "size": 2097152,
+            "sha256": "a84cd582ede3102aa686d90ab4fb156f0b4895fb570f02faf4fbb67b29be76bc"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.049",
+            "size": 2097152,
+            "sha256": "0b8c63b1190f5aab3cc437d5d8493ce9b062beec336ab28e10d8a2b11236552a"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.050",
+            "size": 2097152,
+            "sha256": "1f01c6ee094f8fc0cbd4bf1068f5c7dfded6001d9f4e3ffddd080a9da4e8950f"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.051",
+            "size": 2097152,
+            "sha256": "e35d030af253e68f811ec16a7b2e56c5aed73e71732c993499b516becb3eea8b"
+          },
+          {
+            "name": "PhantomGladiator-0.40.22-win64.zip.052",
+            "size": 175225,
+            "sha256": "50d4d8eb570193c5884c866bc5996f1af2143376df73502a6821fe9874050012"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.40.21",
       "modBuild": "v0.40.21",
       "date": "2026-11-24T04:35:03+08:00",
