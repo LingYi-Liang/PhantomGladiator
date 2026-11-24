@@ -2,8 +2,8 @@
   "version": "0.40.22",
   "modBuild": "v0.40.22",
   "date": "2026-11-25T05:05:06+08:00",
-  "size": 109227129,
-  "sha256": "d232d667f342a9d1425c2886796ba8f6776a6866fec4fd1440635caff7f04505",
+  "size": 108635690,
+  "sha256": "3bfe2caf9305167d672b033b5ee7d5e128c45bc23fca9c5e26348af93afd5bdc",
   "notes": {
     "zh": [
       "沐小葵双阶段随从、随从设置与 Xbox 手柄快捷键",
@@ -58,298 +58,293 @@
     "sources": [
       {
         "id": "fastly",
-        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+        "url": "https://fastly.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22-notes1/"
       },
       {
         "id": "gcore",
-        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+        "url": "https://gcore.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22-notes1/"
       },
       {
         "id": "testingcf",
-        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+        "url": "https://testingcf.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22-notes1/"
       },
       {
         "id": "cdn",
-        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22/"
+        "url": "https://cdn.jsdelivr.net/gh/LingYi-Liang/PhantomGladiator@dl-0.40.22-notes1/"
       },
       {
         "id": "ghfast",
-        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+        "url": "https://ghfast.top/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22-notes1/"
       },
       {
         "id": "ghproxy",
-        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+        "url": "https://gh-proxy.com/https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22-notes1/"
       },
       {
         "id": "github",
-        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22/"
+        "url": "https://raw.githubusercontent.com/LingYi-Liang/PhantomGladiator/dl-0.40.22-notes1/"
       }
     ],
     "files": [
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.000",
         "size": 2097152,
-        "sha256": "f4c0261fca1971546b0050e00b136b700b7a0a0d35962c331dfffd1e8caecd3e"
+        "sha256": "3e2405464b4ff13683959c394e432f567993ebfb7f8e00f467835c16da1081b9"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.001",
         "size": 2097152,
-        "sha256": "c73deec4b4fb45ba6d82365511a58fe6f01b24aaffcc10b118ee20c7ac7cb01d"
+        "sha256": "5992753a2070cd8c0604d942d083ac593f735b356be62f439ea0fc453c076b3c"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.002",
         "size": 2097152,
-        "sha256": "019cf2363bb6cbfb7dd580f867fecd8626961a0e48e0a5c5bfe70c0799d11397"
+        "sha256": "70ddccc2d28b9781f43baa36cb9fb0c7a654fb751d3da402b063ab40a7fe5957"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.003",
         "size": 2097152,
-        "sha256": "6a965ad3e73d88a600f7b72ee823c7e642710ab62d1daf8c74af91456bd62926"
+        "sha256": "1e55a4356c616ef4531bb05349115e8f574274e00a7473a95521385b65c22e48"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.004",
         "size": 2097152,
-        "sha256": "9be51d24081cbd1d922cf2be24360ae85f7b32d060306e36148f6b827dcd8053"
+        "sha256": "eec7bacec437c05fe49befba862b00d233480c2d45b2adea47eb2e5716bc2684"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.005",
         "size": 2097152,
-        "sha256": "f355bcdad63e0f4f9de90dd2798c465cd212dab7b7a0bb92342691b429dd0c71"
+        "sha256": "3a143045134e19cffabdd3615296e1761460fbff8651b3a2425dd6b45336d7b7"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.006",
         "size": 2097152,
-        "sha256": "b974d41a473ad2c0654525216f0e8069508849eff08581eb0af544f80d0e8039"
+        "sha256": "beee95da90e28a32ef820c7183bde375660df73c89f06c069611ae66fe92d487"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.007",
         "size": 2097152,
-        "sha256": "3652f83d5d4a0fa61cd590f5e5df0127e461a3d9d38f4b73ddbd201cd01a5cae"
+        "sha256": "6cc8ea3c873ee2ff5ec1717598a61e76985f3d2fdbb5cfcea1ffae51a556bdbc"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.008",
         "size": 2097152,
-        "sha256": "4cbb590fc3c99de44d0eb5f57a821cd01b938b607ffaf638b5ae02bf8e916322"
+        "sha256": "59ac6e33c54805ceefd3a69d02111a227bba2531c18a2bb060ef5257b048eeee"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.009",
         "size": 2097152,
-        "sha256": "e0d0126edc2eb0c9aca1342207cadb71485dcabbe8a2d51ed55034582e1282a5"
+        "sha256": "44dddf628a490a789dc7e0b0bad39d7a5c9163b05dfe20f8bd5fd47cf66b222d"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.010",
         "size": 2097152,
-        "sha256": "695ec58b15995d701f801555168708acbde99997d74b559658687564c18763a4"
+        "sha256": "fd8f5f80f993052e40c715efb2e1137376ba92e3d40ef605b9bf93952b77eaf5"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.011",
         "size": 2097152,
-        "sha256": "50eb470c5ec7ae273ed1cb0338e3decb1d4b0ca47141766c3f6e9fb093fb5bb5"
+        "sha256": "66219103ee2068300452aa362015d36a327fe9928e3bad0f5f0aba5453a62514"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.012",
         "size": 2097152,
-        "sha256": "0d8185bca0983cc8bd22201dec42bda10ececfa998500c97c3230870d28d7fbe"
+        "sha256": "b41d7692525d150db9e10b020eb0eb3beafb12673559b24401e8cf135fa7fcf2"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.013",
         "size": 2097152,
-        "sha256": "e498700578c437b9331e9f454d1563633004aa98cf76cb2ff5438bd3ed0f932f"
+        "sha256": "23ebfd36297b8900396f7791a3341ff8f6c9e781fc2bbd244482fdac4cb9410a"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.014",
         "size": 2097152,
-        "sha256": "713a264787c3df7212d5cc851cdda2a68c2f3779177d218db7af9b15db8af6f6"
+        "sha256": "7bc66ba4709ad5297859c59c60d7dd4d87e3686cca618fbed87dc89c3ca3dc6e"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.015",
         "size": 2097152,
-        "sha256": "9358ca8f1818d1b00c92038d11ab6166a54e49608177ffcf89beb351a0ff5d3e"
+        "sha256": "6eb5f57cbef37229caa2aa84fc76ef6dd743b7b88c6a4b928df0d6e401e48cac"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.016",
         "size": 2097152,
-        "sha256": "210f4c53f5f80064a4450e243cee04464ba15712164b9f76d1b4e61fc3a55781"
+        "sha256": "2d79a0e37d3012337d0319b004344329014a3a766bcf1ab62abfb261b6431e1b"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.017",
         "size": 2097152,
-        "sha256": "5ad9021a4272cf5c953216825a82f4e84f39708a6a5a1752a20601c78b68d517"
+        "sha256": "1a27296f0b4df4b30bd4a50902640e6e985bf6072b0259c374f9a51f7a966f49"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.018",
         "size": 2097152,
-        "sha256": "7667f1460a68d4f73485226ebb93beadd61b89229f28ef6f4df4a3e21dd16113"
+        "sha256": "99bd61989123d827220ccf1b5c3ff68ef5eace2167bbe79f06226cf545d35895"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.019",
         "size": 2097152,
-        "sha256": "d073c6f145664edc1993861079ca84d972ae57d7f745d8dad738d8e9baf0a041"
+        "sha256": "adb0008781dc4a8a009cf47db4f458328d77a44728490dd4c48eef5fc1718648"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.020",
         "size": 2097152,
-        "sha256": "d7c90fd8b6903b0c3fed2d800dbb918cade2e2cbb25134283c1eaab6670194c9"
+        "sha256": "4fa909c853927e72c2778c6c7ed2127c92f5047c3c988bdd3813e8a242d27dcf"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.021",
         "size": 2097152,
-        "sha256": "fe239490a74cd0ec9bac15969e29851cb46701d0a7f397ec353e8c661176645f"
+        "sha256": "62226965a9df7d7daf4ea92c9d265881309f0d78c85448192275c838d4e1896d"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.022",
         "size": 2097152,
-        "sha256": "40dee9e0551e0259e04550eb7156f28ac6bedb80523f23befe9a0134a3643f45"
+        "sha256": "122144bf5aa85f66c49aa7b39d76154eea46a84e13693891e08e97082434c720"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.023",
         "size": 2097152,
-        "sha256": "63b2693cf0fb3f18fc9ec1628278c2df5f5b041ec162432306b4854ef2f08150"
+        "sha256": "99ce5a729e996c2addb9bed3778022a9e128e9f78b8d16277fd2ef8d2274d64b"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.024",
         "size": 2097152,
-        "sha256": "739c0105fb4d84bde1213d2729d200afaa91f5192cca2cb0ea700c5fe22f56ed"
+        "sha256": "8858af9a7487fb420aa98a79220f9592bd241c9abdd53d20525184e86c3b2dbc"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.025",
         "size": 2097152,
-        "sha256": "0a9a5116da7500b47d075966d6c90d0b666550de6bb0aa4f1713220fd40ee081"
+        "sha256": "42a4640efb6064dd84200ad13a83030b0c8f428781bcab0051d2bc318af7186d"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.026",
         "size": 2097152,
-        "sha256": "96051b3ec01e4b3e645a4d0f1ddf7c408c2bc389dff9517962ca5627bec22606"
+        "sha256": "55cd5e12fd0112ecf4f345985868821b1eabfa799ec9dbfdc8ab9a156b0946e5"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.027",
         "size": 2097152,
-        "sha256": "a425b132b312fcb6d2f9f7a5703185abdd7dde0c2e0fbace649f9391c031f35e"
+        "sha256": "80ea763c464569d0b1af7e3a94379c001211ba0c3dff8167fc3525e0848388ec"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.028",
         "size": 2097152,
-        "sha256": "de617153ebffa517a2c841ba2d1921342aa96fec44b3c221c38b0810b2f15fef"
+        "sha256": "4cddf21e8a4f533ad1b7cf15275477dfa96ef54d8f28d6cd85e3e4e6e6614ff3"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.029",
         "size": 2097152,
-        "sha256": "bd75e2646f7482026de87288593fd0a5c9ef3bae5a1903a755fa053012410836"
+        "sha256": "b707662b69e9b68da0a6772ab69945827f951ac372db940906235f797eac663a"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.030",
         "size": 2097152,
-        "sha256": "5142edc2294dc5cb8fec2cd6c091b53c4b1eac26ac31aa93ab8232f0300e54c6"
+        "sha256": "c9569821fb52aab952621a7314f02b9c9b5bc5f925373af8a62e0c93488819ee"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.031",
         "size": 2097152,
-        "sha256": "bc902c59e2049bd25102622f335921bc7c872918d9b0ebbab2d5d496cbb71679"
+        "sha256": "8821f11eae69547c41ac41c5cdc5c0819da6eec745a3188ea65b023d4f626b31"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.032",
         "size": 2097152,
-        "sha256": "5e75a2b1aedac2fdfee9fea63f6b98f2fb12d869c728b913d8f31700c3f8e445"
+        "sha256": "8a52eacf8fe49a7c891eed420c6c64599a7848f39a4ea650d7788bb57d9af0c3"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.033",
         "size": 2097152,
-        "sha256": "da5fc86c5de80a44c2f02b0d44040f5599e7ab95b796ef9a4a3b50942d2eb47a"
+        "sha256": "7e0e4277ee59384bb95442c48759c0e313b6a2627374b09b55693dbd93bc7815"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.034",
         "size": 2097152,
-        "sha256": "0c2000654364a6360e4013941deefb88c5fdd456d9b838f206067e8039fc1faa"
+        "sha256": "c478a4258563a406bdacd7fbd70ce96133a055af4fb6fccbe57ccb2c3847298f"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.035",
         "size": 2097152,
-        "sha256": "87d56c7a36e7c6af218b5ac15e646722e467c8017ab25c9a23a64a7f869882cc"
+        "sha256": "b446d675faf24ff7949e366b8dda3288fa6fd73010f4665139aeeb2313911319"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.036",
         "size": 2097152,
-        "sha256": "cfa00b2b0bf9f96bcde97881bb7d330b660f9ab72c39f14deaefe44fd43bc710"
+        "sha256": "ecac2874c136415953d431f7117f0fa1e3a3763b977654774f887f0c9a24a4da"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.037",
         "size": 2097152,
-        "sha256": "c25f00af5f02d4a7a219d23f076db36c5ac568a61c61b27c0f8809a8c19dbd51"
+        "sha256": "c1112c8559f230b66fa3f85f140a11ea34af5f4d5262bb8d80a42ee59fbbe606"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.038",
         "size": 2097152,
-        "sha256": "c8dc0a176c54ce49590567600e0afe0f43673b3d7912057d5fcdb649ae995928"
+        "sha256": "2c1d093fec9ef174f90d3e1b1ce7c66547411efbb57f99f0f2ad1ebf4f4f26a7"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.039",
         "size": 2097152,
-        "sha256": "af5be499448229bd2b7324006b9e7806f71a0d0c682865aeb1214d6db1179ac1"
+        "sha256": "6f3d8b8f21c984ce8b6382bacb637b76a2d17a7ea04717c42f2d7ef447b99f7a"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.040",
         "size": 2097152,
-        "sha256": "bfa8b7960976645d4e1440feb5ae05d9a21381ebcd39ccf7f46c2f1f2ca669ab"
+        "sha256": "f944afedf75577220fe61f67e20b667f40ca3d668ecada019dfc28a18bc4f68e"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.041",
         "size": 2097152,
-        "sha256": "f5c4d9bdb794d5027fabd71ff04a3d321ee85730d0db3ca16acbf3c30e5a2263"
+        "sha256": "79c8699caaada7918bb4add8add1b09de93c13540c3b4e15fcfb0f4b63600380"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.042",
         "size": 2097152,
-        "sha256": "761a8508e617009fea276aec5a8088ddf36c9d95f12c1fa28162b09ace143f2c"
+        "sha256": "6ca5d373415fd21bb6d8f643f4a61e023e9bf91df8e77f6434d062cb5ec6616a"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.043",
         "size": 2097152,
-        "sha256": "a83b185df8b6a9a8e66ab7245b7d8565951b2326c45449e35f0fde7a9e14b9e7"
+        "sha256": "1d74a4281daeece0bd741fa9e3d40c45d01f6d38b40423e5838f31fe183df140"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.044",
         "size": 2097152,
-        "sha256": "33d9db6aae4e50ebfb31d53bb4776780dba32f96f1f4807e92542727f03ce73f"
+        "sha256": "68c403e563ce6894182e80c5910dc4fbbdd9fb95c3617d692ae4389c8cd98e8b"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.045",
         "size": 2097152,
-        "sha256": "05da9cb820f835c82d2ed3b19038a493466a092affdb849e259d21c51fe0d132"
+        "sha256": "764ba56035c669cba10ace6fb2551ccd34b79d1b272773a2284072fb3c45d2cf"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.046",
         "size": 2097152,
-        "sha256": "d0090924bdf9049574f472040f7ee4288411d059f9305f478f8c4c13eeac8ec3"
+        "sha256": "1ea98707d68b250afd50fe62e205c820ddd8cd790657b1e36d3c4e6210629ca1"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.047",
         "size": 2097152,
-        "sha256": "c0dc92a0d40924f2c9f633cb216704b5e794794f10f5ab7908ebee00503d0c45"
+        "sha256": "25c02951cce70e5b23282352e476b8d2ab6ae48c683485b2a0ab9b857cc15104"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.048",
         "size": 2097152,
-        "sha256": "a84cd582ede3102aa686d90ab4fb156f0b4895fb570f02faf4fbb67b29be76bc"
+        "sha256": "93600ddcceba863d6a688d9ddb24285d4f4b128626600fb7ee8b3a3cdfecf7d2"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.049",
         "size": 2097152,
-        "sha256": "0b8c63b1190f5aab3cc437d5d8493ce9b062beec336ab28e10d8a2b11236552a"
+        "sha256": "9d48f49758198a96f47e327bdbf51bfc95283c67900a43102fe07dba27621ff6"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.050",
         "size": 2097152,
-        "sha256": "1f01c6ee094f8fc0cbd4bf1068f5c7dfded6001d9f4e3ffddd080a9da4e8950f"
+        "sha256": "83d80817f5ab1b9811d2b830d9d9ecd9af5e21b128e864939d2ea198d054c8d6"
       },
       {
         "name": "PhantomGladiator-0.40.22-win64.zip.051",
-        "size": 2097152,
-        "sha256": "e35d030af253e68f811ec16a7b2e56c5aed73e71732c993499b516becb3eea8b"
-      },
-      {
-        "name": "PhantomGladiator-0.40.22-win64.zip.052",
-        "size": 175225,
-        "sha256": "50d4d8eb570193c5884c866bc5996f1af2143376df73502a6821fe9874050012"
+        "size": 1680938,
+        "sha256": "f9b42106620f0aa7babda9caf5ddf0ad8955188dbb5a3d86e94727bb72c1c1a2"
       }
     ]
   }
