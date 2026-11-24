@@ -551,8 +551,8 @@ window.PG_PREVIEW_NOTES = {
       [
         {
           "since": 3,
-          "zh": "在随从设置里可以选择主动迎敌、受攻击时反击或和平跟随，调整跟随距离、自动脱困、新仇恨与脱战回血。支持设置默认值、沐小葵角色配置或单个场上随从。沐小葵可在安全的非战斗时刻尝试原生合影动作。",
-          "en": "Set combat behavior, following distance, automatic rescue, eligibility for new aggro and out-of-combat healing for future summons, Mu Xiaokui, or one live companion. Both forms can try their own photo pose outside combat.",
+          "zh": "在随从设置里可以选择主动迎敌、受攻击时反击或和平跟随，调整跟随距离、自动脱困、新仇恨与脱战回血。支持设置默认值、沐小葵角色配置或单个场上随从。~~沐小葵可在安全的非战斗时刻尝试原生合影动作。~~ 本版未加入合影功能。",
+          "en": "Set combat behavior, following distance, automatic rescue, eligibility for new aggro and out-of-combat healing for future summons, Mu Xiaokui, or one live companion. ~~Both forms can try their own photo pose outside combat.~~ Photo mode is not included in this release.",
           "legacy": {
             "zh": "新增跟随、交战、脱战回血和单体指令。",
             "en": "Companion behavior, healing and individual commands."
@@ -586,11 +586,11 @@ window.PG_PREVIEW_NOTES = {
       [
         {
           "since": 3,
-          "zh": "切换形态时先核对阵营、生命和杀气比例，再回收旧形态和它的配合单位。受处决、传送或目标变化影响时会暂缓。新形态切换、合影及多人长时间跟随仍待游戏内验证。",
-          "en": "Form changes check allegiance and HP and Sha-Chi ratios before retiring the old body and its helpers. Executions, travel or a target change can defer a switch. Form changes, photo poses and extended group play await in-game verification.",
+          "zh": "切换形态时先核对阵营、生命和杀气比例，再回收旧形态和它的配合单位。受处决、传送或目标变化影响时会暂缓。新形态切换及多人长时间跟随仍待游戏内验证。",
+          "en": "Form changes check allegiance and HP and Sha-Chi ratios before retiring the old body and its helpers. Executions, travel or a target change can defer a switch. Form changes and extended group play await in-game verification.",
           "legacy": {
-            "zh": "形态切换、合影及长时间跟随待实机验证。",
-            "en": "Form changes, photo poses and long sessions await in-game tests."
+            "zh": "形态切换及长时间跟随待实机验证。",
+            "en": "Form changes and long sessions await in-game tests."
           }
         }
       ],

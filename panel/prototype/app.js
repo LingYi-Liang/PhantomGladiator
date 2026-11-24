@@ -3084,7 +3084,7 @@
   }
   function previewNotesBody(announcement) {
     const body = announcement.groups.map(group => `<section class="preview-group"><h4>${esc(t("update.group." + group.key))}</h4>
-      <ul>${group.notes.map(note => `<li>${esc(note)}</li>`).join("")}</ul></section>`).join("");
+      <ul>${group.notes.map(note => `<li>${noteHTML(note)}</li>`).join("")}</ul></section>`).join("");
     if (!announcement.details.length) return body;
     const detailList = announcement.details.map(row => {
       const link = Number.isSafeInteger(row.issue) && row.issue > 0
