@@ -240,23 +240,24 @@ function Match.new(options)
     -- Maxima, then the other fields, then the minimums, then current values. Each field is written, read back
     -- (field and native getter), and rolled back on its own if the game does not take it; a rolled-back
     -- maximum restores its current value as well.
-    local function applyCustom(actor,unitPath,summon)
+    local function applyCustom(actor,unitPath,summon,values)
+        values=values or self.custom
         local quiet=summon and self.summons>SUMMON_LINES
         local targets,ordered,linked={},{},{}
         -- A custom value moves its level-1 value by the same ratio, so the unit takes and deals hits to match.
         for _,field in ipairs(customFields)do
             local lv1=levelOne[field]
-            if lv1 and self.custom[field]~=nil and self.custom[lv1]==nil then
+            if lv1 and values[field]~=nil and values[lv1]==nil then
                 local own,base=adapter:read(actor,field),adapter:read(actor,lv1)
                 if own and base and own.current>0 and Attributes.finite(base.current) then
-                    targets[lv1]=base.current*self.custom[field]/own.current
+                    targets[lv1]=base.current*values[field]/own.current
                     linked[#linked+1]=lv1..' '..string.format('%.6g',base.current)..'→'..string.format('%.6g',targets[lv1])
                 end
             end
         end
         for step=1,5 do
             for _,field in ipairs(customFields)do
-                if self.custom[field]~=nil and phase(field)==step then targets[field]=self.custom[field] end
+                if values[field]~=nil and phase(field)==step then targets[field]=values[field] end
                 if targets[field]~=nil and phase(field)==step then ordered[#ordered+1]=field end
             end
         end
@@ -329,6 +330,15 @@ function Match.new(options)
             ..' rejected='..#rejected..' 回滚读回='..tostring(restored)..' '..describe(self.custom)
             ..(#linked>0 and (' 联动1级值：'..table.concat(linked,'、')) or ''))
         return {ok=true,applied=true,message=self.message,rejected=self.rejected}
+    end
+    function self:captureCustom()
+        local values={}
+        if self.mode=='custom' then for field,value in pairs(self.custom)do values[field]=value end end
+        return values
+    end
+    function self:applyCaptured(actor,path,values)
+        if not next(values) then return {ok=true} end
+        return applyCustom(actor,path,false,values)
     end
     function self:onSpawn(actor,unitPath)
         if self.mode=='game' then return {ok=true,message='按游戏数值'} end

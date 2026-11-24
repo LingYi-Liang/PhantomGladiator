@@ -5,6 +5,7 @@ local slots,queue,unitCalls,functionCalls={},{},{},{};local inGame=false
 local function slot(vk,mods)local mask=0;for _,mod in ipairs(mods or {})do mask=mask+mod end;return vk..':'..mask end
 local keyTable={F6=117,F7=118,Q=81};local modifiers={CONTROL=1,ALT=2,SHIFT=4}
 local router=Router.new({keys=keyTable,modifiers=modifiers,
+    registerXbox=function(vk,mask,fn)slots[Router.slot(vk,mask)]=fn;return true end,
     occupied=function(vk,mods)return slots[slot(vk,mods)]~=nil end,
     register=function(vk,mods,fn)if type(mods)=='function'then fn=mods;mods={}end;slots[slot(vk,mods)]=fn end})
 local functions
@@ -34,3 +35,13 @@ slots['117:0']();assert(#queue==0,'the old unmodified chord is inert')
 assert(units:configure(a,81,1).ok and units:configure(b,81,2).ok,'Ctrl+Q and Alt+Q must both save')
 slots['81:1']();slots['81:2']();drain();assert(unitCalls[3]==a and unitCalls[4]==b and #functionCalls==2)
 print('shared_key_router: PASS (exact-chord ownership, inert old chords, independent Ctrl and Alt)')
+assert(units:configure(a,195,1,'companion',2).ok)
+local pad=proposal();pad.hun_companion='VK_195_MOD_1'
+assert(not functions:configure(pad).ok)
+pad.hun_companion='VK_195_MOD_2';assert(functions:configure(pad).ok)
+functions:start();units:start()
+slots['195:1']();slots['195:2']();drain()
+assert(unitCalls[#unitCalls]==a and functionCalls[#functionCalls]=='hun_companion')
+assert(units.entries[a].team=='companion' and units.entries[a].count==2)
+assert(not units:configure(b,195,4).ok and not units:configure(b,199,1).ok)
+assert(units:configure(a,0,0).ok);slots['195:1']();assert(#queue==0)

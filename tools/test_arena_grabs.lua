@@ -255,6 +255,16 @@ test('Yu Ding chooses the native nonlethal branch only against living protected 
             target=player;out.value=true;callback(ability,out);assert(out.value,'real player remains native')
             target=h.blue;floor=1;callback(ability,out);assert(out.value,'the ordinary final floor is not a phase lock')
             floor=spec[4];inThread=false;callback(ability,out);assert(out.value);inThread=true
+            local info=ability['Execution Info']
+            info.IsTarget=false;info.ExecutionHandle={Handle=17};info.ExecutedHandle={Handle=23}
+            target=nil;callback(ability,out)
+            assert(out.value==false,'the committed receiver still has phase protection after the lock socket is lost')
+            out.value=true;target=player;callback(ability,out)
+            assert(out.value==false,'the active native grab pair wins over a retargeted lock socket')
+            out.value=true;info.ExecutedHandle.Handle=-1;callback(ability,out)
+            assert(out.value,'an incomplete grab record cannot overrule the lock socket')
+            out.value=true;info.ExecutedHandle.Handle=23;info.Target=player;target=h.blue;callback(ability,out)
+            assert(out.value,'never change a native grab whose actual receiver is the player')
         end
         local victim=h:object('receiver',{bIsActive=true,GetAvatarActorFromActorInfo=function()return h.blue end,
             ['Execution Info']={Executor=h.red,Target=h.blue}})

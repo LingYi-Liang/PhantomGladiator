@@ -376,7 +376,7 @@ function Exec.new(options)
             local other=member.actor
             local against
             if team then against=(member.team=='blue' or member.team=='red') and member.team~=team
-            else against=member.team=='companion' end
+            else against=member.team=='companion' and (not options.companionCanAct or options.companionCanAct(other)) end
             if against and only and not only(other) then against=false end
             if against and not member.reserve and not member.aid and U.valid(other) and not phaseBusy(other)
                 and not (options.onPole and options.onPole(other)) then
@@ -1106,6 +1106,7 @@ local function closeOneGrab(pose,why,restore)
         end
         unit.prologueSince=unit.prologueSince or t
         if t-unit.prologueSince<STUCK_SECONDS then return end
+        if options.nativeExecution and options.nativeExecution(actor)~=false then return end
         unit.prologueSince=t
         local effect=object(PROLOGUE_FINAL_LOCK)
         local asc=ascOf(actor)
@@ -1817,7 +1818,7 @@ local function closeOneGrab(pose,why,restore)
             if key then skip[key]=true end
         end
         for _,member in ipairs(members)do
-            if member.team=='companion' and not member.reserve then
+            if member.team=='companion' and not member.reserve and (not options.companionCanAct or options.companionCanAct(member.actor)) then
                 local list=U.field(U.field(member.actor,'BP_PBZHatredManagerComponent'),'HatredList')
                 for _,enemy in ipairs(U.array(list) or {})do
                     local key=U.key(enemy)

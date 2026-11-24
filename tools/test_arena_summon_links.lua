@@ -141,6 +141,12 @@ do
     local x,y=match(fight,sameSide)[1],match(sameSide,fight)[1]
     assert(x and y and x.opposing and y.opposing and x.evidence==y.evidence,"different native modes that agree on the side remain usable")
 end
+do
+    local partial=Links.new({getWorld=function()return world end,findAll=function()return {} end,
+        getNPCs=function()return {own},false end})
+    local matches,stats=partial:scan({{actor=root}})
+    assert(#matches==1 and stats.errors>0,'a partial native sweep can prove a child exists but cannot prove the roster is complete')
+end
 root.alive=false;enemy.alive=false
 assert(#scanner:scan({{actor=root},{actor=enemy}})==0,'invalid owners must not be dereferenced or used to claim map actors')
 print('arena_summon_links: PASS (native list, false pending flag, exact owner, conflicts, world boundary, duplicate and invalid exclusions, summon combat side)')

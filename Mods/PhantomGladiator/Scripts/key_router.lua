@@ -1,6 +1,8 @@
 -- One native callback per chord, shared by all Mod bindings.
 -- Unassigned/retired callbacks are inert; no undocumented unregister API is used.
 local Router={}
+local Xbox=require('xbox_keys')
+Router.isXbox=Xbox.button
 local names={[8]='Backspace',[9]='Tab',[13]='Enter',[19]='Pause',[20]='CapsLock',[32]='Space',
     [33]='PageUp',[34]='PageDown',[35]='End',[36]='Home',[37]='Left',[38]='Up',[39]='Right',[40]='Down',
     [45]='Insert',[46]='Delete',[106]='Num*',[107]='Num+',[109]='Num-',[110]='Num.',[111]='Num/',
@@ -8,11 +10,13 @@ local names={[8]='Backspace',[9]='Tab',[13]='Enter',[19]='Pause',[20]='CapsLock'
     [192]='`',[219]='[',[220]='\\',[221]=']',[222]="'"}
 local function integer(v,min,max)return type(v)=='number' and v%1==0 and v>=min and v<=max end
 function Router.valid(vk,mask)
+    if Xbox.button(vk) then return Xbox.valid(vk,mask) end
     return integer(vk,0,255) and integer(mask,0,7) and (vk==0 or names[vk]~=nil
         or (vk>=48 and vk<=57) or (vk>=65 and vk<=90) or (vk>=96 and vk<=135))
 end
 function Router.slot(vk,mask)return vk..':'..mask end
 function Router.label(vk,mask)
+    if Xbox.button(vk) then return Xbox.label(vk,mask) end
     if vk==0 then return '未绑定' end
     local base=names[vk] or (vk>=65 and vk<=90 and string.char(vk)) or (vk>=48 and vk<=57 and string.char(vk))
         or (vk>=96 and vk<=105 and 'Num'..(vk-96)) or (vk>=112 and vk<=135 and 'F'..(vk-111)) or ('VK'..vk)
@@ -49,6 +53,7 @@ end
 function Router.new(options)
     options=options or {}
     local self={installed={},alive=true,dispatch=nil}
+    self.xboxSupported=type(options.registerXbox)=='function'
     local keys=options.keys or Key or {};local mods=options.modifiers or ModifierKey or {}
     local register=options.register or RegisterKeyBind;local occupied=options.occupied or IsKeyBindRegistered
     local supported={};for _,vk in pairs(keys)do if integer(vk,1,255)then supported[vk]=true end end
@@ -68,6 +73,13 @@ function Router.new(options)
     end
     function self:ensure(vk,mask)
         if not Router.valid(vk,mask) or vk==0 then return false,'不支持这个按键' end
+        if Xbox.button(vk) then
+            local slot=Router.slot(vk,mask)
+            if self.installed[slot] then return true end
+            local callback=function()if self.alive and self.dispatch then self.dispatch(vk,mask)end end
+            if not options.registerXbox or not options.registerXbox(vk,mask,callback) then return false,'Xbox 按键未注册' end
+            self.installed[slot]=callback;return true
+        end
         local blocked=Router.reserved(vk,mask)
         if blocked then return false,Router.label(vk,mask)..' 已被「'..blocked..'」占用' end
         if not supported[vk] then return false,'当前UE4SS未提供 '..Router.label(vk,mask) end

@@ -171,4 +171,10 @@ test('a skill lock may fall back to the enemy of a moment ago, checked again, ne
     h.reader:sync({});assert(h.reader:lastEnemy(h.actor)==nil)
     h.reader:sync(h.members);assert(h.reader:lastEnemy(h.actor)==nil,'a companion that left takes its memory with it')
 end)
+test('reserved stands never become a target and the current lock can be checked without rewriting it',function()
+    local h=fixture();h.members[2].stand=true;h.members[2].reserve=true
+    h.reader:sync(h.members);h.values.target=h.ally
+    assert(h.reader:current(h.actor)==nil and h.reader:aimedAt(h.actor,h.ally))
+    h.values.target=h.player;assert(h.reader:aimedAt(h.actor,h.player) and not h.reader:aimedAt(h.actor,h.enemy))
+end)
 print('companion_target: PASS ('..n..' live-target and ownership checks; no game accessed)')

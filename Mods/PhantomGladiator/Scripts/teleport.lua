@@ -183,6 +183,7 @@ function Teleport.new(o)
             self.last={ok=false,message='没有读到到位，当前在 '..text(now),place=p.label}
         end
     end
+    function self:relocating()return pending~=nil end
     function self:status()
         return {pending=pending~=nil and pending.hold==nil,can_return=self.back~=nil,last=self.last}
     end

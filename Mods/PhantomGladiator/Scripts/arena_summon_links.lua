@@ -50,8 +50,9 @@ function Links.new(options)
             links[ck]={actor=child,parent=owned[pk],parentKey=pk,class_path=path,evidence=proof,rank=rank}
         end
         local found,abilities=pcall(findAll,'GA_SummonPassive_C')
-        if not found then stats.errors=stats.errors+1;abilities={} end
-        for _,ability in ipairs(U.array(abilities or {}) or {}) do
+        local instances=found and U.array(abilities or {})
+        if not instances then stats.errors=stats.errors+1 end
+        for _,ability in ipairs(instances or {}) do
             if U.valid(ability) then
                 stats.abilities=stats.abilities+1
                 local ok,avatar=pcall(function() return ability:GetAvatarActorFromActorInfo() end)
@@ -119,10 +120,10 @@ function Links.new(options)
             end
         end
         if not localOnly then
-            local ok,npcs=pcall(options.getNPCs,owned)
+            local ok,npcs,complete=pcall(options.getNPCs,owned)
             if ok and type(npcs)=='table' then
                 for _,npc in ipairs(npcs)do inspect(npc,false) end
-                lastSweep=now
+                if complete==false then stats.errors=stats.errors+1;lastSweep=nil else lastSweep=now end
             else stats.errors=stats.errors+1;lastSweep=nil end
         end
         previousWorld,previousRoster=worldKey,signature
@@ -142,7 +143,7 @@ function Links.new(options)
             self.lastSummary=summary
             if options.log then options.log('[SummonLinks] 只读归属核对；读回 '..summary) end
         end
-        return out
+        return out,stats
     end
     return self
 end

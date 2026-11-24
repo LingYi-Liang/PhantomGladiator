@@ -66,7 +66,8 @@ function Keys.new(options)
     end
     local function ensure(binding)
         local vk,mask=binding.key_code,binding.modifiers
-        if not supported[vk] then return false,'当前UE4SS未提供这个按键' end
+        if KeyRouter.isXbox(vk) and not options.router then return false,'Xbox 按键路由不可用' end
+        if not supported[vk] and not (options.router and KeyRouter.isXbox(vk)) then return false,'当前UE4SS未提供这个按键' end
         local reserved=options.reserved and options.reserved(vk,mask)
         local system=KeyRouter.reserved(vk,mask)
         if RESERVED[vk] or system then return false,'该键已被「'..(system or '系统')..'」占用' end

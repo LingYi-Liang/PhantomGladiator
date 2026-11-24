@@ -360,7 +360,7 @@ function Arena.new(options)
     end
 
     local function memberRow(unit,isStand)
-        return {actor=unit.actor,team=unit.team,class_path=unit.class_path,formation=unit.formation,
+        return {actor=unit.actor,team=unit.team,class_path=unit.class_path,dual=unit.companionSpec~=nil,formation=unit.formation,
             formationGroup=unit.formationGroup,summoner=unit.summoner,stand=isStand,
             reserve=unit.dormant==true or isStand,untargetable=unit.untargetable==true,aid=unit.aid==true}
     end
@@ -585,6 +585,11 @@ function Arena.new(options)
     function instance:actorOf(key)
         local unit=key and unit_by_key(key)
         return unit and unit.actor or nil
+    end
+    function instance:ownsDirectCompanion(actor)
+        local key=actor_key(actor);local unit=unit_by_key(key)
+        return unit~=nil and unit.team=='companion' and not unit.summoner and removed(unit.actor)==false
+            and actor_key(unit.actor)==key and actor_name(unit.actor)==actor_name(actor) and not stand(unit)
     end
     function instance:aggroOpponent(actor)
         if not self:intentContext() then return end
@@ -916,7 +921,105 @@ function Arena.new(options)
                 Y = origin.Y + y * distance + x * lateral, Z = origin.Z + 50 } }
     end
 
-    function instance:spawn(path, requestedTeam, requestedCount, preserveSelection)
+    -- Keep uncertain staged objects owned until both they and their positively linked helpers are gone.
+    local retiring,syncPending={},false
+    local function remember(actor,world)
+        local key=actor_key(actor)
+        if key and not retiring[key] then retiring[key]={actor=actor,name=actor_name(actor),world=world} end
+        return key
+    end
+    -- Take one ownership snapshot per group on the game thread, before destroying any of its actors.
+    -- Missing evidence stays pending. A snapshot is never reused on another cleanup pass.
+    local function childGroups(actors,world)
+        if #actors<2 or not options.companionChildGroups then return nil end
+        local ok,groups=invoke('companionChildGroups',actors,world)
+        if not ok or type(groups)~='table' then return {} end
+        local result={}
+        for _,owner in ipairs(actors)do
+            local key=actor_key(owner);local group=groups[key]
+            if key and type(group)=='table' then
+                local children={}
+                for _,child in ipairs(group)do
+                    local id,name=actor_key(child),actor_name(child)
+                    if id and type(name)=='string' and not name:lower():match('^unknown%(') then
+                        children[#children+1]={actor=child,key=id,name=name}
+                    elseif removed(child)~=true then children=nil;break end
+                end
+                result[key]=children
+            end
+        end
+        return result
+    end
+    local function retryRetirement(item)
+        item.delay=math.min(8,(item.delay or .5)*2)
+        item.retryAt=current_time()+item.delay
+        invoke('quarantineCompanion',item.actor)
+        return false
+    end
+    local function retire(actor,world,withChildren,groups)
+        local gone=removed(actor)
+        if gone==true then return true end
+        local key=remember(actor,world)
+        if not key then return false end
+        local item=retiring[key]
+        if item.name~=actor_name(actor) or actor_key(item.world)~=actor_key(world) then return false end
+        item.children=item.children or withChildren
+        if gone~=false then return false end
+        if options.inCompanionWorld then
+            local checked,same=invoke('inCompanionWorld',actor,world)
+            if not checked or same~=true then item.retryAt=current_time()+2;return false end
+        end
+        if item.children then
+            if groups then
+                local children=groups[key]
+                if not children then return retryRetirement(item) end
+                for _,child in ipairs(children)do
+                    if actor_key(child.actor)==child.key and actor_name(child.actor)==child.name then retire(child.actor,world,false) end
+                end
+            else
+                local read,children=invoke('companionChildren',actor,world)
+                if not read or type(children)~='table' then return retryRetirement(item) end
+                for _,child in ipairs(children)do retire(child,world,false) end
+            end
+            item.children=nil
+        end
+        invoke('destroy',actor)
+        if removed(actor)==true then retiring[key]=nil;return true end
+        return retryRetirement(item)
+    end
+    local function cleanupStep(action,...)
+        if busy then return false end
+        busy=true
+        local ok,clean=pcall(action,...)
+        busy=false
+        if not ok then log('随从回收未确认：'..tostring(clean)) end
+        return ok and clean==true
+    end
+    local function recoverRetired()
+        if syncPending then syncPending=not notify_units() end
+        if not next(retiring) then return not syncPending end
+        local got,world=invoke('getWorld')
+        if not got or live(world)~=true then return false end
+        local now=current_time();local due,owners={},{}
+        for key,item in pairs(retiring)do
+            local gone=removed(item.actor)
+            if actor_key(item.world)~=actor_key(world) or gone==true or gone==false and actor_name(item.actor)~=item.name then
+                retiring[key]=nil
+            elseif gone==false and (not item.retryAt or now>=item.retryAt) then
+                due[#due+1]=item
+                if item.children then owners[#owners+1]=item.actor end
+            end
+        end
+        local groups=childGroups(owners,world)
+        for _,item in ipairs(due)do retire(item.actor,item.world,false,groups) end
+        return next(retiring)==nil and not syncPending
+    end
+    function instance:recoverCompanionCleanup()
+        if not syncPending and not next(retiring) then return not busy end
+        return cleanupStep(recoverRetired)
+    end
+
+    function instance:spawn(path, requestedTeam, requestedCount, preserveSelection, dual)
         return run(function()
             prune()
             local block=spawn_block()
@@ -1008,9 +1111,9 @@ function Arena.new(options)
                 log('FinishSpawn未确认；保留对象供F4清理: '..tostring(why or done))
                 return false
             end
-            local function activate_one(actor,unitPath,escort)
+            local function activate_one(actor,unitPath,escort,spec)
                 local ok,active,detail,warning
-                if removed(actor)==false then ok,active,detail,warning=invoke('activate',actor,unitPath,team,escort)
+                if removed(actor)==false then ok,active,detail,warning=invoke('activate',actor,unitPath,team,escort,spec)
                 else detail='生成后对象已失效、进入销毁或状态不可读' end
                 if ok and active==true then activated=activated+1 else failures=failures+1;cleanupRequired=true end
                 if type(warning)=='string' and warning~='' then spawnWarning=warning end
@@ -1048,12 +1151,13 @@ function Arena.new(options)
             local function spawn_one(unitCls,unitPath,slot,transform,escort,group)
                 local guarded,guardError=guard_call('begin')
                 if not guarded then failures=failures+1; log(tostring(guardError)); return nil,true end
-                local okSpawn, actor, spawnError, outcome = invoke("spawnClass", unitCls, transform, world, escort and escort.entry or batchEntry)
+                local okSpawn, actor, spawnError, outcome = invoke("spawnClass", unitCls, transform, world, escort and escort.entry or batchEntry,team)
                 local duplicate = false
                 for _, unit in ipairs(units) do if unit.actor == actor then duplicate = true; break end end
                 if okSpawn and live(actor) == true and not duplicate then
                     -- 先接管所有权并通知root，再调用可能失败的登场操作。
-                    units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,
+                    local spec=dual==true and team=='companion' and not escort and require('companion_profile').phase(unitPath) and {} or nil
+                    units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,companionSpec=spec,
                         formationGroup=group }
                     if group and group.retire then
                         local got,name=invoke('name',actor)
@@ -1074,8 +1178,15 @@ function Arena.new(options)
                     if group and group.nativeFormation then
                         return actor,false
                     end
-                    if not finish_one(actor,transform,escort and escort.parent) then return actor,true end
-                    activate_one(actor,unitPath,escort~=nil)
+                    local finished=finish_one(actor,transform,escort and escort.parent)
+                    if finished then activate_one(actor,unitPath,escort~=nil,spec) end
+                    if cleanupRequired and team=='companion' and options.companionChildren and require('companion_profile').phase(unitPath) then
+                        if retire(actor,world,unitPath==require('companion_profile').second) then
+                            spawned=spawned-1;prune();cleanupRequired=false
+                        end
+                        refusal='沐小葵登场未验证，已请求回收'
+                        return nil,true
+                    end
                     return actor,cleanupRequired
                 end
                 failures = failures + 1
@@ -1172,6 +1283,81 @@ function Arena.new(options)
                     ..(escortsWanted>0 and string.format('；随行单位 %d/%d',escorted,escortsWanted) or '')..(spawnWarning and ('；提示：'..spawnWarning) or '')
                     ..(refusal and ('；没召唤：'..refusal) or ''),
                 { spawned_count = spawned, escort_count = escorted, activated_count = activated, failure_count = failures, remaining_count = #units })
+        end)
+    end
+
+    function instance:companionRollbackReady(actor)
+        if busy or syncPending or next(retiring) or spawn_block() then return false end
+        local unit=unit_by_key(actor_key(actor))
+        return unit and unit.team=='companion' and unit.companionSpec~=nil and removed(actor)==false
+    end
+    local function clearCompanionHelpers(actor)
+        local unit=unit_by_key(actor_key(actor))
+        if not unit or unit.team~='companion' or unit.class_path~=require('companion_profile').second then return false end
+        local got,world=invoke('getWorld');local read,children=invoke('companionChildren',actor,world)
+        if not got or live(world)~=true or not read or type(children)~='table' then return false end
+        local clean=true;for _,child in ipairs(children)do if not retire(child,world) then clean=false end end
+        return clean
+    end
+    function instance:clearCompanionHelpers(actor)return cleanupStep(clearCompanionHelpers,actor)end
+    function instance:replaceCompanion(record,wanted,why,initial)
+        return run(function()
+            local fail=function(message,uncertain)return {ok=false,message=message,uncertain=uncertain}end
+            local P=require('companion_profile')
+            local path=wanted==2 and P.second or P.first
+            local unit=unit_by_key(actor_key(record.actor))
+            if syncPending or not unit or unit.team~='companion' or not unit.companionSpec or not P.phase(unit.class_path)
+                or unit.class_path==path or removed(unit.actor)~=false or next(retiring)
+                or spawn_block() or state=='cleanup_pending' or state=='restore_pending' then return fail('当前单位或生成保护尚未就绪') end
+            local old=unit.actor
+            local okW,world=invoke('getWorld')
+            local allowed,yes,reason=invoke('canSpawn',path)
+            if not okW or live(world)~=true or not allowed or not yes then return fail(reason or '地图或目标类不可用') end
+            local okReg,registered=pcall(catalog.registerPath,catalog,path)
+            if not okReg or not registered then return fail('目标形态登记失败') end
+            local resolved,cls,err,entry=pcall(catalog.resolvePath,catalog,path)
+            if not resolved or live(cls)~=true or not entry or entry.path~=path then return fail(err or '目标形态未解析') end
+            local got,transfer,detail=invoke('companionTransfer',record,world,why,initial)
+            if not got or not transfer then return fail(detail or '切换前状态未确认') end
+            local guarded,guardError=guard_call('begin');if not guarded then return fail(guardError) end
+            local spawned,new,errorText,outcome=invoke('spawnClass',cls,transfer.transform,world,entry,'companion')
+            if not spawned or live(new)~=true or unit_by_key(actor_key(new)) then
+                if spawned and outcome=='not_started' and guard_call('complete') then return fail(errorText) end
+                unknownSpawn=true;return fail('生成结果未知，已停止切换',true)
+            end
+            local newKey=remember(new,world)
+            local function abort(message)
+                local gone=retire(new,world,transfer.finished and wanted==2)
+                return fail(message,not gone or next(retiring)~=nil)
+            end
+            if not newKey or not guard_call('complete') then unknownSpawn=true;return abort('暂存所有权未确认') end
+            transfer.finished=true
+            local finished,ok,detail=invoke('finishSpawn',new,transfer.transform,world,nil,true)
+            if not finished or ok~=true then return abort(detail or '新形态初始化失败') end
+            local activated,ready,note=invoke('activate',new,path,'companion',false,unit.companionSpec)
+            if not activated or ready~=true then return abort(note or '新形态身份或属性未确认') end
+            local wrote,verified,problem=invoke('companionRestore',record,new,transfer,why,world)
+            if not wrote or verified~=true then return abort(problem or '生命、目标或场景变化，保留原形态') end
+            local read,children=invoke('companionChildren',old,world)
+            if not read or type(children)~='table' then return abort('原形态配合单位未确认') end
+            if options.companionCommitReady then
+                local readCurrent,current=invoke('companionCommitReady',record,new,transfer,world)
+                if not readCurrent or current~=true then return abort('提交前战斗或资源发生变化，保留原形态') end
+            end
+            -- Record the replacement identity before committing, while both actors are still owned.
+            local named,newName=invoke('name',new)
+            if not named or type(newName)~='string' or newName=='' or newName:lower():match('^unknown%(') then return abort('新形态身份读回失败') end
+            -- A failed destroy leaves the original in charge. An unreadable result blocks further swaps.
+            invoke('destroy',old)
+            local gone=removed(old)
+            if gone~=true then
+                local result=abort('原形态回收未确认');result.uncertain=result.uncertain or gone==nil;return result
+            end
+            for _,child in ipairs(children)do retire(child,world) end
+            if removed(new)~=false or actor_key(new)~=newKey then return abort('原形态已回收，新形态失效，请检查场上状态') end
+            unit.actor,unit.key,unit.class_path=new,newKey,path;retiring[newKey]=nil
+            syncPending=not notify_units()
+            return {ok=true,actor=new,key=newKey,name=newName}
         end)
     end
 
@@ -1348,12 +1534,27 @@ function Arena.new(options)
     local function clear_team(which,label)
         return run(function()
             local kept,pending,destroyed={},0,0
+            local world,groups,queen
+            if which=='companion' and options.companionChildren then
+                queen=require('companion_profile').second
+                local owners={}
+                for _,unit in ipairs(units)do
+                    if unit.team==which and unit.class_path==queen and removed(unit.actor)==false then owners[#owners+1]=unit.actor end
+                end
+                if #owners>0 then
+                    local ok,current=invoke('getWorld')
+                    if ok and live(current)==true then world=current;groups=childGroups(owners,world) end
+                end
+            end
             log('清理'..label..'：仅处理本Mod的'..which..'记录，不停止蓝红交战')
             for _,unit in ipairs(units) do
                 if unit.team~=which then kept[#kept+1]=unit
                 else
-                    local valid=live(unit.actor)
-                    if valid==true then invoke('destroy',unit.actor) end
+                    if removed(unit.actor)==false then
+                        if queen and unit.class_path==queen then
+                            if world then retire(unit.actor,world,true,groups) end
+                        else invoke('destroy',unit.actor) end
+                    end
                     local gone,proof=removed(unit.actor)
                     log(label..'清理读回 actor='..actor_name(unit.actor)..'；'..proof)
                     if gone==true then destroyed=destroyed+1
@@ -1366,7 +1567,11 @@ function Arena.new(options)
         end)
     end
     function instance:clearNeutral() return clear_team('neutral','未配队') end
-    function instance:clearCompanions() return clear_team('companion','随从') end
+    function instance:clearCompanions()
+        local result=clear_team('companion','随从')
+        if not self:recoverCompanionCleanup() then return response(false,'部分切换中的随从仍待回收') end
+        return result
+    end
 
     function instance:setRelayPending(enabled,blue,red,epoch)
         if not enabled or epoch~=relay.epoch then relay.anchor=nil end

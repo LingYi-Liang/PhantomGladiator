@@ -482,4 +482,92 @@ test('skip rule never pauses or cancels story source actors',function()
     assert(not cancelled and not child.going and not h.phase:busy(parent) and h:lookup(child)==parent)
     assert(h:player(child)==nil,'a real story helper continues to query the real player')
 end)
+local function stalledPhase(team)
+    local h=harness(team)
+    local event='GameplayEvent.SelfSummon.MengHua'
+    local library=object('Library /Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary')
+    local find=h.options.find
+    h.options.find=function(path)if path=='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary' then return library end
+        return find(path)end
+    local foe=object('Enemy /Map.Enemy',nil,h.world)
+    h.opponent=foe;h.pending=0;h.actionIdle=true;h.sent=0
+    h.options.opponent=function()return h.opponent end
+    h.options.canRequest=function()return h.actionIdle end
+    h.options.gameTime=function()return h.now end
+    h.options.attributes={read=function(_,a,k)
+        assert(a==h.parent)
+        return {current=k=='Health_Max' and 725100 or h.floor}
+    end}
+    h.floor=297291;h.parent.hp=h.floor
+    h.asc.active=0
+    h.asc.tags[CAN_SUMMON]=1;h.asc.tags['AI.State.Combat']=1
+    function h.asc:GetOwner()return h.parent end
+    h.summon.SummonEventTag={TagName=event};h.summon.MaxSummonCount=1;h.summon.SpawnedSummonInstances={}
+    function h.ai:GetPendingSummonCount(ability)assert(ability==h.summon);return h.pending end
+    function library:SendGameplayEventToActor(actor,tag,payload)
+        assert(actor==h.parent and tag.TagName==event and payload.EventTag.TagName==event and payload.EventMagnitude==1)
+        h.sent=h.sent+1
+        if not h.rejectSummon then
+            h:spawn();h.board.assign=h.child;h.asc.active=1
+            h.summon.SpawnedSummonInstances={{Pawn=h.child,bPawnPending=false}}
+        end
+    end
+    h.phase=Phase.new(h.options);h:sync()
+    return h
+end
+
+test('stalled 41% phase requests the original summon event when the native window is open',function()
+    local h=stalledPhase()
+    for _=1,12 do h:tick()end
+    assert(h.sent==0,'give the original transition a chance')
+    h.actionIdle=false
+    for _=1,30 do h:tick()end
+    assert(h.sent==0,'never start while a native grab or other action is active')
+    h.actionIdle=true;h:tick()
+    assert(h.sent==1 and h.phase:busy(h.parent) and h.asc.lock==1)
+    for _=1,30 do h:tick()end
+    assert(h.sent==1 and not h.child.going,'a native helper blocks duplicate requests')
+    local ex,ed=h:pair('ex'),h:pair('ed');h:finish(ex,ed);h:tick()
+    assert(h.child.going and h.asc.lock==0 and not h.phase:busy(h.parent))
+end)
+test('native summon recovery waits for verified state and retries only twice',function()
+    local h=stalledPhase('red');h.rejectSummon=true
+    h.asc.tags[CAN_SUMMON]=0
+    for _=1,40 do h:tick()end
+    assert(h.sent==0)
+    h.asc.tags[CAN_SUMMON]=1;h.pending=1
+    for _=1,40 do h:tick()end
+    assert(h.sent==0)
+    h.pending=0;h.summon.SpawnedSummonInstances={{bPawnPending=true}}
+    for _=1,40 do h:tick()end
+    assert(h.sent==0)
+    h.summon.SpawnedSummonInstances={}
+    for _=1,160 do h:tick()end
+    assert(h.sent==2 and h.asc.lock==1 and h.parent.hp==297291)
+    for _,team in ipairs({'neutral','companion'})do
+        local other=stalledPhase(team)
+        for _=1,50 do other:tick()end
+        assert(other.sent==0)
+    end
+end)
+test('no fallback during a native transition or without the original phase lock',function()
+    local h=stalledPhase()
+    for _=1,6 do h:tick()end
+    h:spawn()
+    for _=1,200 do h:tick()end
+    assert(h.sent==0 and h.phase:busy(h.parent))
+
+    local unrelated=stalledPhase()
+    unrelated.asc.lock=0
+    for _=1,40 do unrelated:tick()end
+    assert(unrelated.sent==0)
+    unrelated.asc.lock=1
+    unrelated.asc.tags['CharacterState.AbilityState.MengHua.CanEnterP2']=1
+    for _=1,40 do unrelated:tick()end
+    assert(unrelated.sent==0)
+    unrelated.phase:syncParents({})
+    unrelated.asc.tags['CharacterState.AbilityState.MengHua.CanEnterP2']=0
+    for _=1,40 do unrelated:tick()end
+    assert(unrelated.sent==0)
+end)
 print('menghua_phase: '..tests..' checks passed')

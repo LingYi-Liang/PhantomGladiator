@@ -106,6 +106,7 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
+        if name=='xbox_keys' then return assert(loadfile('Mods/PhantomGladiator/Scripts/xbox_keys.lua','t',env))() end
         if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
         if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
         assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys' or name=='teleport_places' or name=='teleport_keys')
@@ -755,8 +756,8 @@ test("不倒下 takes its team from the team column and ON/OFF from key_start; t
     -- panel_bridge.lua writes at most 256 entries; v0.36.0 lost random ones past the old cap of 100.
     -- A real session reports about 27 more than this fixture (230 lines against 199 before the Hun keys).
     local entries=0;for _ in pairs(h.reported)do entries=entries+1 end
-    -- 227 with longzhu_protection_supported; a session with the teleport module adds three more, far below the cap of 288.
-    assert(entries<=227,'status entries: '..entries)
+    -- Includes Xbox input capability; teleport adds three more in a full session (wire cap 288).
+    assert(entries<=228 and h.reported.xbox_keys_supported==false,'status entries: '..entries)
     local missing=harness();missing.runtime:start();missing.inbox={action='set_team_immortal',team='red',key_start='ON'};missing:tick()
     assert(not missing.result.ok and missing.reported.immortal_supported==false)
 end)

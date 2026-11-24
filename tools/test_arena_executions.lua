@@ -930,7 +930,8 @@ do
         hp.Health_Min=0
     end
     h.members={{actor=boss,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
-    local exec=h.new()
+    local receiving=false
+    local exec=h.new({nativeExecution=function(actor)return actor==boss and receiving end})
     hp.Health,hp.Health_Min=3200,3200
     h.run(exec,21)
     assert(hp.Health_Min==3200,'preserve the 40 percent stage floor')
@@ -948,7 +949,11 @@ do
     h.fighting=true
     h.run(exec,2)
     assert(hp.Health_Min==320,'a later fight starts a new waiting period')
+    receiving=true
     h.run(exec,19)
+    assert(hp.Health_Min==320 and h.count('release prologue lock')==0,'do not drop the final floor midway through a native grab')
+    receiving=false
+    h.run(exec,0.5)
     assert(hp.Health_Min==0 and hp.Health==320 and not present,'stalled prologue floor should release without dealing damage')
     assert(h.all():find('血量下限=320.0→0.0 HP读回=320.0 验证=true',1,true),h.all())
     h.run(exec,25)

@@ -22,7 +22,7 @@ local function short(n)return n and(n:match('[%.:]([^%.:]+)$')or n)or'?'end
 -- mount(actor) -> the vehicle a companion rides, or nil.
 function Passage.new(options)
     local log=options.log or function()end
-    local fs=options.io or io
+    local fs,clock=options.io or io,options.clock or os.clock
     local file=options.path..'/companion-passage.tsv'
     local self={on=true,alive=true,message=''}
     local records={}      -- capsule address -> {capsule, name, channel, old}
@@ -41,35 +41,66 @@ function Passage.new(options)
         return ok and tonumber(value) or nil
     end
     -- Puts one capsule's recorded response back, when it is still the same actor's capsule and still ignores.
-    local function restore(key,why)
-        local r=records[key];records[key]=nil
-        if not r or not U.valid(r.capsule)then return end
+    local function retry(r,operation)
+        r.delay=r.operation==operation and math.min(8,r.delay*2) or .5
+        r.operation=operation;r.retryAt=clock()+r.delay
+    end
+    local function restore(key,why,force)
+        local r=records[key]
+        if not r then return true end
+        if r.applied==false or not U.valid(r.capsule) then records[key]=nil;return true end
+        if not force and r.operation=='restore' and clock()<r.retryAt then return false end
         local _,owner=call(r.capsule,'GetOwner')
-        if nameOf(owner)~=r.name then return end
-        if responseOf(r.capsule,r.channel)~=IGNORE then return end
+        local name=nameOf(owner)
+        if not name then retry(r,'restore');return false end
+        if name~=r.name or U.key(owner)~=r.ownerKey then records[key]=nil;return true end
+        local current=responseOf(r.capsule,r.channel)
+        if current==nil then retry(r,'restore');return false end
+        if current~=IGNORE then records[key]=nil;return true end
         call(r.capsule,'SetCollisionResponseToChannel',r.channel,r.old)
         local after=responseOf(r.capsule,r.channel)
         say('还原 '..short(r.name)..' 对玩家通道'..r.channel..'的碰撞 '..IGNORE..'→'..tostring(after)..'（原值'..r.old..'） 原因='..why..' 已还原='..tostring(after==r.old))
+        if after==r.old then records[key]=nil;return true end
+        retry(r,'restore');return false
     end
-    local function restoreAll(why)
-        for key in pairs(records)do restore(key,why)end
+    local function restoreAll(why,force)
+        for key in pairs(records)do restore(key,why,force)end
     end
     local function apply(actor,channel,wanted)
         local capsule=U.field(actor,'CapsuleComponent')
-        local key,name=U.key(capsule),nameOf(actor)
-        if not key or not name then return end
-        local r=records[key]
-        if r and (r.name~=name or r.channel~=channel)then records[key]=nil;r=nil end  -- the address belongs to another actor now
+        local key=U.key(capsule)
+        if not key then return end
         wanted[key]=true
-        local now=responseOf(capsule,channel)
-        -- Already ignoring: ours from an earlier tick, or the game's own setting (then there is nothing to put back).
-        if now==nil or now==IGNORE then return end
-        if not r then r={capsule=capsule,name=name,channel=channel,old=now};records[key]=r end
-        say('即将 让玩家穿过 '..short(name)..'：胶囊体对玩家通道'..channel..'的碰撞 '..now..'→'..IGNORE..'（SetCollisionResponseToChannel）')
-        call(capsule,'SetCollisionResponseToChannel',channel,IGNORE)
+        local r=records[key]
+        local name=nameOf(actor);local ownerKey=U.key(actor)
+        if not name or not ownerKey then return end
+        if r and (r.name~=name or r.ownerKey~=ownerKey) then records[key]=nil;r=nil end
+        if r and r.channel~=channel then
+            if not restore(key,'玩家通道已切换') then return end
+            r=nil
+        end
+        if r and r.operation=='apply' and clock()<r.retryAt then return end
+        local current=responseOf(capsule,channel)
+        if current==nil then return end
+        if current==IGNORE then
+            if r and r.applied==false then records[key]=nil
+            elseif r then r.applied=true;r.operation=nil end
+            return
+        end
+        local _,owner=call(capsule,'GetOwner')
+        if U.key(owner)~=ownerKey then return end
+        if not r then r={capsule=capsule,name=name,ownerKey=ownerKey,channel=channel};records[key]=r end
+        r.old=current
+        say('即将 让玩家穿过 '..short(name)..'：胶囊体对玩家通道'..channel..'的碰撞 '..current..'→'..IGNORE..'（SetCollisionResponseToChannel）')
+        local called=call(capsule,'SetCollisionResponseToChannel',channel,IGNORE)
         local after=responseOf(capsule,channel)
         say('让玩家穿过 读回 '..short(name)..' 通道'..channel..'='..tostring(after)..' verified='..tostring(after==IGNORE)..'；能否走过去以画面为准')
-        if after~=IGNORE then records[key]=nil end
+        if after==IGNORE then r.applied=true;r.operation=nil
+        else
+            r.applied=false
+            if called and after==nil then r.applied=nil end
+            retry(r,'apply')
+        end
     end
     function self:set(value)
         if value~='ON' and value~='OFF' then return {ok=false,message='穿过随从开关只接受 ON 或 OFF',spawned_count=0} end
@@ -81,10 +112,10 @@ function Passage.new(options)
         local saved=f~=nil and wrote~=nil and wrote~=false and closed==true and readFile()==text
         if saved then
             self.on=wanted
-            if not wanted then restoreAll('开关关闭')end
+            if not wanted then restoreAll('开关关闭',true)end
         end
         log('[CompanionPassage] 设置 开关='..value..' 保存读回='..tostring(saved)..' 当前='..tostring(self.on))
-        return {ok=saved,spawned_count=0,message=saved and (wanted and '已开启：你可以直接穿过随从' or '已关闭：随从会像原版一样挡住你') or '穿过随从的设置没有保存'}
+        return {ok=saved,spawned_count=0,message=saved and (wanted and '已开启：你可以直接穿过随从' or (next(records) and '已保存关闭，正在恢复随从原有碰撞' or '已关闭：随从会像原版一样挡住你')) or '穿过随从的设置没有保存'}
     end
     -- Support tick: every companion (and its mount) ignores the player's channel; whoever left gets its response back.
     function self:tick()
@@ -120,12 +151,12 @@ function Passage.new(options)
         end
     end
     function self:status()
-        local count=0;for _ in pairs(records)do count=count+1 end
+        local count=0;for _,r in pairs(records)do if r.applied then count=count+1 end end
         return {on=self.on,applied=count}
     end
     -- Unloading: the recorded responses go back only on the game thread; otherwise nothing is written.
     function self:silence(onGameThread)
-        if onGameThread==true and self.alive then restoreAll('Mod 卸载')end
+        if onGameThread==true and self.alive then restoreAll('Mod 卸载',true)end
         self.alive=false;records={}
     end
     return self

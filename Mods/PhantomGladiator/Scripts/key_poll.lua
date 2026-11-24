@@ -108,6 +108,8 @@ function Poll.new(options)
         local ok,err=xpcall(callback,debug.traceback)
         if not ok and failures<5 then failures=failures+1;log('[KeyPoll] 按键处理失败：'..tostring(err)) end
     end
+    local xbox=require('xbox_keys').new(fkey,fire)
+    self.registerXbox=xbox.register
     local function controller(now)
         if pc and U.valid(pc) then
             if not options.isCurrentController then return pc end
@@ -115,7 +117,7 @@ function Poll.new(options)
             if ok and current==true then return pc end
         end
         local changed=pc~=nil
-        if changed then resolveAt=0 end
+        if changed then resolveAt=0;xbox:reset() end
         pc=nil
         if now<resolveAt or not options.controller then return nil end
         resolveAt=now+RESOLVE_SECONDS
@@ -141,13 +143,14 @@ function Poll.new(options)
         for index=1,#flagged do
             if flags[index] then flags[index]=false;fire(flagged[index].callback) end
         end
-        if #order==0 then return end
+        if #order==0 and xbox.count==0 then return end
         local started=clock()
         local target=controller(started)
         if not target then
             for vk in pairs(down)do down[vk]=nil;held[vk]=nil end
             return
         end
+        xbox:tick(target)
         local mask
         for index=1,#order do
             local key=order[index]

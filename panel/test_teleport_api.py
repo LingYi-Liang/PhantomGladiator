@@ -56,6 +56,8 @@ class Tests(unittest.TestCase):
         self.assertEqual((len(row),row[1],row[5],row[6],row[7]),(10,'configure_teleport_key',code,'VK_119','MOD_3'))
         row=wire({'action':'configure_teleport_key','place':'BACK','key_code':0})
         self.assertEqual((row[5],row[6],row[7]),('BACK','UNBOUND','MOD_0'))
+        row=wire({'action':'configure_teleport_key','place':code,'key_code':203,'modifiers':2})
+        self.assertEqual(row[5:8],[code,'VK_203','MOD_2'])
         status,data=self.request('GET','/api/teleport-places');self.assertEqual(data['keys'],{})
         (self.bridge.runtime/'teleport-keybinds-state.tsv').write_text('TeleportKeyStateV1\t2\ttpkeys-1\nBACK\t120\t1\t1\t\n'+code+'\t119\t0\t0\t该键已被功能「开战」占用\nTNOPE\t65\t0\t1\t\n',encoding='utf-8')
         status,data=self.request('GET','/api/teleport-places')

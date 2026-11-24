@@ -308,6 +308,17 @@ function Runtime.new(options)
             return {ok=result.ok==true,message=result.message,spawned_count=0}
         end,
         -- The app's 召回到身边 and the function key of the same name.
+        manage_companion=function(c)
+            local m=options.support and options.support.companionManager
+            if not m then return {ok=false,message='随从管理未加载'} end
+            return m:command(c.unit_id)
+        end,
+        summon_mu_companion=function()
+            local why=readyError()
+            local m=options.support and options.support.companionManager
+            if why or not m then return {ok=false,message=why or '随从管理未加载'} end
+            return m:spawn()
+        end,
         recall_companions=function()
             if not options.companions then return {ok=false,message='随从模块未加载',spawned_count=0} end
             return options.companions:recall()
@@ -566,6 +577,7 @@ function Runtime.new(options)
         local rejected=matching.rejected or {}
         out.stat_custom_rejected=#rejected
         out.stat_custom_rejected_fields=table.concat(rejected,',',1,math.min(#rejected,12))
+        if options.support and options.support.companionManager then out.companion_manager_revision=options.support.companionManager.revision end
         local companionStats=options.companionStats and options.companionStats:status() or {}
         local companionRejected=companionStats.rejected or {}
         out.companion_stats_supported=not not options.companionStats
@@ -677,6 +689,7 @@ function Runtime.new(options)
             out.teleport_keys_revision=self.teleportKeys and self.teleportKeys:status().revision or 0
         end
         out.first_person_supported=options.track~=nil and type(options.track.firstPerson)=='function'
+        out.xbox_keys_supported=self.router.xboxSupported==true
         out.function_keys_schema=8;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
         for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
         return out

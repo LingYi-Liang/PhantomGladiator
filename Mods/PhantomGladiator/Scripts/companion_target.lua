@@ -14,29 +14,27 @@ local function alive(options,actor)
     return ok and type(hp)=='number' and hp==hp and hp>0 and hp<math.huge
 end
 function Targets.new(options)
-    local owned,seen,last={},{},{}
+    local owned,allies,seen,last={},{},{},{}
     local clock=options.clock or os.clock
     local log=options.log or function()end
     local self={}
     function self:sync(members)
-        local current={}
+        local current,friendly={},{}
         for _,member in ipairs(members or {})do
+            if member.team=='companion' then
+                local key=U.key(member.actor);if key then friendly[key]=true end
+            end
             if member.team=='companion' and not member.stand and not member.reserve then
                 local key,name=U.key(member.actor),nameOf(member.actor)
                 if key and name then current[key]={actor=member.actor,name=name}end
             end
         end
-        owned=current
+        owned,allies=current,friendly
         for key in pairs(seen)do if not owned[key]then seen[key]=nil end end
         for key in pairs(last)do if not owned[key]then last[key]=nil end end
     end
-    local function query(actor,castTarget,castName)
-        local key=U.key(actor);local record=key and owned[key]
-        if not record or record.name~=nameOf(actor) or not alive(options,actor) then return nil end
-        if options.stillOwned and options.stillOwned(actor)~=true then return nil end
-        local world=options.world();local player=options.player()
-        local playerKey=U.key(player)
-        if not U.valid(world) or not playerKey or key==playerKey or not U.inWorld(actor,world) then return nil end
+    local function boundBoard(actor)
+        local key=U.key(actor);if not key then return end
         local targeting=U.field(actor,'Targeting Component')
         if not U.valid(targeting) then return nil end
         local called,owner=pcall(function()return targeting:GetOwner()end)
@@ -48,11 +46,30 @@ function Targets.new(options)
             handler=options.boundHandler and options.boundHandler(actor,bb)
             if U.key(U.field(handler,'Blackboard'))~=boardKey then return nil end
         end
+        return bb,handler
+    end
+    -- Read the actual lock of a registered, unteamed opponent before considering a target preference.
+    function self:aimedAt(actor,target)
+        local bb,handler=boundBoard(actor)
+        local targetKey=handler and U.field(handler,'Target Key')
+        if not bb or not targetKey then return false end
+        local ok,value=pcall(function()return bb:GetValueAsObject(targetKey)end)
+        local k=U.key(target);return k~=nil and ok and U.key(U.unwrap(value))==k
+    end
+    local function query(actor,castTarget,castName)
+        local key=U.key(actor);local record=key and owned[key]
+        if not record or record.name~=nameOf(actor) or not alive(options,actor) then return nil end
+        if options.stillOwned and options.stillOwned(actor)~=true then return nil end
+        local world=options.world();local player=options.player()
+        local playerKey=U.key(player)
+        if not U.valid(world) or not playerKey or key==playerKey or not U.inWorld(actor,world) then return nil end
+        local bb,handler=boundBoard(actor)
+        if not bb then return nil end
         local faction=U.field(actor,'Faction Component')
         if not U.valid(faction) then return nil end
         local function hostile(target,field,remember)
             local id=U.key(target)
-            if not id or id==key or id==playerKey or owned[id] then return nil,true end
+            if not id or id==key or id==playerKey or allies[id] then return nil,true end
             if not U.inWorld(target,world) then return nil,false end
             local ok,hp=pcall(options.hp,target)
             if not ok or type(hp)~='number' or hp~=hp or math.abs(hp)==math.huge then return nil,false end

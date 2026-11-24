@@ -65,7 +65,7 @@ local function fixture()
     f.abilities={f.passive}
     f.members={{actor=f.owner,team='blue'},{actor=f.stand,team='blue',stand=true,summoner=f.owner}}
     f.watch=Stands.new({members=function()return f.members end,clock=function()return f.now end,
-        aiOf=function()return f.ai end,log=function(s)f.logs[#f.logs+1]=s end})
+        aiOf=function()f.snapshots=(f.snapshots or 0)+1;return f.ai end,log=function(s)f.logs[#f.logs+1]=s end})
     function f.all()return table.concat(f.logs,'\n')end
     function f.call(kind,...)return f.hooks[Stands.paths[kind]](...)end
     return f
@@ -117,6 +117,8 @@ end)
 test('detail is bounded while summary counts keep selected and empty results',function()
     local f=fixture();f.watch:tick()
     for i=1,1000 do f.call('find',f.action,f.stand,param(i%2==0 and f.stand or nil)) end
+    print('MEASURE stand selection: diagnostic snapshots after 1000 calls='..f.snapshots)
+    assert(f.snapshots<=26,'after the detail budget, keep result counts without sampling candidate poses')
     assert(#f.logs<40,'success and failure have separate bounded logs')
     f.now=15;f.watch:tick();assert(f.all():find('selected=500 empty=500',1,true))
     for i=1,1000 do f.now=f.now+15;f.watch:tick() end
@@ -134,5 +136,15 @@ test('no stands and unload remove hooks; saved callbacks become inert',function(
     local saved=f.hooks[Stands.paths.find];assert(saved)
     f.watch:silence();assert(next(f.hooks)==nil)
     local before=#f.logs;assert(saved(f.action,f.stand,param(f.stand))==nil);f.watch:tick();assert(#f.logs==before)
+end)
+test('failed hook removal keeps its handle and never registers a duplicate on re-summon',function()
+    local f=fixture();f.watch:tick();local roster=f.members;local attempts=0
+    local previous=UnregisterHook
+    UnregisterHook=function()attempts=attempts+1;return false end
+    f.members={};for _=1,50 do f.watch:tick() end
+    f.members=roster;f.now=2;f.watch:tick()
+    print('MEASURE refused unhook: registrations after re-summon='..f.ids..' removal attempts='..attempts)
+    assert(f.ids==6 and attempts==6)
+    UnregisterHook=previous;f.members={};f.now=3;f.watch:tick();assert(next(f.hooks)==nil)
 end)
 print('arena_stands: '..passed..' tests passed')

@@ -87,6 +87,8 @@ window.PGTeleport = (() => {
     144: "NumLock", 145: "ScrollLock", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 192: "`", 219: "[", 220: "\\", 221: "]", 222: "'" };
   const validKey = vk => Number.isInteger(vk) && (NAMES[vk] !== undefined || (vk >= 48 && vk <= 57) || (vk >= 65 && vk <= 90) || (vk >= 96 && vk <= 135));
   function keyLabel(vk, mask) {
+    const pad = window.PGXbox?.label(vk, mask);
+    if (pad) return pad;
     const base = NAMES[vk] || ((vk >= 65 && vk <= 90) || (vk >= 48 && vk <= 57) ? String.fromCharCode(vk) : vk >= 96 && vk <= 105 ? "Num" + (vk - 96) : vk >= 112 && vk <= 135 ? "F" + (vk - 111) : "VK" + vk);
     return ["Ctrl", "Alt", "Shift"].filter((_, i) => (mask >> i) & 1).concat(base).join("+");
   }
@@ -239,7 +241,15 @@ window.PGTeleport = (() => {
     if (!button || button.disabled) return;
     const action = button.dataset.tpAction;
     if (action === "reload") { failed = ""; mount(); return; }
-    if (action === "key") { capture = capture === button.dataset.target ? "" : button.dataset.target; refresh(); return; }
+    if (action === "key") {
+      const target = button.dataset.target;
+      capture = capture === target ? "" : target; refresh();
+      if (capture && rt().state.xboxKeysSupported) window.PGXbox.capture(
+        () => capture === target && !!root() && rt().state.xboxKeysSupported,
+        binding => saveKey(target, binding.code, binding.mods),
+        () => { capture = ""; refresh(); });
+      return;
+    }
     capture = "";
     if (action === "back") { send("teleport_back", {}, t("tp.back")); return; }
     const name = nameOf(button.dataset.code);
@@ -256,6 +266,7 @@ window.PGTeleport = (() => {
   // While a key button waits: the next key (with Ctrl / Alt / Shift) becomes that target's key.
   function onKeyDown(event) {
     if (!capture || !root()) return;
+    if (event.target?.classList?.contains("xbox-picker") && event.key !== "Escape") return;
     const vk = event.keyCode;
     if (vk === 16 || vk === 17 || vk === 18) return;   // a modifier alone: keep waiting
     event.preventDefault(); event.stopPropagation();

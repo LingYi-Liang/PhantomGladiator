@@ -1,0 +1,18 @@
+const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
+const read = name => fs.readFileSync((process.argv[2] || __dirname + '/prototype') + '/' + name, 'utf8');
+let next, picker, blur, active = true;
+const pad = {id:'Xbox', index:0, connected:true, mapping:'standard', buttons:Array.from({length:16},()=>({pressed:false,value:0}))};
+const window = {addEventListener(k,fn){blur=fn;},removeEventListener(){}};
+const document = {body:{append(s){picker=s;}}, createElement(){return {events:{},options:[],add(o){this.options.push(o);},remove(){this.removed=true;},setAttribute(){},addEventListener(k,f){this.events[k]=f;}};}};
+const ctx = {window,document,navigator:{getGamepads:()=>[pad]},I18N:{lang:'en'},Option:function(text,value){this.text=text;this.value=value;},requestAnimationFrame(f){next=f;return 1;},cancelAnimationFrame(){}};
+vm.runInNewContext(read('xbox-keys.js'),ctx);
+const x=window.PGXbox, calls=[];
+const capture=()=>x.capture(()=>active,b=>calls.push([b.code,b.mods]),()=>{active=false;});
+const frame=(indices)=>{for(const [i,b] of pad.buttons.entries()){b.pressed=indices.includes(i);b.value=+b.pressed;}next();};
+pad.buttons[0].pressed=true;capture();frame([0]);frame([]);frame([4]);frame([4,0]);frame([4,0]);frame([]);frame([5]);frame([]);
+assert.deepEqual(calls,[[195,1],[199,0]]);
+assert.equal(x.label(195,3),'Xbox LB+RB+A');assert.equal(x.label(65,0),'');
+picker.value='203:2';picker.events.change();assert.deepEqual(calls.at(-1),[203,2]);
+pad.connected=false;frame([]);pad.connected=true;frame([0]);assert.equal(calls.length,3);
+blur();assert(picker.removed && !active);
+console.log('PASS physical capture, held buttons, reconnect, chords, manual selector and focus loss');

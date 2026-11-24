@@ -75,11 +75,16 @@ function Stands.new(options)
         total=total+1
         if options.log then options.log('[StandWatch] '..text) end
     end
-    local function note(kind,text)
-        counts[kind]=(counts[kind] or 0)+1
+    local function detail(kind)
+        if total>=LIMIT or (lines[kind] or 0)>=PER_KIND then return false end
         lines[kind]=(lines[kind] or 0)+1
-        if lines[kind]<=PER_KIND then say('只读 '..kind..' '..text) end
+        return true
     end
+    local function countDetail(kind)
+        counts[kind]=(counts[kind] or 0)+1
+        return detail(kind)
+    end
+    local function note(kind,text)say('只读 '..kind..' '..text)end
     local retry=Retry.new({clock=clock,log=say})
     local function snapshot(actor,passive)
         if not U.valid(actor) then return '无效' end
@@ -109,23 +114,25 @@ function Stands.new(options)
         local result=U.valid(U.unwrap(selected)) and 'selected' or 'empty'
         counts[result]=(counts[result] or 0)+1
         counts.find=(counts.find or 0)+1
+        local kind='find:'..result
+        if not detail(kind) then return end
         local parts={}
-        for i,child in ipairs(children)do if i<=6 then parts[#parts+1]=snapshot(child) end end
-        note('find:'..result,'施法者='..label(actor)..' 动作='..label(action)..' UseIdleSummonPool='..tostring((U.field(action,'UseIdleSummonPool')))
+        for i=1,math.min(#children,6)do parts[i]=snapshot(children[i]) end
+        note(kind,'施法者='..label(actor)..' 动作='..label(action)..' UseIdleSummonPool='..tostring((U.field(action,'UseIdleSummonPool')))
             ..' 原参数='..label(U.unwrap(original))..' 选中='..label(U.unwrap(selected))..' 候选=['..table.concat(parts,'；')..']')
     end
     callbacks.idle=function(context,candidate,reference,result)
         if not self.alive then return end
         local _,_,children=caster(context)
-        if children then note('idle','参考='..label(U.unwrap(reference))..' 结果='..tostring(booleanResult(result))..' 候选='..snapshot(U.unwrap(candidate))) end
+        if children and countDetail('idle') then note('idle','参考='..label(U.unwrap(reference))..' 结果='..tostring(booleanResult(result))..' 候选='..snapshot(U.unwrap(candidate))) end
     end
     callbacks.grow=function(context,summoner,reference,result)
         if not self.alive then return end
         local _,_,children=caster(context)
-        if not children then return end
+        if not children or not countDetail('grow') then return end
         summoner=U.unwrap(summoner)
-        local rows=U.array(U.field(summoner,'SpawnedSummonInstances'))
-        note('grow','MaxSummonCount='..tostring((U.field(summoner,'MaxSummonCount')))..' 实例记录数='..tostring(rows and #rows)
+        local size=U.arraySize(U.field(summoner,'SpawnedSummonInstances'))
+        note('grow','MaxSummonCount='..tostring((U.field(summoner,'MaxSummonCount')))..' 实例记录数='..tostring(size)
             ..' 参考='..label(U.unwrap(reference))..' 结果='..label(U.unwrap(result)))
     end
     for _,kind in ipairs({'enable','disable','event'})do
@@ -136,15 +143,20 @@ function Stands.new(options)
             local key=U.key(actor)
             if not key or not owned[key] then return end
             passives[key]=passive
+            if not countDetail(kind) then return end
             local event=kind=='event' and name(U.struct(U.struct(U.unwrap(payload),'EventTag'),'TagName')) or kind
             note(kind,'事件='..event..' 读回='..snapshot(actor,passive))
         end
     end
-    local function uninstall()
+    local function uninstall(force)
         for kind,hook in pairs(hooks)do
-            local ok=pcall(UnregisterHook,Stands.paths[kind],hook[1],hook[2])
-            say('摘除只读钩子 '..kind..' 调用读回='..tostring(ok))
-            if ok then hooks[kind]=nil end
+            if force or not hook.retryAt or clock()>=hook.retryAt then
+                local ok,value=pcall(UnregisterHook,Stands.paths[kind],hook[1],hook[2])
+                local removed=ok and value~=false
+                say('摘除只读钩子 '..kind..' 调用读回='..tostring(removed))
+                if removed then hooks[kind]=nil
+                else hook.delay=math.min(8,(hook.delay or .5)*2);hook.retryAt=clock()+hook.delay end
+            end
         end
     end
     local function needed(kind)return next(owned)~=nil and not hooks[kind]end
@@ -176,6 +188,7 @@ function Stands.new(options)
         for key in pairs(owned)do
             if not U.valid(previous[key]) then added=true;passives[key]=nil end
         end
+        for key in pairs(previous)do if not owned[key] then lines['sample:'..key]=nil end end
         for key in pairs(passives)do if not owned[key] then passives[key]=nil end end
         if added then retry:reset();nextAt=0 end
         if not next(owned) then uninstall();passives={};return end
@@ -197,16 +210,19 @@ function Stands.new(options)
         end
         if now<nextAt then return end
         nextAt=now+SECONDS
-        if now>=summaryAt then
+        if now>=summaryAt and total<LIMIT then
             summaryAt=now+15
             local parts={}
             for _,kind in ipairs(ORDER)do parts[#parts+1]=kind..'='..(counts[kind] or 0) end
             parts[#parts+1]='selected='..(counts.selected or 0);parts[#parts+1]='empty='..(counts.empty or 0)
             say('累计回调读回 '..table.concat(parts,' ')..'；每类详单上限='..PER_KIND..' 总日志上限='..LIMIT)
-            for key,actor in pairs(owned)do note('sample:'..key,'状态读回='..snapshot(actor)) end
+            for key,actor in pairs(owned)do
+                local kind='sample:'..key
+                if detail(kind) then note(kind,'状态读回='..snapshot(actor)) end
+            end
         end
     end
-    function self:silence()self.alive=false;uninstall()end
+    function self:silence()self.alive=false;uninstall(true);owned,parents,passives={},{},{} end
     return self
 end
 return Stands

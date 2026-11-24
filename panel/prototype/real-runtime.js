@@ -99,6 +99,7 @@ const RealRuntime = (() => {
     // mode: game | match | custom (stat_match_mode); custom values: the core four here, all of them from /api/stat-settings.
     statMatch: { enabled: false, mode: "game", modeSupported: false, baseline: null, matched: 0, failures: 0, reset: false, customCount: 0, customized: 0, rejected: [], rejectedCount: 0, values: {} },
     // companion_stats_*: the companions' own set; game | custom (stat_match.lua). All the values come from /api/companion-stats.
+    companionManagerRevision: null,
     companionStats: { supported: false, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     // spawn_difficulty_*: the level new units take (FOLLOW = the game's), the game's own level, counts.
     // spawn_level: the level a summon gets (the highest map enemy near the player at the last look), and that enemy.
@@ -476,6 +477,7 @@ const RealRuntime = (() => {
       // companion_minion_executions*: whether companions also execute minions (companion_executions.lua).
       s.companionMinionExec = { supported: yes("companion_minion_executions_supported"), on: yes("companion_minion_executions") };
       // companion_passage*: whether the player walks through companions (companion_passage.lua).
+      s.companionManagerRevision = v.companion_manager_revision == null ? null : num("companion_manager_revision");
       s.companionPass = { supported: yes("companion_passage_supported"), on: yes("companion_passage") };
       Object.assign(s.companionStats, { supported: yes("companion_stats_supported"), mode: v.companion_stats_mode === "custom" ? "custom" : "game", customCount: num("companion_stats_count"),
         customized: num("companion_stats_customized"), failures: num("companion_stats_failures"), rejectedCount: num("companion_stats_rejected"),
@@ -516,6 +518,7 @@ const RealRuntime = (() => {
     s.weather = {supported: online && yes("weather_supported"), choice: v.weather_choice || "map"};
     s.teleport = {supported: online && yes("teleport_supported"), pending: yes("teleport_pending"), canReturn: yes("teleport_can_return"), message: v.teleport_message || "", keysRevision: num("teleport_keys_revision")};
     s.eyesKeysSupported = online && data.function_keys?.eyes_supported === true;
+    s.xboxKeysSupported = online && yes("xbox_keys_supported");
     s.weatherKeysSupported = online && data.function_keys?.weather_supported === true;
     s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
     for (const k of [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS]) {
@@ -570,7 +573,8 @@ const RealRuntime = (() => {
       topbar: [s.game, jobs.filter(j => j.status === "failed" || j.status === "uncertain").length],
       sel: [s.game, s.cleanup, s.team, s.synced, s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
-      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, { ...s.companionStats, values: undefined }],
+      companionManager: [s.companionManagerRevision],
+      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, s.companionPass.on, s.companionMinionExec.on, { ...s.companionStats, values: undefined }],
       match: [s.game, { ...s.statMatch, values: undefined }],
       diff: [s.game, s.difficulty, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       fun: [s.game, s.fun, s.weather, s.weatherKeysSupported, WEATHER_KEYS.map(k => s.keys[k])],
@@ -579,7 +583,7 @@ const RealRuntime = (() => {
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
       view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
-      keys: [s.game, s.keys, s.eyesKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported],
+      keys: [s.game, s.keys, s.eyesKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported, s.xboxKeysSupported],
       grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.longzhuProtectionSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
@@ -656,6 +660,7 @@ const RealRuntime = (() => {
     else if (action === "configure_summon_queue") body = { action, ...payload };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
+    else if (action === "manage_companion") body = { action, unit_id: payload.unit_id };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
     else if (action === "set_weather") body = {action, mode:payload.mode};
     else if (action === "teleport") body = { action, place: payload.place };
@@ -863,6 +868,11 @@ const RealRuntime = (() => {
       return data;
     },
     // The companions' own set, from its own file.
+    async companionManager() {
+      const { response, data } = await readJSON("/api/companion-manager");
+      if (!response.ok) throw fail("rejected");
+      return data;
+    },
     async companionStats() {
       const { response: r, data } = await readJSON("/api/companion-stats");
       if (!r.ok) throw fail("rejected");

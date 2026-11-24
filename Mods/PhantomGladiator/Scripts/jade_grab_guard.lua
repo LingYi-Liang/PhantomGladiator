@@ -34,6 +34,10 @@ local function actorRef(obj)
     return U.valid(obj) and obj or nil
 end
 local function same(a,b)local k=U.key(a);return k~=nil and k==U.key(b)end
+local function hasHandle(info,key)
+    local value=U.struct(U.struct(info,key),'Handle')
+    return type(value)=='number' and value>0
+end
 function Guard.new(o)
     local self={}
     local actors,hooks={},{}
@@ -69,12 +73,18 @@ function Guard.new(o)
         local class=classPath(ability)
         if (class~=BASE and class~=LETHAL) or U.field(ability,'bIsActive')~=true then return end
         local source=call(ability,'GetAvatarActorFromActorInfo')
-        local target=call(actorRef(U.struct(U.field(ability,'Lock Target'),'Component')),'GetOwner')
         local info=U.field(ability,'Execution Info')
         local ex,ed=actorRef(U.struct(info,'Executor')),actorRef(U.struct(info,'Target'))
+        local target
+        -- The hit binds both handles before GrabSuccess. The lock socket can have moved by CheckGrabKill.
+        local paired=ed and same(ex,source) and U.struct(info,'IsTarget')==false
+            and hasHandle(info,'ExecutionHandle') and hasHandle(info,'ExecutedHandle')
+        if paired then target=ed
+        else target=call(actorRef(U.struct(U.field(ability,'Lock Target'),'Component')),'GetOwner') end
         if (ex and not same(ex,source)) or (ed and not same(ed,target)) or not protected(source,target) then return end
         local ok=pcall(function()output:set(false)end)
-        say('阶段保护目标使用普通投；对象='..U.key(target)..' ForceKill=false 读回='..tostring(ok and U.unwrap(output)==false))
+        say('阶段保护目标非致死结算；对象='..U.key(target)..' 来源='..(paired and '已命中配对' or '锁定插槽')
+            ..' ForceKill=false 读回='..tostring(ok and U.unwrap(output)==false))
     end
     local function slow(action)
         if classPath(action)~=SLOW then return end

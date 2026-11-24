@@ -81,7 +81,7 @@ local function log(msg)
     if ok and saved then runLogBytes=runLogBytes+#durable
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
-local BUILD = "v0.40.21"
+local BUILD = "v0.40.22"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -549,7 +549,7 @@ end
 
 -- 延迟生成只负责拿到Actor；控制器登记所有权后才会调用FinishSpawn。
 -- given: the catalog entry of a unit summoned along with the selected one (escorts.lua).
-local function SpawnViaAILib(cls, t, world, given)
+local function SpawnViaAILib(cls, t, world, given, team)
     if not safeValid(cls) or not safeValid(world) then return nil,"Class/World无效","not_started" end
     local className=objectName(cls)
     local classPath=className:match(" (/.+)$")
@@ -580,16 +580,24 @@ local function SpawnViaAILib(cls, t, world, given)
     local okV = safeValid(pawn)
     if not okV then return nil, "延迟生成接口未返回有效实例；创建结果未知","uncertain" end
     spawnRoutes[pawn]=npc and 'npc' or 'actor'
+    if team=='companion' and classPath==require('companion_profile').second then
+        arenaSupport.muDeferred=arenaSupport.muDeferred or setmetatable({},{__mode='k'})
+        arenaSupport.muDeferred[pawn]=true
+    end
     if arenaSupport.hunBody then arenaSupport.hunBody:capture(pawn,classPath)end
     log('生成路径读回='..spawnRoutes[pawn]..'；actor='..objectName(pawn))
     return pawn,nil,"created"
 end
 
 -- leader: the unit an escort comes with; the escort takes its level, as a map group shares its domain's.
-local function FinishSpawnViaAILib(pawn,t,world,leader)
+local function FinishSpawnViaAILib(pawn,t,world,leader,replacing)
     if not summonActorLive(pawn) or not safeValid(world) then return false,"Actor/World无效或Actor正在销毁，保留清理记录" end
     local route=spawnRoutes[pawn]
     if route~='npc' and route~='actor' then return false,'生成路径未登记，保留清理记录' end
+    if arenaSupport.muDeferred and arenaSupport.muDeferred[pawn] then
+        local ok,why=require('companion_mu').isolate(pawn,StaticFindObject('/Script/SGameAI.Default__SGameAIFunctionLibrary'))
+        if not ok then return false,why end
+    end
     if arenaSupport.hunBody then
         local ready,why=arenaSupport.hunBody:prepare(pawn)
         if not ready then return false,why end
@@ -607,12 +615,12 @@ local function FinishSpawnViaAILib(pawn,t,world,leader)
         if not leveled then log('[SpawnLevel] 出生前失败: '..tostring(levelError)) end
     end
     -- A spot behind a wall comes back to this side of it (spawn_spot.lua).
-    if route=='npc' and arenaSupport.spawnSpot then
+    if route=='npc' and not replacing and arenaSupport.spawnSpot then
         local cleared,clearError=pcall(function()arenaSupport.spawnSpot:clear(world,t)end)
         if not cleared then log('[SpawnSpot] 查墙失败: '..tostring(clearError)) end
     end
     -- A summon starts on the ground, not over it (on_ground.lua).
-    local placedOnGround=route=='npc' and onGround and onGround:place(pawn,t,world) or nil
+    local placedOnGround=route=='npc' and not replacing and onGround and onGround:place(pawn,t,world) or nil
     -- A rider's script puts its mount where the rider's spawner stands, and a few bosses aim a move at their spawner;
     -- a summon gets one where it is summoned (mounts.lua).
     if route=='npc' and mounts then
@@ -905,10 +913,15 @@ end
 local function CollectNPCs(linkOwners)
     local player = GetPlayerPawn()
     local playerAddr = player and player:GetAddress() or nil
-    local result, seen = {}, {}
+    local result, seen, complete = {}, {}, true
     for _, className in ipairs(Config.EnemyClasses or {"PBZCharacter_NPC"}) do
         local ok, found = pcall(FindAllOf, className)
-        if ok and found then
+        if ok and found~=nil and type(found)~='table' then
+            found=UEObserve.array(found)
+            if not found then complete=false end
+        end
+        if not ok then complete=false
+        elseif found then
             for _, pawn in ipairs(found) do
                 if safeValid(pawn) then
                     local addr = pawn:GetAddress()
@@ -923,6 +936,7 @@ local function CollectNPCs(linkOwners)
             end
         end
     end
+    if linkOwners then return result,complete end
     return result
 end
 
@@ -1568,7 +1582,17 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     getForward=function(actor) checked(actor); return actor:GetActorForwardVector() end,
     spawnClass=SpawnViaAILib,
     finishSpawn=FinishSpawnViaAILib,
-    activate=function(actor,unitPath,team,escort)
+    companionTransfer=function(...)return arenaSupport.companionNative.transfer(...)end,
+    companionRestore=function(...)return arenaSupport.companionNative.restore(...)end,
+    companionCommitReady=function(...)return arenaSupport.companionNative.commitReady(...)end,
+    companionChildren=function(...)return arenaSupport.muChildren(...)end,
+    companionChildGroups=function(...)return arenaSupport.muChildGroups(...)end,inCompanionWorld=UEObserve.inWorld,
+    quarantineCompanion=function(actor)
+        if not summonActorLive(actor) then return end
+        local ai=GetAIComp(actor);if safeValid(ai) then ai:StopAI() end
+        if summonActorLive(actor) then actor:SetActorEnableCollision(false);actor:SetActorHiddenInGame(true) end
+    end,
+    activate=function(actor,unitPath,team,escort,spec)
         if spawnRoutes[actor]=='actor' then return safeValid(actor),'通用Actor初始化完成；未调用PBZ战斗AI，不保证具有血量或战斗能力' end
         -- A companion is never handed to no-aggro: up to v0.37.3 it was recorded here while still the enemy, and
         -- turning no-aggro off (leaving the free camera) set that back, so its attacks hit the player.
@@ -1579,7 +1603,10 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         end
         -- Companions get the official follow state, the player's faction and a friendly relation before their AI starts.
         if team=='companion' and companions then
-            local prepared,prepareError=pcall(function()companions:prepare(actor,unitPath)end)
+            local prepared,prepareError=pcall(function()return companions:prepare(actor,unitPath)end)
+            if require('companion_profile').phase(unitPath) and (not prepared or not prepareError or not prepareError.ok) then
+                return false,'沐小葵的阵营、友好关系或跟随状态未确认'
+            end
             if not prepared then log('[Companion] 准备失败: '..tostring(prepareError)) end
         end
         if team~='companion' and arenaSupport.hunBody then arenaSupport.hunBody:prepareRole(actor) end
@@ -1618,6 +1645,9 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         if team~='companion' then spectator:applyTo(actor) end
         if not summonActorLive(actor) then return false,"应用观战关系后对象进入销毁或状态不可读" end
         local ai=GetAIComp(actor)
+        if arenaSupport.muDeferred and arenaSupport.muDeferred[actor] and not require('companion_mu').attached(actor,ai) then
+            return false,'铁玉女王已启用的 AI 与私有配置不一致'
+        end
         local hp=GetHP(actor)
         log("召唤激活读回 ControllerAI="..tostring(ai~=nil).." HP="..tostring(hp))
         local verified,verifyError=pcall(function()spawnDifficulty:verify(actor,unitPath)end)
@@ -1639,7 +1669,10 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             end
         end
         if team=='companion' and companions then
-            local checked,checkError=pcall(function()companions:afterActivate(actor,unitPath)end)
+            local checked,checkError=pcall(function()return companions:afterActivate(actor,unitPath)end)
+            if require('companion_profile').phase(unitPath) and (not checked or checkError~=true) then
+                return false,'激活后随从身份或跟随行为未读回'
+            end
             if not checked then log('[Companion] 激活后读回失败: '..tostring(checkError)) end
         end
         -- Companions have a set of their own, separate from the arena's. An escort (a 驯犬客's 狂犬) takes the numbers the player
@@ -1668,9 +1701,13 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
             end
         end
         if combatReady and not escort then
-            local result=stats:onSpawn(actor,unitPath)
+            local result
+            if spec then
+                spec.attributes=spec.attributes or stats:captureCustom()
+                result=stats:applyCaptured(actor,unitPath,spec.attributes)
+            else result=stats:onSpawn(actor,unitPath) end
             if not result.ok then
-                if result.rollback_verified then return true,'初始化通过；数值统一失败已回滚',result.message..'；单位保留原生数值，可正常交战' end
+                if not spec and result.rollback_verified then return true,'初始化通过；数值统一失败已回滚',result.message..'；单位保留原生数值，可正常交战' end
                 return false,'单位已生成；'..result.message..'；保留对象供清理'
             end
             -- An experiment: whatever it does, the summon stands.
@@ -1790,6 +1827,11 @@ local summonLinks=SummonLinks.new({getWorld=GetCurrentWorld,getNPCs=CollectNPCs,
 arenaSupport.menghuaPhase=require('menghua_phase').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,hp=GetHP,isDestroying=actorIsDestroying,
     rule=function(id)return arenaSupport.unitRules and arenaSupport.unitRules:get(id,'menghua_stage') or 'keep' end,
     ready=function()return runtimeSession:status().game_ready==true end,
+    gameTime=GameSeconds,opponent=function(actor)return arena:aggroOpponent(actor)end,
+    canRequest=function(actor)
+        local continuity=arenaSupport.combatContinuity
+        return continuity~=nil and not freeCamera:isFrozen() and not continuity:actionBusy(actor)
+    end,
     boardOf=function(actor)return UEObserve.field(GetAIComp(actor),'BlackboardComponent')end})
 arenaActivity=ArenaActivity.new({log=log,isNPC=function(actor)return spawnRoutes[actor]~='actor' end,
     freeCam=function()return freeCamera:isActive() or safeValid(arenaSupport:debugCameraForSupport()) end,
@@ -2178,8 +2220,15 @@ arenaSupport.lockRelease=require('lock_release').new({log=log,
     actionBusy=function(actor)return arenaSupport.combatContinuity:actionBusy(actor)end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end})
 companions=Companion.new({log=log,busy=function(actor)
-    return arenaSupport.menghuaPhase:busy(actor) or arenaExecutions and arenaExecutions:executing(actor) or false
-end,getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
+    local r=arenaSupport.companionManager and arenaSupport.companionManager:lookup(actor)
+    return r and (r.swapping or r.blocked or r.pose or r.waiting or r.lease) or arenaSupport.menghuaPhase:busy(actor)
+        or arenaExecutions and arenaExecutions:participant(actor) or arenaSupport.teleport and arenaSupport.teleport:relocating() or false
+end,beforeRecall=function(actor)
+    return not arenaSupport.companionManager or arenaSupport.companionManager:prepareRecall(actor)
+end,profile=function(actor)return arenaSupport.companionManager and arenaSupport.companionManager:forActor(actor)end,
+    hostile=function(actor,enemy)
+        return summonActorLive(enemy) and UEObserve.inWorld(enemy,GetCurrentWorld()) and ReadRelation(actor,enemy)==2
+    end,getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,aiLib=GetAILib,getLocation=GetLocation,hp=GetHP,
     combatTarget=function(actor)
         if arenaSupport.companionCombatTarget then return arenaSupport.companionCombatTarget(actor) end
     end,
@@ -2412,7 +2461,9 @@ arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWo
     statics=GetGameplayStatics,clock=LiveSeconds,inGameThread=IsInGameThread})
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
     hp=GetHP,inGameThread=IsInGameThread,
-    prepareMembers=function(members)companionTargets:sync(members)end,
+    prepareMembers=function(members)
+        if not arenaSupport.frameContext or members~=arenaSupport.frameContext.targetRoster then companionTargets:sync(members) end
+    end,
     companionTargetOf=function(actor,target,name)return companionTargets:current(actor,target,name)end,
     companionLastEnemyOf=function(actor)return companionTargets:lastEnemy(actor)end,
     boundaryCharacter=function(context,index)return arenaSupport.yubiArena:character(context,index)end,
@@ -2466,6 +2517,9 @@ arenaSupport.xianzhePhantom=require('xianzhe_phantom').new({log=log,members=Aren
     ready=function()return runtimeSession:status().game_ready==true end,
     rule=function(id)return arenaSupport.unitRules:get(id,'phantom')end})
 arenaSupport.offCombatRegen=require('offcombat_regen').new({log=log,path=Config.RuntimePath,clock=LiveSeconds,members=ArenaMembers,
+    actorOf=function(key)return arena:actorOf(key)end,
+    customActive=function()return arenaSupport.companionManager and arenaSupport.companionManager.customCount>0 end,
+    custom=function(actor)local p=arenaSupport.companionManager and arenaSupport.companionManager:forActor(actor);return p and p.regen=='custom' end,
     ready=function()return runtimeSession:status().game_ready==true end})
 -- Teleport (experimental, teleport.lua): the game's own PBZSaveLoadSubsystem:TeleportTo with the level name
 -- GetCurrentLevelName gives, as the game's teleporter device does.
@@ -2531,7 +2585,13 @@ arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,me
     executionPolicyConfigured=function()return arenaSupport.unitRules:hasExecutionOverrides()end,
     executionPolicy=function(id)return arenaSupport.unitRules:get(id,'execution_minions')end,
     phaseBusy=function(actor)return arenaSupport:combatPhaseBusy(actor)end,
+    companionCanAct=function(actor)
+        local m=arenaSupport.companionManager
+        local r=m and m:lookup(actor)
+        return not r or not (r.p.behavior=='peace' or r.p.behavior=='assist' and not r.defending or r.lease or r.pose or r.waiting or r.swapping or r.blocked)
+    end,
     companions=function()return arenaSupport.companionExecutions.on end,companionMinions=function()return arenaSupport.companionExecutions.minions end,isStand=require('arena_stands').isStand,
+    nativeExecution=function(actor)return arenaSupport.combatContinuity:inExecution(actor)end,
     killOnLock=function(actor)return arenaSupport.unitRules:get(actor,'lock')=='kill' end,
     getPlayer=GetPlayerPawn,getWorld=GetCurrentWorld,getLocation=GetLocation,camera=executionCamera,
     onPole=function(actor)return arenaSupport.lionNPC:holds(actor)end,
@@ -2575,6 +2635,46 @@ arenaSupport.standaloneStoryUnits=require('standalone_story_units').new({log=log
 -- every minute a summary of all ticks and their costliest steps (perf_meter.lua) keeps coming after that.
 do -- Keep the support tick and its private state out of the remaining bootstrap scope.
 local SLOW_TICK_MS,slowTicks=10,0
+arenaSupport.muChildGroups=function(actors,world)
+    local owners,groups={},{}
+    local queen=require('companion_profile').second
+    for _,actor in ipairs(actors)do
+        local key=UEObserve.key(actor)
+        if not key or not UEObserve.inWorld(actor,world) or UEObserve.npcPath(actor)~=queen then return nil end
+        owners[#owners+1]={actor=actor,team='companion'};groups[key]={}
+    end
+    local found,scan=summonLinks:scan(owners)
+    if not scan or scan.errors~=0 or scan.conflicts~=0 then return nil end
+    for _,link in ipairs(found)do
+        local group=groups[link.parentKey]
+        if group and require('arena_stands').isStand(link.actor) then group[#group+1]=link.actor end
+    end
+    return groups
+end
+arenaSupport.muChildren=function(actor,world)
+    local path=UEObserve.npcPath(actor)
+    if not path then return nil end
+    if path~=require('companion_profile').second then return {} end
+    local groups=arenaSupport.muChildGroups({actor},world)
+    return groups and groups[UEObserve.key(actor)]
+end
+arenaSupport.companionNative=require('companion_native').new({path=Config.RuntimePath,log=log,world=GetCurrentWorld,player=GetPlayerPawn,
+    ai=GetAIComp,hp=GetHP,maxHP=GetMaxHP,location=GetLocation,tagName=FNameToString,destroying=actorIsDestroying,
+    session=function()local s=runtimeSession:status();return s.game_session,s.game_ready end,now=function()return GameSeconds() or 0 end,
+    blocked=function(actor)return freeCamera:isFrozen() or arenaSupport.teleport:relocating()
+        or arenaSupport.combatContinuity:inExecution(actor)~=false or arenaSupport.menghuaPhase:busy(actor) end,
+    actionBusy=function(actor)return arenaSupport.combatContinuity:actionBusy(actor)end,
+    owned=function(actor)return arena:ownsDirectCompanion(actor)end,
+    target=function(actor)return companionTargets:inspect(actor)end,
+    aimedAt=function(actor,target)return companionTargets:aimedAt(actor,target)end,
+    canHeal=function(actor)return arenaSupport.offCombatRegen:canCustomHeal(actor)end,
+    onDeath=function(actor)return arena:clearCompanionHelpers(actor)end,
+    keepFollowing=function(actor,player)companions:keepControlled(actor,player)end,
+    recovered=function(actor)return arena:companionRollbackReady(actor)end,
+    recall=function(actor)return companions:recall(actor)end,
+    spawn=function(path)return arena:spawn(path,'companion',1,true,true)end,
+    swap=function(...)return arena:replaceCompanion(...)end})
+arenaSupport.companionManager=arenaSupport.companionNative.manager
 local supportMeter=require('perf_meter').new({label='支持循环',log=log,slow=SLOW_TICK_MS,hitch=1000})
 -- These modules observe or present the fight. Failure of one must not starve combat or cleanup.
 -- Combat/control steps keep their original fail-fast order and frame-context restoration.
@@ -2612,6 +2712,14 @@ local function supportSteps(self)
         spawnDifficulty:prune(memberKeys)
     end)
     step('aiDifficulty',function()aiDifficulty:tick()end)
+    step('companionManager',function()
+        arena:recoverCompanionCleanup()
+        companionTargets:sync(tickMembers);self.frameContext.targetRoster=tickMembers
+        self.companionManager:tick(tickMembers)
+        if self.companionManager.replaced==true then
+            self.companionManager.replaced=nil;tickMembers,tickStatus=arena:snapshot();companionTargets:sync(tickMembers);self.frameContext.targetRoster=tickMembers
+        end
+    end)
     step('companions',function()companions:tick()end)
     step('companionPassage',function()self.companionPassage:tick()end)
     step('fun',function()funFeatures:tick()end)
@@ -2703,7 +2811,7 @@ end
 local keyPoll=KeyPoll.new({log=log,controller=GetRealPlayerController,
     isCurrentController=function(pc)return arenaSupport:controllerCurrent(pc,arenaSupport:viewportWorld())end,
     meter=require('perf_meter').new({label='按键读取',log=log,slow=2,hitch=1000})})
-local keyRouter=KeyRouter.new({log=log,register=keyPoll.register,occupied=keyPoll.occupied})
+local keyRouter=KeyRouter.new({log=log,register=keyPoll.register,occupied=keyPoll.occupied,registerXbox=keyPoll.registerXbox})
 local unitKeys=UnitKeys.new({path=Config.RuntimePath,log=log,router=keyRouter,
     queue=function(callback,path,team,count)
         if panelRuntime then panelRuntime:queueSummon(callback,path,team,count) end
@@ -2780,6 +2888,7 @@ if ModRef then
         local checkedThread,onGameThread=pcall(IsInGameThread)
         local restoreNative=checkedThread and onGameThread==true
         stop('weather',arenaSupport.weather,restoreNative)
+        stop('companionManager',arenaSupport.companionManager,restoreNative)
         stop('companionPassage',arenaSupport.companionPassage,restoreNative)
         stop('entourage',arenaSupport.entourage,restoreNative)
         stop('swordFormation',arenaSupport.swordFormation,restoreNative)

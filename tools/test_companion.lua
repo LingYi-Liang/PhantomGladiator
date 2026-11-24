@@ -253,6 +253,20 @@ test('out of combat it engages the nearest live hostile it perceives near the pl
     here:tick();assert(#fought==1,'at most once a second')
     aiF.CurrentStateTag=tag('AI.State.Combat');now=2002;here:tick();assert(#fought==1,'not while already fighting')
 end)
+test('a crowd search reads each candidate position once and rechecks the chosen enemy',function()
+    local pawn,ai=unit(false);local perceived,reads,relations={},0,0
+    local positions={[pawn]={X=0,Y=0,Z=0},[player]={X=0,Y=0,Z=0}}
+    for i=1,200 do local enemy=object({},'Enemy'..i);perceived[i]=enemy;positions[enemy]={X=100+i,Y=0,Z=0} end
+    ai.AIPerception=object({GetPerceivedHostileActors=function(_,out)out.OutActors=perceived end},'Perception')
+    local chosen;ai.ForceIntoCombat=function(_,enemy)chosen=enemy end
+    local here=Companion.new({getPlayer=function()return player end,getWorld=function()return world end,clock=function()return 500 end,
+        members=function()return {{actor=pawn,team='companion',class_path='fixture'}} end,
+        hostile=function(_,a)relations=relations+1;return a~=perceived[1] end,hp=function()return 100 end,
+        getLocation=function(a)reads=reads+1;return positions[a] end})
+    here:tick()
+    print(('MEASURE 200 perceived: position reads=%d relation checks=%d'):format(reads,relations))
+    assert(chosen==perceived[2] and reads<=212 and relations<=4)
+end)
 test('a companion is always friendly: a relation, faction or hatred that drifts is put back and logged',function()
     local g=unit(false)
     local hm=g.BP_PBZHatredManagerComponent

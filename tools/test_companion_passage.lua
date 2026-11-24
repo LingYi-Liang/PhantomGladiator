@@ -38,7 +38,7 @@ local function fixture(saved)
     h.player.CapsuleComponent=object('CapsuleComponent Player.CollisionCylinder',{type=PLAYER_CHANNEL,writes=0})
     function h.player.CapsuleComponent:GetCollisionObjectType()return self.type end
     function h.player.CapsuleComponent:SetCollisionResponseToChannel()self.writes=self.writes+1 end
-    h.mod=Passage.new({path='R',io=h.io,log=function(s)h.logs[#h.logs+1]=s end,members=function()return h.members end,
+    h.mod=Passage.new({path='R',io=h.io,clock=function()return h.now or 0 end,log=function(s)h.logs[#h.logs+1]=s end,members=function()return h.members end,
         player=function()return h.player end,mount=function(actor)return h.mounts[actor]end})
     function h:logged(text)local n=0;for _,line in ipairs(self.logs)do if line:find(text,1,true)then n=n+1 end end;return n end
     return h
@@ -101,5 +101,21 @@ test('mounts, reserves, a setting the game already has, a reused address and unr
     h.player.CapsuleComponent.type=7;h.mod:tick();assert(#h.writes==0,'a response that cannot be read is not written over')
     buddy.CapsuleComponent.responses[7]=2;h.mod:tick();assert(h.writes[1].channel==7,'the channel is read, never assumed')
     h.player.valid=false;buddy.CapsuleComponent.responses[7]=2;h.mod:tick();assert(#h.writes==1,'no player, no write')
+end)
+test('changing the player channel restores its old response; rejected writes back off and recover',function()
+    local h=fixture();local npc1=npc('Companion',h);local cap=npc1.CapsuleComponent
+    h.members={{actor=npc1,team='companion'}};h.mod:tick()
+    cap.responses[7]=1;h.player.CapsuleComponent.type=7;h.mod:tick()
+    print('MEASURE previous collision channel after migration='..cap.responses[PLAYER_CHANNEL])
+    assert(cap.responses[PLAYER_CHANNEL]==2 and cap.responses[7]==0)
+    cap.stuck=true;assert(h.mod:set('OFF').ok);local tries=#h.writes
+    for i=1,120 do h.now=i/10;h.mod:tick() end
+    assert(#h.writes-tries<=6 and cap.responses[7]==0)
+    cap.stuck=false;h.now=22;h.mod:tick();assert(cap.responses[7]==1)
+    cap.stuck=true;assert(h.mod:set('ON').ok);tries=#h.writes
+    for i=1,120 do h.now=22+i/10;h.mod:tick() end
+    print('MEASURE denied passage: writes in 12 seconds='..(#h.writes-tries))
+    assert(#h.writes-tries<=6 and h.mod:status().applied==0)
+    cap.stuck=false;h.now=45;h.mod:tick();assert(cap.responses[7]==0 and h.mod:status().applied==1)
 end)
 print('companion passage: PASS '..n..' apply/readback/restore/switch/mount checks; walking through remains unverified in game')

@@ -61,6 +61,27 @@ function U.array(v)
     local ok=pcall(function() v:ForEach(function(_,item) out[#out+1]=U.unwrap(item) end) end)
     return ok and out or nil
 end
+-- Cardinality queries do not materialize a Lua table of UObjects. Older wrappers only expose ForEach.
+function U.arraySize(value)
+    local v=U.unwrap(value)
+    local kind=U.kind(v)
+    if kind=='table' then
+        local count=#v
+        if count>0 or next(v)==nil then return count end
+        return nil
+    end
+    if kind~='TArray' then return nil end
+    local ok,count=pcall(function()return v:GetArrayNum()end)
+    if ok and type(count)=='number' and count>=0 and count%1==0 then return count end
+    if type(v)=='userdata' then
+        ok,count=pcall(function()return #v end)
+        if ok and type(count)=='number' and count>=0 and count%1==0 then return count end
+    end
+    count=0
+    ok=pcall(function()v:ForEach(function()count=count+1 end)end)
+    if ok then return count end
+end
+
 function U.inWorld(actor,world)
     local key=U.key(world);if not key then return false end
     local object=actor

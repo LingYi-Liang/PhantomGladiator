@@ -244,3 +244,23 @@ do
     assert(c.n==2 and staleReads==0 and h.finds==2,'a valid but unowned cached controller must be replaced before reading input')
 end
 print('key_poll: PASS (engine key names, exact chords, one press per press, in-frame presses, controller changes, ownership, F13 flag fallback, loop choice, router)')
+do
+    local h=fixture()
+    local router=Router.new({keys={},registerXbox=h.poll.registerXbox})
+    local calls={}
+    router.dispatch=function(code,mask)calls[#calls+1]=Router.label(code,mask)end
+    for _,binding in ipairs({{195,0},{195,1},{195,3},{200,0},{201,0}})do assert(router:ensure(table.unpack(binding)))end
+    assert(not router:ensure(200,1) and not router:ensure(195,4))
+    h.down.Gamepad_FaceButton_Bottom=true;h.poll:tick();assert(#calls==0)
+    h:release('Gamepad_FaceButton_Bottom')
+    h:press('Gamepad_LeftShoulder','Gamepad_FaceButton_Bottom')
+    for _=1,20 do h.poll:tick()end
+    h:release('Gamepad_LeftShoulder','Gamepad_FaceButton_Bottom')
+    h:press('Gamepad_LeftShoulder','Gamepad_RightShoulder','Gamepad_FaceButton_Bottom')
+    h:release('Gamepad_LeftShoulder','Gamepad_RightShoulder','Gamepad_FaceButton_Bottom')
+    h:press('Gamepad_LeftShoulder');h:release('Gamepad_LeftShoulder')
+    local state=h.pc.GetInputAnalogKeyState
+    function h.pc:GetInputAnalogKeyState(k)if k.KeyName=='Gamepad_LeftTriggerAxis' then return self.trigger end;return state(self,k)end
+    for _,value in ipairs({0,.6,.51,.44,.58,.38,.8})do h.pc.trigger=value;h.poll:tick()end
+    assert(table.concat(calls,',')=='Xbox LB+A,Xbox LB+RB+A,Xbox LB,Xbox LT,Xbox LT' and #h.native==0)
+end

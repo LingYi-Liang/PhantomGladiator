@@ -69,16 +69,22 @@ function Regen.new(options)
         if not key or U.key(U.field(actor,'AbilitySystemComponent'))~=U.key(asc) then return nil end
         local name=call(actor,'GetFullName')
         if type(name)~='string' then return nil end
+        if options.actorOf then
+            local listed=options.actorOf(key)
+            if U.key(listed)==key and call(listed,'GetFullName')==name and U.key(U.field(listed,'AbilitySystemComponent'))==U.key(asc) then return actor end
+            return nil
+        end
         for _,member in ipairs(options.members() or {})do
             if U.key(member.actor)==key and call(member.actor,'GetFullName')==name then return actor end
         end
     end
     local function intercept(context,effect)
-        if not self.alive or not self.on or not gameThread() then return end
+        if not self.alive or not gameThread() or not self.on and not (options.customActive and options.customActive()) then return end
         local cls=U.unwrap(effect)
         if not blocked[pathOf(cls)] then return end
         local asc=U.unwrap(context)
-        if not ready() or not owned(asc) then return end
+        local actor=owned(asc)
+        if not actor or not self.on and not (options.custom and options.custom(actor)) or not ready() then return end
         local replacement=empty()
         if not replacement then
             interceptionFailed=true
@@ -140,7 +146,7 @@ function Regen.new(options)
     end
     function self:tick()
         if not self.alive then return end
-        if not self.on then records={};uninstall();self.state='off';return end
+        if not self.on and not (options.customActive and options.customActive()) then records={};uninstall();self.state='off';return end
         if not ready() then records={};uninstall();self.state='waiting';return end
         local members=options.members() or {}
         if #members==0 then records={};uninstall();self.state='waiting';return end
@@ -148,18 +154,27 @@ function Regen.new(options)
         local present,pending={},false
         for _,member in ipairs(members)do
             local actor=member.actor
-            local key,name=U.key(actor),call(actor,'GetFullName')
-            local asc=U.field(actor,'AbilitySystemComponent')
-            if key and type(name)=='string' and U.valid(asc) then
-                present[key]=true
-                local row=records[key]
-                if not row or row.name~=name or row.asc~=U.key(asc) then row={name=name,asc=U.key(asc),nextAt=0};records[key]=row end
-                if not row.done and clock()>=row.nextAt then row.done=clearActive(actor,asc);row.nextAt=clock()+0.5 end
-                pending=pending or not row.done
-            elseif key then pending=true end
+            local custom=not self.on and member.team=='companion' and not member.summoner and not member.stand
+                and not member.reserve and options.custom and options.custom(actor)
+            if self.on or custom then
+                local key,name=U.key(actor),call(actor,'GetFullName')
+                local asc=U.field(actor,'AbilitySystemComponent')
+                local ascKey=U.key(asc)
+                if key and type(name)=='string' and ascKey then
+                    present[key]=true
+                    local row=records[key]
+                    if not row or row.name~=name or row.asc~=ascKey then row={name=name,asc=ascKey,nextAt=0};records[key]=row end
+                    if not row.done and clock()>=row.nextAt then row.done=clearActive(actor,asc);row.nextAt=clock()+0.5 end
+                    pending=pending or not row.done
+                elseif key then pending=true end
+            end
         end
         for key in pairs(records)do if not present[key] then records[key]=nil end end
         self.state=(pending or interceptionFailed) and 'failed' or 'on'
+    end
+    function self:canCustomHeal(actor)
+        local r=records[U.key(actor)]
+        return not self.on and hook~=nil and not interceptionFailed and r and r.done and r.name==call(actor,'GetFullName')
     end
     function self:set(token)
         if token~='ON' and token~='OFF' then return {ok=false,message='无效的脱战回血设置'} end

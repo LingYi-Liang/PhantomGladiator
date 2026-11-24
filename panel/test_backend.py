@@ -54,6 +54,22 @@ class BridgeTests(unittest.TestCase):
                    (f"game_ready\t{str(ready).lower()}\n" if ready is not None else "")+
                    'function_keys_schema\t4\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n')
 
+    def test_companion_profiles_session_and_wire(self):
+        value='active,5,1,1,game,1,auto_return,50,10'
+        unit='C2-session-A'
+        self.write('companion-roster.tsv',f'PGCM1\tsession-A\t4\nall\t{value}\nmu\t{value}\tinherit\n{unit}\t{UNIT}\t3\t0\t0\tfollowing\t{value}\t\n')
+        self.assertEqual(self.bridge.companion_manager()['units'][0]['id'],unit)
+        token=f'{unit}|3|save|{value}'
+        payload=self.bridge._validate({'action':'manage_companion','unit_id':token})
+        self.assertEqual(self.bridge._wire({'id':'t1','payload':json.dumps(payload)}).split('\t')[2],token)
+        for verb in ['all|0|pose|',unit+'|3|save|'+value.replace(',50,',',100,'), 'mu|1|inherit|text']:
+            with self.assertRaises(backend.ValidationError):
+                self.bridge._validate({'action':'manage_companion','unit_id':verb})
+        self.game('session-B')
+        self.assertFalse(self.bridge.companion_manager()['ready'])
+        self.assertEqual(self.bridge.companion_manager()['units'],[])
+        self.assertEqual(self.bridge._validate({'action':'summon_mu_companion'})['action'],'summon_mu_companion')
+
     def allow_fixture(self, unit_id):
         policy = json.loads(self.policy.read_text(encoding="utf-8"))
         policy["units"][unit_id] = {"class_path": unit_id, "allow_spawn": True,
@@ -1233,6 +1249,17 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(errors,[]);self.assertFalse(bindings[UNIT]['active'])
         bindings,errors=self.bridge._unit_shortcuts('new-epoch')
         self.assertTrue(bindings[UNIT]['active'])
+
+    def test_xbox_chords_round_trip_through_unit_key_commands(self):
+        for code in range(195,211):
+            for mask in range(4):
+                binding={'key_code':code,'modifiers':mask}
+                if code in (199,200) and mask:
+                    with self.assertRaises(backend.ValidationError):backend.parse_binding(binding)
+                else:self.assertEqual(backend.parse_binding(backend.binding_token(binding)),binding)
+        pad={'action':'configure_unit_key','unit_id':UNIT,'key_code':195,'modifiers':1,'team':'companion','count':2}
+        wired=self.bridge._wire({'id':self.bridge.enqueue(pad)['id'],'payload':json.dumps(pad)})
+        self.assertIn('\tVK_195\tMOD_1\t',wired)
 
     def test_unit_key_can_carry_its_own_team_and_count(self):
         request={'action':'configure_unit_key','unit_id':UNIT,'key_code':81,'modifiers':0,'team':'red','count':2}

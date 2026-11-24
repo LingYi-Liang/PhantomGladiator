@@ -506,5 +506,139 @@ window.PG_PREVIEW_NOTES = {
         "en": "Diagnostics for Yuding’s execution grab now show whether a matching NPC perfect dodge was observed and whether the game accepted the counter request."
       }
     ]
+  },
+  "0.40.21": {
+    "title": {
+      "zh": "Xbox 手柄快捷键",
+      "en": "Xbox controller hotkeys"
+    },
+    "added": [
+      [
+        {
+          "since": 1,
+          "zh": "设置快捷键时可以直接按 Xbox 手柄按钮，或从列表选择。支持单键、LB 或 RB 加另一键，以及两个肩键一起加另一键。魂、单位卡、怪物池、天气和传送地点都沿用各自的绑定和冲突提示。",
+          "en": "Bind Xbox buttons by pressing them or choosing from the list. Use one button or hold LB, RB, or both with another button. Hun, unit cards, pools, weather and teleport destinations use their existing binding and conflict controls.",
+          "legacy": {
+            "zh": "Xbox 手柄支持独立快捷键和 LB、RB 组合。",
+            "en": "Xbox shortcuts support individual buttons and LB/RB combinations."
+          }
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "右栏保留随从摘要、召回和遣散。通行、不倒下、处决及完整属性表移入「随从设置」。原属性入口可直接打开对应页，切页或刷新状态时保留输入。",
+          "en": "Open Companion settings from the right sidebar for passage, Undying, executions and the full stat form. Recall and dismiss are still in the sidebar. Stat shortcuts open the relevant section and drafts survive status refreshes.",
+          "legacy": {
+            "zh": "随从设置移入宽面板。",
+            "en": "Companion settings now have a dedicated panel."
+          }
+        }
+      ]
+    ],
+    "combat": [
+      [
+        {
+          "since": 3,
+          "zh": "沐小葵可以作为一名双阶段随从召唤。少主和铁玉女王仍能单独召唤。双阶段可选脱战还原、变身后持续、手动切换或固定任一形态。变身血线由助手设置，铁玉女王仍受原有剧情进度保护。",
+          "en": "Summon Mu Xiaokui as one dual-form companion or use either original card. Choose automatic transformation with or without returning after combat, manual switching, or a fixed form. Set the HP threshold yourself. The second form still requires the existing story-progress check.",
+          "legacy": {
+            "zh": "新增双阶段沐小葵和五种形态策略。",
+            "en": "Dual-form Mu Xiaokui with five form policies."
+          }
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "在随从设置里可以选择主动迎敌、受攻击时反击或和平跟随，调整跟随距离、自动脱困、新仇恨与脱战回血。支持设置默认值、沐小葵角色配置或单个场上随从。沐小葵可在安全的非战斗时刻尝试原生合影动作。",
+          "en": "Set combat behavior, following distance, automatic rescue, eligibility for new aggro and out-of-combat healing for future summons, Mu Xiaokui, or one live companion. Both forms can try their own photo pose outside combat.",
+          "legacy": {
+            "zh": "新增跟随、交战、脱战回血和单体指令。",
+            "en": "Companion behavior, healing and individual commands."
+          }
+        }
+      ]
+    ],
+    "fixes": [
+      [
+        {
+          "since": 2,
+          "zh": "玉鼎抓住处于阶段锁血的序章左殇或梦华后，按实际受招者判断是否致死。技能的锁定对象变化时，已抓住的角色仍有阶段保护。序章左殇的 4% 血线补救也会等原生抓取结束再解除。",
+          "en": "Yu Ding’s grabs check the fighter actually caught when prologue Zuo Shang or Menghua is protected by a phase HP floor, even if the lock-on target changes. The prologue’s 4% recovery waits for the native grab to end before releasing the floor.",
+          "legacy": {
+            "zh": "玉鼎按实际受招者判断阶段保护。",
+            "en": "Yu Ding checks the phase protection of the fighter she caught."
+          }
+        }
+      ],
+      [
+        {
+          "since": 2,
+          "zh": "梦华在红蓝擂台卡在 41% 血线时，如果已经满足原版召唤条件，助手会等手头的动作结束，再请求她召出自己的虚空。后续配对与阶段解锁沿用原版流程。",
+          "en": "If Menghua stalls at her 41% HP floor in the arena after meeting the game’s summon requirements, the assistant waits for her current action to finish and requests her own Xu Kong. The game handles the pairing and phase unlock.",
+          "legacy": {
+            "zh": "梦华 41% 血线可重试原版召唤。",
+            "en": "Menghua can retry her native summon at 41% HP."
+          }
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "切换形态时先核对阵营、生命和杀气比例，再回收旧形态和它的配合单位。受处决、传送或目标变化影响时会暂缓。新形态切换、合影及多人长时间跟随仍待游戏内验证。",
+          "en": "Form changes check allegiance and HP and Sha-Chi ratios before retiring the old body and its helpers. Executions, travel or a target change can defer a switch. Form changes, photo poses and extended group play await in-game verification.",
+          "legacy": {
+            "zh": "形态切换、合影及长时间跟随待实机验证。",
+            "en": "Form changes, photo poses and long sessions await in-game tests."
+          }
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "多名沐小葵同时达到变身条件时会轮流切换，轮到之前重新检查血量和战斗状态。多名女王同时倒下时分批回收替身，集中遣散时合并归属检查。",
+          "en": "Mu Xiaokui companions take turns changing form and recheck HP and combat before each change. When several queens fall at once, cleanup is spread out. Dismissing a group checks helper ownership together.",
+          "legacy": {
+            "zh": "多人换形、回收替身分批处理。",
+            "en": "Spaced out form changes and helper cleanup."
+          }
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "修复随从待命后目标暂时读不到，或从和平切回主动时可能原地不动的问题。多人交战时减少重复索敌、仇恨和回血查询；替身的诊断记录达到上限后停止额外动作采样。",
+          "en": "Companions can resume following when their target is temporarily unreadable and release a mod-owned pause after leaving peaceful mode. Crowds need fewer targeting and healing queries. Stand diagnostics stop sampling poses once their detail limit is reached.",
+          "legacy": {
+            "zh": "修复待命卡住，减少索敌和回血查询。",
+            "en": "Fixed stuck orders and reduced targeting and healing queries."
+          }
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "随从血条、通行碰撞或状态读取失败时会延迟重试。切换玩家碰撞通道会先恢复原通道；单只随从读回异常时，其余随从可继续更新。",
+          "en": "Missing health bars, denied collision changes and unreadable companion state retry with a delay. Changing the player collision channel restores the original one. One unreadable companion no longer interrupts updates for the others.",
+          "legacy": {
+            "zh": "血条及碰撞故障会延迟重试。",
+            "en": "Backoff for failed health bars and collision changes."
+          }
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "修复属性读取失败时设置页反复刷新的问题。现在可以手动重新读取；在名单读取期间召唤或遣散，窗口会补上最新名单并保留输入。",
+          "en": "A failed stat read now offers a retry instead of repeatedly refreshing the form. If companions are summoned or dismissed during a pending read, the window fetches the latest roster and keeps your edits.",
+          "legacy": {
+            "zh": "修复设置页反复刷新和名单漏更新。",
+            "en": "Fixed repeated settings refreshes and stale rosters."
+          }
+        }
+      ]
+    ],
+    "details": []
   }
 };

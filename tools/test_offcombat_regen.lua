@@ -46,11 +46,13 @@ local function harness()
     end}
     function h:new()
         return Regen.new({path='fixture',io=self.fs,clock=function()return self.now end,
+            customActive=function()return self.customActive end,custom=function(a)return self.custom==a end,
             find=function(path)self.finds=self.finds+1;return path==Regen.path and self.fn or self.classes[path]end,
             register=function(_,pre,post)self.registered=self.registered+1;if self.failRegister then error('denied')end;self.pre=pre;self.post=post;return 1,2 end,
             unregister=function()self.unregistered=self.unregistered+1;if self.failUnregister then return false end;self.pre=nil;return true end,
             inGameThread=function()return self.inGame~=false end,
-            ready=function()return self.ready end,members=function()return self.members end,
+            ready=function()return self.ready end,members=function()self.rosterReads=(self.rosterReads or 0)+1;return self.members end,
+            actorOf=self.index and function(key)return self.index[key]end,
             log=function(line)self.logs[#self.logs+1]=line end})
     end
     function h:apply(asc,cls,deny)
@@ -145,5 +147,27 @@ check('leaving the world disarms immediately and retains the saved choice',funct
     local h=harness();assert(h.feature:set('ON').ok);h.ready=false;h.feature:tick()
     assert(h.feature:status().on and h.feature:status().state=='waiting' and h.feature:status().hooks==0)
     h.now=2;h.ready=true;h.feature:tick();assert(h.feature:status().state=='on')
+end)
+check('one custom-healing companion leaves ordinary arena members out of native clearance checks',function()
+    local h=harness();h.members[1].team='companion';h.customActive=true;h.custom=h.actor
+    local reads=0
+    for i=1,100 do
+        local npc=object('NPC /Arena.'..i)
+        npc.GetFullName=function(a)reads=reads+1;return a.full end
+        h.members[#h.members+1]={actor=npc,team='red'}
+    end
+    for i=1,10 do h.now=i;h.feature:tick() end
+    print('MEASURE unrelated opponent name reads during 10 custom-heal ticks='..reads)
+    assert(reads==0 and h.feature:canCustomHeal(h.actor))
+end)
+check('burst of native heals uses the current indexed owner and rejects a recycled address',function()
+    local h=harness();h.index={[tostring(h.actor.key)]=h.actor};h.feature=h:new()
+    assert(h.feature:set('ON').ok);h.rosterReads=0
+    for _=1,200 do assert(h:apply(h.asc,h.classes[Regen.effects[1]])==h.empty) end
+    print('MEASURE 200 healing effects: full roster queries='..h.rosterReads)
+    assert(h.rosterReads==0)
+    local foreign=object('NPC /World/Foreign');foreign.key=h.actor.key
+    h.index[tostring(h.actor.key)]=foreign
+    assert(h:apply(h.asc,h.classes[Regen.effects[1]])~=h.empty)
 end)
 print('offcombat_regen: '..tests..' checks passed')

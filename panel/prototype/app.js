@@ -137,7 +137,7 @@
     // Per stat set ("arena", "companion"): the values being edited, the tab shown before Apply, whether the saved values were read.
     statDrafts: {},
     statTab: {},
-    statLoaded: {},
+    statLoaded: {}, statPending: {}, statLoadError: {},
     statDialogSet: "arena",
     capture: null,            // { kind: "global", action } | { kind: "unit", id }
     keyNote: null,            // { action, type: "err"|"conflict"|"ok", text, key, other }
@@ -196,6 +196,8 @@
     return VK_CODES[e.code] || null;
   }
   function vkLabel(code, mods = 0) {
+    const pad = window.PGXbox?.label(code, mods);
+    if (pad) return pad;
     const base = (code >= 65 && code <= 90) || (code >= 48 && code <= 57) ? String.fromCharCode(code)
       : code >= 96 && code <= 105 ? "Num" + (code - 96)
       : code >= 112 && code <= 135 ? "F" + (code - 111)
@@ -346,7 +348,9 @@
       store.set("lang", ui.lang);
       scheduleAutoUpdate();
     }
+    if (kind==="companion-manager") { cm=null; ui.statDrafts.companion=null; }
     if (restore && prev && document.contains(prev)) prev.focus();
+    else if (restore && kind==="companion-manager") (document.querySelector('[data-action="'+(prev?.dataset?.action || "cm-open")+'"]') || document.querySelector('[data-action="cm-open"]'))?.focus();
     if (restore && kind !== "language-support") showLanguageNotice();
   }
 
@@ -890,6 +894,170 @@
   }
   // Companions (team "companion", companion.lua): they follow the player with the game's own helper-NPC follow
   // state and fight on the player's side. "Stop and clear" leaves them; only dismissing removes them.
+  const cmText = (zh, en) => I18N.lang === "en" ? en : zh;
+  const cmDefault = "active,5,1,1,game,1,auto_return,50,10";
+  const cmKeys = ["behavior", "distance", "unstuck", "targetable", "regen", "rate", "policy", "threshold", "delay"];
+  const cmTabs = () => ({ follow: cmText("跟随与战斗", "Follow and combat"), recovery: cmText("恢复与属性", "Recovery and stats"), form: cmText("形态切换", "Forms") });
+  let cm = null;
+  function cmScope() {
+    return cm?.data?.units.find(u => u.id === cm.scope);
+  }
+  function cmDraft() {
+    if (!cm.drafts.has(cm.scope)) {
+      const unit = cmScope(), wire = unit?.profile || cm.data?.profiles?.[cm.scope] || cmDefault;
+      cm.drafts.set(cm.scope, { values: Object.fromEntries(wire.split(",").map((v, i) => [cmKeys[i], v])),
+        revision: unit?.revision ?? cm.data?.revision ?? 0, dirty: false });
+    }
+    return cm.drafts.get(cm.scope);
+  }
+  function cmName(unit) {
+    const id = unit.path.split(".").pop()?.replace(/_C$/, "");
+    return (byId.get(id)?.name || (unit.phase === "1" || unit.phase === "2" ? cmText("沐小葵", "Mu Xiaokui") : id)) + " · " + unit.id.split("-")[0];
+  }
+  function cmStatus(unit) {
+    const states = { down: ["已倒下", "Down"], combat: ["交战", "In combat"], busy: ["等待安全时机", "Waiting for a safe moment"], following: ["跟随", "Following"],
+      waiting: ["原地待命", "Holding position"], pose: ["合影动作", "Posing"], changed: ["形态已切换", "Form changed"], retry: ["暂缓切换", "Switch deferred"],
+      phase_pending: ["等待形态切换", "Waiting to change form"], cleanup: ["等待回收确认", "Waiting for cleanup"], unknown: ["状态尚未读回", "State unavailable"] };
+    return unit ? cmText(...(states[unit.state] || states.unknown)) + (unit.issue ? " · " + (I18N.lang==="en" ? "Form change was not confirmed" : unit.issue) : "") : "";
+  }
+  function cmPoll() {
+    if (!cm || dlg?.kind !== "companion-manager") return;
+    if (cm.revision === S.companionManagerRevision && cm.game === S.game) return;
+    cm.revision = S.companionManagerRevision; cm.game = S.game;
+    cmLoad(cm);
+  }
+  function cmLoad(view, redraw = false) {
+    if (!view || view !== cm || dlg?.kind !== "companion-manager" || !RT.companionManager) return Promise.resolve(false);
+    view.needsRead = true;
+    view.needsDraw ||= redraw;
+    if (view.reading) return view.reading;
+    async function refresh() {
+      let ok = false;
+      while (view.needsRead && cm === view) {
+        view.needsRead = false;
+        try {
+          const data = await RT.companionManager();
+          if (cm !== view || dlg?.kind !== "companion-manager") return false;
+          const old = view.data, oldUnit = cmScope();
+          if (view.readError) {view.readError=false;cmMessage(cmText("已重新读取随从名单","Companion list reloaded"));}
+          const retry = $("#cm-read-retry"); if (retry) retry.hidden = true;
+          view.data = data;
+          const unit = cmScope(), draft = view.drafts.get(view.scope);
+          const revision = unit?.revision ?? data.revision;
+          const loadedChange = draft && !draft.dirty && draft.revision !== revision;
+          if (!old) view.drafts.clear();
+          else if (loadedChange) view.drafts.delete(view.scope);
+          if (!old || view.needsDraw || old.ready !== data.ready || Boolean(oldUnit) !== Boolean(unit) || loadedChange) cmDraw();
+          else {
+            const changedList = old.units.length !== data.units.length || data.units.some((u,i) => u.id !== old.units[i].id || u.path !== old.units[i].path);
+            const select = $("#cm-scope");
+            if (select && changedList) select.innerHTML = cmOptions();
+            const state = $("#cm-state"), text = cmStatus(unit);
+            if (state && state.textContent !== text) state.textContent = text;
+          }
+          view.needsDraw = false;
+          if (!["all","mu"].includes(view.scope) && !unit) cmMessage(cmText("这名随从已离场", "This companion has left"));
+          ok = true;
+        } catch {
+          ok = false;
+          if (cm === view) {
+            view.readError=true;cmMessage(cmText("无法读取随从设置", "Could not read companion settings"));
+            const retry=$("#cm-read-retry");if (retry) retry.hidden=false;
+          }
+        }
+      }
+      return ok;
+    }
+    view.reading = refresh().finally(() => { view.reading = null; });
+    return view.reading;
+  }
+  function cmMessage(text) { const el = $("#cm-feedback"); if (cm) cm.feedback = text; if (el) el.textContent = text; }
+  function cmOptions() {
+    const entries = [["all",cmText("全部随从默认", "All companion defaults")],["mu",cmText("沐小葵 · 角色配置", "Mu Xiaokui · character profile")],
+      ...(cm.data?.units || []).map(u => [u.id,cmName(u)])];
+    if (!entries.some(([k]) => k === cm.scope)) entries.push([cm.scope,cmText("已离场", "Left the map")]);
+    return entries.map(([k,v]) => '<option value="'+esc(k)+'" '+(k===cm.scope?'selected':'')+'>'+esc(v)+'</option>').join("");
+  }
+  function cmButton(verb,title,enabled=true) {
+    return '<button type="button" class="btn btn-secondary btn-sm" data-action="cm-command" data-cm-write data-verb="'+verb+'" '+(enabled?'':'disabled')+'>'+esc(title)+'</button>';
+  }
+  function cmHTML() {
+    const unit=cmScope(), global=cm.scope==="all", role=cm.scope==="mu", draft=cmDraft(), v=draft.values;
+    const available=Boolean(cm.data?.ready && RT.ready() && (global || role || unit) && !cm.sending);
+    const input=(key,label,choices) => '<label class="cm-field"><span>'+esc(label)+'</span><select data-cm="'+key+'" '+(!available?'disabled':'')+'>'+
+      choices.map(([k,zh,en])=>'<option value="'+k+'" '+(v[key]===k?'selected':'')+'>'+esc(cmText(zh,en))+'</option>').join("")+'</select></label>';
+    const num=(k,label,min,max) => '<div class="cm-field"><label for="cm-'+k+'">'+esc(label)+'</label><div class="cm-step">'+
+      '<button type="button" data-action="cm-step" data-for="'+k+'" data-by="-1" aria-label="'+esc(cmText("减少","Decrease")+' '+label)+'" '+(!available?'disabled':'')+'>−</button>'+
+      '<input type="number" step="1" min="'+min+'" max="'+max+'" id="cm-'+k+'" data-cm="'+k+'" value="'+esc(v[k])+'" '+(!available?'disabled':'')+'>'+
+      '<button type="button" data-action="cm-step" data-for="'+k+'" data-by="1" aria-label="'+esc(cmText("增加","Increase")+' '+label)+'" '+(!available?'disabled':'')+'>+</button></div></div>';
+    let body="";
+    if (cm.tab==="follow") {
+      body=input("behavior",cmText("交战方式","Combat behavior"),[["active","主动迎敌","Seek enemies"],["assist","受攻击时反击","Defend when attacked"],["peace","和平跟随","Peaceful follow"]])+
+        num("distance",cmText("跟随距离（米）","Follow distance (m)"),2,25)+
+        input("unstuck",cmText("自动脱困传送","Automatic rescue teleport"),[["1","开启","On"],["0","关闭","Off"]])+
+        input("targetable",cmText("敌人可以选中这名随从","Enemies can target this companion"),[["1","按游戏规则","Game rules"],["2","无阵营召唤敌人优先选中","Preferred by summoned no-team enemies"],["0","阻止新仇恨","Prevent new aggro"]]);
+      if (global) body+='<div id="cm-global-combat">'+companionPassRow()+companionExecRow()+companionMinionExecRow()+'</div>';
+      if (unit) body+='<div class="solo-actions">'+cmButton("wait",cmText("原地待命","Hold position"),available)+cmButton("follow",cmText("恢复跟随","Resume following"),available)+cmButton("recall",cmText("召回这名随从","Recall this companion"),available)+
+        (unit.phase!=="0"?cmButton("pose",cmText("播放 / 取消合影动作","Play / cancel photo pose"),available):"")+'</div>';
+    } else if (cm.tab==="recovery") {
+      body=input("regen",cmText("脱战回血","Out-of-combat healing"),[["game","按游戏规则","Game rules"],["custom","自定义速率","Custom rate"]]);
+      if (v.regen==="custom") body+=num("rate",cmText("每秒回复最大生命（%）","Max HP restored per second (%)"),0,10)+
+        num("delay",cmText("连续脱战等待（秒）","Uninterrupted time out of combat (s)"),2,120)+
+        '<p class="diff-desc">'+esc(cmText("擂台规则开启「禁止脱战回血」时，暂停自定义回复。","Custom healing pauses while the arena rule blocks out-of-combat healing."))+'</p>';
+      if (global) body+='<div id="cm-immortal">'+guardHTML("companion")+'</div>'+companionStatsBlock();
+    } else {
+      body=input("policy",cmText("双阶段随从策略","Dual-form policy"),[["auto_return","自动切换，脱战恢复少主","Automatic, return after combat"],["auto_stay","自动切换，保留铁玉女王","Automatic, stay in second form"],["manual","手动切换","Manual"],["first","固定少主","Lock first form"],["second","固定铁玉女王","Lock second form"]]);
+      if (v.policy.startsWith("auto")) body+=num("threshold",cmText("少主变身生命阈值（%）","First-form HP threshold (%)"),1,99);
+      if (v.policy==="auto_return") body+=num("delay",cmText("连续脱战等待（秒）","Uninterrupted time out of combat (s)"),2,120);
+      body+='<p class="diff-desc">'+esc(cmText("生命阈值由助手设置。铁玉女王需满足原有剧情进度保护。现有两张卡仍可单独召唤。","The HP threshold is a mod setting. The second form requires the existing story-progress check. Both original cards remain available."))+'</p>';
+      if (role) body+=cmButton("summon",cmText("按已保存配置召唤双阶段沐小葵","Summon dual-form Mu Xiaokui with saved settings"),available && !draft.dirty);
+      if (unit && unit.dual && unit.profile.split(",")[6]==="manual") body+=cmButton("switch",cmText("切换当前形态","Switch current form"),available && !draft.dirty);
+    }
+    const tabs=Object.entries(cmTabs()).filter(([k])=>k!=="form"||role||unit?.dual);
+    const blurb=global?cmText("新随从采用这些默认值。下方通行、处决和不倒下开关仍作用于场上全部随从。","New companions use these defaults. Passage, executions and Undying apply to all current companions."):
+      role?cmText("少主和铁玉女王共享这份配置。保存后用于下次召唤。","Both forms share this profile. Saved changes apply to future summons."):cmText("仅调整这名场上随从。遣散或换图后失效。","Changes apply to this companion until dismissal or map change.");
+    return '<div class="dialog-head"><h2 id="dlg-title">'+esc(cmText("随从设置","Companion settings"))+'</h2><button type="button" class="icon-btn" data-action="dialog-close" aria-label="'+esc(t("common.close"))+'">'+icon("x")+'</button></div>'+
+      '<div class="dialog-body cm-body"><label class="cm-field"><span>'+esc(cmText("设置对象","Settings for"))+'</span><select id="cm-scope" data-autofocus>'+cmOptions()+'</select></label>'+
+      '<p class="diff-desc">'+esc(blurb)+' <span id="cm-state">'+esc(cmStatus(unit))+'</span></p><div class="seg cm-tabs">'+tabs.map(([k,v])=>'<button class="seg-btn" type="button" data-action="cm-tab" data-tab="'+k+'" aria-pressed="'+(k===cm.tab)+'">'+esc(v)+'</button>').join("")+'</div>'+
+      body+'</div><div class="dialog-foot cm-foot"><span id="cm-feedback" role="status">'+esc(cm.feedback || (!available?cmText("进入地图后可应用设置","Enter a map to apply settings"):""))+'</span>'+
+      '<span id="cm-read-retry" '+(cm.readError?'':'hidden')+'><button type="button" class="btn btn-secondary btn-sm" data-action="cm-read">'+esc(cmText("重新读取名单","Retry companion list"))+'</button></span>'+
+      (draft.dirty?'<button type="button" class="btn btn-ghost btn-sm" data-action="cm-reload">'+esc(cmText("重新载入已保存值","Reload saved values"))+'</button>':"")+
+      (role&&cm.data?.inherited===false?cmButton("inherit",cmText("恢复继承默认","Inherit defaults"),available):"")+cmButton("save",unit?cmText("应用到这名随从","Apply to this companion"):cmText("保存默认配置","Save defaults"),available)+'</div>';
+  }
+  function cmDraw(focus) {
+    if (!cm || dlg?.kind!=="companion-manager") return;
+    const scroll=$("#dialog .dialog-body")?.scrollTop || 0;
+    const active=document.activeElement;
+    const field=active?.dataset?.field || active?.dataset?.cm;
+    const selection=active?.type==="text" ? [active.selectionStart,active.selectionEnd] : null;
+    setDialog(cmHTML());
+    const target=focus ? $("#dialog "+focus) : field ? $('#dialog [data-field="'+CSS.escape(field)+'"], #dialog [data-cm="'+CSS.escape(field)+'"]') : null;
+    if (target) { target.focus({preventScroll:true});if (selection && target.type==="text") target.setSelectionRange(...selection); }
+    if ($("#dialog .dialog-body")) $("#dialog .dialog-body").scrollTop=scroll;
+  }
+  function cmOpen(tab="follow",scope="all") {
+    ui.statLoadError.companion=false;
+    cm={tab,scope,data:null,drafts:new Map(),feedback:"",sending:false,revision:S.companionManagerRevision,game:S.game};
+    ui.statDialogSet="companion";
+    openDialog("companion-manager",cmHTML(),"dialog-wide");
+    cmLoad(cm,true);
+  }
+  async function cmCommand(verb) {
+    if (!cm || cm.sending || !cm.data?.ready) return;
+    const view=cm, who=view.scope, draft=cmDraft();
+    if (verb==="save" && ($("#dialog").querySelector("input:invalid") || Object.values(draft.values).some(v=>v===""))) { cmMessage(cmText("请填写范围内的整数","Enter whole numbers within the displayed limits"));return; }
+    const data=verb==="save"?cmKeys.map(k=>draft.values[k]).join(","):"";
+    view.sending=true;
+    const result=await run(verb==="summon"?"summon_mu_companion":"manage_companion",{
+      payload:verb==="summon"?{}:{unit_id:[who,draft.revision,verb,data].join("|")},ok:()=>cmText("随从指令已完成","Companion command completed")});
+    view.sending=false;
+    if (cm!==view || dlg?.kind!=="companion-manager") return;
+    if (result?.status==="succeeded") {
+      if (!draft.dirty || cmKeys.map(k=>draft.values[k]).join(",")===data) view.drafts.delete(who);
+      cmMessage(verb==="save"?(cmScope()?cmText("实例配置已接收，将在安全时机执行","Instance settings accepted; actions wait for a safe moment"):cmText("已保存，下次召唤生效","Saved for the next summon")):cmText("指令已完成","Command completed"));
+      await cmLoad(view,true);
+    } else cmMessage(I18N.lang==="en"?cmText("指令未完成","Command was not confirmed"):result?.message||cmText("指令未完成","Command was not confirmed"));
+  }
   function renderCompanion() {
     const el = $("#dock-companion");
     if (!el) return;
@@ -910,16 +1078,27 @@
            <div class="solo-stats">${esc(t("companion.stats", { alive: fmtNum(alive), down: fmtNum(down) }))}</div>`
         : `<p class="solo-desc">${esc(t("companion.desc"))}</p>`}
       ${warn}
-      ${companionPassRow()}
-      ${companionExecRow()}
-      ${companionMinionExecRow()}
-      ${companionStatsBlock()}
-      <div class="solo-actions">${use}${guardHTML("companion")}
+      <div class="solo-actions">${use}
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cm-open">${icon("sliders","icon-sm")}${esc(cmText("随从设置","Companion settings"))}</button>
+        ${/^BP_Monster_MuXiaoKui(?:_P2)?$/.test(ui.selectedId) ? '<button type="button" class="btn btn-secondary btn-sm" data-action="cm-mu">'+esc(cmText("双阶段沐小葵","Dual-form Mu Xiaokui"))+'</button>' : ""}
         ${held ? `<button class="btn btn-secondary btn-sm" type="button" data-action="recall-companions" ${online && alive && !recalling ? "" : "disabled"}>${recalling ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("zap", "icon-sm")}<span>${esc(t("companion.recall"))}</span>${keyCap(S.keys.recall_companions)}</button>` : ""}
         <button class="btn btn-ghost btn-sm solo-clear" type="button" data-action="dismiss-companions" ${online && held && !busy ? "" : "disabled"}>${busy ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("trash", "icon-sm")}<span>${esc(t("companion.dismiss"))}</span></button>
       </div>
       ${held ? `<p class="solo-note">${esc(t("companion.recallNote"))} ${esc(t("companion.note"))}</p>` : ""}`;
     restoreTyping();
+    if (dlg?.kind==="companion-manager" && cm) {
+      cmPoll();
+      for (const [id,html] of [["cm-global-combat",()=>companionPassRow()+companionExecRow()+companionMinionExecRow()],["cm-immortal",()=>guardHTML("companion")]]) {
+        const part=document.getElementById(id); if (!part) continue;
+        const scratch=document.createElement("div");scratch.innerHTML=html();
+        const fresh=scratch.querySelectorAll("button"),active=part.querySelectorAll("button");
+        active.forEach((b,i)=>{ const newButton=fresh[i];if(!newButton)return;
+          for(const attr of ["aria-checked","aria-busy","aria-pressed","disabled","class"]) if(newButton.hasAttribute(attr)) b.setAttribute(attr,newButton.getAttribute(attr));else b.removeAttribute(attr);
+          const row=b.closest(".control-row"),next=newButton.closest(".control-row");
+          if(row&&next){row.className=next.className;row.querySelector(".control-desc").textContent=next.querySelector(".control-desc").textContent;}
+        });
+      }
+    }
   }
   // The companions' own spawn stats (set_companion_stats): apart from the arena's, and the game's numbers or the player's only.
   function companionStatsBlock() {
@@ -928,13 +1107,17 @@
     const tab = ui.statTab.companion || m.mode, usable = online && !busy && m.supported;
     const desc = busy ? t("match.switching") : !online ? t("match.desc.offline") : !m.supported ? t("fun.old")
       : t(tab === "custom" ? "companion.statsDesc.custom" : "companion.statsDesc.game");
-    if (tab === "custom" && online && m.supported && !ui.statLoaded.companion) loadStatValues("companion").then(renderCompanion);
+    const view=cm;
+    if (tab==="custom" && online && m.supported && !ui.statLoaded.companion && !ui.statPending.companion && !ui.statLoadError.companion) {
+      loadStatValues("companion").then(() => { if (cm===view && cm?.tab==="recovery" && !$("#dialog .stat-input:focus")) cmDraw(); });
+    }
     return `<div class="companion-stats">
         <div class="control-title" id="companion-stats-title">${esc(t("companion.statsTitle"))}</div>
         <div class="seg stat-seg" role="radiogroup" aria-labelledby="companion-stats-title">${["game", "custom"].map(mode =>
           `<button class="seg-btn" type="button" role="radio" aria-checked="${tab === mode}" data-action="stats-mode" data-set="companion" data-mode="${mode}" ${usable ? "" : "disabled"}>${esc(t("stats.mode." + mode))}</button>`).join("")}</div>
         <p class="diff-desc">${esc(desc)}</p>
-        ${tab === "custom" && online && m.supported ? statForm("companion", busy, usable) : ""}
+         ${tab==="custom" && online && ui.statLoadError.companion ? statRetry("companion") : ""}
+        ${tab === "custom" && online && m.supported && ui.statLoaded.companion ? '<input class="stat-filter" type="search" placeholder="'+esc(t("stats.filter"))+'" aria-label="'+esc(t("stats.filter"))+'">'+statGroupsHTML("companion")+'<p class="stat-filter-none" hidden>'+esc(t("stats.filter.none"))+'</p><button class="btn btn-primary" type="button" data-action="stats-apply" data-set="companion" '+(usable?'':'disabled')+'>'+esc(t("stats.apply"))+'</button><p class="diff-desc">'+esc(t("companion.statsNote"))+'</p>' : ""}
       </div>`;
   }
   // Whether companions may execute bosses (set_companion_executions, companion_executions.lua); off, only the player does.
@@ -1168,17 +1351,37 @@
   const rowLabel = (field, g) => { const [head, own] = STAT_META.get(field); return head && head === groupHeading(g) ? t(own) : statLabel(field); };
   // Two sets of spawn stats share this form: the arena's, and the companions' own.
   const statSet = set => set === "companion"
-    ? { action: "set_companion_stats", state: S.companionStats, load: () => RT.companionStats(), render: renderCompanion, toasts: "toast.companionStats." }
+    ? { action: "set_companion_stats", state: S.companionStats, load: () => RT.companionStats(), render: () => { renderCompanion(); if (cm?.tab==="recovery") cmDraw(); }, toasts: "toast.companionStats." }
     : { action: "set_stat_mode", state: S.statMatch, load: () => RT.statSettings(), render: renderMatch, toasts: "toast.stats." };
   // The draft the player edits: every saved value, as text; empty means "keep the unit's own".
   function statDraft(set = "arena") {
     if (!ui.statDrafts[set]) ui.statDrafts[set] = Object.fromEntries(Object.entries(statSet(set).state.values || {}).map(([k, v]) => [k, String(v)]));
     return ui.statDrafts[set];
   }
-  async function loadStatValues(set = "arena") {
-    ui.statLoaded[set] = true;
-    const st = statSet(set);
-    try { const saved = await st.load(); st.state.values = saved.values || {}; ui.statDrafts[set] = null; } catch { /* keep what we have */ }
+  function statRetry(set) {
+    return '<p role="status">'+esc(cmText("属性读取失败","Could not load stats"))+' <button type="button" class="btn btn-secondary btn-sm" data-action="stats-retry" data-set="'+set+'">'+esc(cmText("重新读取","Retry"))+'</button></p>';
+  }
+  function loadStatValues(set = "arena") {
+    if (ui.statPending[set]) return ui.statPending[set];
+    ui.statLoadError[set]=false;
+    const st = statSet(set), before = { ...ui.statDrafts[set] };
+    async function load() {
+      try {
+        const saved = await st.load(); st.state.values = saved.values || {};
+        const edited = Object.entries(ui.statDrafts[set] || {}).filter(([k,v]) => before[k] !== v);
+        if (!Object.keys(before).length) {
+          const values=Object.entries(st.state.values).map(([key,v])=>[key,String(v)]);
+          ui.statDrafts[set]=Object.assign(Object.fromEntries(values),Object.fromEntries(edited));
+        }
+        ui.statLoaded[set]=true;
+        return true;
+      } catch {
+        ui.statLoaded[set]=false; ui.statLoadError[set]=true;
+        return false;
+      }
+    }
+    ui.statPending[set]=load().finally(()=>{ delete ui.statPending[set]; });
+    return ui.statPending[set];
   }
   // Numbers from the draft; null with a reason when a field cannot be sent.
   function statValues(set = "arena") {
@@ -1198,7 +1401,7 @@
     if (mode === "custom") {
       // Saved values switch at once; with none yet the form opens and Apply switches.
       if (!st.state.customCount) { ui.statTab[set] = "custom"; await loadStatValues(set); st.render(); return; }
-      await loadStatValues(set);
+      if (!await loadStatValues(set)) { ui.statTab[set]="custom"; st.render(); return; }
       const [values] = statValues(set);
       if (!values) { ui.statTab[set] = "custom"; st.render(); return; }
       return applyStats(values, set);
@@ -1216,14 +1419,18 @@
     const job = await run(st.action, { payload: { mode: "custom", values }, ok: () => ({ title: t(st.toasts + "custom", { n: Object.keys(values).length }), body: t("toast.stats.body") }) });
     if (job?.status === "succeeded") { ui.statTab[set] = null; statSet(set).state.values = values; ui.statDrafts[set] = null; st.render(); renderSelection(); }
   }
-  function statsDialog(set = "arena") {
-    ui.statDialogSet = set;
+  function statGroupsHTML(set) {
     const draft = statDraft(set);
     const filled = f => String(draft[f] ?? "").trim() !== "";
-    const groups = STAT_GROUPS.map(g => `<details class="stat-group" data-group="${g.key}" ${g.key === "core" || g.fields.some(filled) ? "open" : ""}>
+    return STAT_GROUPS.map(g => `<details class="stat-group" data-group="${g.key}" ${g.key === "core" || g.fields.some(filled) ? "open" : ""}>
       <summary><span class="stat-group-name">${esc(t(groupHeading(g)))}</span><span class="stat-group-count">${g.fields.filter(filled).length}/${g.fields.length}</span>${icon("chevron-down", "chev")}</summary>
       ${g.fields.map(field => `<label class="stat-row" data-search="${esc((statLabel(field) + " " + field).toLowerCase())}"><span class="stat-row-name">${esc(rowLabel(field, g))}<small class="mono">${esc(field)}</small></span>
         <input class="stat-input" type="text" inputmode="decimal" data-field="${field}" value="${esc(draft[field] ?? "")}" placeholder="${esc(t("stats.placeholder"))}" aria-label="${esc(statLabel(field))}"></label>`).join("")}</details>`).join("");
+  }
+  function statsDialog(set = "arena") {
+    ui.statDialogSet = set;
+    if (set==="companion") { cmOpen("recovery");return; }
+    const groups=statGroupsHTML(set);
     openDialog("stats", `<div class="dialog-head"><span class="row-icon">${icon("sliders")}</span><h2 id="dlg-title">${esc(t(set === "companion" ? "companion.statsDialog" : "stats.dialog.title"))}</h2><button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
       <div class="dialog-body"><p class="stat-dialog-desc">${esc(t("stats.dialog.desc"))}</p>
         <input class="stat-filter" type="search" placeholder="${esc(t("stats.filter"))}" aria-label="${esc(t("stats.filter"))}">
@@ -1370,11 +1577,11 @@
       : tab === "match" ? t("match.desc.on") : tab === "custom" ? t("stats.desc.custom") : t("stats.desc.game");
     const seg = `<div class="seg stat-seg" role="radiogroup" aria-labelledby="match-title">${["game", "match", "custom"].map(mode =>
       `<button class="seg-btn" type="button" role="radio" aria-checked="${tab === mode}" data-action="stats-mode" data-mode="${mode}" ${usable ? "" : "disabled"}>${esc(t("stats.mode." + mode))}</button>`).join("")}</div>`;
-    if (tab === "custom" && online && m.modeSupported && !ui.statLoaded.arena) loadStatValues().then(renderMatch);
+    if (tab === "custom" && online && m.modeSupported && !ui.statLoaded.arena && !ui.statPending.arena && !ui.statLoadError.arena) loadStatValues().then(renderMatch);
     const restoreTyping = keepTyping(el);
     let card = "";
     if (tab === "custom" && online && m.modeSupported) {
-      card = statForm("arena", busy, usable);
+      card = ui.statLoadError.arena ? statRetry("arena") : statForm("arena", busy, usable);
     } else if (m.mode === "match" && tab === "match" && online && !busy) {
       const base = m.baseline && byId.get(m.baseline.id);
       const failures = m.failures
@@ -1830,6 +2037,11 @@
     ui.unitKeyError = "";
     ui.poolKeyError = "";
     rerenderCaptureHost();
+    if (S.xboxKeysSupported) window.PGXbox.capture(() => ui.capture === target && S.xboxKeysSupported, binding => {
+      if (target.kind === "global") handleGlobalCapture(null, binding);
+      else if (target.kind === "pool") handlePoolCapture(null, binding);
+      else handleUnitCapture(null, binding);
+    }, cancelCapture);
   }
   function cancelCapture() {
     const host = ui.capture;
@@ -1877,8 +2089,8 @@
     else if (host === "hun") window.PGHun?.keysChanged?.();
     else if (ui.page === "hotkeys") renderPage();
   }
-  function handleGlobalCapture(e) {
-    const { action, host = "" } = ui.capture, got = readCapture(e);
+  function handleGlobalCapture(e, got = readCapture(e)) {
+    const { action, host = "" } = ui.capture;
     const redraw = () => redrawKeyHost(host);
     // An unusable key keeps the box listening, so the player can just press another one.
     const refuse = text => { ui.keyNote = { action, host, type: "err", text }; redraw(); };
@@ -1896,8 +2108,8 @@
     }
     saveGlobalKeys({ ...S.keys, [action]: got }, t("toast.key.saved", { action: t("keys.action." + action), key: label }));
   }
-  async function handleUnitCapture(e) {
-    const id = ui.capture.id, u = byId.get(id), got = readCapture(e);
+  async function handleUnitCapture(e, got = readCapture(e)) {
+    const id = ui.capture.id, u = byId.get(id);
     if (got.error) { ui.unitKeyError = got.error; renderSelection(); return; }
     const { code, mods } = got;
     const owner = keyOwner(code, mods, { unitId: id });
@@ -2523,8 +2735,8 @@
     changePool(ids, true);
   }
 
-  function handlePoolCapture(e) {
-    const { id } = ui.capture, got = readCapture(e);
+  function handlePoolCapture(e, got = readCapture(e)) {
+    const { id } = ui.capture;
     const refuse = text => { ui.poolKeyError = text; renderPage(); };
     if (got.error) { refuse(got.error); return; }
     if (selectedPool()?.id !== id) { cancelCapture(); return; }
@@ -2845,10 +3057,21 @@
   // Every released version this copy of the app has received (changelog.js), newest first, in the app's language.
   // ~~text~~ in a note: said fixed in that version but it was not, kept visible and struck out.
   const noteHTML = n => esc(n).replace(/~~(.+?)~~/g, "<s>$1</s>");
-  const updateNoteList = notes => `<ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>`;
+  const updateNoteList = notes => {
+    const announcement = stableAnnouncement(notes);
+    return announcement ? `<h3 class="preview-title">${esc(announcement.title)}</h3>${previewNotesBody(announcement)}` : `<ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>`;
+  };
+  function stableAnnouncement(notes) {
+    const labels = I18N.lang === "zh" ? ["新增内容", "对战调整", "问题修复"] : ["What's new", "Combat adjustments", "Fixes"];
+    const starts = labels.map(label => notes.indexOf(label));
+    if (starts[0] !== 1 || starts[1] <= starts[0]+1 || starts[2] <= starts[1]+1 || starts[2]+1 >= notes.length) return null;
+    const groups = ["added","combat","fixes"].map((key,i) => ({key, notes:notes.slice(starts[i]+1, starts[i+1] ?? notes.length)}));
+    return {title:notes[0], groups, details:[]};
+  }
   function installedAnnouncement() {
     const match = /^(\d+\.\d+\.\d+)-beta-(\d+)$/.exec(installedVersion());
-    if (!match || match[1] !== S.appVersion) return null;
+    if (!match) return stableAnnouncement(releaseNotes((window.PG_CHANGELOG || []).find(row => row.version === installedVersion())));
+    if (match[1] !== S.appVersion) return null;
     const entry = window.PG_PREVIEW_NOTES?.[match[1]];
     if (!entry) return null;
     const available = note => note.since <= Number(match[2]);
@@ -2874,7 +3097,7 @@
     const announcement = installedAnnouncement();
     if (!announcement) return "";
     return `<article class="installed-notes"><h3 class="preview-title">${esc(announcement.title)}</h3>
-      <p class="preview-version">${esc(t("update.installedNotes", { v: installedVersion(), base: S.appVersion }))}</p>${previewNotesBody(announcement)}</article>`;
+      <p class="preview-version">${(installedVersion().includes("-") ? esc(t("update.installedNotes", { v: installedVersion(), base: S.appVersion })) : "v"+esc(installedVersion()))}</p>${previewNotesBody(announcement)}</article>`;
   }
   function releaseHistoryHTML(installedNotesShown = false) {
     const installed = installedVersion();
@@ -2885,7 +3108,7 @@
       const announcement = r.version === installed ? installedAnnouncement() : null;
       const notes = releaseNotes(r);
       const listHTML = announcement ? (installedNotesShown ? "" : previewNotesBody(announcement))
-        : (notes.length ? `<ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : "");
+        : (notes.length ? updateNoteList(notes) : "");
       const current = r.version === installed ? `<span class="chip chip-green">${esc(t("update.history.current"))}</span>` : "";
       const back = !fromNexus() && compareVersions(r.version, S.appVersion) < 0 && compareVersions(r.version, ROLLBACK_FROM) >= 0
         ? `<button class="btn btn-secondary btn-sm release-rollback" type="button" data-action="update-rollback" data-value="${esc(r.version)}">${esc(t("update.rollback"))}</button>` : "";
@@ -2929,7 +3152,7 @@
           return head(t("update.title")) + `<div class="dialog-body">
             <div class="update-head"><span class="state-badge">${icon("history")}</span><div><h3>${esc(t("update.rollback.title", { v: info.version }))}</h3><div class="muted" style="font-size:12.5px">${esc(t("update.available.meta", { date: fmtDate(info.date), size: fmtBytes(info.size), current: installed }))}</div></div></div>
             <div class="callout callout-amber">${icon("alert")}<div class="callout-body"><span>${esc(t(info.isolated ? "update.rollback.isolated" : "update.rollback.body"))}</span></div></div>
-            ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div><ul class="notes">${notes.map(n => `<li>${noteHTML(n)}</li>`).join("")}</ul>` : ""}
+            ${notes.length ? `<div class="section-label">${esc(t("update.notes"))}</div>${updateNoteList(notes)}` : ""}
             <div class="section-label">${esc(t("update.line"))}</div>
             <div class="line-list" role="radiogroup" aria-label="${esc(t("update.line"))}">${lines}</div>
           </div>
@@ -3108,6 +3331,8 @@
       case "set_camera_track": return t("action.set_camera_track");
       case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : ["menghua_stage","execution_minions"].includes(p.rule) ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
+      case "manage_companion": return cmText("随从设置与指令","Companion settings and commands");
+      case "summon_mu_companion": return cmText("召唤双阶段沐小葵","Summon dual-form Mu Xiaokui");
       case "set_companion_stats": return t("action.set_companion_stats", { mode: t("stats.mode." + p.mode) });
       case "set_ai_params": return t("action.set_ai_params");
       default: return t("action." + job.action);
@@ -3517,6 +3742,7 @@
     "ai-clear": () => { ui.aiDraft = {}; for (const input of document.querySelectorAll(".dialog .ai-input")) input.value = ""; },
     "ai-save": () => saveAi(),
     "stats-mode": el => setStatMode(el.dataset.mode, el.dataset.set),
+    "stats-retry": async el => { const set=el.dataset.set; await loadStatValues(set); statSet(set).render(); },
     "stats-apply": el => applyStats(undefined, el.dataset.set),
     "stats-all": async el => { const set = el.dataset.set || "arena"; if (!ui.statDrafts[set]) await loadStatValues(set); statsDialog(set); },
     "stats-save": () => { closeDialog(); applyStats(undefined, ui.statDialogSet); },
@@ -3527,7 +3753,17 @@
     "companion-passage": () => toggleCompanionPass(),
     "companion-minion-executions": () => toggleCompanionMinionExec(),
     "match-focus": () => { const el = $("#dock-match"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); el?.querySelector(".switch")?.focus({ preventScroll: true }); },
-    "companion-stats-focus": () => { const el = $(".companion-stats"); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); (el?.querySelector(".stat-input") || el?.querySelector(".seg-btn"))?.focus({ preventScroll: true }); },
+    "companion-stats-focus": () => cmOpen("recovery"),
+    "cm-open": () => cmOpen(),
+    "cm-mu": () => cmOpen("form","mu"),
+    "cm-command": el => cmCommand(el.dataset.verb),
+    "cm-read": () => cmLoad(cm),
+    "cm-reload": async () => { const view=cm;if (!view || view.sending) return;const who=view.scope;
+      if (await cmLoad(view) && cm===view && view.scope===who) {
+        view.drafts.delete(who);cmMessage(cmText("已重新载入","Saved values loaded"));cmDraw();
+      } },
+    "cm-tab": el => { cm.tab=el.dataset.tab;cmDraw('[data-tab="'+cm.tab+'"]'); },
+    "cm-step": el => { const input=$("#cm-"+el.dataset.for);if (!input) return;const fn=el.dataset.by==="1"?"stepUp":"stepDown";input[fn]();input.dispatchEvent(new Event("input",{bubbles:true})); },
     "launch-game": () => { closePopover(); RT.launchGame(); toast({ kind: "info", title: t("toast.launching"), body: t("toast.launching.body") }); },
     "unitkey-capture": el => { if (ui.capture?.kind === "unit") cancelCapture(); else startCapture({ kind: "unit", id: el.dataset.id }); },
     "unitkey-remove": async el => {
@@ -3669,6 +3905,9 @@
     fn(el, e);
   });
   document.addEventListener("input", e => {
+    if (cm && e.target.matches("input[data-cm]")) {
+      const draft=cmDraft();draft.values[e.target.dataset.cm]=e.target.value;draft.dirty=true;cmMessage(cmText("有未保存的修改","Unsaved changes"));return;
+    }
     if (e.target.dataset.poolMemberCount) {
       const saved = savePoolMemberCount(selectedPool(), e.target.dataset.poolMemberCount, e.target.value);
       e.target.setAttribute("aria-invalid", String(!saved));
@@ -3731,6 +3970,15 @@
     }
   });
   document.addEventListener("change", e => {
+    if (cm && e.target.id==="cm-scope") {
+      cm.scope=e.target.value;cm.feedback="";
+      if (cm.tab==="form" && cm.scope!=="mu" && !cmScope()?.dual) cm.tab="follow";
+      cmDraw("#cm-scope");return;
+    }
+    if (cm && e.target.matches("select[data-cm]")) {
+      const key=e.target.dataset.cm,draft=cmDraft();draft.values[key]=e.target.value;draft.dirty=true;
+      cmMessage(cmText("有未保存的修改","Unsaved changes"));cmDraw('[data-cm="'+key+'"]');return;
+    }
     if (e.target.id === "battle-music-mode" || e.target.id === "battle-music-track") {
       ui.musicDraft = { mode: $("#battle-music-mode").value, track: $("#battle-music-track").value };
       renderBattleMusicState();
@@ -3761,6 +4009,7 @@
   }, true);
   const isTyping = el => el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
   document.addEventListener("keydown", e => {
+    if (e.target?.classList?.contains("xbox-picker") && e.key !== "Escape") return;
     if (ui.capture) {
       if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
       e.preventDefault();
@@ -3899,6 +4148,7 @@
           if (p.has("sel")) { renderBanner(); renderSelection(); }
           if (p.has("solo")) renderSolo();
           if (p.has("companion")) renderCompanion();
+          else if (p.has("companionManager")) cmPoll();
           if (p.has("diff")) renderDifficulty();
           if (p.has("match")) renderMatch();
           if (p.has("battle")) renderBattle();

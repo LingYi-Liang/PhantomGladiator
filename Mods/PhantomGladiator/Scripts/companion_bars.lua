@@ -29,6 +29,7 @@ end
 
 function Bars.new(options)
     local log=options.log or function()end
+    local clock=options.clock or os.clock
     local self={records={},count=0,shown=0,reshown=0,failures=0,lines=0,reshowLines=0}
     local function say(m)
         if self.lines>=LINES then return end
@@ -64,17 +65,33 @@ function Bars.new(options)
         local first=not record.seen
         if first then record.seen=true;say('开始显示 unit='..record.path..' 之前：'..describe(component,widget,actor))end
         if not widget then
+            record.shown=false
+            if record.createAfter and clock()<record.createAfter then return end
             local okInit=call(actor,'EnsureInitHpBar')
             widget=widgetOf(component)
             if not widget then call(component,'EnsureWidgetCreated');widget=widgetOf(component)end
             say('创建血条 unit='..record.path..' EnsureInitHpBar调用='..tostring(okInit)..' 读回控件='..className(widget))
-            if not widget then self.failures=self.failures+1;return end
+            if not widget then
+                self.failures=self.failures+1
+                record.createDelay=math.min(8,(record.createDelay or .25)*2)
+                record.createAfter=clock()+record.createDelay
+                return
+            end
         end
+        record.createAfter,record.createDelay=nil,nil
         if not bound(widget,actor) then
+            record.shown=false
+            if record.bindAfter and clock()<record.bindAfter and U.key(widget)==record.bindKey then return end
             local okInit=call(widget,'Init',actor)
             say('控件没绑定本单位，调用Init='..tostring(okInit)..' 读回绑定='..tostring(bound(widget,actor))..' unit='..record.path)
-            if not bound(widget,actor) then self.failures=self.failures+1;record.shown=false;return end
+            if not bound(widget,actor) then
+                self.failures=self.failures+1;record.bindKey=U.key(widget)
+                record.bindDelay=math.min(8,(record.bindDelay or .25)*2)
+                record.bindAfter=clock()+record.bindDelay
+                return
+            end
         end
+        record.bindAfter,record.bindDelay,record.bindKey=nil,nil,nil
         local _,componentVisible=call(component,'IsVisible')
         local _,visibility=call(widget,'GetVisibility')
         if componentVisible~=true or SHOWN[visibility]~=true then

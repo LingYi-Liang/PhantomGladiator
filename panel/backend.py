@@ -39,7 +39,7 @@ DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platf
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
-ACTIONS.update(('hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
+ACTIONS.update(('manage_companion','summon_mu_companion','hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
@@ -221,7 +221,7 @@ MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
 POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"eyes_player", "eyes_npc", "set_weather", "teleport", "teleport_back", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
+READY_ACTIONS = {"manage_companion", "summon_mu_companion", "eyes_player", "eyes_npc", "set_weather", "teleport", "teleport_back", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -274,7 +274,10 @@ def parse_binding(value):
         vk,mods=value['key_code'],value['modifiers']
     else:raise ValidationError('快捷键格式无效')
     special={8,9,13,19,20,32,33,34,35,36,37,38,39,40,45,46,144,145,186,187,188,189,190,191,192,219,220,221,222}
-    if type(vk) is not int or type(mods) is not int or not 0<=mods<=7 or not (vk==0 or vk in special or 48<=vk<=57 or 65<=vk<=90 or 96<=vk<=135):
+    if type(vk) is int and 195<=vk<=210:
+        if type(mods) is not int or not 0<=mods<=3 or (vk in (199,200) and mods):
+            raise ValidationError('无效的 Xbox 按键组合')
+    elif type(vk) is not int or type(mods) is not int or not 0<=mods<=7 or not (vk==0 or vk in special or 48<=vk<=57 or 65<=vk<=90 or 96<=vk<=135):
         raise ValidationError('无效的按键或组合键')
     return {'key_code':vk,'modifiers':mods if vk else 0}
 
@@ -473,7 +476,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
+        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -938,6 +941,30 @@ class Bridge:
             self.catalog_summary_cache = (key, now, copy.deepcopy(summary), contents)
         return summary
 
+    def companion_manager(self):
+        game = self.game_status()
+        result = {"ready": False, "session": None, "revision": 0, "profiles": {}, "units": []}
+        for name in ("companion-roster.tsv", "companion-roster.tsv.bak"):
+            text = bounded_read(self._path(name), 2 * 1024 * 1024)
+            if not text:
+                continue
+            lines = list(tsv_rows(text))
+            if len(lines) < 3 or len(lines[0]) != 3 or lines[0][0] != "PGCM1" or not lines[0][2].isdigit():
+                continue
+            _, session, revision = lines[0]
+            if lines[1][0] != "all" or len(lines[1]) != 2 or lines[2][0] != "mu" or len(lines[2]) != 3:
+                continue
+            live = game["ready"] and game["game_session"] == session
+            result.update(ready=live, session=session, revision=int(revision), inherited=lines[2][2]=="inherit",
+                          profiles={"all": lines[1][1], "mu": lines[2][1]})
+            if live:
+                for row in lines[3:]:
+                    if len(row) == 8 and row[0].startswith("C") and row[2].isdigit():
+                        result["units"].append(dict(id=row[0], path=row[1], revision=int(row[2]), phase=row[3],
+                            dual=row[4]=="1", state=row[5], profile=row[6], issue=row[7]))
+            break
+        return result
+
     def game_status(self):
         try:
             text = bounded_read(self._path("status.tsv"), 65536)
@@ -994,6 +1021,26 @@ class Bridge:
             if count > unit.get("max_count", MAX_SPAWN_COUNT):
                 raise ValidationError("该单位处于单只测试阶段，数量必须为 1")
             payload.update(unit_id=unit_id, team=team, count=count)
+        elif action == 'manage_companion':
+            allowed.add('unit_id')
+            token = clean_field(request.get('unit_id'), 'unit_id', 400)
+            parts = token.split('|')
+            if len(parts) != 4:
+                raise ValidationError('invalid companion command')
+            scope, revision, verb, data = parts
+            live = re.fullmatch(r'C[0-9]+-[A-Za-z0-9_-]{1,160}', scope)
+            if scope not in ('all','mu') and not live or not re.fullmatch(r'[0-9]{1,12}', revision):
+                raise ValidationError('invalid companion or revision')
+            if verb == 'save':
+                fields = data.split(',')
+                if len(fields) != 9 or fields[0] not in ('active','assist','peace') or fields[4] not in ('game','custom') or fields[6] not in ('auto_return','auto_stay','manual','first','second'):
+                    raise ValidationError('invalid companion profile')
+                for index, low, high in ((1,2,25),(2,0,1),(3,0,2),(5,0,10),(7,1,99),(8,2,120)):
+                    if not re.fullmatch(r'[0-9]{1,3}', fields[index]) or not low <= int(fields[index]) <= high:
+                        raise ValidationError('invalid companion setting')
+            elif data or not ((verb=='inherit' and scope=='mu') or (live and verb in ('switch','recall','follow','wait','pose'))):
+                raise ValidationError('invalid companion action for scope')
+            payload['unit_id'] = token
         elif action == 'hun_body_probe':
             allowed|={'team','count','profile_revision'}
             team=request.get('team','blue');count=request.get('count',1);revision=request.get('profile_revision')
@@ -1146,6 +1193,7 @@ class Bridge:
             if not isinstance(place,str) or (place!='BACK' and place not in TELEPORT_CODES):raise ValidationError('Unknown teleport place')
             vk=request.get('key_code');mods=request.get('modifiers',0)
             if type(vk) is not int or not 0<=vk<=255 or type(mods) is not int or not 0<=mods<=7:raise ValidationError('invalid key or modifiers')
+            if 195<=vk<=210:parse_binding({'key_code':vk,'modifiers':mods})
             blocked=binding_system_owner(vk,mods)
             if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
             payload.update(place=place,key_code=vk,modifiers=mods)
@@ -2052,6 +2100,8 @@ class Handler(BaseHTTPRequestHandler):
                         'probe_supported':bridge.game_status().get('values',{}).get('hun_body_probe_supported')=='true'}
             elif path == "/api/stat-settings":
                 result = self.server.bridge.stat_settings()
+            elif path == "/api/companion-manager":
+                result = self.server.bridge.companion_manager()
             elif path == "/api/companion-stats":
                 result = self.server.bridge.stat_settings("companion-stats-settings.tsv")
             elif path == "/api/ai-params":

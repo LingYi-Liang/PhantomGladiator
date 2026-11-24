@@ -160,7 +160,12 @@ function Grabs.new(options)
     local function scope(members,battleActive,jadeReady)
         local families,owners,listed={}, {}, {};local blue,red,liveCompanion=false,false,false
         local arena,companions={},{}
-        local hunTeams={}
+        local hunTeams,privateFamilies={},{};local muOwners={}
+        for _,member in ipairs(members)do
+            if member.team=='companion' and require('companion_profile').phase(member.class_path) then
+                local key=U.key(member.actor);if key then muOwners[key]=true end
+            end
+        end
         looks=looks+1
         for _,unit in ipairs(members)do
             local team=unit.team
@@ -175,8 +180,11 @@ function Grabs.new(options)
                     end
                     local entry={actor=unit.actor,key=key,team=team,roots=rootsOf(unit,key)}
                     if team=='companion' then
+                        if muOwners[key] or muOwners[U.key(unit.summoner)] then
+                            for root in pairs(entry.roots)do privateFamilies[root]=true end
+                        end
                         companions[#companions+1]=entry
-                        liveCompanion=liveCompanion or (not unit.stand and not unit.reserve)
+                        liveCompanion=liveCompanion or (not muOwners[key] and not muOwners[U.key(unit.summoner)] and not unit.stand and not unit.reserve)
                     else arena[#arena+1]=entry;blue=blue or team=='blue';red=red or team=='red' end
                 end
             end
@@ -196,6 +204,7 @@ function Grabs.new(options)
         if (battleActive and blue and red) or liveCompanion then add(arena) end
         add(companions)
         -- The events are shared by every unit of a family, so a held family stays out whoever else brought it.
+        for root in pairs(privateFamilies)do families[root]=nil end
         local heldNames={}
         if not jadeReady then families[JadeGuard.family]=nil end
         for root in pairs(held)do families[root]=nil;heldNames[#heldNames+1]=QTE_FAMILIES[root]..'('..root..')' end

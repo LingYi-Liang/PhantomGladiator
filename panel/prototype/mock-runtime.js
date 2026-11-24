@@ -101,8 +101,10 @@ const MockRuntime = (() => {
     companionPass: { supported: true, on: true },
     companionMinionExec: { supported: true, on: false },
     offCombatRegen: { supported: true, on: false, state: "off", failures: 0 },
+    companionManagerRevision: 0,
     companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     eyesKeysSupported:true,
+    xboxKeysSupported:true,
     track: { eyesSupported:true, supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
     unitRulesSupported: true,
@@ -187,6 +189,13 @@ const MockRuntime = (() => {
     return job;
   }
 
+  const cmBase="active,5,1,1,game,1,auto_return,50,10";
+  const cmPreview={ready:true,session:"preview",revision:0,inherited:true,profiles:{all:cmBase,mu:cmBase},units:[]};
+  let cmSerial=0;
+  function addPreview(path,dual) {
+    const phase=path.includes("MuXiaoKui_P2")?"2":path.includes("MuXiaoKui")?"1":"0";
+    cmPreview.units.push({id:"C"+(++cmSerial)+"-preview",path,phase,dual,revision:1,state:"following",profile:phase==="0"?cmPreview.profiles.all:cmPreview.profiles.mu});
+  }
   function apply(job) {
     const p = job.payload;
     job.status = "succeeded";
@@ -217,7 +226,7 @@ const MockRuntime = (() => {
         }
         s[p.team] += p.count;
         job.spawned = p.count;
-        if (p.team === "companion") { if (s.companionStats.mode === "custom") s.companionStats.customized += p.count; return; }
+        if (p.team === "companion") { for(let i=0;i<p.count;i++) addPreview(p.unit_id,false);s.companionManagerRevision++;if (s.companionStats.mode === "custom") s.companionStats.customized += p.count; return; }
         if (!m.enabled) return;
         if (outcome === "matchWarn") { m.failures += p.count; job.warning = "matchFailed"; return; }
         if (!m.baseline) { m.baseline = { id: p.unit_id, ...statsFor(p.unit_id) }; m.matched += p.count - 1; }
@@ -281,11 +290,28 @@ const MockRuntime = (() => {
         // save_repair.lua run(): one message, parts split by "；".
         job.message = "龙柱：卡在龙柱3（戏梦山庄），走到它附近自动补上；没问题：雷当、冷荼、其他单位写的剧情标记";
         return;
+      case "manage_companion": {
+        const [id,rev,verb,data]=p.unit_id.split("|"),u=cmPreview.units.find(u=>u.id===id);
+        if (Number(rev)!==(u?.revision??cmPreview.revision)) {job.status="failed";return;}
+        if (verb==="save" || verb==="inherit") {
+          if (u) {u.profile=data;u.revision++;}
+          else {cmPreview.profiles[id]=verb==="inherit"?cmPreview.profiles.all:data;cmPreview.revision++;
+            if (id==="mu") cmPreview.inherited=verb==="inherit";if (cmPreview.inherited) cmPreview.profiles.mu=cmPreview.profiles.all;}
+        } else if (u) {
+          if (verb==="switch") {u.phase=u.phase==="1"?"2":"1";u.revision++;}
+          u.state=verb==="wait"?"waiting":verb==="pose"&&u.state!=="pose"?"pose":"following";
+        }
+        s.companionManagerRevision++;emit({type:"state",parts:new Set(["companion"])});return;
+      }
+      case "summon_mu_companion":
+        addPreview(cmPreview.profiles.mu.split(",")[6]==="second"?"BP_Monster_MuXiaoKui_P2":"BP_Monster_MuXiaoKui",true);
+        s.companion++;s.companionManagerRevision++;job.spawned=1;emit({type:"state",parts:new Set(["companion"])});return;
       case "recall_companions":
         // companion.lua recall(): the live ones beside the player.
         job.message = s.companion ? `已召回 ${s.companion}/${s.companion} 个随从到身边` : "没有可召回的随从";
         return;
       case "dismiss_companions":
+        cmPreview.units.length=0;s.companionManagerRevision++;
         job.cleared = s.companion + s.down.companion;
         s.companion = 0;
         s.down.companion = 0;
@@ -637,6 +663,7 @@ const MockRuntime = (() => {
       { world: "PBZ_Duanhun_WP", name: "断魂山", en: "Mount Soulrend", places: [{ code: "TDEMO000003", kind: "boss", name: "龙体左殇", en: "Zuo Shang (Dragon Form)", level: 25 }] }] }; } },
     async aiParams() { await wait(150); return { values: { ...(s.aiParamValues || {}) } }; },
     async statSettings() { await wait(150); return { mode: s.statMatch.mode, values: { ...s.statMatch.values } }; },
+    async companionManager() { return JSON.parse(JSON.stringify({...cmPreview, ready:ready()})); },
     async companionStats() { await wait(150); return { mode: s.companionStats.mode, values: { ...s.companionStats.values } }; },
     set(patch) { Object.assign(s, patch); emit({ type: "demo" }); },
   };

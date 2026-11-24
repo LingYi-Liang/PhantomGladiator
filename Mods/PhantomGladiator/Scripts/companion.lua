@@ -264,7 +264,7 @@ function Companion.new(options)
         if not (followOk and sideOk and friendOk) then self.failures=self.failures+1 end
         self.message=followOk and '随从已设为跟随玩家' or '官方跟随没有读回，随从可能留在原地'
         say('准备 unit='..tostring(unitPath)..' '..table.concat(parts,'；'))
-        return {ok=followOk and friendOk,message=self.message}
+        return {ok=followOk and sideOk and friendOk,message=self.message}
     end
 
     -- After ActivateAI. A unit whose AI had already started before the follow state was written gets
@@ -282,6 +282,14 @@ function Companion.new(options)
         local kept=record.followState and U.key(idleData(ai))==U.key(record.followState)
         say('激活后读回 unit='..tostring(unitPath)..' AI已启动='..tostring(U.field(ai,'bAIStarted'))
             ..' 状态='..tagName(U.field(ai,'CurrentStateTag'))..' 闲置数据='..show(idleData(ai))..' 跟随数据保留='..tostring(kept)..restarted)
+        if require('companion_profile').phase(unitPath) then
+            local player=options.getPlayer()
+            local mine,theirs=U.field(actor,'Faction Component'),U.field(player,'Faction Component')
+            if not U.valid(mine) or not U.valid(theirs) then return false end
+            local wanted=faction(theirs)
+            return kept==true and wanted~=nil and tagName(faction(mine))==tagName(wanted)
+                and relation(mine,player)==FRIENDLY and relation(theirs,actor)==FRIENDLY
+        end
     end
 
     -- The follow state writes its parameters to the blackboard by gameplay tag (AssignParameters,
@@ -335,8 +343,7 @@ function Companion.new(options)
 
     local function hatredCount(actor)
         local hm=U.field(actor,'BP_PBZHatredManagerComponent')
-        local list=U.array(U.field(hm,'HatredList'))
-        return list and #list or nil
+        return U.arraySize(U.field(hm,'HatredList'))
     end
     local function distance(a,b)
         if not options.getLocation then return nil end
@@ -528,6 +535,8 @@ function Companion.new(options)
 
     -- Beside the player, 2.5 m toward where the companion stood; slot n (recall) turns that by RECALL_FAN each.
     local function teleport(record,actor,player,d,now,why,slot)
+        local profile=not slot and options.profile and options.profile(actor)
+        if profile and profile.unstuck==0 then return false end
         record.teleportAt=now
         local pa,pc=at(player),at(actor)
         if not pa or not pc then return end
@@ -560,20 +569,26 @@ function Companion.new(options)
         if #seen==0 then return false end
         local best,bestDistance
         local playerKey=U.key(player)
+        local leader,here=at(player),at(actor)
+        if not leader or not here then return false end
         for _,enemy in ipairs(seen)do
             local key=U.key(enemy)
             if key and key~=playerKey and not ours[key] then
-                local okHP,hp=true,1
-                if options.hp then okHP,hp=pcall(options.hp,enemy) end
-                local fromPlayer=distance(enemy,player)
-                if okHP and type(hp)=='number' and hp>0 and fromPlayer and fromPlayer<=ENGAGE_M then
-                    local fromCompanion=distance(enemy,actor)
-                    if fromCompanion and (not bestDistance or fromCompanion<bestDistance) then best,bestDistance=enemy,fromCompanion end
+                local position=at(enemy)
+                local fromPlayer=metres(position,leader)
+                if fromPlayer and fromPlayer<=ENGAGE_M then
+                    local gap=metres(position,here)
+                    if (not bestDistance or gap<bestDistance) and (not options.hostile or options.hostile(actor,enemy)) then
+                        local okHP,hp=true,1
+                        if options.hp then okHP,hp=pcall(options.hp,enemy) end
+                        if okHP and type(hp)=='number' and hp>0 then best,bestDistance=enemy,gap end
+                    end
                 end
             end
         end
         if not best then return false end
         if recovering and not options.canRecover(actor,best) then return end
+        if options.hostile and not options.hostile(actor,best) then return false end
         local called=pcall(function()ai:ForceIntoCombat(best)end)
         self.engages=(self.engages or 0)+1
         if self.engages<=ENGAGE_LINES then
@@ -676,7 +691,26 @@ function Companion.new(options)
     local function keepUp(record,actor,player,state,d,now)
         if not d then return end
         local combat=state:find('Combat',1,true)~=nil
-        if d>=TELEPORT_M then
+        local profile=options.profile and options.profile(actor)
+        local follow=profile and profile.distance or FOLLOW_START_M
+        local rescue=not profile or profile.unstuck==1
+        if record.followState and profile and (record.appliedDistance or FOLLOW_START_M)~=follow and now>=(record.nextDistanceTry or 0) then
+            record.nextDistanceTry=now+2
+            local ai=aiOf(actor);local bb=U.field(ai,'BlackboardComponent')
+            if U.valid(bb) and U.key(idleData(ai))==U.key(record.followState) then
+                local ok=pcall(function()
+                    local lib=StaticFindObject('/Script/SGameAI.Default__SGameAIFunctionLibrary')
+                    for _,rule in ipairs({{'FollowStartDistance',follow*100},{'FollowStopDistance',math.max(100,(follow-3)*100)}})do
+                        record.followState[rule[1]]=rule[2]
+                        local tag={TagName=FName('AI.BlackboardKey.Float.'..rule[1])}
+                        lib:SetValueAsFloatByTag(bb,tag,rule[2])
+                        assert(lib:GetValueAsFloatByTag(bb,tag)==rule[2])
+                    end
+                end)
+                if ok then record.appliedDistance=follow end
+            end
+        end
+        if d>=TELEPORT_M and rescue then
             if record.teleportAt and now-record.teleportAt<3 then return end
             if bossFight(actor,player) then
                 if not record.bossLogged then record.bossLogged=true;say('正在和BOSS打斗，距离'..fmt(d)..'也不传送')end
@@ -689,15 +723,15 @@ function Companion.new(options)
             if record.speedMode=='run' then setSpeed(record,actor,player,'walk',now) end
             record.farSince,record.stuckSince=nil,nil;record.gait=nil;return
         end
-        local gait=d>RUN_M and 'run' or 'walk'
+        local gait=d>math.max(RUN_M,follow+2) and 'run' or 'walk'
         setGait(record,actor,gait,now)
         setSpeed(record,actor,player,gait,now)
-        if d<=FOLLOW_START_M then record.farSince,record.stuckSince=nil,nil;return end
+        if d<=follow then record.farSince,record.stuckSince=nil,nil;return end
         -- Stuck: no 2 m closer for STUCK_TELEPORT_SECONDS, hardly moved itself or a floor apart (see the constants).
         local here,there=at(actor),at(player)
         if not record.stuckSince or d<record.stuckBest-2 then
             record.stuckSince,record.stuckBest,record.stuckFrom=now,d,here
-        elseif now-record.stuckSince>=STUCK_TELEPORT_SECONDS and d>=STUCK_TELEPORT_M then
+        elseif rescue and now-record.stuckSince>=STUCK_TELEPORT_SECONDS and d>=STUCK_TELEPORT_M then
             local moved=metres(here,record.stuckFrom)
             local rise=here and there and math.abs(here.Z-there.Z)/100 or nil
             if (moved and moved<STUCK_MOVED_M) or (rise and rise>=LEVEL_M) then
@@ -735,6 +769,11 @@ function Companion.new(options)
         end
     end
 
+    function self:keepControlled(actor,player)
+        local record=units[U.key(actor)]
+        if not record or record.name~=identity(actor) or not U.valid(player) then return end
+        keepUp(record,actor,player,'AI.State.Idle',distance(actor,player),clock())
+    end
     function self:tick()
         if not self.alive then return end
         local now=clock()
@@ -757,6 +796,7 @@ function Companion.new(options)
             local key=U.key(member.actor)
             if key then ours[key]=true end
         end
+        local counted,playerEnemies,assistLib,assistWorld=false,nil,nil,nil
         local count=0
         for key,member in pairs(live)do
           local name=controllable(member.actor) and identity(member.actor) or nil
@@ -791,16 +831,20 @@ function Companion.new(options)
             if not member.stand and not (options.busy and options.busy(member.actor)) then
                 if U.valid(player) and (not record.assistAt or now-record.assistAt>=ASSIST_SECONDS) then
                     record.assistAt=now
-                    local enemies=hatredCount(player)
-                    local lib=options.aiLib and options.aiLib()
-                    local world=options.getWorld and options.getWorld()
-                    if enemies and enemies>0 and U.valid(lib) and U.valid(world) then
-                        local before=hatredCount(member.actor)
-                        local ok=pcall(function()lib:SyncHatredList(player,member.actor,world)end)
+                    if not counted then
+                        counted=true;playerEnemies=hatredCount(player)
+                        if playerEnemies and playerEnemies>0 then
+                            assistLib=options.aiLib and options.aiLib()
+                            assistWorld=options.getWorld and options.getWorld()
+                        end
+                    end
+                    if playerEnemies and playerEnemies>0 and U.valid(assistLib) and U.valid(assistWorld) then
+                        local before=not record.assistLogged and hatredCount(member.actor)
+                        local ok=pcall(function()assistLib:SyncHatredList(player,member.actor,assistWorld)end)
                         if ok then self.assists=self.assists+1 end
                         if not record.assistLogged then
                             record.assistLogged=true
-                            say('协助 同步玩家仇恨到随从 调用='..tostring(ok)..' 玩家仇恨='..enemies..' 随从仇恨 '..tostring(before)..' -> '..tostring(hatredCount(member.actor)))
+                            say('协助 同步玩家仇恨到随从 调用='..tostring(ok)..' 玩家仇恨='..playerEnemies..' 随从仇恨 '..tostring(before)..' -> '..tostring(hatredCount(member.actor)))
                         end
                     end
                 end
@@ -833,7 +877,8 @@ function Companion.new(options)
                             sampleAnimation(record,member.actor,ai,'战斗中自己快速移动',now)
                         end
                     end
-                    if not state:find('Combat',1,true) and (not record.engageAt or now-record.engageAt>=1) then
+                    local profile=options.profile and options.profile(member.actor)
+                    if (not profile or profile.behavior=='active') and not state:find('Combat',1,true) and (not record.engageAt or now-record.engageAt>=1) then
                         record.engageAt=now
                         engage(record,member.actor,ai,player,ours)
                     end
@@ -858,14 +903,15 @@ function Companion.new(options)
 
     -- 召回到身边 (the app's button and the recall function key): every live companion beside the player now, fanned
     -- out, read back by distance. Also in a boss fight.
-    function self:recall()
+    function self:recall(only)
         local player=options.getPlayer and options.getPlayer()
         if not U.valid(player) then return {ok=false,message='玩家无效，没有召回随从',spawned_count=0} end
         local now=clock()
         local count,near,missed=0,0,{}
         for _,member in ipairs(options.members and options.members() or {})do
             local actor=member.actor
-            if member.team=='companion' and not member.stand and U.valid(actor) and not (options.busy and options.busy(actor)) then
+            if (not only or U.key(actor)==U.key(only)) and member.team=='companion' and not member.stand and U.valid(actor)
+                and (not options.beforeRecall or options.beforeRecall(actor)) and not (options.busy and options.busy(actor)) then
                 local okHP,hp=true,1
                 if options.hp then okHP,hp=pcall(options.hp,actor) end
                 if okHP and type(hp)=='number' and hp>0 then

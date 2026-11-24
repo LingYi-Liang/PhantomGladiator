@@ -112,6 +112,19 @@ do
     assert(probe:status().shown==0 and #calls==0,'failed binding must not update a foreign actor widget')
     a.hp=0;probe:sync(list);assert(#calls==0,'death cleanup cannot hide a widget rebound to somebody else')
 end
+do
+    local elapsed,attempts=0,0
+    local missing=makeActor('Lazy',true)
+    missing.EnsureInitHpBar=function()attempts=attempts+1 end
+    missing.hpbar.EnsureWidgetCreated=function()end
+    local ui=Bars.new({hp=function()return 90 end,maxHP=function()return 100 end,clock=function()return elapsed end})
+    local rows={{team='companion',actor=missing,class_path='Lazy'}}
+    for _=1,120 do ui:sync(rows);elapsed=elapsed+.1 end
+    print('MEASURE missing health bar: native creation attempts in 12 seconds='..attempts)
+    assert(attempts>0 and attempts<=7,'unavailable widgets should back off per actor')
+    missing.hpbar.widget=makeWidget();ui:sync(rows)
+    assert(ui:status().shown==1,'an externally created widget must bind and show immediately')
+end
 print('companion_bars: PASS (own bar created and bound, health readback, re-shown, rebuilt/native reset recovery, fallen hidden, fallback init, foreign binding gate)')
 do
     local red=makeActor('ArenaHun',true)

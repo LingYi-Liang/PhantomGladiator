@@ -15,9 +15,14 @@ local SKILL4=MOBS..'079_XuKong/Ability/GA_XuKong_Skill_04.GA_XuKong_Skill_04_C'
 local LOCK=MOBS..'078_MengHua/GameplayEffects/GE_MengHua_XuKong_LockHealth.GE_MengHua_XuKong_LockHealth_C'
 local AI='/Script/SGameAI.Default__SGameAIFunctionLibrary'
 local UTILS='/Script/SGameUtils.Default__AbilityUtils'
+local GAS='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'
 local ACTIVE='CharacterState.AbilityState.MengHua.XuKong.Active'
+local CAN_SUMMON='CharacterState.AbilityState.MengHua.CanSummonXuKong'
+local SUMMON_EVENT='GameplayEvent.SelfSummon.MengHua'
+local PHASE_SETTLED={'CharacterState.AbilityState.MengHua.CanEnterP2','CharacterState.AbilityState.MengHua.P2','CharacterState.AbilityState.MengHua.SeqCA'}
+local STALL_SECONDS,RETRY_SECONDS=8,12
 local ASSIGN='AI.BlackboardKey.Object.AssignActor1'
-local SKIP_TAGS={'CharacterState.AbilityState.MengHua.InitCA','CharacterState.AbilityState.MengHua.CanSummonXuKong',
+local SKIP_TAGS={'CharacterState.AbilityState.MengHua.InitCA',CAN_SUMMON,
     'CharacterState.AbilityState.MengHua.CanUseCA',ACTIVE}
 local TEAMS={blue=true,red=true,neutral=true,companion=true}
 local WINDOW_SECONDS=5 -- outer-post closes normally; this only retires a missing/aborted outer call
@@ -62,6 +67,7 @@ function Phase.new(options)
     local findAll=options.findAll or FindAllOf
     local clock,fname=options.clock or os.clock,options.fname or FName
     local inGameThread=options.inGameThread or IsInGameThread
+    local stats=options.attributes
     local parents,children,pairRecords,hooks,loads={},{},{},{},{}
     local storyLinks={} -- source-only bindings; never adopted, paused, cleaned up or given local anchors
     local warpWindows={}
@@ -203,6 +209,77 @@ function Phase.new(options)
                 parent[field]={ability=ability,name=full(ability)};return ability
             end
         end
+    end
+    local function tagCount(asc,tag)
+        local ok,id=pcall(fname,tag)
+        if ok then return call(asc,'GetGameplayTagCount',{TagName=id}) end
+    end
+    local function stageWait(parent,reason)
+        if reason~=parent.stageReason then
+            parent.stageReason=reason
+            say('stage-wait','41%阶段待转 '..parent.name..'；'..reason)
+        end
+    end
+    local function requestStageSummon(parent,now)
+        -- Only a live, direct arena summon on the native XuKong floor can retry this event.
+        if not options.opponent or not options.canRequest
+            or parent.skip or parent.stopping or parent.departed or parent.observedSummon
+            or (parent.team~='blue' and parent.team~='red') or (parent.stageAttempts or 0)>=2 then return end
+        if type(now)~='number' or now~=now then return end
+        if parent.stageSample and now>=parent.stageSample and now-parent.stageSample<1 then return end
+        parent.stageSample=now
+        local actor=parent.actor
+        if parentDead(parent) or not same(parent.world,options.world()) or not U.inWorld(actor,parent.world) then return end
+        local hp=options.hp(actor)
+        if type(hp)~='number' or hp<=0 then parent.floorSince=nil;return end
+        stats=stats or require('character_stats').new()
+        local max=stats:read(actor,'Health_Max')
+        if not max or max.current<=0 then parent.floorSince=nil;return end
+        local limit,tolerance=max.current*.41,math.max(.1,max.current*.000001)
+        if math.abs(hp-limit)>tolerance then parent.floorSince=nil;return end
+        local min=stats:read(actor,'Health_Min')
+        local count=lockCount(actor)
+        if not min or math.abs(min.current-limit)>tolerance or type(count)~='number' or count<1 then parent.floorSince=nil;return end
+        local asc=U.field(actor,'AbilitySystemComponent')
+        if not same(call(asc,'GetOwner'),actor) then parent.floorSince=nil;return end
+        local combat=tagCount(asc,'AI.State.Combat')
+        if type(combat)~='number' or combat<1 then parent.floorSince=nil;return end
+        local foe=options.opponent(actor)
+        if not U.inWorld(foe,parent.world) or going(foe) then parent.floorSince=nil;return end
+        if not parent.floorSince or now<parent.floorSince then parent.floorSince=now end
+        if now-parent.floorSince<STALL_SECONDS then return end
+        if parent.stageRequestAt and now>=parent.stageRequestAt and now-parent.stageRequestAt<RETRY_SECONDS then return end
+        local canSummon=tagCount(asc,CAN_SUMMON)
+        if type(canSummon)~='number' or canSummon<1 then stageWait(parent,'原生允许召唤='..tostring(canSummon));return end
+        if tagCount(asc,ACTIVE)~=0 then stageWait(parent,'虚空已激活或状态不可读');return end
+        for _,tag in ipairs(PHASE_SETTLED)do
+            if tagCount(asc,tag)~=0 then stageWait(parent,'正转阶段或阶段标记不可读');return end
+        end
+        if tagCount(asc,'Ability.Action')~=0 or not options.canRequest(actor) then
+            stageWait(parent,'等待当前动作结束');return
+        end
+        if parent.summonProbe and now>=parent.summonProbe and now-parent.summonProbe<3 then return end
+        local ability=scopedPassive(parent,SUMMON,'summonPassive')
+        local eventName=U.struct(U.field(ability,'SummonEventTag'),'TagName')
+        local event=eventName
+        if type(event)~='string' then
+            local ok,text=pcall(function()return event:ToString()end)
+            event=ok and text or nil
+        end
+        if U.field(ability,'bIsActive')~=true or U.field(ability,'MaxSummonCount')~=1 or event~=SUMMON_EVENT then
+            parent.summonProbe=now
+            stageWait(parent,'原生召唤被动未确认');return
+        end
+        local rows=U.array(U.field(ability,'SpawnedSummonInstances'))
+        local pending=call(lookup(AI),'GetPendingSummonCount',ability)
+        if not rows or #rows~=0 or pending~=0 then stageWait(parent,'原生召唤正在进行或状态不可读');return end
+        local lib=lookup(GAS)
+        if not U.valid(lib) then stageWait(parent,'原生事件接口未就绪');return end
+        parent.stageAttempts=(parent.stageAttempts or 0)+1;parent.stageRequestAt=now
+        local tag={TagName=eventName}
+        local called=pcall(function()lib:SendGameplayEventToActor(actor,tag,{EventTag=tag,EventMagnitude=1})end)
+        say('stage-retry','41%阶段重新请求同一虚空 '..parent.name..'；尝试='..parent.stageAttempts
+            ..' 调用='..tostring(called)..' 原生出生回调='..tostring(parent.observedSummon==true))
     end
     local function inactiveSpec(parent,path)
         local asc=U.field(parent.actor,'AbilitySystemComponent')
@@ -501,6 +578,7 @@ function Phase.new(options)
             children[key]={actor=actor,name=name,parent=parent,ability=ability,preFinished=true}
             self.kept=self.kept+1
         end
+        parent.observedSummon=true
         parent.summonPassive={ability=ability,name=full(ability)}
         if not parent.skip then seedAnchor(children[key],'FinishSpawn前') else parent.skipReady=false end
         parent.busy=not parent.stopping and not parent.departed
@@ -606,6 +684,7 @@ function Phase.new(options)
             local key,name=U.key(link.actor),full(link.actor)
             if key and type(name)=='string' then
                 children[key]={actor=link.actor,name=name,parent=parent,quarantine=true};parent.busy=true
+                parent.observedSummon=true
                 if parent.skip then parent.skipReady=false end
                 self.failures=self.failures+1;say('late','阶段虚空出生隔离未读回，保留原生对象并报告，不接入普通对战')
             end
@@ -628,13 +707,17 @@ function Phase.new(options)
             uninstall(false,next(storyLinks)~=nil);self.state=next(storyLinks) and 'story_guard' or 'idle';return
         end
         if not ready() then self.state='waiting';return end
-        if ready() then install() end
+        local installed=install()
         local pending=0
+        local gameTime
         for _,parent in pairs(parents)do
             if parent.stopping then parent.cleanupReady=prepareCleanup(parent);if not parent.cleanupReady then pending=pending+1 end end
             if parent.skip and not parent.skipReady and not parent.stopping and not parent.departed and not parentDead(parent) then
                 parent.skipReady=skipStage(parent);parent.busy=not parent.skipReady
                 if not parent.skipReady then pending=pending+1 end
+            elseif installed and options.gameTime and not parent.observedSummon and (parent.team=='blue' or parent.team=='red') then
+                if gameTime==nil then gameTime=options.gameTime() or false end
+                requestStageSummon(parent,gameTime)
             end
         end
         for key,row in pairs(children)do
