@@ -100,6 +100,7 @@ local function fixture(item,soul)
     h.mod=Shachi.new({current=function(r)return r==h.r and h.owner end,stats=function()return stats end,find=find,load=find,
         nativeTarget=function()return h.targetReadback or enemy end,hp=function(actor)return actor==h.deadTarget and 0 or 100 end,
         registerHook=function()return 1,2 end,unregisterHook=function()end,
+        guard={pressed=function(_,r)assert(r==h.r);h.announced=(h.announced or 0)+1 end},
         construct=construct,fname=function(n)return n end,random=function()return 0.1 end,log=function(x)h.logs[#h.logs+1]=x end})
     h.ctx={now=0,target=enemy,distance=200}
     function h:tick(t)self.ctx.now=t;return self.mod:tick(self.r,self.ctx) end
@@ -137,6 +138,7 @@ end)
 check('native cast, normal shadow cost, isolated level 60 and soul multiplier',function()
     local h=fixture()
     assert(h:tick(0));assert(h.casts==1 and h.attrs.SpiritShadow==3)
+    assert(h.announced==1,'a started shadow weapon is announced to the action guard')
     local slot=h.wc.slots[0]
     assert(slot~=h.source and math.abs(slot['Weapon Attack Multipliers'].v.a-3*6.9)<0.00001)
     assert(h.source['Weapon Attack Multipliers Normalized'].v.a==3 and h.source['Weapon Attack Multipliers'].v.a==2)

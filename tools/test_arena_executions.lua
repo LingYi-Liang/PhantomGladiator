@@ -311,6 +311,30 @@ do
         h.run(exec,2);assert(exec:status().started==0)
         exec:stop('regression')
     end)
+    regression('a verified map last cub reaches its specific native execution outside the arena',function()
+        local h=harness()
+        local lion=pair('Execution.Type.Combat','GA_Hun_BEx_HouHouHou_01_C','GA_Hun_BEd_HouHouHou_01_C')
+        local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',100,0,{rank='Elite',pairs={lion}})
+        local mate=h.enemy({X=300,Y=0,Z=0})
+        local stranger=h.enemy({X=100,Y=0,Z=0})
+        h.members={{actor=mate,team='companion'},{actor=stranger,team='companion'}}
+        h.tags[cub]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.fighting=false
+        local may=false
+        local pickups=0
+        local exec=h.new({
+            fieldLastCubs=function()return {{actor=cub,key=tostring(cub:GetAddress())}} end,
+            fieldLionTarget=function(a,v)return may and a==mate and v==cub end,
+            lionPickup=function(a,v)assert(a==mate and v==cub);pickups=pickups+1;return true end,
+            lionPickupEnded=function()end,
+        })
+        h.run(exec,1);assert(exec:status().started==0)
+        may=true
+        h.run(exec,1);assert(exec:status().started==1 and pickups==1)
+        exec:stop('arena only',true)
+        assert(exec:status().active)
+        exec:stop('full cleanup')
+    end)
     regression('a scripted phase is not borrowed as a target or executor and resumes after the phase',function()
         for _,which in ipairs({'boss','executor'})do
             local busy=true;local held
@@ -996,6 +1020,63 @@ do
     local held=g.new({killOnLock=function()return true end})
     held:tick()
     assert(held:status().kills==0 and not g.all():find('打死（卡面设置）',1,true),g.all())
+end
+-- Time stop may leave a fighter exactly at a final health floor. Resolving it would mutate the frozen match.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',1,1,{locks={LOCK},pairs={MOYUAN},rank='UltimateBoss'})
+    h.attrs[boss].Health_Max=300
+    h.members={{actor=boss,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    local frozen=true
+    local exec=h.new({paused=function()return frozen end,killOnLock=function(actor)return actor==boss end})
+    exec:tick()
+    assert(h.attrs[boss].Health==1 and h.attrs[boss].Health_Min==1 and exec:status().kills==0,
+        'a frozen match must not start final health-floor cleanup')
+    frozen=false
+    exec:tick()
+    assert(h.attrs[boss].Health==0 and exec:status().kills==1,'the same confirmed floor resolves after unpausing')
+end
+-- A native execution can leave only a temporary 1-HP floor. It is not permission for an extra finisher.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',1,1,{locks={},pairs={MOYUAN},rank='UltimateBoss'})
+    h.attrs[boss].Health_Max=300
+    h.members={{actor=boss,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+    local native=true
+    local exec=h.new({nativeExecution=function(actor)return actor==boss and native end,
+        killOnLock=function(actor)return actor==boss end})
+    h.run(exec,3)
+    assert(h.attrs[boss].Health==1 and h.attrs[boss].Health_Min==1 and exec:status().kills==0
+        and exec:status().started==0,'do not interpret native execution protection as a terminal lock')
+    native=false
+    h.attrs[boss].Health_Min=0
+    h.run(exec,3)
+    assert(h.attrs[boss].Health==1 and exec:status().kills==0,'a released temporary floor must not leave a pending kill')
+end
+-- A living original squad can keep its leader at 1%. Only the original squad may release that floor.
+do
+    local path='/PBZCombatAsset/ActorData/Mobs/035_HuaShan/GameplayEffects/GE_HuaShan_Troop_MinHealth.GE_HuaShan_Troop_MinHealth_C'
+    for _,id in ipairs({'BP_Monster_HuaShan_Blue','BP_Monster_HuaShan_JianOu'})do
+        local h=harness()
+        local effect=object('GE_HuaShan_Troop_MinHealth_C',{GetFullName=function()return 'BlueprintGeneratedClass '..path end})
+        h.found[path]=effect
+        local count=1
+        local leader=h.boss(id,3,3,{locks={},pairs={MOYUAN},rank='GreatBoss'})
+        function leader.AbilitySystemComponent:GetGameplayEffectCount(ge)
+            assert(ge==effect)
+            return count
+        end
+        h.attrs[leader].Health_Max=300
+        h.members={{actor=leader,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+        local exec=h.new({killOnLock=function(actor)return actor==leader end})
+        h.run(exec,4)
+        assert(h.attrs[leader].Health==3 and h.attrs[leader].Health_Min==3 and exec:status().kills==0
+            and exec:status().started==0,'living squad keeps the original leader protection')
+        count=0
+        h.attrs[leader].Health_Min=0
+        h.run(exec,3)
+        assert(h.attrs[leader].Health==3 and exec:status().kills==0,'the released squad floor must not leave a pending kill')
+    end
 end
 -- Out of reach by design, a minion, or off the lock again: not ended.
 do

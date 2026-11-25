@@ -159,6 +159,12 @@ function Exec.new(options)
     local findAll=options.findAll or FindAllOf
     local name=options.fname or FName
     local now=options.now
+    local function paused()return options.paused and options.paused()==true end
+    local function inNativeExecution(actor)
+        if not options.nativeExecution then return false end
+        local ok,value=pcall(options.nativeExecution,actor)
+        return not ok or value~=false
+    end
     local function phaseBusy(actor)
         if not options.phaseBusy then return false end
         local ok,value=pcall(options.phaseBusy,actor)
@@ -989,6 +995,16 @@ local function closeOneGrab(pose,why,restore)
         local got,found=call(okLib and lib or nil,'GetAbilitySystemComponent',actor)
         return got and U.unwrap(found) or nil
     end
+    local troopFloor='/PBZCombatAsset/ActorData/Mobs/035_HuaShan/GameplayEffects/GE_HuaShan_Troop_MinHealth.GE_HuaShan_Troop_MinHealth_C'
+    local function hasTroopProtection(actor)
+        local id=className(actor)
+        if id~='BP_Monster_HuaShan_Blue' and id~='BP_Monster_HuaShan_JianOu' then return false end
+        local ok,effect=pcall(find,troopFloor)
+        if not ok or not U.valid(effect) then return false end
+        local read,count=call(ascOf(actor),'GetGameplayEffectCount',effect,nil,true)
+        count=read and U.unwrap(count)
+        return type(count)~='number' or count>0
+    end
     -- The unit's own lock effects, then the generic ones that are loaded, each removed once; read back as Health_Min.
     local function unlock(actor,info)
         local asc=ascOf(actor)
@@ -1021,6 +1037,8 @@ local function closeOneGrab(pose,why,restore)
         for _,foe in ipairs(companionFoes(members))do if foe.key==key then return 'companion-foe' end end
     end
     local function finalDeath(target,unit,t,mode,team)
+        -- Temporary execution and squad effects can be low enough to resemble a death floor.
+        if paused() or inNativeExecution(target) or hasTroopProtection(target) then return nil end
         if options.immune and options.immune(target,'lethal') then return nil end
         local hp,floor,max=read(target,'Health'),read(target,'Health_Min'),read(target,'Health_Max')
         local r=unit.finalDeath
@@ -1050,8 +1068,8 @@ local function closeOneGrab(pose,why,restore)
         if t<r.nextAt then return nil end
         r.nextAt=t+1
         local function authorized()
-            if units[key]~=unit or unit.finalDeath~=r or phaseBusy(target)
-                or options.immune and options.immune(target,'lethal')
+            if units[key]~=unit or unit.finalDeath~=r or phaseBusy(target) or inNativeExecution(target)
+                or hasTroopProtection(target) or options.immune and options.immune(target,'lethal')
                 or options.isImmortal and options.isImmortal(r.team) then return false end
             if mode=='finish' or mode=='denied' then
                 if finisherTeam(target)~=r.team or (r.team~='companion-foe' and options.fighting and not options.fighting()) then return false end
@@ -1282,7 +1300,7 @@ local function closeOneGrab(pose,why,restore)
         self.started=self.started+1
         local hp,floor=read(boss,'Health'),read(boss,'Health_Min')
         local finishPermit
-        if info.mob or info.boss and reason=='卡在锁血线' then
+        if not info.fieldLionHead and (info.mob or info.boss and reason=='卡在锁血线') then
             local named,identity=call(boss,'GetFullName')
             local team=finisherTeam(boss)
             if team and named and type(identity)=='string' and type(hp)=='number' and type(floor)=='number' then
@@ -1344,7 +1362,7 @@ local function closeOneGrab(pose,why,restore)
             call(body.comp,'SetPosition',position,false)
         end
         local after=montageOf(boss)
-        if info.pair.unlock=='start' then
+        if not info.fieldLionHead and info.pair.unlock=='start' then
             local _,removed,floor=unlock(boss,info)
             say(string.format('照它自己的技能，处决一开始就去锁血[%s] 读回底线=%s',table.concat(removed,' '),fmt(floor)))
         end
@@ -1593,7 +1611,7 @@ local function closeOneGrab(pose,why,restore)
             {continuing=continuing,paused=paused})
     end
     local function counterEligible(actor,boss,kind)
-        if not self.enabled or next(pendingBodies) or next(pendingGrabControls) or phaseBusy(actor) or phaseBusy(boss) then return false end
+        if not self.enabled or paused() or next(pendingBodies) or next(pendingGrabControls) or phaseBusy(actor) or phaseBusy(boss) then return false end
         local ak,bk=U.key(actor),U.key(boss)
         if grabPoses[ak] or grabPoses[bk] then return false end
         if active then
@@ -1674,6 +1692,7 @@ local function closeOneGrab(pose,why,restore)
             end
         end
         if not reason then return false end
+        if inNativeExecution(target) or locked and hasTroopProtection(target) then unit.since=nil;return false end
         local selected=inspect(target,true,locked)
         if selected.state=='story' then
             unit.state='story';unit.storyWhy=selected.storyWhy
@@ -1684,13 +1703,19 @@ local function closeOneGrab(pose,why,restore)
         if lastLion then
             if selected.state~='ready' or short(selected.pair.execution)~='GA_Hun_BEx_HouHouHou_01_C' then return false end
             selected.requireLionPickup=true
+            selected.fieldLionHead=lastLion=='field'
             local previous=only
             only=function(actor)
-                return (not previous or previous(actor)) and U.key(options.assignedOpponent(actor))==U.key(target)
-                    and (not options.hunPoleHead or options.hunPoleHead(actor)~=false)
+                if previous and not previous(actor) then return false end
+                if options.hunPoleHead and options.hunPoleHead(actor)==false then return false end
+                if selected.fieldLionHead then return options.fieldLionTarget(actor,target)==true end
+                return U.key(options.assignedOpponent(actor))==U.key(target)
             end
         end
-        if selected.state=='ready' then executor,d,denied=opponent(target,team,locked and LOCK_REACH or selected.pair.reach or REACH,locked,selected.pair.type,selected.mob,only)end
+        if selected.state=='ready' then
+            local reach=locked and not selected.fieldLionHead and LOCK_REACH or selected.pair.reach or REACH
+            executor,d,denied=opponent(target,team,reach,locked,selected.pair.type,selected.mob,only)
+        end
         if executor then return start(executor,target,selected,d,reason)~=false end
         -- A denied finisher cannot leave a minion immortal at its final death floor.
         if not lastLion and denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
@@ -1788,6 +1813,7 @@ local function closeOneGrab(pose,why,restore)
         local reason=locked and t-unit.hunSince>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
         if not reason and not unit.lockOnly and tagsMatch(target,{'CharacterState.Stand.Break'},true) then reason='CharacterState.Stand.Break' end
         if not reason then return false end
+        if inNativeExecution(target) or locked and hasTroopProtection(target) then unit.hunSince=nil;return false end
         local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,only)
         if not executor then return false end
         local info=hunPairFor(target,unit,executor,generic,foreign)
@@ -1898,6 +1924,7 @@ local function closeOneGrab(pose,why,restore)
         end
     end
     function self:tick()
+        if paused() then return end
         local members=options.members() or {}
         local policyFight
         if options.executionPolicyConfigured and options.executionPolicyConfigured()==true then policyFight=not options.fighting or options.fighting()==true end
@@ -1908,7 +1935,13 @@ local function closeOneGrab(pose,why,restore)
             if key then present[key]=member end
         end
         local foes,foeSwitch,foeHun,foeMinions=companionFoes(members)
-        for _,foe in ipairs(foes)do present[foe.key]=true end
+        local fieldCubs=options.fieldLastCubs and options.fieldLionTarget and options.fieldLastCubs() or {}
+        local fieldKeys={}
+        for _,cub in ipairs(fieldCubs)do fieldKeys[cub.key]=true;present[cub.key]=true end
+        for i=#foes,1,-1 do
+            local foe=foes[i]
+            if fieldKeys[foe.key] then table.remove(foes,i) else present[foe.key]=true end
+        end
         local finishing
         for key,unit in pairs(units)do
             if not present[key] then
@@ -1949,6 +1982,16 @@ local function closeOneGrab(pose,why,restore)
             end
         end
         endLocks(members,t)
+        -- The last cub's paired execution advances this phase. Do not spend it on a generic companion finisher.
+        for _,cub in ipairs(fieldCubs)do
+            local target=cub.actor
+            if not theirExecutorIsPlayer(target) then
+                local unit=units[cub.key]
+                if not unit then unit=inspect(target);unit.foe=true;units[cub.key]=unit end
+                if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again)
+                    and tryExecute(target,unit,t,nil,nil,'field') then return end
+            end
+        end
         if options.fighting and(policyFight==false or policyFight==nil and not options.fighting())then
             for _,unit in pairs(units) do unit.prologueSince=nil end
             considerFoes(foes,t,foeSwitch,foeHun,foeMinions);return
@@ -2023,8 +2066,9 @@ local function closeOneGrab(pose,why,restore)
         considerFoes(foes,t,foeSwitch,foeHun,foeMinions)
     end
     -- F4 / stop: give the body back; the boss is left as it is.
-    function self:stop(why)
-        self:stopGrabPose(why)
+    function self:stop(why,arenaOnly)
+        if not arenaOnly then self:stopGrabPose(why) end
+        if arenaOnly and active and active.info.fieldLionHead then return end
         opportunities:stop(why)
         if active then
             local run=active;active=nil
@@ -2034,6 +2078,7 @@ local function closeOneGrab(pose,why,restore)
             chain:closeTasks()
             local released=release(run)
             chain:stop(why)
+            if run.lionPickup and options.lionPickupEnded then options.lionPickupEnded(run.executor,false) end
             say('中止（'..tostring(why)..'）：'..returnBody(run.body)..'；'..resume(run)..released)
         else
             chain:stop(why)

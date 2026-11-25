@@ -39,6 +39,7 @@ function Arena.new(options)
     -- sides stand, to the first in which one side has nobody alive or unreadable. It starts over when a
     -- beaten side gets new units; stop clears it.
     local fight={}
+    local reportOpen=false
     local teamRevision=0
     local instance = {}
     function instance:intentContext()
@@ -54,6 +55,15 @@ function Arena.new(options)
         local fn = options[name]
         if type(fn) ~= "function" then return false, "缺少回调 " .. name end
         return pcall(fn, ...)
+    end
+
+    local function finishReport(result)
+        if not reportOpen then return end
+        reportOpen=false
+        if options.onMatchEnded then
+            local ok,err=pcall(options.onMatchEnded,result)
+            if not ok then log('对局记录收尾失败: '..tostring(err)) end
+        end
     end
 
     local function spawn_block()
@@ -1158,7 +1168,7 @@ function Arena.new(options)
                     -- 先接管所有权并通知root，再调用可能失败的登场操作。
                     local spec=dual==true and team=='companion' and not escort and require('companion_profile').phase(unitPath) and {} or nil
                     units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,companionSpec=spec,
-                        formationGroup=group }
+                        formationGroup=group,reportEscort=escort~=nil }
                     if group and group.retire then
                         local got,name=invoke('name',actor)
                         if got and type(name)=='string' and name~='' then units[#units].formationName=name end
@@ -1241,7 +1251,9 @@ function Arena.new(options)
                 local group=formation and {} or nil
                 if group and options.retireFormation then group.retire=options.retireFormation(entry.path)==true end
                 staged=nil
-                if group and group.retire and options.prepareFormation and (team=='blue' or team=='red') then
+                local nativeTeam=team=='blue' or team=='red' or (team=='companion' and options.companionFormation
+                    and options.companionFormation(entry.path)==true)
+                if group and group.retire and options.prepareFormation and nativeTeam then
                     group.nativeFormation=true;group.forming=true;staged={}
                 end
                 local actor,stop=spawn_one(cls,entry.path,slot,transform,nil,group)
@@ -1370,6 +1382,7 @@ function Arena.new(options)
                 return response(false,"清理或恢复尚未完成，未下达交战指令")
             end
             local blue, red = {}, {}
+            local opening=options.onMatchSnapshot and (not battleActive or fight.ended) and {} or nil
             local reachable={blue={},red={}}
             local relations={blue={},red={}}
             local storyActors={}
@@ -1399,6 +1412,10 @@ function Arena.new(options)
                     end
                     if unit.team == "blue" then blue[#blue + 1] = unit.actor end
                     if unit.team == "red" then red[#red + 1] = unit.actor end
+                    if opening then
+                        opening[#opening+1]={actor=unit.actor,team=unit.team,class_path=unit.class_path,
+                            slot=unit.slot,formation=unit.formation,escort=unit.reportEscort==true,summoned=unit.summoner~=nil}
+                    end
                     unit.untargetable=untargetable(unit)
                     if not unit.untargetable then local list=reachable[unit.team];list[#list+1]=unit.actor end
                     if is_story_team_actor(unit) then storyActors[unit.actor]=true end
@@ -1485,6 +1502,11 @@ function Arena.new(options)
                     else failures = failures + 1 end
                 end
             end
+            if opening then
+                local ok,err=pcall(options.onMatchSnapshot,opening,{enabled=relay.enabled,blue=relay.blue,red=relay.red})
+                reportOpen=ok
+                if not ok then log('对局开战记录失败: '..tostring(err)) end
+            end
             request_attack(blue, reachable.red); request_attack(red, reachable.blue)
             if options.onBattleStarted and live(blue[1]) == true and live(red[1]) == true then
                 local ok, err = pcall(options.onBattleStarted, blue[1], red[1])
@@ -1499,6 +1521,7 @@ function Arena.new(options)
 
     function instance:stop()
         return run(function()
+            finishReport({reason='stopped',seconds=fight.started and fight.now and math.max(0,fight.now-fight.started) or nil})
             battleActive=false
             fight={}
             log("停止阶段=恢复会话；随后仅销毁本控制器登记的参赛者")
@@ -1623,6 +1646,11 @@ function Arena.new(options)
                 fight={started=now};log('战斗计时开始 蓝='..blue..' 红='..red..' 游戏时间='..string.format('%.2f',now))
             elseif over and fight.started and not fight.ended then
                 fight.ended=now;log(string.format('战斗计时结束 用时=%.2f秒 蓝=%d 红=%d',now-fight.started,blue,red))
+            end
+            if over then
+                local winner=blue>0 and 'blue' or red>0 and 'red' or nil
+                finishReport({reason='completed',blueAlive=blue,redAlive=red,winner=winner,
+                    seconds=fight.started and math.max(0,(fight.ended or now)-fight.started) or nil})
             end
             fight.now=now
         end

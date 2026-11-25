@@ -740,7 +740,9 @@ function Shachi.new(o)
         local read=activeSpec(asc,nextCast)
         local active=read and type(read.active)=='number' and read.active>0
         say(r,'影武接段读回 返回='..tostring(result)..' 活动数='..tostring(read and read.active))
-        if active then cast.queued=nil;s.running=nextCast
+        if active then
+            cast.queued=nil;s.running=nextCast
+            if o.guard then o.guard:pressed(r) end
         elseif not (sent and result==true) then cast.queued=nil end
     end
     local function observe(r,s,asc,now,ctx)
@@ -753,6 +755,7 @@ function Shachi.new(o)
             if read and type(read.active)=='number' and read.active>0 then
                 say(r,'影武接段延后读回 活动数='..read.active)
                 s.running=nextCast;cast=nextCast
+                if o.guard then o.guard:pressed(r) end
             elseif now<nextCast.started+.45 then return true
             else cast.queued=nil end
         end
@@ -977,6 +980,7 @@ function Shachi.new(o)
         say(r,'影武启动读回 返回='..tostring(response)..' 活动数='..tostring(read and read.active)..' 暗源='..tostring(after))
         local debited=type(after)=='number' and after<funded
         if debited then s.lastPaidAt=now end
+        if active and o.guard then o.guard:pressed(r) end
         if not active and not debited and (not ok or response==false) then
             charge:finish(r,hold)
             s.running=nil;settleFree(r,s,asc,after,true)

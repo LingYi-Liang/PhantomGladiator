@@ -27,6 +27,7 @@ local function fixture()
     local montage=object('AnimMontage '..MONTAGE)
     function h:npc(name,team,isBoss)
         local actor=object('NPC /Test/World.'..name,{hp=200,floor=0,tags={},['Death Delay']=0,GetClass=function()return npcClass end})
+        actor['Actor Config']=object('ActorConfig',{['Difficulty Tag']={TagName='CharacterType.Difficulty.Standard'}})
         actor.Mesh=object('Mesh')
         actor.ability=object('Ability /Test/'..name,{bIsActive=true,position=3.2,playing=true,
             GetAvatarActorFromActorInfo=function()return actor end})
@@ -61,11 +62,17 @@ local function fixture()
             if path:find('AbilitySystemBlueprintLibrary',1,true)then return lib end
         end,
         registerHook=function(path,callback)assert(not h.hooks[path]);h.hooks[path]=callback;return 19,19 end,
-        clock=function()return h.now end,now=function()return h.now end,fname=function(s)return s end,
+        clock=function()return h.now end,now=function()return h.now end,fname=function(s)return s end,paused=function()return h.paused end,
         inGameThread=function()return h.inGame end,
         session=function()return {game_ready=h.world~=nil,game_session=h.world}end,
         live=function(actor)return actor and actor:IsValid() and not actor.destroying end,
         opponentOf=function()return h.opponent end,isImmortal=function(team)return h.protect[team]==true end,
+        companionOpponent=function(actor,castTarget,castName)
+            if h.paused then return end
+            if actor.companionFoe then return actor.companionFoe end
+            if castTarget and not castTarget.lostHostility and castTarget:GetFullName()==castName then return castTarget end
+        end,
+        mapVictim=function(actor)return actor.mapVictim==true and not actor.protectedPhase end,
         immune=function(actor,kind)return actor==h.foe and h.immune==kind end,
         playGrab=function(actor,stillValid)
             assert(stillValid())
@@ -91,13 +98,16 @@ local function fixture()
         cancel=function(handle)h.loops[handle]=nil end,
         attributes={
             read=function(_,actor,field)
+                if field=='Health_Min' and actor.floor==nil then return nil end
                 local v=field=='Health' and actor.hp or actor.floor
                 return {current=v,base=v}
             end,
             writeBase=function(_,actor,field,value)
                 assert(field=='Health' and value==0,'same native Health Override=0 path')
                 h.writes=h.writes+1
-                assert(actor['Death Delay']>=3.788884,'defer native NPC presentation cleanup through the victim tail')
+                if not h.fieldWithoutVisual then
+                    assert(actor['Death Delay']>=3.788884,'defer native NPC presentation cleanup through the victim tail')
+                end
                 actor.hp=math.max(actor.floor,0)
                 return true
             end,
@@ -121,6 +131,114 @@ local function fixture()
 end
 local function test(name,fn)fn();print('ok - '..name)end
 
+local idle={battle_active=false,blue_count=0,red_count=0}
+local function fieldFixture()
+    local h=fixture()
+    local mapEnemy=h:npc('MapEnemy','map')
+    mapEnemy.mapVictim=true
+    table.remove(h.members)
+    h.members[1].team='companion'
+    h.boss.companionFoe=mapEnemy
+    return h,mapEnemy
+end
+
+test('a companion uses the native hit and finisher while the arena is idle',function()
+    local h,mapEnemy=fieldFixture()
+    h.boss.companionFoe=h.player;h:tick(idle)
+    assert(h.aims==0)
+    h.boss.companionFoe=mapEnemy;h:tick(idle);h:tick(idle)
+    assert(h.aims==1 and h.boss.BP_Guillotine.TargetActor==mapEnemy)
+    assert(h.boss.BP_Guillotine.TargetMesh==mapEnemy.Mesh)
+    assert(type(h.hooks[HIT])=='function','companion-only play must register the real hit hook')
+    h:hit(mapEnemy);h:hit(mapEnemy);h:drain();h:frame(0.89)
+    assert(h.writes==0 and #h.grabs==1 and h.held[mapEnemy] and mapEnemy.hp==200)
+    h.boss.companionFoe=nil -- the cast retains its own still-hostile victim when the board drops the focus
+    h:tick(idle);h:frame(0.02)
+    assert(h.writes==1 and h.finishes==1 and mapEnemy.hp==0)
+    h.visualDone=true;h:frame(0.1)
+    assert(not h.held[mapEnemy] and not next(h.loops) and mapEnemy['Death Delay']==0)
+end)
+
+test('freezing the game at the lethal frame pauses a field catch without losing it',function()
+    local h,t=fieldFixture();h:tick(idle);h:hit(t);h:drain()
+    h.paused=true;h:frame(0.91)
+    assert(h.writes==0 and h.held[t] and next(h.loops),'frozen targeting is not lost allegiance')
+    h.paused=false;h:frame(0.01)
+    assert(h.writes==1 and t.hp==0)
+    h.module:stop()
+end)
+
+test('map victims must remain ordinary proven hostiles and free of phase protection',function()
+    for _,protect in ipairs({
+        function(t)t.floor=1 end,
+        function(t)t.floor=nil end,
+        function(t)t.protectedPhase=true end,
+        function(t)t.tags['CharacterState.Immortal']=1 end,
+        function(t)t.tags['CharacterState.CanNotBeExecuted']=1 end,
+        function(t)t['Actor Config']['Difficulty Tag'].TagName='CharacterType.Difficulty.GreatBoss'end,
+    })do
+        local h,t=fieldFixture();protect(t);h:tick(idle);h:hit(t);h:drain()
+        assert(#h.grabs==0 and h.writes==0 and t.hp==200)
+        h,t=fieldFixture();h:tick(idle);h:hit(t);h:drain()
+        assert(#h.grabs==1 and h.held[t])
+        protect(t);h:frame(0.91)
+        assert(not h.held[t] and h.writes==0 and t.hp==200)
+    end
+end)
+
+test('unrelated native hits, player, arena and allied victims never enter field execution',function()
+    local h,t=fieldFixture();h:tick(idle)
+    h.friendly=h:npc('AnotherCompanion','companion')
+    h.friendly.mapVictim=true -- still rejected by the tracked roster
+    h.boss.companionFoe=h.friendly;h:tick(idle);h:hit(h.friendly)
+    h.foe.mapVictim=true
+    h.boss.companionFoe=h.foe;h:hit(h.foe)
+    h.boss.companionFoe=h.player;h:hit(h.player)
+    local unrelated=h:npc('UnrelatedMapEnemy','map');table.remove(h.members)
+    unrelated.mapVictim=true
+    h.boss.companionFoe=t;h:hit(unrelated);h:hit(t,h.other)
+    assert(#h.timers==0 and #h.grabs==0 and h.writes==0)
+end)
+
+test('field capture cleans up on allegiance, target, caster, or world changes',function()
+    for _,interrupt in ipairs({
+        function(h,t)h.boss.companionFoe=nil;t.lostHostility=true end,
+        function(h)h.boss.companionFoe=h.foe end,
+        function(h)h:endCast(true)end,
+        function(h)h.members[1]=nil;h:tick(idle)end,
+        function(h)h.world='two'end,
+    })do
+        local h,t=fieldFixture();h:tick(idle);h:hit(t);h:drain()
+        assert(h.held[t])
+        interrupt(h,t);h:frame(0.91)
+        assert(not h.held[t] and not next(h.loops) and h.writes==0 and t.hp==200)
+    end
+end)
+
+test('unavailable field presentation preserves the confirmed hit without changing death timing',function()
+    local h,t=fieldFixture()
+    h.playFails=true;h.fieldWithoutVisual=true
+    h:tick(idle);h:hit(t);h:drain();h:frame(0.91)
+    assert(h.writes==1 and t.hp==0 and t['Death Delay']==0 and h.finishes==0)
+    h:frame(0.05)
+    assert(not next(h.loops))
+end)
+
+test('a protected phase starting between hit and deferred hold rejects field control',function()
+    local h,t=fieldFixture()
+    h:tick(idle);h:hit(t)
+    t.protectedPhase=true;h:drain();h:frame(1)
+    assert(#h.grabs==0 and h.writes==0 and not next(h.loops))
+end)
+
+test('clearing the arena preserves a live field capture and its finish window',function()
+    local h,t=fieldFixture();h:tick(idle);h:hit(t);h:drain()
+    assert(h.module:stopArena() and h.held[t])
+    h:tick(idle);h:frame(0.91)
+    assert(h.writes==1 and h.held[t])
+    assert(h.module:stop() and not h.held[t] and t['Death Delay']==0)
+end)
+
 test('profile immunity distinguishes preventing a grab from surviving its lethal commit',function()
     local h=fixture();h.immune='grab';h:catch();h:frame(0.91)
     assert(not h.held[h.foe] and h.writes==0 and h.foe.hp==200)
@@ -141,6 +259,18 @@ test('the native commit occurs at catch+0.9 before caster retrieval or visual co
     assert(h.held[h.foe] and h.writes==1,'caster end and natural victory preserve the dying animation')
     h.visualDone=true;h:frame(0.1);h:frame(0.1)
     assert(not h.held[h.foe] and next(h.loops)==nil and h.foe['Death Delay']==0 and h.writes==1)
+end)
+
+test('a delayed hold starts the native countdown at impact, not at control setup',function()
+    local h=fixture()
+    h:tick();h:hit(h.foe)
+    h:frame(0.45)
+    h:drain()
+    assert(h.held[h.foe] and h.writes==0)
+    h:frame(0.44)
+    assert(h.writes==0,'health must not be committed before catch+0.9')
+    h:frame(0.02)
+    assert(h.writes==1 and h.held[h.foe],'a delayed game-thread callback must not shift the lethal frame')
 end)
 
 test('a forward montage skip does not discard the native catch',function()

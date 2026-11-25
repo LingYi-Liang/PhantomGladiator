@@ -83,4 +83,42 @@ do
     a.GetOuter=outer;h.setTime(2);h.manage:tick();allGone(h)
     assert(not a.Spawner and not a.MobGroup)
 end
+for _,unknownLeader in ipairs({false,true})do
+    local h=fixture();local token,rows=newGroup(h)
+    local leader,fallen=rows[1].actor,rows[2].actor
+    local calls=0
+    local script={Pawn=leader,IsValid=function()return true end,
+        GetClass=function()return h.tree('/Game/Fixture.AIScript_HuaShan_Troop_Blue_Dead_C')end}
+    function script:OnGroupMemberDead(spawner)
+        assert(spawner==fallen.Spawner)
+        calls=calls+1
+        if calls==1 then error('native death notice temporarily unavailable') end
+        self.completed=true
+    end
+    leader.ai.SpawnedAIScripts={script}
+    fallen.hp=0;fallen.tags['CharacterState.Dead']=1;h.manage:lifeChanged(token,fallen,false)
+    if unknownLeader then
+        leader.hp=nil;h.setTime(1);h.manage:tick();assert(calls==0)
+        leader.hp=100
+    end
+    h.setTime(2);h.manage:tick();assert(calls==1,'a temporary HP read cannot discard this death')
+    h.setTime(3);h.manage:tick();assert(calls==2 and script.completed,'a rejected death notice remains pending')
+    h.setTime(4);h.manage:tick();assert(calls==2,'the confirmed native notification is sent only once')
+end
+do
+    local h=fixture();local _,blue=newGroup(h);local _,red=h.party(true,'red',3000)
+    local a,target=blue[1].actor,red[1].actor
+    h.foes[a]=target;assert(h.manage:beforeAttack(a,target));h.manage:assigned(a,target)
+    local gas=h.options.find('/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary')
+    local send=gas.SendGameplayEventToActor
+    local attempts=0
+    function gas:SendGameplayEventToActor(...)
+        attempts=attempts+1
+        if attempts==1 then error('native opening dispatch unavailable') end
+        return send(self,...)
+    end
+    h.setTime(1);h.manage:tick();assert(attempts==1 and #h.events==0)
+    h.setTime(2);h.manage:tick();assert(attempts==2 and #h.events==1,'retry an opener rejected before native dispatch')
+    h.setTime(3);h.manage:tick();assert(attempts==2 and #h.events==1)
+end
 print('PASS sword formation rollback, bounded retries, cast expiry, map transitions and native membership')

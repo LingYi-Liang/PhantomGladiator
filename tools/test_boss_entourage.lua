@@ -7,9 +7,12 @@ local function obj(name,outer)
         GetFullName=function()return name end,GetOuter=function()return outer end}
 end
 local world=obj('world')
-local hooks={};local adopts=0
-local m=M.new({world=function()return world end,hp=function(a)return a.hp end,now=function()return 10 end,
-    find=function()return world end,log=function()end,register=function(path,pre,post)hooks[path]={pre,post};return 1,2 end,
+local hooks={};local adopts=0;local now=10
+local ai=obj('SGameAIFunctionLibrary')
+function ai:GetPendingSummonCount(a)return a.pending end
+local m=M.new({world=function()return world end,hp=function(a)return a.hp end,now=function()return now end,
+    find=function(path)return path=='/Script/SGameAI.Default__SGameAIFunctionLibrary' and ai or world end,
+    log=function()end,register=function(path,pre,post)hooks[path]={pre,post};return 1,2 end,
     unregister=function(path)hooks[path]=nil end,adopt=function()adopts=adopts+1 end})
 local function rec(id,group,on)
     local path='/Game/'..id..'.'..id..'_C'
@@ -57,5 +60,24 @@ m:passive(phase);assert(phase.calls==0 and not phase.bDestroySummonsOnDeadLatche
 local solo=rec(M.xiao,nil,false);m:roster({solo,b});local off=passive(solo,'GA_SummonPassive_XiaoXue_C',4)
 callback('OnReceivedSpawnSummonsEvent')(off);assert(off.MaxSummonCount==0 and off.calls==0)
 local foreign=passive(l,'GA_SummonPassive_XiaoXue_C',4);m:passive(foreign);assert(foreign.MaxSummonCount==4 and foreign.calls==0)
+local retry=rec(M.xiao,{},true);m:roster({retry,solo,b});local delayed=passive(retry,'GA_SummonPassive_XiaoXue_C',4)
+delayed.bIsActive=true
+function delayed:OnReceivedSpawnSummonsEvent(payload)
+    assert(payload.EventMagnitude==4)
+    self.calls=self.calls+1
+    if self.calls==1 then error('native dispatch unavailable') end
+end
+m:passive(delayed);assert(delayed.calls==1)
+now=12;delayed.pending=1;m:passive(delayed);assert(delayed.calls==1,'never resend over an active native reservation')
+now=14;delayed.pending=nil;m:passive(delayed);assert(delayed.calls==1,'unknown reservations are not an empty slot')
+now=16;delayed.pending=0;m:passive(delayed);assert(delayed.calls==2,'retry failed native dispatch with confirmed empty reservations')
+now=30;m:passive(delayed);assert(delayed.calls==2,'no repeated requests when the summon continues to fail')
+local wait=rec(M.xiao,{},true);m:roster({wait,solo,b});local queued=passive(wait,'GA_SummonPassive_XiaoXue_C',4)
+queued.bIsActive=true;queued.pending=1;queued.SpawnedSummonInstances={{bPawnPending=true}}
+m:passive(queued);assert(queued.calls==0)
+now=32;queued.pending=0;queued.SpawnedSummonInstances={}
+m:passive(queued);assert(queued.calls==1,'a pending row that vanished without completion is not a permanent spawn receipt')
+finish(queued,child)
+now=34;m:passive(queued);assert(queued.calls==1,'a confirmed birth prevents replenishing the original group')
 m:silence(true);assert(not next(hooks) and off.MaxSummonCount==4 and phase.DestroySummonsOnDead and phase.bDestroySummonsOnDeadLatched)
 print('PASS scoped formations, native and formation cards, native caps, phase timing, no repeated summons, owner isolation and cleanup')

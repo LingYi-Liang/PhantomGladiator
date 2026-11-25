@@ -1,5 +1,6 @@
--- HuaShan's own AI reads placed spawners, including downed members, before it dispatches its trees.
+-- Native group abilities read placed spawners before the behavior tree dispatches its members.
 local U=require('ue_observe')
+local Entourage=require('boss_entourage')
 local Party={}
 local ROOT='/PBZCombatAsset/ActorData/Mobs/035_HuaShan/'
 local BLUE='BP_Monster_HuaShan_Blue'
@@ -17,6 +18,7 @@ local TROOP='CharacterState.AbilityState.Troop.TroopMob'
 local CENTER='AI.BlackboardKey.Vector.DomainCenter'
 local PREFIX='PhantomGladiator_HuaShan_'
 local DEATH_SCRIPT='AIScript_HuaShan_Troop_Blue_Dead_C'
+Party.supportsCompanion=Entourage.retireFormation
 
 local function call(o,method,...)
     if not U.valid(o) then return false end
@@ -152,9 +154,12 @@ function Party.new(o)
         if rosterRead==revision then return end
         fieldActors,sides={},{}
         for _,row in ipairs(latestRows)do
-            if (row.team=='red' or row.team=='blue') and not row.aid and not row.stand and not row.reserve then
+            if (row.team=='red' or row.team=='blue' or row.team=='companion') and not row.aid and not row.stand and not row.reserve then
                 local k=U.key(row.actor)
-                if k then fieldActors[#fieldActors+1]=row.actor;sides[k]=row.team end
+                if k then
+                    sides[k]=row.team
+                    if row.team~='companion' then fieldActors[#fieldActors+1]=row.actor end
+                end
             end
         end
         rosterRead=revision
@@ -189,21 +194,30 @@ function Party.new(o)
         return true
     end
     local function domainMembers(r,pass)
-        if r.revision==revision then return true end
+        if r.revision==revision and r.projectedEnemy==r.enemyKey then return true end
         if cooling(r.domainFailedAt,.5) then return false end
         refreshRoster()
         if not owned(r.site.helper,r.site.helperName,r) then
             r.domainFailedAt=retryClock() or os.clock();return false
         end
         -- One game-thread pass can project the same roster for multiple private domains.
-        pass=pass or {}
-        if pass.revision~=revision or pass.worldKey~=r.worldKey then
-            pass.targets={};pass.revision=revision;pass.worldKey=r.worldKey
-            for _,a in ipairs(fieldActors)do
-                if U.inWorld(a,r.world) then pass.targets[#pass.targets+1]=a end
+        local targets
+        if r.team=='companion' then
+            targets={}
+            for _,row in ipairs(r.rows)do
+                if owned(row.actor,row.name,r) then targets[#targets+1]=row.actor end
             end
+            if r.enemy and owned(r.enemy,r.enemyName,r) then targets[#targets+1]=r.enemy end
+        else
+            pass=pass or {}
+            if pass.revision~=revision or pass.worldKey~=r.worldKey then
+                pass.targets={};pass.revision=revision;pass.worldKey=r.worldKey
+                for _,a in ipairs(fieldActors)do
+                    if U.inWorld(a,r.world) then pass.targets[#pass.targets+1]=a end
+                end
+            end
+            targets=pass.targets
         end
-        local targets=pass.targets
         local d=r.site.helper
         if not sameList(U.array(U.field(d,'ActorsInMobDomain')),targets) then
             local ok=pcall(function()
@@ -215,7 +229,8 @@ function Party.new(o)
                 r.domainFailedAt=retryClock() or os.clock();return false
             end
         end
-        r.revision=pass.revision;r.domainFailedAt=nil;return r.revision==revision
+        r.revision,r.projectedEnemy,r.domainFailedAt=revision,r.enemyKey,nil
+        return true
     end
     local function privateGroup(r)
         local d=r.site.helper
@@ -393,7 +408,7 @@ function Party.new(o)
                 or not same(get(row.helper,'GetPawn'),row.actor) then return false,'出生器没有读回本组队员' end
         end
         if not import(r.group,'Members','ArrayProperty','('..table.concat(refs,',')..')') or not nativeRoster(r) then
-            return false,'七个原生成员未全部读回'
+            return false,'原生成员未全部读回'
         end
         for _,row in ipairs(r.rows)do
             if not setObject(row.actor,'Spawner',row.helper) or not setObject(row.actor,'MobGroup',r.group)
@@ -404,23 +419,25 @@ function Party.new(o)
         return true
     end
     function self:prepare(token,batch,world,team)
-        if not alive or not token or groups[token] or #batch~=7 or (team~='blue' and team~='red') or not same(world,o.world()) then
-            return false,'剑阵队伍、世界或人数未确认'
+        local first=batch[1]
+        local config=first and Entourage.nativeGroup(first.path)
+        if not alive or not token or groups[token] or not config or #batch~=#config.members
+            or (team~='blue' and team~='red' and team~='companion') or not same(world,o.world()) then
+            return false,'原生编队、世界或人数未确认'
         end
-        local first=batch[1];local id=U.className(first.actor)
-        local blue=id==BLUE..'_C'
-        if not blue and id~=RED..'_C' then return false,'剑阵主将未确认' end
-        local r={world=world,worldKey=U.key(world),token=token,team=team,blue=blue,site={},rows={},building=true}
+        local id=Entourage.id(first.path)
+        local r={world=world,worldKey=U.key(world),token=token,team=team,blue=id==BLUE,red=id==RED,
+            tree=config.tree,site={},rows={},building=true}
         refreshRoster()
         local seen={}
         for i,item in ipairs(batch)do
-            local expected=i==1 and (blue and BLUE or RED) or (blue and 'BP_Monster_HuaShan_White' or 'BP_Monster_HuaShan_RedTroop_Soldier')
+            local expected=config.members[i]
             local a=item.actor;local k=U.key(a);local name=pathOf(a)
             local sp,spRead=U.field(a,'Spawner');local gr,groupRead=U.field(a,'MobGroup')
             if not k or not name or seen[k] or owners[k] or not U.inWorld(a,world) or sides[k]~=team
-                or item.path~=ROOT..expected..'.'..expected..'_C' or pathOf(get(a,'GetClass'))~=item.path
+                or item.path~=expected or pathOf(get(a,'GetClass'))~=item.path
                 or (i>1 and not same(item.parent,first.actor)) or not spRead or not groupRead or U.valid(sp) or U.valid(gr) then
-                return false,'剑阵队员归属未确认'
+                return false,'原生编队队员归属未确认'
             end
             seen[k]=true
             r.rows[i]={actor=a,key=k,name=name,transform=item.transform}
@@ -433,7 +450,7 @@ function Party.new(o)
             local err=tostring(why or ok);local clean=release(r)
             say('建组未完成 '..err..'；自有物件清理读回='..tostring(clean));return false,err
         end
-        say('原生小队在登场前就绪 '..r.rows[1].name..' 阵营='..team..' 出生器及双向队员读回=7/7')
+        say('原生小队在登场前就绪 '..r.rows[1].name..' 阵营='..team..' 出生器及双向队员读回='..#r.rows..'/'..#r.rows)
         return true
     end
     local function center(r,verify)
@@ -454,7 +471,7 @@ function Party.new(o)
     function self:ready(token)
         local r=groups[token]
         if not r or r.retiring or not here(r) then return false,'原生编队已离场' end
-        if not nativeRoster(r) then return false,'登场后七个原生成员未全部读回' end
+        if not nativeRoster(r) then return false,'登场后原生成员未全部读回' end
         for _,row in ipairs(r.rows)do
             if not owned(row.actor,row.name,r) or not same(get(row.actor,'GetMobGroup'),r.group)
                 or not same(get(row.helper,'GetPawn'),row.actor) then return false,'登场后队伍归属变化' end
@@ -477,13 +494,20 @@ function Party.new(o)
         if not r or not r.ready or r.retiring or not here(r) then return false,'分组已离场' end
         center(r,true)
         local verified,n,wanted=livingRoster(r)
-        if not verified or wanted~=7 then
+        local count=#r.rows
+        if not verified or wanted~=count then
             r.livingChecks=0
-            say('登场时原生存活名单='..tostring(n)..'/7；七个出生器已登记，等待游戏更新')
-            return true,'七个剑阵队员已登记，原生存活名单正在更新'
+            say('登场时原生存活名单='..tostring(n)..'/'..count..'；出生器已登记，等待游戏更新')
+            return true,'编队队员已登记，原生存活名单正在更新'
         end
-        say('原生存活名单读回=7/7 主将='..r.rows[1].name)
+        say('原生存活名单读回='..count..'/'..count..' 主将='..r.rows[1].name)
         return true
+    end
+    local function opposes(r,foe)
+        local id=U.key(foe)
+        if not id then return false end
+        if r.team=='companion' then return id==r.enemyKey and owned(foe,r.enemyName,r) end
+        return sides[id]==(r.team=='blue' and 'red' or 'blue')
     end
     function self:beforeAttack(actor,foe)
         if not next(groups) then return true end
@@ -491,26 +515,31 @@ function Party.new(o)
         if not r then return true end
         if not r.ready or r.retiring or not here(r) or not domainMembers(r) then return false end
         center(r)
-        if same(actor,r.rows[1].actor) and sides[U.key(foe)] and sides[U.key(foe)]~=r.team then r.entering=true end
+        if same(actor,r.rows[1].actor) and opposes(r,foe) then r.entering=true end
         return true
     end
     local opening
     function self:assigned(actor,foe)
         if not next(groups) then return end
         local r=groupOf(actor)
-        if r and r.ready and same(r.rows[1].actor,actor) and sides[U.key(foe)]~=r.team
-            and sides[U.key(foe)] and not r.encounter then
+        if r and r.ready and same(r.rows[1].actor,actor) and opposes(r,foe) and not r.encounter then
+            if r.team=='companion' then
+                r.origin=point(o.location(actor)) or r.origin
+                r.center=nil
+                if not center(r,true) then return end
+            end
             r.encounter=clock()
             local peers=U.array(get(r.rows[1].helper,'GetOtherAliveMembersInGroup'))
-            say('首次交战 '..r.rows[1].name..' 原生可用队友='..tostring(peers and #peers))
-            if not r.blue and r.encounter then opening(r,r.encounter,foe) end
+            say('首次交战 '..r.rows[1].name..' 原生可用队友='..tostring(peers and #peers)
+                ..(r.team=='companion' and ' 地图敌人='..tostring(r.enemyName) or ''))
+            if r.red and r.encounter then opening(r,r.encounter,foe) end
         end
     end
     local emptyActor
     function self:localPlayerLookup(ability)
         if not next(groups) then return end
         local actor=get(ability,'GetAvatarActorFromActorInfo');local r=groupOf(actor)
-        if not r or not r.ready or not U.inWorld(ability,r.world) then return end
+        if not r or not r.ready or not (r.blue or r.red) or not U.inWorld(ability,r.world) then return end
         if emptyActor==nil then
             local ok,v=pcall(o.invalid or CreateInvalidObject)
             if ok and v~=nil and not U.valid(v) then emptyActor=v end
@@ -525,9 +554,9 @@ function Party.new(o)
         if not next(groups) then return end
         local actor=get(ability,'GetAvatarActorFromActorInfo');local r=groupOf(actor)
         local key=U.key(actor)
-        if not r or not r.ready or not key then return end
+        if not r or not r.ready or not (r.blue or r.red) or not key then return end
         if name=='GA_HuaShan_Story_Intro_C' then
-            if r.blue or not same(r.rows[1].actor,actor) then return end
+            if not r.red or not same(r.rows[1].actor,actor) then return end
             r.opened=true;r.introSeen=true
         elseif name~='GA_HuaShan_Troop_Healing_C' and name~='GA_HuaShan_Troop_Resurrection_C' then
             return
@@ -553,10 +582,11 @@ function Party.new(o)
         local r=groupOf(actor)
         if not r or not same(r.rows[1].actor,actor) then return end
         local tree=pathOf(U.field(task,'TreeAsset'))
-        if not tree or not tree:find(ROOT..'BehaviorTree/',1,true) then return end
+        if not tree or not tree:find(r.tree,1,true) then return end
         local peers=U.array(U.field(task,'ActorsToAssign'));local own=0
         for _,a in ipairs(peers or {}) do if owners[U.key(a)]==r then own=own+1 end end
-        if r.blue and tree==INIT and (r.entering or r.encounter) and own>0 and own==#peers then r.opened=true end
+        local companionCombat=r.team=='companion' and o.companionFighting and o.companionFighting(actor)==true
+        if r.blue and tree==INIT and (r.entering or r.encounter or companionCombat) and own>0 and own==#peers then r.opened=true end
         if not r.seen then r.seen={} end
         if r.seen[tree]==own or (r.reports or 0)>=24 then return end
         r.seen[tree]=own;r.reports=(r.reports or 0)+1
@@ -598,9 +628,9 @@ function Party.new(o)
         for i=2,#r.rows do
             local row=r.rows[i]
             if row.key==key and owned(actor,row.name,r) then
-                if living then row.deathSent=nil end
+                if living then row.deathSent,row.deathAttempts=nil,nil end
                 if not r.deaths then r.deaths={} end
-                r.deaths[key]=not living and not row.deathSent and row or nil
+                r.deaths[key]=not living and not row.deathSent and (row.deathAttempts or 0)<2 and row or nil
                 break
             end
         end
@@ -609,14 +639,17 @@ function Party.new(o)
         if not r.deaths or not next(r.deaths) or (r.nextDeathCheck and now<r.nextDeathCheck) then return end
         r.nextDeathCheck=now+1
         local leader=r.rows[1].actor
-        if not owned(leader,r.rows[1].name,r) or (o.hp(leader) or 0)<=0 then r.deaths=nil;return end
+        if not owned(leader,r.rows[1].name,r) then r.deaths=nil;return end
+        local leaderHP=o.hp(leader)
+        if type(leaderHP)~='number' then return end
+        if leaderHP<=0 then r.deaths=nil;return end
         for key,row in pairs(r.deaths)do
             local a,sp=row.actor,row.helper
             if not owned(a,row.name,r) or not owned(sp,row.helperName,r) or not same(U.field(sp,'SpawnedAI'),a) then
                 r.deaths[key]=nil
             else
                 local hp=o.hp(a)
-                if type(hp)=='number' and hp>0 then row.deathSent=nil;r.deaths[key]=nil
+                if type(hp)=='number' and hp>0 then row.deathSent,row.deathAttempts=nil,nil;r.deaths[key]=nil
                 elseif type(hp)=='number' and hp<=0 and not row.deathSent
                     and (get(U.field(a,'AbilitySystemComponent'),'GetGameplayTagCount',tag('CharacterState.Dead')) or 0)>0 then
                     -- Placed spawners normally broadcast from their save/respawn listener. The private one is quiet.
@@ -626,20 +659,21 @@ function Party.new(o)
                         for _,script in ipairs(U.array(U.field(ai,'SpawnedAIScripts')) or {})do
                             if U.className(script)==DEATH_SCRIPT and same(U.field(script,'Pawn'),leader)
                                 and same(U.field(leader,'MobGroup'),r.group) then
-                                row.deathSent=true
+                                row.deathAttempts=(row.deathAttempts or 0)+1
                                 local called=call(script,'OnGroupMemberDead',sp)
-                                say('白衣队员阵亡通知 '..row.name..' 原版处理调用='..tostring(called))
+                                row.deathSent=called or nil
+                                say('白衣队员阵亡通知 '..row.name..' 原版处理调用='..tostring(called)..' 尝试='..row.deathAttempts)
                                 break
                             end
                         end
                     end
                 end
-                if row.deathSent then r.deaths[key]=nil end
+                if row.deathSent or (row.deathAttempts or 0)>=2 then r.deaths[key]=nil end
             end
         end
     end
     opening=function(r,now,assignedFoe)
-        if r.opened or not r.encounter then return end
+        if not (r.blue or r.red) or r.opened or not r.encounter then return end
         if now<r.encounter or now-r.encounter>12 then
             r.opened=true;say('开场窗口结束 '..r.rows[1].name..' 未读到可用开场');return
         end
@@ -647,8 +681,11 @@ function Party.new(o)
         r.nextOpen=now+0.5
         local a=r.rows[1].actor
         if not owned(a,r.rows[1].name,r) or (o.hp(a) or 0)<=0 then return end
-        local foe=assignedFoe or o.opponent(a)
-        if not U.valid(foe) or not sides[U.key(foe)] or sides[U.key(foe)]==r.team or (o.hp(foe) or 0)<=0 then return end
+        local foe=assignedFoe
+        if not foe then
+            if r.team=='companion' then foe=r.enemy else foe=o.opponent(a) end
+        end
+        if not opposes(r,foe) or (o.hp(foe) or 0)<=0 then return end
         if r.blue and pathOf(running(a))==INIT then r.opened=true;return end
         if r.blue and now-r.encounter<0.5 then return end
         if r.blue then
@@ -664,7 +701,11 @@ function Party.new(o)
             local event=tag('GameplayEvent.AI.EventTransition.CustomState')
             r.opened=true
             local sent=call(lib,'SendGameplayEventToActor',a,event,{EventTag=event,Instigator=a,OptionalObject=tree})
-            say('大师兄起手 '..r.rows[1].name..' 原版树调用='..tostring(sent)..' 当前树相符='..tostring(same(running(a),tree)))
+            local matched=same(running(a),tree)
+            if not sent and not matched and not r.openerRetried then
+                r.opened=false;r.openerRetried=true;r.nextOpen=now+1
+            end
+            say('大师兄起手 '..r.rows[1].name..' 原版树调用='..tostring(sent)..' 当前树相符='..tostring(matched))
         else
             local asc=U.field(a,'AbilitySystemComponent');local cls=asset(INTRO,true)
             local specs=U.array(U.struct(U.field(asc,'ActivatableAbilities'),'Items'))
@@ -692,6 +733,30 @@ function Party.new(o)
             say('阿瑾爆脸转化 '..r.rows[1].name..' 原生技能受理='..tostring(accepted))
         end
     end
+    local function companionEncounter(r,now)
+        local leader=r.rows[1].actor
+        local fighting=owned(leader,r.rows[1].name,r) and o.companionFighting and o.companionFighting(leader)
+        local enemy,key,name
+        if fighting==true and owned(leader,r.rows[1].name,r) and (o.hp(leader) or 0)>0 and o.companionOpponent then
+            local candidate=o.companionOpponent(leader)
+            local id=U.key(candidate)
+            if id and owners[id]~=r and sides[id]~='companion' and U.inWorld(candidate,r.world) and (o.hp(candidate) or 0)>0 then
+                enemy,key,name=candidate,id,pathOf(candidate)
+            end
+        end
+        r.enemy,r.enemyKey,r.enemyName=enemy,key,name
+        if not domainMembers(r) then return end
+        if enemy then
+            r.idleSince=nil
+            if not r.encounter then self:assigned(leader,enemy) end
+        elseif fighting==false then
+            r.idleSince=r.idleSince or now
+            if now-r.idleSince>=1.5 then
+                r.encounter,r.entering,r.nextOpen=nil,nil,nil
+                if r.blue then r.opened,r.openerRetried=nil,nil end
+            end
+        else r.idleSince=nil end
+    end
     function self:tick()
         if not alive or not next(groups) then return end
         local current=U.key(o.world());if not current then return end
@@ -710,7 +775,8 @@ function Party.new(o)
                             r.livingChecks=nil
                         end
                     end
-                    if r.revision~=revision then pass=pass or {};domainMembers(r,pass)end
+                    if r.team=='companion' then companionEncounter(r,now)
+                    elseif r.revision~=revision then pass=pass or {};domainMembers(r,pass)end
                     opening(r,now);memberDeaths(r,now);receipts(r,now)
                 end
             end

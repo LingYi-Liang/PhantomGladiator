@@ -16,10 +16,17 @@ local Stages={}
 local MOBS='/PBZCombatAsset/ActorData/Mobs/'
 local LENGTU='CharacterState.AbilityState.LengTu.'
 local PERFORM_UNSELECTABLE='CharacterState.Unselectable.Force.Perform'
-local ZUOSHANG_CA02=MOBS..'054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_02.GA_ZuoShang_CA_02_C:'
-local ZUOSHANG_END=ZUOSHANG_CA02..'K2_OnEndAbility'
-local ZUOSHANG_UNLOCK='Added_284246B1411E4F95F9C50FB89CB71ABF'
-local ZUOSHANG_PHASE2='CharacterState.AbilityState.ZuoShang.Phase2'
+local ZUOSHANG_ABILITIES=MOBS..'054_ZuoShang/Ability/Abilities/'
+local ZUOSHANG_TAG='CharacterState.AbilityState.ZuoShang.'
+local ZUOSHANG_LOCK80=MOBS..'054_ZuoShang/AIConfig/GE_ZuoShang_MinHealth_80.GE_ZuoShang_MinHealth_80_C'
+local ZUOSHANG_TRANSITIONS={
+    {name='Phase1',ability='GA_ZuoShang_CA_01_C',floor=ZUOSHANG_LOCK80,
+        path=ZUOSHANG_ABILITIES..'GA_ZuoShang_CA_01.GA_ZuoShang_CA_01_C:',
+        unlock='Added_C04B104040EC81809D3C0AB11E2ED1C0'},
+    {name='Phase2',ability='GA_ZuoShang_CA_02_C',
+        path=ZUOSHANG_ABILITIES..'GA_ZuoShang_CA_02.GA_ZuoShang_CA_02_C:',
+        unlock='Added_284246B1411E4F95F9C50FB89CB71ABF'},
+}
 -- Per boss: each marker's package and where it stands from the boss's spawner (yaw relative to the spawner's).
 local STAGES={
     -- The pole ability adds this tag, and OnSummonsDead clears it after the last summon dies.
@@ -163,6 +170,9 @@ end
 local GROUND_BELOW=140
 -- A marker of her own map within this (cm, flat) of where the mod's would stand is used where it is.
 local NEAR=5000
+-- These single markers are read as AssignBaseActor by the native passives.
+local MOVING_CENTER={BP_Monster_CanQu_BiHai=true,BP_Monster_Danghui=true,BP_Monster_WuXuan=true}
+local CENTER_STEP,CENTER_SAMPLE=1200,1.5
 -- Classes that only get the save ID (no markers): BP_Monster_LengTu_Preview is a BP_Monster_LengTu with the same default ID.
 local SAVE_ONLY={BP_Monster_LengTu_Preview={label='冷荼（预览）',saveId='PhantomGladiator_LengTu'}}
 
@@ -182,7 +192,7 @@ function Stages.new(options)
     local unregister=options.unregisterHook or function(...)return UnregisterHook(...)end
     local unseen={}     -- actor address -> {actor=, component=, label=}: placed hidden, shown when used
     local stageHooks={}   -- function path -> {pre=, post=, purpose=}
-    local nextTransitionCheck,reportedTransitionWait=0,false
+    local nextTransitionCheck,reportedTransitionWait=0,{}
     local revealed,revealedLogged,revealLines=0,0,0
     local function say(text)log('[BossStage] '..text)end
     local function className(actor)
@@ -253,42 +263,62 @@ function Stages.new(options)
     local function floorOf(actor,field)
         return U.struct(U.field(U.field(actor,'AttributeSetBase'),field),'CurrentValue')
     end
-    -- CA_02's end graph applies the 40% floor. The original unlock event separately removes the old
-    -- floors and Phase2. An early end can skip that event and leave the AI selecting the phase transition.
-    local function finishTransition(context,cancelled)
+    local function confirmFirstFloor(actor,path)
+        local world=options.world and options.world()
+        local hp,max=floorOf(actor,'Health_Min'),floorOf(actor,'Health_Max')
+        if not U.inWorld(actor,world) or type(hp)~='number' or type(max)~='number' or not (max>0)
+            or not (math.abs(hp-max*.8)<=math.max(.1,max*.000001)) then return false end
+        local ok,effect=pcall(find,path)
+        if not ok or not U.valid(effect) then return false end
+        local asc=U.field(actor,'AbilitySystemComponent')
+        if not U.valid(asc) then return false end
+        local checked,n=pcall(function()
+            return effect:IsAnyClass()==true and effect:GetFullName():match('^%S+ (/.+)$')==path
+                and U.key(asc:GetOwner())==U.key(actor) and asc:GetGameplayEffectCount(effect,nil,true)
+        end)
+        return checked and type(n)=='number' and n>0
+    end
+    -- In both transitions, End can run without the native UnlockHealth event.
+    local function finishTransition(phase,context,cancelled)
         local ability=U.unwrap(context)
-        if not U.valid(ability) then return nil end
+        if not U.valid(ability) or className(ability)~=phase.ability then return end
         local got,avatar=pcall(function()return ability:GetAvatarActorFromActorInfo()end)
         local key=got and U.key(U.unwrap(avatar))
         local record=key and self.records[key]
-        if not record or record.stage~=STAGES.BP_Monster_ZuoShang or gone(record.actor) then return nil end
+        if not record or record.stage~=STAGES.BP_Monster_ZuoShang or gone(record.actor) then return end
         local actor=record.actor
         local ok,hp=pcall(options.hp,actor)
-        if not ok or type(hp)~='number' or hp<=0 then return nil end
-        local before=count(actor,ZUOSHANG_PHASE2)
-        if not before or before<=0 then return nil end
-        local found,callback=pcall(find,ZUOSHANG_CA02..ZUOSHANG_UNLOCK)
+        if not ok or type(hp)~='number' or not (hp>0) then return end
+        local tag=ZUOSHANG_TAG..phase.name
+        local before=count(actor,tag)
+        if not before or before<=0 or phase.floor and not confirmFirstFloor(actor,phase.floor) then return end
+        local found,callback=pcall(find,phase.path..phase.unlock)
         if not found or not U.valid(callback) or not U.valid(ability) then
-            say('左殇 CA_02 结束后 Phase2='..before..'，原版解锁回调不可用')
-            return nil
+            say('左殇 '..phase.name..' 结束后标签='..before..'，原版解锁回调不可用')
+            return
         end
         local health,shachi=floorOf(actor,'Health_Min'),floorOf(actor,'Shachi_Min')
-        local called=pcall(function()ability[ZUOSHANG_UNLOCK](ability)end)
-        local after=count(actor,ZUOSHANG_PHASE2)
-        say(string.format('左殇 CA_02 补走原版解锁 取消=%s 调用=%s Phase2=%s -> %s Health_Min=%s -> %s Shachi_Min=%s -> %s 读回=%s',
-            tostring(U.unwrap(cancelled)),tostring(called),tostring(before),tostring(after),
+        local called=pcall(function()ability[phase.unlock](ability)end)
+        local after=count(actor,tag)
+        say(string.format('左殇补走原版解锁 %s=%s -> %s 取消=%s 调用=%s Health_Min=%s -> %s Shachi_Min=%s -> %s 读回=%s',
+            phase.name,tostring(before),tostring(after),tostring(U.unwrap(cancelled)),tostring(called),
             tostring(health),tostring((floorOf(actor,'Health_Min'))),tostring(shachi),tostring((floorOf(actor,'Shachi_Min'))),
             tostring(called and after==0)))
-        return nil
     end
     local function watchTransition(t)
-        if stageHooks[ZUOSHANG_END] or t<nextTransitionCheck then return end
+        if t<nextTransitionCheck then return end
         nextTransitionCheck=t+1
-        if stageHook(ZUOSHANG_END,finishTransition,'左殇转阶段') then
-            reportedTransitionWait=false
-        elseif not reportedTransitionWait then
-            reportedTransitionWait=true
-            say('左殇转阶段挂钩暂未读到，等待技能载入')
+        for _,phase in ipairs(ZUOSHANG_TRANSITIONS)do
+            local path=phase.path..'K2_OnEndAbility'
+            if not stageHooks[path] then
+                local function ended(context,cancelled)finishTransition(phase,context,cancelled)end
+                if stageHook(path,ended,'左殇 '..phase.name..' 转阶段') then
+                    reportedTransitionWait[path]=nil
+                elseif not reportedTransitionWait[path] then
+                    reportedTransitionWait[path]=true
+                    say('左殇 '..phase.name..' 转阶段挂钩暂未读到，等待技能载入')
+                end
+            end
         end
     end
     local function releaseHooks()
@@ -550,6 +580,10 @@ function Stages.new(options)
                 #g.first>0 and '（'..table.concat(g.first,'；')..'）' or '')
         end
         local record=previous or {at=now()}
+        if not previous and MOVING_CENTER[name] then
+            record.anchor={X=origin.X,Y=origin.Y,Z=origin.Z}
+            record.anchorYaw,record.anchorWorld=yaw,world
+        end
         record.actor,record.key,record.name,record.stage=actor,key,name,stage
         record.identity,record.leases=identity,leases
         self.records[key]=record
@@ -670,8 +704,78 @@ function Stages.new(options)
             record.hiddenSince and t-record.hiddenSince or 0,montage))
     end
 
-    function self:tick()
+    local function finite(v)return type(v)=='number' and v==v and math.abs(v)<math.huge end
+    local function point(v)
+        return v and finite(v.X) and finite(v.Y) and finite(v.Z)
+    end
+    local function rebaseCenter(record,actor,world)
+        if U.key(record.anchorWorld)~=U.key(world) or not U.inWorld(actor,world)
+            or options.idleCompanion(actor)~=true then return end
+        local origin=where(actor)
+        if not point(origin) or (origin.X-record.anchor.X)^2+(origin.Y-record.anchor.Y)^2<CENTER_STEP^2 then return end
+        local prop=record.stage.props[1]
+        local mine=record.leases[prop.key or prop.name]
+        if not mine or mine.users~=1 or mine.borrowed then return end
+        local marker=mine.actor
+        if not U.inWorld(marker,world) or U.key(U.field(marker,'Owner'))~=record.key then return end
+        local before=where(marker)
+        local cls=options.findClass(record.stage.base..prop.name..'.'..prop.name..'_C')
+        local lib=options.statics()
+        if not point(before) or not U.valid(cls) or not U.valid(lib) then return end
+        local queried,found=pcall(function()return lib:GetActorOfClass(world,cls)end)
+        if not queried or U.key(U.unwrap(found))~=U.key(marker) then return end
+        local turn=math.rad(record.anchorYaw)
+        local c,s=math.cos(turn),math.sin(turn)
+        local x,y=origin.X+prop.x*c-prop.y*s,origin.Y+prop.x*s+prop.y*c
+        local got,ground=pcall(options.ground,world,x,y,origin.Z,300,{actor,marker})
+        if not got or not finite(ground) or math.abs(ground-origin.Z)>400 then return end
+        local pos={X=x,Y=y,Z=ground+prop.z}
+        local rot={Pitch=0,Yaw=record.anchorYaw+prop.yaw,Roll=0}
+        local moved=pcall(function()marker:K2_SetActorLocationAndRotation(pos,rot,false,{},true)end)
+        local at=where(marker)
+        local confirmed=moved and point(at) and (at.X-pos.X)^2+(at.Y-pos.Y)^2+(at.Z-pos.Z)^2<=100
+        if confirmed then
+            record.anchor={X=origin.X,Y=origin.Y,Z=origin.Z}
+        elseif point(at) and (at.X~=before.X or at.Y~=before.Y or at.Z~=before.Z) then
+            pcall(function()marker:K2_SetActorLocationAndRotation(before,rot,false,{},true)end)
+        end
+        if confirmed or not record.rebaseFailure then
+            say(record.stage.label..' 随从战斗中心迁移 调用='..tostring(moved)..' 位置读回='..tostring(confirmed==true))
+        end
+        record.rebaseFailure=not confirmed
+    end
+    local nextCenterSample=0
+    local function rebaseCenters(roster,t)
+        if not roster or not options.world or not options.idleCompanion or t<nextCenterSample then return end
+        nextCenterSample=t+CENTER_SAMPLE
+        local hasCenter=false
+        for _,record in pairs(self.records)do
+            if record.anchor then hasCenter=true;break end
+        end
+        if not hasCenter then return end
+        local eligible,children={},{}
+        for _,row in ipairs(roster)do
+            local owner=U.key(row.summoner)
+            if owner then
+                local record=self.records[owner]
+                if record and record.anchor and not gone(row.actor) then children[owner]=true end
+            elseif row.team=='companion' and not row.stand and not row.reserve and not row.aid then
+                local key=U.key(row.actor)
+                local record=self.records[key]
+                if record and record.anchor and not gone(row.actor) then eligible[key]=row.actor end
+            end
+        end
+        if not next(eligible) then return end
+        local world=options.world()
+        if not U.valid(world) then return end
+        for key,actor in pairs(eligible)do
+            if not children[key] then rebaseCenter(self.records[key],actor,world) end
+        end
+    end
+
+    function self:tick(roster)
         local t=now()
+        if next(self.records) then rebaseCenters(roster,t) end
         -- A move finished() did not get to (its caller failed): done here, so her checkpoints never go under the old ID.
         for key,pending in pairs(pendingSave)do
             if gone(pending.actor) then pendingSave[key]=nil else self:finished(pending.actor) end

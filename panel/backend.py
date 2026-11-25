@@ -40,6 +40,9 @@ ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue",
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
 ACTIONS.update(('manage_companion','summon_mu_companion','hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
+ACTIONS.update(('toggle_selfie', 'selfie_pose', 'selfie_shot', 'selfie_next', 'toggle_photo', 'photo_panel'))
+DIRECTOR_BINDING_NAMES = ("toggle_cinema", "cycle_battle_hud")
+ACTIONS.update(DIRECTOR_BINDING_NAMES)
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
@@ -195,12 +198,29 @@ WEATHER_CHOICES = ('previous', 'next', 'restore', 'clear_skies', 'partly_cloudy'
 WEATHER_BINDING_NAMES = tuple("weather_" + mode for mode in WEATHER_CHOICES)
 V7_BINDING_NAMES = V6_BINDING_NAMES + WEATHER_BINDING_NAMES
 EYE_BINDING_NAMES = ("eyes_player","eyes_npc")
-BINDING_NAMES = V7_BINDING_NAMES + EYE_BINDING_NAMES
+V8_BINDING_NAMES = V7_BINDING_NAMES + EYE_BINDING_NAMES
+SELFIE_BINDING_NAMES = ("toggle_selfie", "selfie_pose", "selfie_shot", "selfie_next")
+V9_BINDING_NAMES = V8_BINDING_NAMES + SELFIE_BINDING_NAMES
+STUDIO_BINDING_NAMES = ("toggle_photo", "photo_panel")
+V10_BINDING_NAMES = V9_BINDING_NAMES + STUDIO_BINDING_NAMES
+BINDING_NAMES = V10_BINDING_NAMES + DIRECTOR_BINDING_NAMES
+WRITABLE_BINDING_SCHEMAS = dict(zip(('4', '5', '6', '7', '8', '9', '10', '11'),
+                                    (V4_BINDING_NAMES, V5_BINDING_NAMES, V6_BINDING_NAMES, V7_BINDING_NAMES,
+                                     V8_BINDING_NAMES, V9_BINDING_NAMES, V10_BINDING_NAMES, BINDING_NAMES)))
+WRITABLE_BINDING_SETS = tuple(set(names) for names in WRITABLE_BINDING_SCHEMAS.values())
+BINDING_UPGRADE_LABELS = {'dismiss_companions': '解散随从快捷键'}
+for names, label in ((HUN_BINDING_NAMES, '魂的召唤快捷键'), (WEATHER_BINDING_NAMES, '天气快捷键'),
+                     (EYE_BINDING_NAMES, '第一人称观战快捷键'), (SELFIE_BINDING_NAMES, '自拍快捷键'),
+                     (STUDIO_BINDING_NAMES, '摄影快捷键'), (DIRECTOR_BINDING_NAMES, '观战录制快捷键')):
+    BINDING_UPGRADE_LABELS.update(dict.fromkeys(names, label))
 BINDING_LABELS = dict(zip(V6_BINDING_NAMES, ("召唤所选单位", "开始交战", "停止并清理", "刷新单位目录", "自由观战（无仇恨＋隐身＋无敌锁血）", "退出自由观战并恢复", "切换召唤队伍", "单独切换无仇恨", "召回随从到身边", "时停（游戏暂停，自由视角照常移动）", "镜头跟踪开关", "镜头锁定屏幕中央的单位", "镜头跟踪下一个单位", "解散全部随从", "魂：召唤到蓝方", "魂：召唤到红方", "魂：召为随从", "魂：与我对战")))
 BINDING_LABELS.update(eyes_player="玩家第一人称观战",eyes_npc="NPC第一人称观战")
 BINDING_LABELS.update(zip(WEATHER_BINDING_NAMES, ['天气：上一个', '天气：下一个', '天气：恢复地图天气', '天气：晴天', '天气：局部多云', '天气：多云', '天气：阴天', '天气：雾', '天气：小雨', '天气：雨', '天气：雷雨', '天气：小雪', '天气：雪', '天气：暴风雪', '天气：浮尘', '天气：沙尘暴']))
 # Schemas 2/3/4 carry eight/ten/thirteen keys; 5 appends companion dismissal; 6 the four Hun summon keys.
-FUNCTION_KEY_SCHEMAS = ("2", "3", "4", "5", "6", "7", "8")
+BINDING_LABELS.update(zip(SELFIE_BINDING_NAMES, ("开启或退出双人自拍", "切换自拍姿势", "摄影截图", "切换同框随从")))
+BINDING_LABELS.update(toggle_photo="开启或退出普通拍照", photo_panel="显隐摄影面板",
+                      toggle_cinema="开启或退出电影运镜", cycle_battle_hud="切换战场血条显示")
+FUNCTION_KEY_SCHEMAS = ("2", "3", *WRITABLE_BINDING_SCHEMAS)
 # 镜头跟踪 (camera_track.lua).
 TRACK_FRAMINGS = ("side", "shoulder", "orbit", "eyes")
 TRACK_RESUME_MAX = 10
@@ -216,6 +236,7 @@ CODEX_ENEMY_TYPES = {"None": "unknown", "Animal": "1", "GuaiMian": "2", "DragonM
 COMMAND_FIELDS = ("id", "action", "unit_id", "team", "count", "key_spawn", "key_start", "key_stop", "key_refresh_catalog", "schema_version")
 MAX_UNIT_ID_BYTES = 512
 MAX_POOL_BYTES = 1024 * 1024
+MAX_MATCH_REPORT_BYTES = 2 * 1024 * 1024
 MAX_MONSTER_POOLS = 24
 MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
@@ -476,7 +497,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv"}:
+        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv", "match-report.json", "match-report.json.bak"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -1261,27 +1282,19 @@ class Bridge:
         elif action == "configure_keys":
             allowed.add("bindings")
             bindings = request.get("bindings")
-            if not isinstance(bindings, dict) or set(bindings) not in (set(BINDING_NAMES), set(V7_BINDING_NAMES), set(V6_BINDING_NAMES), set(V5_BINDING_NAMES), set(V4_BINDING_NAMES)):
+            if not isinstance(bindings, dict) or set(bindings) not in WRITABLE_BINDING_SETS:
                 raise ValidationError("快捷键设置必须包含全部功能，请刷新面板")
             parsed,seen = {},{}
             game=self.game_status();values=game.get('values',{})
-            if values.get('function_keys_schema') not in ('4','5','6','7','8'):raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
+            supported=WRITABLE_BINDING_SCHEMAS.get(values.get('function_keys_schema'))
+            if supported is None:raise ValidationError('游戏端尚未支持新版功能改键，请先更新并重载新版Mod')
             units,_=self._unit_shortcuts(values.get('unit_keys_epoch',''))
             pool_keys=self._pool_owners()
             previous_bindings=None
             for name, value in bindings.items():
                 entry=parse_binding(value);vk,mods=entry['key_code'],entry['modifiers']
-                if name=='dismiss_companions' and values.get('function_keys_schema') not in ('5','6','7','8'):
-                    if vk:raise ValidationError('解散随从快捷键需要更新并重载新版Mod')
-                    continue
-                if name in EYE_BINDING_NAMES and values.get('function_keys_schema')!='8':
-                    if vk:raise ValidationError('第一人称观战快捷键需要更新并重载新版Mod')
-                    continue
-                if name in WEATHER_BINDING_NAMES and values.get('function_keys_schema') not in ('7','8'):
-                    if vk:raise ValidationError('天气快捷键需要更新并重载新版Mod')
-                    continue
-                if name in HUN_BINDING_NAMES and values.get('function_keys_schema') not in ('6','7','8'):
-                    if vk:raise ValidationError('魂的召唤快捷键需要更新并重载新版Mod')
+                if name not in supported:
+                    if vk:raise ValidationError(BINDING_UPGRADE_LABELS[name]+'需要更新并重载新版Mod')
                     continue
                 blocked=binding_system_owner(vk,mods)
                 if blocked:raise ValidationError('该键已被「'+blocked+'」占用')
@@ -1433,9 +1446,10 @@ class Bridge:
         fields = [str(row["id"]), payload["action"], payload.get("unit_id", ""),
                   payload.get("team", "blue"), str(payload.get("count", 1))]
         if payload['action']=='configure_keys':
-            names=BINDING_NAMES if 'eyes_npc' in bindings else V7_BINDING_NAMES if 'weather_next' in bindings else V6_BINDING_NAMES if 'hun_blue' in bindings else V5_BINDING_NAMES if 'dismiss_companions' in bindings else V4_BINDING_NAMES
+            version,names=next(((version,names) for version,names in reversed(WRITABLE_BINDING_SCHEMAS.items()) if names[-1] in bindings),
+                               ('4', V4_BINDING_NAMES))
             fields.extend(binding_token(bindings.get(name)) for name in names)
-            fields.append('8' if names is BINDING_NAMES else '7' if names is V7_BINDING_NAMES else '6' if names is V6_BINDING_NAMES else '5' if names is V5_BINDING_NAMES else '4')
+            fields.append(version)
         else:
             fields.extend(bindings.get(name, "") for name in LEGACY_BINDING_NAMES)
             fields.append("1")
@@ -1731,11 +1745,15 @@ class Bridge:
                         entry['message']=row[2]
                         if row[1]=='0' and entry['key_code'] and not entry['active']:
                             entry['error']=row[2]
-        return {'available':bool(game['online'] and game.get('game_session') and values.get('function_keys_schema') in ('4','5','6','7','8') and epoch),
-                'dismiss_supported':bool(game['online'] and values.get('function_keys_schema') in ('5','6','7','8') and epoch),
-                'eyes_supported':bool(game['online'] and values.get('function_keys_schema')=='8' and epoch),
-                'weather_supported':bool(game['online'] and values.get('function_keys_schema') in ('7','8') and epoch),
-                'hun_supported':bool(game['online'] and values.get('function_keys_schema') in ('6','7','8') and epoch),
+        supported=WRITABLE_BINDING_SCHEMAS.get(values.get('function_keys_schema'), ()) if game['online'] and epoch else ()
+        return {'available':bool(game.get('game_session') and supported),
+                'dismiss_supported':'dismiss_companions' in supported,
+                'eyes_supported':'eyes_npc' in supported,
+                'selfie_supported':'selfie_shot' in supported,
+                'studio_supported':'toggle_photo' in supported,
+                'cinema_supported':all(name in supported for name in DIRECTOR_BINDING_NAMES),
+                'weather_supported':'weather_next' in supported,
+                'hun_supported':'hun_blue' in supported,
                 'bindings':bindings,'revision':revision,'errors':errors}
 
     # A codex icon's texture name (codex_icons.lua): the only thing an icon URL or index row may carry.
@@ -1888,6 +1906,28 @@ class Bridge:
             ids.add(pool_id)
             result.append(dict(id=pool_id, name=name, team=team, count=count, unit_ids=members, **key))
         return result
+
+    def latest_match_report(self):
+        error = None
+        # During rotation, the previous complete report remains readable.
+        for name in ("match-report.json", "match-report.json.bak"):
+            try:
+                source = bounded_read(self._path(name), MAX_MATCH_REPORT_BYTES)
+                if source is None:
+                    continue
+                report = json.loads(source)
+                if (not isinstance(report, dict) or type(report.get("schema")) is not int
+                        or report["schema"] != 1 or not isinstance(report.get("units"), list)
+                        or len(report["units"]) > 128 or not all(isinstance(unit, dict) for unit in report["units"])):
+                    raise ValueError("invalid report schema")
+                # Reject non-finite numbers before an invalid JSON response can reach the browser.
+                json.dumps(report, allow_nan=False)
+                return {"report": report}
+            except (OSError, ValueError, RecursionError) as fault:
+                error = fault
+        if error is not None:
+            raise ValidationError("对局报告尚未读到有效数据") from error
+        return {"report": None}
 
     def monster_pools(self):
         source = bounded_read(self._path("monster-pools.tsv"), MAX_POOL_BYTES)
@@ -2087,6 +2127,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.catalog()
             elif path == "/api/keybinds":
                 result = self.server.bridge.keybinds()
+            elif path == "/api/match-report":
+                result = self.server.bridge.latest_match_report()
             elif path == "/api/monster-pools":
                 result = self.server.bridge.monster_pools()
             elif path == '/api/teleport-places':

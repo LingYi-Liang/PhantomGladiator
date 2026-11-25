@@ -5,6 +5,8 @@ assert(source.includes('["companion", ["recall_companions", "dismiss_companions"
 const context = { S: { keys: {}, dismissKeySupported: false }, ui: { capture: null, keyNote: null, keysSaving: false },
   RT: { online: () => true }, I18N: i18n, t: (key, p) => i18n.t(key, p), esc: String, icon: () => '', keyCap: () => '', KEY_ICONS: {} };
 vm.createContext(context);
+vm.runInContext(source.match(/  const SELFIE_KEYS = \[[^\n]+;/)[0], context);
+vm.runInContext(source.match(/  const DIRECTOR_KEYS = \[[^\n]+;/)[0], context);
 const first = source.indexOf('  function keyRowHTML('), last = source.indexOf('  function hotkeysHTML()', first);
 vm.runInContext(source.slice(first, last), context);
 for (const lang of ['zh', 'en']) {
@@ -32,4 +34,19 @@ for (const action of ['hun_blue', 'hun_red', 'hun_companion', 'hun_neutral']) {
   assert(i18n.t('keys.action.' + action) !== 'keys.action.' + action && i18n.t('keys.desc.' + action) !== 'keys.desc.' + action);
 }
 assert(i18n.t('keys.group.hun') !== 'keys.group.hun');
-console.log('dismiss_key_ui: PASS (independent companion shortcut, four Hun summon keys, blank defaults and old-Mod capability gates)');
+for (const action of vm.runInContext("SELFIE_KEYS", context)) {
+  context.S.selfieKeysSupported = false;
+  context.S.studioKeysSupported = false;
+  assert(context.keyRowHTML(action).includes('disabled') && context.keyRowHTML(action).includes(i18n.t('selfie.update')));
+  context.S.selfieKeysSupported = true;
+  context.S.studioKeysSupported = true;
+  const row = context.keyRowHTML(action);
+  assert(!row.includes('disabled') && row.includes(i18n.t('keys.action.' + action)) && row.includes(i18n.t('keys.unbound')));
+}
+for (const action of vm.runInContext("DIRECTOR_KEYS", context)) {
+  context.S.cinemaKeysSupported = false;
+  assert(context.keyRowHTML(action).includes('disabled') && context.keyRowHTML(action).includes(i18n.t('cinema.update')));
+  context.S.cinemaKeysSupported = true;
+  assert(!context.keyRowHTML(action).includes('disabled'));
+}
+console.log('function key UI: PASS (companion, Hun and selfie shortcuts, blank defaults and capability gates)');

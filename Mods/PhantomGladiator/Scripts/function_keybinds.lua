@@ -23,6 +23,15 @@ for _,action in ipairs({'eyes_player','eyes_npc'})do
     Keys.labels[action]=action=='eyes_player' and '玩家第一人称观战' or 'NPC第一人称观战'
     Keys.added[action]=true
 end
+for _,row in ipairs({{'toggle_selfie','开启或退出双人自拍'},{'selfie_pose','切换自拍姿势'},{'selfie_shot','摄影截图'},{'selfie_next','切换同框随从'}})do
+    Keys.actions[#Keys.actions+1]=row[1]
+    Keys.labels[row[1]]=row[2];Keys.added[row[1]]=true
+end
+for _,row in ipairs({{'toggle_photo','开启或退出普通拍照'},{'photo_panel','显隐摄影面板'},
+    {'toggle_cinema','开启或退出电影运镜'},{'cycle_battle_hud','切换战斗血条显示'}})do
+    Keys.actions[#Keys.actions+1]=row[1]
+    Keys.labels[row[1]]=row[2];Keys.added[row[1]]=true
+end
 local function read(fs,path)
     local f=fs.open(path,'rb');if not f then return nil end
     local value=f:read(65537);f:close();return value and #value<=65536 and value or nil

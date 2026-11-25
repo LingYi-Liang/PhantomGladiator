@@ -123,10 +123,21 @@ function Level.new(options)
     -- Before FinishSpawn.
     function self:prepare(actor,unitPath,leader)
         local own=property(actor)
+        local levels=options.homeLevels
+        local function outcome(applied,source,target,after,verified,details)
+            local record=details or {}
+            record.levelSource=source
+            record.spawnLevelMode=levels and levels.mode
+            record.originalLevel=own
+            record.requestedLevel=target
+            record.preparedLevel=after
+            record.levelWriteVerified=verified==true
+            return {applied=applied,report=record}
+        end
         if own==nil then
             self.kept=self.kept+1;self.message='该单位没有等级字段'
             say('跳过 unit='..tostring(unitPath)..'：没有 Level 字段')
-            return {applied=false}
+            return outcome(false,'actor_default',nil,nil,false)
         end
         -- An escort (escorts.lua) takes the level of the unit it comes with, as every unit of a map group gets its
         -- domain's level. The leader's level already holds the mode, difficulty and cycle; the status keeps the leader's.
@@ -140,7 +151,7 @@ function Level.new(options)
                 if not good then self.failures=self.failures+1 end
                 say(string.format('随行 unit=%s 跟随 %s 的等级 %s→%s 调用=%s 读回=%s %s',tostring(unitPath),short(leader),fmt(own),fmt(level),
                     tostring(ok),fmt(after),err and ('错误='..tostring(err)) or ''))
-                return {applied=good}
+                return outcome(good,'escort',level,after,good)
             end
             say('随行 unit='..tostring(unitPath)..'：带队单位的等级读不到，按召唤等级设置处理')
         end
@@ -150,9 +161,11 @@ function Level.new(options)
         say(string.format('出生前 unit=%s 自身等级=%s %s地图怪=%d只 最高=%s(%s) 样本=[%s] 不是刷怪点刷出的=%d只',tostring(unitPath),fmt(own),
             area.scope,area.count,area.best and fmt(area.best.level) or 'nil',area.best and area.best.name or '-',area.sample,area.loose))
         -- HOME and CUSTOM (home_levels.lua) give the level outright, lower than the map's too; HERE goes on below.
-        local levels=options.homeLevels
         local chosen=levels and levels:target(short(actor),actor)
         if chosen then
+            local details=chosen.report or {}
+            details.levelMap=chosen.map
+            details.levelArea=chosen.area
             local why=CHOICES[chosen.source] or chosen.source
             if chosen.source=='area' or chosen.source=='native' then
                 why=why..'（'..tostring(chosen.map)..(chosen.part and chosen.part~='' and ' '..chosen.part or '')
@@ -162,7 +175,7 @@ function Level.new(options)
             if math.abs(chosen.level-own)<=EPS then
                 self.kept=self.kept+1;self.message='已是'..why;summoned={level=own,unit=short(actor)}
                 say('不调整：已是'..why..' '..fmt(chosen.level))
-                return {applied=false}
+                return outcome(false,chosen.source,chosen.level,own,true,details)
             end
             local ok,err=pcall(function()actor.Level=chosen.level end)
             local after=property(actor)
@@ -170,13 +183,15 @@ function Level.new(options)
             if good then self.raised=self.raised+1;self.message='已按'..why..'生成';summoned={level=after,unit=short(actor)}
             else self.failures=self.failures+1;self.message='等级写入未读回' end
             say(string.format('按%s写入等级 %s→%s 调用=%s 读回=%s %s',why,fmt(own),fmt(chosen.level),tostring(ok),fmt(after),err and ('错误='..tostring(err)) or ''))
-            return {applied=good}
+            return outcome(good,chosen.source,chosen.level,after,good,details)
         end
         local cycle=levels and levels.cycle or 0
         local target=area.best and area.best.level
+        local source,details='map',target and {levelReference=target} or {}
         if target and cycle>0 then
             local why
-            target,why=levels:mapTarget(target,area.best.actor,actor)
+            target,why,details=levels:mapTarget(target,area.best.actor,actor)
+            source='map_cycle'
             say('指定周目='..cycle..' 参照等级='..fmt(area.best.level)..' 换算='..fmt(target)..(why and '；'..why or ''))
         end
         local world=worldName()
@@ -184,24 +199,32 @@ function Level.new(options)
             local place=levels:nearest(world,area.origin,NEAR_METRES,actor)
             if place then
                 target=place.level
+                source,details='nearby_spawner',place.report
                 say(string.format('附近没有地图怪，按%s的游戏刷怪点 %s 级（%.0f 米外，%s）',place.near and '玩家附近' or '离玩家最近',
                     fmt(place.level),place.distance,tostring(world)))
             end
         end
         if not target and cycle>0 then
-            target=levels:withoutPlace(actor)
+            target,details=levels:withoutPlace(actor)
+            source='cycle_base'
             say('没有可换算的地点等级，按基础 1 级计算指定周目='..cycle..' 目标='..fmt(target))
         elseif not target and last and last.world and last.world==world then
             target=last.level
+            source,details='previous_map',{levelReference=target}
             say(string.format('附近没有地图怪，沿用这张图上次记录的等级 %s（来自 %s）',fmt(last.level),tostring(last.name)))
         end
-        if not target then self.kept=self.kept+1;self.message='附近没有地图怪可参照';return {applied=false} end
+        if not target then
+            self.kept=self.kept+1;self.message='附近没有地图怪可参照'
+            return outcome(false,'actor_default',nil,own,false)
+        end
+        details=details or {};details.levelMap=world
         if math.abs(target-own)<=EPS or (cycle==0 and target<own) then
             self.kept=self.kept+1
             self.message=cycle>0 and '已是指定周目算出的等级' or '召唤单位等级不低于地图怪，未调整'
             summoned={level=own,unit=short(actor)}
             say('不调整：自身等级已不低于地图怪')
-            return {applied=false}
+            if math.abs(target-own)<=EPS then return outcome(false,source,target,own,true,details) end
+            return outcome(false,'actor_default',target,own,false,details)
         end
         local ok,err=pcall(function()actor.Level=target end)
         local after=property(actor)
@@ -209,7 +232,7 @@ function Level.new(options)
         if good then self.raised=self.raised+1;self.message='已按地图怪等级生成';summoned={level=after,unit=short(actor)}
         else self.failures=self.failures+1;self.message='等级写入未读回' end
         say(string.format('写入等级 %s→%s 调用=%s 读回=%s %s',fmt(own),fmt(target),tostring(ok),fmt(after),err and ('错误='..tostring(err)) or ''))
-        return {applied=good}
+        return outcome(good,source,target,after,good,details)
     end
     local function describe(actor)
         local parts={'等级字段='..fmt(property(actor)),'战斗等级='..fmt(combatLevel(actor))}

@@ -3,7 +3,8 @@ local U=require('ue_observe')
 local Continuity={}
 local LIB='/Script/SGameAI.Default__SGameAIFunctionLibrary'
 local BLOCKED={'CharacterState.Unselectable','AI.Hatred.CanNotBeHatred','AI.Hatred.IgnoreByNPC'}
-local EXECUTION={'CharacterState.Hitreact.State.Executing','Ability.Executed','Ability.Action.Execution'}
+local EXECUTION={'CharacterState.Hitreact.State.Executing','Ability.Executed','Ability.Action.Execution',
+    'CharacterState.Stand.Invulnerable.Execution'}
 local INVULNERABLE={'CharacterState.Immortal','CharacterState.Stand.Invulnerable'}
 local BUSY={'CharacterState.Unselectable.Force.Perform'}
 local function call(obj,method,...)

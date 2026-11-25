@@ -12,6 +12,11 @@ local LOCK=M..'078_MengHua/GameplayEffects/GE_MengHua_XuKong_LockHealth.GE_MengH
 local ACTIVE='CharacterState.AbilityState.MengHua.XuKong.Active'
 local INIT='CharacterState.AbilityState.MengHua.InitCA'
 local CAN_SUMMON='CharacterState.AbilityState.MengHua.CanSummonXuKong'
+local CA=M..'078_MengHua/GameplayEffects/GE_MengHua_XuKong_CA.GE_MengHua_XuKong_CA_C'
+local TIMER=M..'078_MengHua/GameplayEffects/GE_MengHua_XuKong_Timer.GE_MengHua_XuKong_Timer_C'
+local SEQ=M..'078_MengHua/GameplayEffects/GE_MengHua_SeqCA.GE_MengHua_SeqCA_C'
+local SEQ_TAG='CharacterState.AbilityState.MengHua.SeqCA'
+local CAN_USE='CharacterState.AbilityState.MengHua.CanUseCA'
 local serial=0
 local function object(name,class,outer)
     serial=serial+1;local id=serial
@@ -428,6 +433,41 @@ test('skip does not hide tag write failure after the original passive has ended'
     assert(h.asc.lock==0 and h.asc.tags[INIT]==1 and h.phase:busy(h.parent) and h.phase:status().state=='pending')
     h.failTag=false;h:tick();assert(h.asc.tags[INIT]==0 and not h.phase:busy(h.parent))
 end)
+test('skip clears the native permission effect when cancelling its passive leaves the tag granted',function()
+    local h=harness();h.rule='skip'
+    local permission=object('BlueprintGeneratedClass '..CA)
+    function permission:IsAnyClass()return true end
+    local find=h.options.find
+    h.options.find=function(path)return path==CA and permission or find(path) end
+    h.phase=Phase.new(h.options)
+    h.asc.otherFloor=123
+    h.asc.tags[CAN_SUMMON]=1
+    h.permissionCount=1
+    local read=h.asc.GetGameplayEffectCount
+    function h.asc:GetGameplayEffectCount(cls,...)
+        if cls==permission then return h.permissionCount end
+        return read(self,cls,...)
+    end
+    function h.asc:GetOwner()return h.parent end
+    local tagRead=h.asc.GetGameplayTagCount
+    function h.asc:GetGameplayTagCount(tag)
+        local count=tagRead(self,tag)
+        if tag.TagName==CAN_SUMMON then return count+h.permissionCount+(h.otherGrant or 0) end
+        return count
+    end
+    function h.asc:RemoveActiveGameplayEffectBySourceEffect(cls,instigator,stacks)
+        assert(cls==permission and instigator==nil and stacks==-1)
+        h.removals=(h.removals or 0)+1
+        if not h.failRemove then h.permissionCount=0 end
+    end
+    h.failRemove=true;h:sync();h:tick()
+    assert(h.asc.lock==0 and h.asc.tags[CAN_SUMMON]==0 and h.permissionCount==1 and h.phase:busy(h.parent))
+    assert(h.removals==1,'native permission can remain after the loose tag is gone')
+    h.failRemove=false;h.otherGrant=1;h:tick()
+    assert(h.removals==2 and h.permissionCount==0 and h.phase:busy(h.parent),'an unrelated permission source stays active')
+    h.otherGrant=0;h:tick()
+    assert(not h.phase:busy(h.parent) and h.asc.otherFloor==123 and h.parent.hp==500)
+end)
 test('skip prevents later reactivation of the exact linked native passives',function()
     local h=harness();h.rule='skip';h:sync();h:tick()
     h.nativePhase.bIsActive=true;h.asc.lock=1;h.callbacks[Phase.paths.passive](h.nativePhase)
@@ -487,11 +527,41 @@ local function stalledPhase(team)
     local event='GameplayEvent.SelfSummon.MengHua'
     local library=object('Library /Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary')
     local find=h.options.find
-    h.options.find=function(path)if path=='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary' then return library end
-        return find(path)end
-    local foe=object('Enemy /Map.Enemy',nil,h.world)
+    h.effects={}
+    for _,path in ipairs({CA,TIMER,SEQ})do
+        local class=object('BlueprintGeneratedClass '..path)
+        function class:IsAnyClass()return true end
+        h.effects[path]=class
+    end
+    h.effectsCount={[CA]=0,[TIMER]=0,[SEQ]=0}
+    local oldCount=h.asc.GetGameplayEffectCount
+    function h.asc:GetGameplayEffectCount(class)
+        for path,effect in pairs(h.effects)do
+            if class==effect then return h.effectsCount[path] end
+        end
+        return oldCount(self,class)
+    end
+    function h.asc:BP_ApplyGameplayEffectToSelf(class,level,context)
+        assert(class==h.effects[CA] and level==0 and type(context)=='table')
+        h.appliedPermission=(h.appliedPermission or 0)+1
+        if not h.rejectPermission then h.effectsCount[CA]=1;h.asc.tags[CAN_SUMMON]=1 end
+    end
+    function h.nativePhase:TryTriggerXuKongByHealth()
+        h.phaseReplay=(h.phaseReplay or 0)+1
+        if h.effectsCount[TIMER]==1 then
+            h.effectsCount[TIMER]=0;h.effectsCount[CA]=1;h.asc.tags[CAN_SUMMON]=1
+        end
+    end
+    h.options.find=function(path)
+        if path=='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary' then return library end
+        return h.effects[path] or find(path)
+    end
+    local foe=object('Enemy /Map.Enemy',nil,h.world);foe.hp=100;foe.Mesh=object('Mesh')
     h.opponent=foe;h.pending=0;h.actionIdle=true;h.sent=0
-    h.options.opponent=function()return h.opponent end
+    h.options.opponent=function(_,side)
+        assert(side==team or team==nil and side=='blue')
+        return h.opponent
+    end
     h.options.canRequest=function()return h.actionIdle end
     h.options.gameTime=function()return h.now end
     h.options.attributes={read=function(_,a,k)
@@ -507,6 +577,7 @@ local function stalledPhase(team)
     function library:SendGameplayEventToActor(actor,tag,payload)
         assert(actor==h.parent and tag.TagName==event and payload.EventTag.TagName==event and payload.EventMagnitude==1)
         h.sent=h.sent+1
+        h.spawnTarget=h:player(h.summon)
         if not h.rejectSummon then
             h:spawn();h.board.assign=h.child;h.asc.active=1
             h.summon.SpawnedSummonInstances={{Pawn=h.child,bPawnPending=false}}
@@ -532,10 +603,10 @@ test('stalled 41% phase requests the original summon event when the native windo
 end)
 test('native summon recovery waits for verified state and retries only twice',function()
     local h=stalledPhase('red');h.rejectSummon=true
-    h.asc.tags[CAN_SUMMON]=0
+    h.asc.tags[CAN_SUMMON]=0;h.nativePhase.bIsActive=false
     for _=1,40 do h:tick()end
-    assert(h.sent==0)
-    h.asc.tags[CAN_SUMMON]=1;h.pending=1
+    assert(h.sent==0,'without an active stage passive the missing permission must not be renewed')
+    h.nativePhase.bIsActive=true;h.asc.tags[CAN_SUMMON]=1;h.pending=1
     for _=1,40 do h:tick()end
     assert(h.sent==0)
     h.pending=0;h.summon.SpawnedSummonInstances={{bPawnPending=true}}
@@ -544,11 +615,24 @@ test('native summon recovery waits for verified state and retries only twice',fu
     h.summon.SpawnedSummonInstances={}
     for _=1,160 do h:tick()end
     assert(h.sent==2 and h.asc.lock==1 and h.parent.hp==297291)
-    for _,team in ipairs({'neutral','companion'})do
-        local other=stalledPhase(team)
-        for _=1,50 do other:tick()end
-        assert(other.sent==0)
-    end
+    local neutral=stalledPhase('neutral')
+    for _=1,50 do neutral:tick()end
+    assert(neutral.sent==0)
+end)
+test('companion can recover the same native 41% phase against a confirmed foe',function()
+    local h=stalledPhase('companion')
+    local foe=h.opponent
+    h.opponent=nil
+    for _=1,24 do h:tick()end
+    assert(h.sent==0)
+    foe.outer=object('World /Other')
+    h.opponent=foe
+    for _=1,24 do h:tick()end
+    assert(h.sent==0)
+    foe.outer=h.world
+    for _=1,24 do h:tick()end
+    assert(h.sent==1 and h.phase:busy(h.parent))
+    assert(h:lookup()==h.parent)
 end)
 test('no fallback during a native transition or without the original phase lock',function()
     local h=stalledPhase()
@@ -569,5 +653,110 @@ test('no fallback during a native transition or without the original phase lock'
     unrelated.asc.tags['CharacterState.AbilityState.MengHua.CanEnterP2']=0
     for _=1,40 do unrelated:tick()end
     assert(unrelated.sent==0)
+end)
+test('an interrupted native sequence with consumed permission still completes its summon',function()
+    local h=stalledPhase('red')
+    h.asc.tags[CAN_SUMMON]=0;h.asc.tags[SEQ_TAG]=1;h.asc.tags[CAN_USE]=1
+    h.effectsCount[SEQ]=1
+    for _=1,24 do h:tick()end
+    assert(h.sent==1 and h.asc.lock==1 and h.phase:busy(h.parent))
+    assert(not h.appliedPermission and not h.phaseReplay,'do not renew permission for an already consumed sequence')
+    assert(h.spawnTarget==h.opponent and h:player(h.summon)==nil,'only the original summon request uses the verified opponent as anchor')
+end)
+test('only the exact native completion receipt can retry an interrupted sequence',function()
+    for _,mode in ipairs({'noEffect','noNormalCA','phase2','busy','pending','live'})do
+        local h=stalledPhase()
+        h.asc.tags[CAN_SUMMON]=0;h.asc.tags[SEQ_TAG]=1;h.asc.tags[CAN_USE]=1;h.effectsCount[SEQ]=1
+        if mode=='noEffect' then h.effectsCount[SEQ]=0
+        elseif mode=='noNormalCA' then h.asc.tags[CAN_USE]=0
+        elseif mode=='phase2' then h.asc.tags['CharacterState.AbilityState.MengHua.P2']=1
+        elseif mode=='busy' then h.actionIdle=false
+        elseif mode=='pending' then h.pending=1
+        elseif mode=='live' then
+            h.child.hp=100;h.summon.SpawnedSummonInstances={{Pawn=h.child,bPawnPending=false}}
+        end
+        for _=1,28 do h:tick()end
+        assert(h.sent==0 and not h.appliedPermission,mode)
+    end
+end)
+test('missing permission uses the original health check or its own native effect',function()
+    for _,timer in ipairs({0,1})do
+        local h=stalledPhase()
+        h.asc.tags[CAN_SUMMON]=0;h.effectsCount[TIMER]=timer
+        for _=1,42 do h:tick()end
+        assert(h.phaseReplay==1 and h.sent==1 and h.asc.lock==1)
+        assert((h.appliedPermission or 0)==1-timer)
+    end
+    local rejected=stalledPhase();rejected.asc.tags[CAN_SUMMON]=0;rejected.rejectPermission=true
+    for _=1,80 do rejected:tick()end
+    assert(rejected.phaseReplay==1 and rejected.appliedPermission==1 and rejected.sent==0)
+end)
+test('native helper lost before pairing can retry from a proven nonpending dead slot',function()
+    local h=stalledPhase()
+    for _=1,24 do h:tick()end
+    assert(h.sent==1)
+    h.child.valid=false;h.asc.active=0;h.board.assign=h.null;h.rejectSummon=true
+    for _=1,32 do h:tick()end
+    assert(h.sent==2 and h.asc.lock==1)
+    for _=1,80 do h:tick()end
+    assert(h.sent==2)
+end)
+test('a helper with native pair receipts is never treated as a failed initial spawn',function()
+    local h=stalledPhase()
+    for _=1,24 do h:tick()end
+    assert(h.sent==1)
+    h:pair('ex')
+    h.child.valid=false;h.asc.active=0;h.board.assign=h.null;h.summon.SpawnedSummonInstances={}
+    for _=1,80 do h:tick()end
+    assert(h.sent==1 and h.asc.lock==1)
+end)
+test('a stalled phase can find a brief idle window between one second samples',function()
+    local h=stalledPhase()
+    for i=1,28 do
+        h.actionIdle=i%2==0
+        h:tick()
+    end
+    assert(h.sent==1)
+end)
+test('the original off-combat reset begins a new limited recovery encounter',function()
+    local h=stalledPhase('companion');h.rejectSummon=true
+    h.asc.tags[CAN_SUMMON]=0
+    for _=1,64 do h:tick()end
+    assert(h.sent==2 and h.phaseReplay==1)
+    local function offCombat(nativeReset,transition)
+        h.asc.tags['AI.State.Combat']=0
+        h.asc.tags['CharacterState.OffCombat']=nativeReset and 1 or 0
+        h.asc.tags['CharacterState.AbilityState.MengHua.P2']=transition and 1 or 0
+        h.asc.tags[CAN_SUMMON]=0;h.asc.lock=0;h.effectsCount[CA]=0
+        for _=1,4 do h:tick()end
+        h.asc.tags['CharacterState.OffCombat']=0
+        h.asc.tags['CharacterState.AbilityState.MengHua.P2']=0
+        h.asc.tags['AI.State.Combat']=1;h.asc.lock=1
+    end
+    offCombat(false,false)
+    for _=1,38 do h:tick()end
+    assert(h.sent==2 and h.phaseReplay==1,'a missing Combat tag alone is not a new encounter')
+    offCombat(true,true)
+    for _=1,38 do h:tick()end
+    assert(h.sent==2 and h.phaseReplay==1,'a remaining P2 blocks the reset')
+    offCombat(true,false)
+    for _=1,64 do h:tick()end
+    assert(h.sent==4 and h.phaseReplay==2,'only the proven native reset renews the bounded recovery')
+end)
+test('off-combat cannot reset a live native helper or pair on the same actor',function()
+    local h=stalledPhase()
+    for _=1,24 do h:tick()end
+    assert(h.sent==1)
+    local ex,ed=h:pair('ex'),h:pair('ed')
+    h.asc.tags['AI.State.Combat']=0
+    h.asc.tags['CharacterState.OffCombat']=1
+    h.asc.tags[CAN_SUMMON]=0;h.asc.active=0;h.asc.lock=0
+    h.summon.SpawnedSummonInstances={}
+    for _=1,4 do h:tick()end
+    h.asc.tags['AI.State.Combat']=1
+    h.asc.tags['CharacterState.OffCombat']=0
+    h.asc.tags[CAN_SUMMON]=1;h.asc.lock=1
+    for _=1,48 do h:tick()end
+    assert(h.sent==1 and h.phase:busy(h.parent) and ex.bIsActive and ed.bIsActive)
 end)
 print('menghua_phase: '..tests..' checks passed')

@@ -73,6 +73,7 @@ local function fixture()
             if path:find('HouHouHou_Head',1,true) then return asset end
             if path:find('SkeletalMeshComponent',1,true) then return meshClass end
             if path:find('SGameAIFunctionLibrary',1,true) then return ai end
+            if path:find('Default__AbilityUtils',1,true) then return h.utils end
         end,
         pose=function(_,clip,looping)
             if h.noPose then return nil end
@@ -191,4 +192,30 @@ test('native pickup uses its equipped lion head and restores the original main w
     assert(h.combat:arm(h.seat,0) and not h.head and h.combat:held(h.seat))
     assert(h.combat:release(h.seat) and h.combat:restoreWeapon(record))
     assert(weapons.current==0 and not actor.brain.paused and not h.head)
+end)
+
+test('a physically supported fighter presents the pole tag to the original boss and restores it',function()
+    local h=fixture()
+    local tag='CharacterState.AbilityState.LionDancer.OnPole'
+    local head='CharacterState.HasTempWeapon.HouHouHouHead'
+    local tags={[head]=1}
+    h.actor.AbilitySystemComponent=object({GetGameplayTagCount=function(_,value)return tags[value.TagName] or 0 end})
+    h.utils=object({
+        AddLooseGameplayTag=function(_,actor,value,replicate)
+            assert(actor==h.actor and value.TagName==tag and not replicate)
+            tags[tag]=(tags[tag] or 0)+1
+        end,
+        RemoveLooseGameplayTag=function(_,actor,value,replicate)
+            assert(actor==h.actor and value.TagName==tag and not replicate)
+            tags[tag]=tags[tag]-1
+        end})
+    h.seat.pickup={planned=true}
+    assert(h.combat:arm(h.seat,0) and not tags[tag],'booking a pole cannot grant the tag')
+    assert(h.combat:release(h.seat))
+    h.seat.confirmed=true
+    assert(h.combat:arm(h.seat,1) and tags[tag]==1)
+    assert(h.combat:release(h.seat) and tags[tag]==0)
+    tags[tag]=1
+    assert(h.combat:arm(h.seat,2) and tags[tag]==1,'an original tag does not get a duplicate')
+    assert(h.combat:release(h.seat) and tags[tag]==1,'preserve an original tag')
 end)

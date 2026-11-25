@@ -65,7 +65,9 @@ test('companions link in an ordinary world fight, regroup and hand back only the
     local enemy,other=object('enemy'),object('different enemy')
     c:tick();assert(not a.board and not next(h.hooks))
     a.enemy,b.enemy=enemy,other;c:tick();assert(not next(h.hooks))
-    b.enemy=enemy;c:tick();local key='AI.BlackboardKey.Object.Vehicle'
+    local secondView=object('enemy')
+    function secondView:GetAddress()return enemy:GetAddress()end
+    b.enemy=secondView;c:tick();local key='AI.BlackboardKey.Object.Vehicle'
     assert(a.board and a.board.keys[key]==b and b.board.keys[key]==a and not red.board,'ordinary companions never paired')
     local gate=h.hooks[Combos.paths.gateTieGui];local assign=h.hooks[Combos.paths.assign]
     local task=object('BTTask',{ControlledPawn=a,TreeAsset=object('BT_TieGui_AllOutAttack_01')})

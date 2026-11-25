@@ -125,21 +125,27 @@ function Probe.new(options)
         if U.valid(f.curve) then logCurve(f.curve) end
         return f
     end
+    local function eachModifier(config,difficultyTag,accept)
+        local global=eachMap(U.field(config,'Global Mob Attribute Modifiers'),function(attr,data)
+            accept(attributeName(attr),data,'global')
+        end)
+        local typeModifiers=true
+        local types=eachMap(U.field(config,'Difficulty Settings By Mob Type'),function(tag,settings)
+            if tagName(tag)==difficultyTag then
+                typeModifiers=eachMap(U.struct(settings,'AttributeModifiers'),function(attr,data)
+                    accept(attributeName(attr),data,'mobType')
+                end)
+            end
+        end)
+        return global and types and typeModifiers
+    end
     -- The modifiers for one attribute: global first, then the unit's mob type.
     local function modifiersFor(config,difficultyTag,attribute)
         local found={}
-        eachMap(U.field(config,'Global Mob Attribute Modifiers'),function(attr,data)
-            if attributeName(attr)==attribute then
-                found[#found+1]={from='全局',type=num(U.struct(data,'Type')),value=num(U.struct(data,'Value'))}
-            end
-        end)
-        eachMap(U.field(config,'Difficulty Settings By Mob Type'),function(tag,settings)
-            if tagName(tag)==difficultyTag then
-                eachMap(U.struct(settings,'AttributeModifiers'),function(attr,data)
-                    if attributeName(attr)==attribute then
-                        found[#found+1]={from='类型',type=num(U.struct(data,'Type')),value=num(U.struct(data,'Value'))}
-                    end
-                end)
+        eachModifier(config,difficultyTag,function(attr,data,source)
+            if attr==attribute then
+                found[#found+1]={from=source=='global' and '全局' or '类型',
+                    type=num(U.struct(data,'Type')),value=num(U.struct(data,'Value'))}
             end
         end)
         return found
@@ -157,6 +163,59 @@ function Probe.new(options)
         local parts={}
         for _,m in ipairs(modifiers)do parts[#parts+1]=m.from..(MODIFY[m.type] or tostring(m.type))..fmt(m.value) end
         return #parts>0 and table.concat(parts,' ') or '无'
+    end
+
+    -- The opening report uses one current-level read per distinct actor config and
+    -- actual combat level. It keeps the full diagnostic's sweep of level samples separate.
+    function self:forReport(actor,level,configuration,cache)
+        if not U.valid(actor) or type(level)~='number' then return nil end
+        local actorConfig=U.field(actor,'Actor Config')
+        local key=U.key(actorConfig);if not key then return nil end
+        local difficultyTag=tagName(U.field(actorConfig,'Difficulty Tag'))
+        local configurationKey=U.key(configuration)
+        local cacheKey=key..':'..tostring(configurationKey)..':'..tostring(level)
+        cache.rows=cache.rows or {}
+        if cache.rows[cacheKey]~=nil then return cache.rows[cacheKey] or nil end
+        cache.modifiers=cache.modifiers or {}
+        local modifiers
+        if configurationKey and difficultyTag:match('^CharacterType%.Difficulty%.') then
+            local modifierKey=configurationKey..':'..difficultyTag
+            modifiers=cache.modifiers[modifierKey]
+            if modifiers==nil then
+                local collected={}
+                for _,pair in ipairs(Probe.stats)do collected[pair[2]]={} end
+                local available=eachModifier(configuration,difficultyTag,function(attr,data,source)
+                    local list=collected[attr]
+                    if list then
+                        list[#list+1]={source=source,type=num(U.struct(data,'Type')),value=num(U.struct(data,'Value'))}
+                    end
+                end)
+                modifiers=available and collected or false
+                cache.modifiers[modifierKey]=modifiers
+            end
+        end
+        local rows={}
+        local attributes=U.field(actorConfig,'Attribute Data')
+        for _,pair in ipairs(Probe.stats)do
+            local raw=getValue(U.struct(attributes,pair[1]),level)
+            if raw and math.abs(raw)<math.huge then
+                local row={level=level,raw=raw}
+                local mods=modifiers and modifiers[pair[2]]
+                if mods then
+                    local understood=true
+                    for _,m in ipairs(mods)do
+                        if m.value==nil or math.abs(m.value)==math.huge or (m.type~=0 and m.type~=1 and m.type~=3) then
+                            understood=false;break
+                        end
+                    end
+                    if #mods>0 then row.mods=mods end
+                    if understood then row.adjusted=apply(raw,mods) end
+                end
+                rows[pair[2]]=row
+            end
+        end
+        cache.rows[cacheKey]=next(rows) and rows or false
+        return cache.rows[cacheKey] or nil
     end
 
     -- label: '召唤' or '地图怪'; difficulty: the difficulty whose config the unit uses ('Easy', 'Nightmare'...).

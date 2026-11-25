@@ -4,12 +4,21 @@ local Renderer=require('arena_hud_widget')
 local HUD={}
 local function number(value)return type(value)=='number' and value==value and math.abs(value)<1e12 end
 -- Team labels in the game's language, as the app names the teams; Chinese keeps 蓝队/红队, others fall back to English.
+local HUD_NEXT={full='compact',compact='hidden',hidden='full'}
+local HUD_TEXT={full='常规',compact='紧凑',hidden='隐藏'}
 local TEAMS={zh={blue='蓝队',red='红队'},en={blue='Blue',red='Red'},ja={blue='青チーム',red='赤チーム'},
     fr={blue='Bleus',red='Rouges'},de={blue='Blau',red='Rot'},es={blue='Azul',red='Rojo'}}
 function HUD.new(options)
     local self={records={},attempts={},ticks=0,names={},bosses=nil,readback={},teams=TEAMS.zh}
     local log=options.log or function()end
     local renderer=options.renderer or Renderer.new(options)
+    local mode='full'
+    function self:mode()return mode end
+    function self:cycleMode()
+        mode=HUD_NEXT[mode]
+        log('[ArenaHUD] 实时显示模式='..mode)
+        return {ok=true,message='战斗血条已切换为'..HUD_TEXT[mode]}
+    end
     -- codex.tsv up to v0.37.4 ends at source; v0.37.5 adds name (in the game's language) and name_lang.
     local function loadCodex()
         if self.bosses or not options.codexPath then return end
@@ -37,6 +46,7 @@ function HUD.new(options)
     function self:sync(members)
         self.ticks=self.ticks+1;loadCodex()
         local desired,ordered={},{}
+        local counts={blue=0,red=0}
         local world=options.getWorld and options.getWorld()
         for _,unit in ipairs(members)do
             local show,extraName=wanted(unit)
@@ -50,10 +60,17 @@ function HUD.new(options)
                     if key and not desired[key]then
                         desired[key]={unit=unit,hp=hp,maximum=maximum,extraName=extraName,vitals=v}
                         ordered[#ordered+1]=key
+                        counts[unit.team]=counts[unit.team]+1
                     end
                 end
             end
         end
+        local menuHidden=options.menuHidden~=nil and options.menuHidden(#ordered>0)==true
+        if menuHidden~=(self.menuHidden==true) then
+            log('[ArenaHUD] 菜单血条显隐切换 hidden='..tostring(menuHidden))
+        end
+        self.menuHidden=menuHidden
+        local hidden=menuHidden or mode=='hidden'
         local result={registered=0,visible=0,pending=0,health_verified=0,names_verified=0,numbers_verified=0}
         for key,record in pairs(self.records)do if not desired[key]then
             if renderer:remove(record)then self.records[key]=nil;self.attempts[key]=nil else result.pending=result.pending+1 end
@@ -65,7 +82,7 @@ function HUD.new(options)
         for _,key in ipairs(ordered)do
             local data=desired[key];local unit=data.unit;rows[unit.team]=rows[unit.team]+1
             local record=self.records[key]
-            if not record and (self.attempts[key] or 0)<3 then
+            if not hidden and not record and (self.attempts[key] or 0)<3 then
                 self.attempts[key]=(self.attempts[key] or 0)+1
                 local why;record,why=renderer:create(unit)
                 if record then self.records[key]=record else log('[ArenaHUD] 创建未确认 actor='..key..' error='..tostring(why))end
@@ -74,21 +91,27 @@ function HUD.new(options)
                 local name=(options.getName and options.getName(unit)) or self.names[unit.class_path] or data.extraName
                     or (unit.class_path or ''):match('%.([^%.]+)$') or 'BOSS'
                 local title=self.teams[unit.team]..' · '..name
-                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team],frame,data.vitals)
+                local count=counts[unit.team]
+                if mode=='compact' then count=math.max(4,count) end
+                local state,why=renderer:update(record,unit,data.hp,data.maximum,title,rows[unit.team],frame,data.vitals,count,hidden)
                 if state then
                     result.registered=result.registered+1
-                    if state.visible then result.visible=result.visible+1 end
+                    if state.visible then
+                        result.visible=result.visible+1;displayed[key]=true
+                    end
+                    if state.layoutPending then result.pending=result.pending+1 end
                     if state.health then result.health_verified=result.health_verified+1 end
                     if state.names then result.names_verified=result.names_verified+1 end
                     if state.numbers then result.numbers_verified=result.numbers_verified+1 end
-                    self.attempts[key]=0;displayed[key]=true
+                    self.attempts[key]=0
                 else
                     log('[ArenaHUD] 独立控件失效，释放后重建 actor='..key..' error='..tostring(why))
                     if renderer:remove(record)then self.records[key]=nil end
                     result.pending=result.pending+1
                 end
                 local widgetKey=U.key(record.widget);if widgetKey then privateKeys[widgetKey]=true end
-            else result.pending=result.pending+1 end
+            elseif not hidden then result.pending=result.pending+1 end
+            if hidden then displayed[key]=true end
         end
         renderer:syncNative(displayed,privateKeys,false)
         self.readback=result

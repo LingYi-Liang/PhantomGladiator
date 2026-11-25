@@ -60,7 +60,9 @@ function Standalone.new(options)
     local createInvalid=options.createInvalidObject or CreateInvalidObject
     local inGameThread=options.inGameThread or IsInGameThread
     local fname=options.fname or FName
-    local owned={}
+    local owned,companions={},{}
+    local clock=options.clock or os.clock
+    local nextAim=0
     local alive,installed=true,false
     local nullActor
     local self={}
@@ -244,31 +246,36 @@ function Standalone.new(options)
         return confirmed
     end
 
+    local function aimState(actor)
+        if not options.boardOf then return end
+        local board=options.boardOf(actor)
+        local boardKey=U.key(board)
+        if not boardKey then return end
+        local library=retry:find(AI_LIBRARY,find)
+        if not U.valid(library) then return end
+        local tag={TagName=fname(ASSIGNED_ACTOR)}
+        local ok,original=call(library,'GetValueAsObjectByTag',board,tag)
+        if ok then return board,boardKey,library,tag,original end
+    end
+
+    local function applyAim(board,library,tag,target)
+        local key=U.key(target)
+        if not U.valid(board) or (target~=nil and not key) then return false end
+        local wrote=call(library,'SetValueAsObjectByTag',board,tag,key and target or nullActor)
+        local read,actual=call(library,'GetValueAsObjectByTag',board,tag)
+        return wrote and read and U.key(actual)==key
+    end
+
     function self:assignOpponent(actor,opponent)
         local entry,key=entryFor(actor)
         if not entry or not entry.teamBossName then return true end
         if not entry.teamPrepared then return opponent==nil end
         if not actorLive(actor) or (opponent~=nil and not actorLive(opponent)) then return false end
-        if type(options.boardOf)~='function' then return false end
-        local board=options.boardOf(actor)
-        local boardKey=U.key(board)
-        if not boardKey then return false end
-        local library=retry:find(AI_LIBRARY,find)
-        if not U.valid(library) then return false end
-        local tag={TagName=fname(ASSIGNED_ACTOR)}
-        local ok,original=call(library,'GetValueAsObjectByTag',board,tag)
-        if not ok then return false end
+        local board,boardKey,library,tag,original=aimState(actor)
+        if not board then return false end
         local expected=U.key(opponent)
         if opponent~=nil and not expected then return false end
         if U.key(original)==expected then return true end
-
-        local function apply(target)
-            local targetKey=U.key(target)
-            if not U.valid(board) or (target~=nil and not targetKey) then return false end
-            local wrote=call(library,'SetValueAsObjectByTag',board,tag,targetKey and target or nullActor)
-            local read,actual=call(library,'GetValueAsObjectByTag',board,tag)
-            return wrote and read and U.key(actual)==targetKey
-        end
 
         local originalName=fullName(original)
         options.remember('story-aim:'..key..':'..entry.name..':'..boardKey,function()
@@ -279,31 +286,99 @@ function Standalone.new(options)
             if not activeBoard then return false,'剧情援军当前黑板状态不可读' end
             if activeBoard~=boardKey then return true,'剧情援军原黑板已不在用' end
             local target=originalName and fullName(original)==originalName and original or nil
-            local restored=apply(target)
+            local restored=applyAim(board,library,tag,target)
             return restored,'原指派对象恢复读回='..tostring(restored)
         end)
-        local assigned=apply(opponent)
+        local assigned=applyAim(board,library,tag,opponent)
         say('剧情援军指派目标 '..entry.name..' -> '..(fullName(opponent) or '空')
             ..' 黑板读回='..tostring(assigned))
         return assigned
     end
 
-    function self:prune(units)
-        if not next(owned) then return end
-        local retained={}
-        for _,unit in ipairs(units)do
-            if PARTNERS[unit.class_path] then
-                local key=U.key(unit.actor)
-                local entry=key and owned[key]
-                if entry and fullName(unit.actor)==entry.name then retained[key]=entry end
-            end
-        end
-        owned=retained
+    local function sameAim(value,key,name)
+        return U.key(value)==key and fullName(value)==name
     end
 
-    function self:silence()
+    local function syncCompanion(actor,entry,opponent)
+        local aim=entry.companionAim
+        if not aim and not opponent then return end
+        if actorGone(actor,entry) then entry.companionAim=nil;return end
+        local board,boardKey,library,tag,current=aimState(actor)
+        if not board then return end
+        local boardName=fullName(board)
+        if aim and (not sameAim(aim.board,boardKey,boardName) or aim.boardName~=boardName) then
+            entry.companionAim=nil
+            aim=nil
+        end
+        local ownsValue=aim and ((aim.targetKey and sameAim(current,aim.targetKey,aim.targetName))
+            or (aim.pendingKey and sameAim(current,aim.pendingKey,aim.pendingName)))
+        if not opponent then
+            local original=ownsValue and sameAim(aim.original,aim.originalKey,aim.originalName) and aim.original or nil
+            if not ownsValue or applyAim(board,library,tag,original) then entry.companionAim=nil end
+            return
+        end
+        local key,name=U.key(opponent),fullName(opponent)
+        if not key or not name then return end
+        if sameAim(current,key,name) then return end
+        if not ownsValue then
+            aim={board=board,boardName=boardName,original=current,originalKey=U.key(current),originalName=fullName(current)}
+            entry.companionAim=aim
+        end
+        aim.pendingKey,aim.pendingName=key,name
+        if applyAim(board,library,tag,opponent) then
+            aim.targetKey,aim.targetName=key,name
+            aim.pendingKey,aim.pendingName=nil,nil
+            if (entry.aimReports or 0)<8 then
+                entry.aimReports=(entry.aimReports or 0)+1
+                say('随从原生技能指派 '..entry.name..' -> '..name..' 黑板读回=true')
+            end
+        end
+    end
+
+    function self:tickCompanions()
+        if not next(companions) or not options.companionOpponent then return end
+        local now=clock()
+        if now<nextAim then return end
+        nextAim=now+0.25
+        for _,actor in pairs(companions)do
+            local entry=entryFor(actor)
+            if entry then
+                local opponent=actorLive(actor) and options.companionOpponent(actor) or nil
+                syncCompanion(actor,entry,opponent)
+            end
+        end
+    end
+
+    function self:prune(units)
+        if not next(owned) then return end
+        local retained,followers={},{}
+        for _,unit in ipairs(units)do
+            if PARTNERS[unit.class_path] then
+                local entry,key=entryFor(unit.actor)
+                if entry then
+                    retained[key]=entry
+                    if entry.teamBossName and unit.team=='companion' and not unit.stand and not unit.reserve then
+                        followers[key]=unit.actor
+                    end
+                end
+            end
+        end
+        for key,actor in pairs(companions)do
+            local entry=entryFor(actor)
+            if entry and (not followers[key] or retained[key]~=entry) then syncCompanion(actor,entry,nil) end
+        end
+        owned,companions=retained,followers
+    end
+
+    function self:silence(restoreNative)
+        if restoreNative then
+            for _,actor in pairs(companions)do
+                local entry=entryFor(actor)
+                if entry then syncCompanion(actor,entry,nil) end
+            end
+        end
         alive=false
-        owned={}
+        owned,companions={},{}
     end
     return self
 end

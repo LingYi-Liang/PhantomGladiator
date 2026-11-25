@@ -222,25 +222,42 @@ function LionNPC.new(options)
         end
         return chosen
     end
+    local function paused()return options.paused and options.paused()==true end
+    local function fieldSource(actor)
+        return options.challenge.fieldSource and options.challenge:fieldSource(actor)
+    end
+    local function arenaSide(team)return team=='blue' or team=='red' end
+    local function selectable(entry)
+        return not entry.stand and not entry.reserve and not entry.aid
+    end
     function self:beginPickup(actor,victim,members,status)
-        if not combat or not status or not status.battle_active then return false end
+        if not combat or paused() then return false end
         local world=options.world()
         if not U.inWorld(actor,world) then return false end
-        local owner,team,sourceTeam,source
+        local owner,team,source
         for _,entry in ipairs(members)do
             if same(entry.actor,victim) then owner=entry.summoner end
-            if same(entry.actor,actor) then team=entry.team end
+            if selectable(entry) and same(entry.actor,actor) then team=entry.team end
         end
-        for _,entry in ipairs(members)do
-            if entry.class_path==BOSS and same(entry.actor,owner) then source,sourceTeam=entry.actor,entry.team;break end
+        local field=team=='companion'
+        if field then
+            if not options.challenge.canFieldTarget or not options.challenge:canFieldTarget(actor,victim) then return false end
+            source=fieldSource(actor)
+        elseif status and status.battle_active and arenaSide(team) then
+            for _,entry in ipairs(members)do
+                if entry.class_path==BOSS and arenaSide(entry.team) and team~=entry.team and same(entry.actor,owner) then
+                    source=entry.actor;break
+                end
+            end
         end
-        if not source or (team~='blue' and team~='red') or (sourceTeam~='blue' and sourceTeam~='red')
-            or team==sourceTeam or (tag(source,ON_POLE) or 0)<=0 then return false end
+        if not source or (tag(source,ON_POLE) or 0)<=0 then return false end
         local area=options.area(source,world)
         local poles=U.array(U.field(area,'ActivatedPoles'))
         if not poles or not U.inWorld(area,world) then return false end
         local key=U.key(actor)
         if not key or pickups[key] then return false end
+        local weapon=combat:captureWeapon(actor,world)
+        if field and not weapon then return false end
         local ticket=options.challenge:ticket(actor,victim)
         if not ticket then return false end
         local prior={}
@@ -249,7 +266,7 @@ function LionNPC.new(options)
             if poleKey then prior[poleKey]=true end
         end
         pickups[key]={key=key,actor=actor,ticket=ticket,victim=victim,source=source,area=area,world=world,prior=prior,
-            weapon=combat:captureWeapon(actor,world)}
+            weapon=weapon,field=field}
         return true
     end
     function self:observeHead(actor)
@@ -262,8 +279,10 @@ function LionNPC.new(options)
         local pickup=pickups[U.key(actor)]
         if not pickup then return end
         pickup.ended=options.now()
-        pickup.planned=completed==true and self:observeHead(actor) and options.challenge:award(pickup.ticket,actor,pickup.source)
+        pickup.planned=completed==true and self:observeHead(actor) and options.challenge:award(pickup.ticket,actor,pickup.source,true)
+        if pickup.field then say('地图原版处决及狮头归属读回='..tostring(pickup.planned==true)..' actor='..pickup.key) end
         pickup.cancelled=not pickup.planned
+        if pickup.cancelled and options.challenge.cancelTicket then options.challenge:cancelTicket(pickup.ticket) end
         local seat=self.seats[U.key(options.carrier(actor))]
         if pickup.cancelled and not (seat and seat.pickup==pickup) and combat:restoreWeapon(pickup.weapon) then pickups[pickup.key]=nil end
     end
@@ -725,7 +744,9 @@ function LionNPC.new(options)
         end
         local function step()
             if self.seats[seat.key]~=seat or seat.flight~=flight or flight.error or flight.arrived then return end
-            if not same(options.world(),seat.world) or not alive(actor) or not alive(seat.source.actor)
+            if not same(options.world(),seat.world) then fail('跳跃世界变更');return end
+            if paused() then return end
+            if not alive(actor) or not alive(seat.source.actor)
                 or (tag(seat.source.actor,ON_POLE) or 0)<=0 or not clearTags(seat.source.actor,PROTECTED)
                 or gone(platform.pole) or U.field(platform.pole,'Activated')~=true
                 or not same(U.field(actor,'CharacterMovement'),movement) then fail('角色、场地或桩状态变化');return end
@@ -845,16 +866,22 @@ function LionNPC.new(options)
         if not seat.nextPole and not combat:endHop(seat,now) then seat.failed=true end
     end
 
-    function self:stop(why)
+    function self:stop(why,arenaOnly)
         local complete=true
         for key,seat in pairs(self.seats)do
-            if release(seat,why or '停止') then self.seats[key]=nil else complete=false end
+            if not arenaOnly or not seat.source.field then
+                if release(seat,why or '停止') then self.seats[key]=nil else complete=false end
+            end
         end
         for key,pickup in pairs(pickups)do
-            if not same(options.world(),pickup.world) or combat:restoreWeapon(pickup.weapon) then pickups[key]=nil
-            else complete=false end
+            if not arenaOnly or not pickup.field then
+                if not same(options.world(),pickup.world) or combat:restoreWeapon(pickup.weapon) then
+                    if options.challenge.cancelTicket then options.challenge:cancelTicket(pickup.ticket) end
+                    pickups[key]=nil
+                else complete=false end
+            end
         end
-        if complete then self.sources={};retryAt={};waiting={};failedFor={} end
+        if complete and not arenaOnly then self.sources={};retryAt={};waiting={};failedFor={} end
         return complete
     end
     function self:releaseActor(actor)
@@ -868,7 +895,10 @@ function LionNPC.new(options)
         end
         local pickup=pickups[U.key(actor)]
         if pickup and same(options.world(),pickup.world) then
-            if combat:restoreWeapon(pickup.weapon) then pickups[pickup.key]=nil else complete=false end
+            if combat:restoreWeapon(pickup.weapon) then
+                if options.challenge.cancelTicket then options.challenge:cancelTicket(pickup.ticket) end
+                pickups[pickup.key]=nil
+            else complete=false end
         end
         return complete
     end
@@ -880,6 +910,9 @@ function LionNPC.new(options)
             if seat.moved and (same(actor,seat.carrier) or same(actor,seat.actor)) then return true end
         end
         return false
+    end
+    function self:engaged(actor)
+        return pickups[U.key(actor)]~=nil or self:holds(actor)
     end
     function self:keepsMovement(actor,classPath)
         if self:holds(actor) then return true end
@@ -899,36 +932,52 @@ function LionNPC.new(options)
             self.seats={};self.sources={};retryAt={};waiting={};failedFor={}
         end
         currentWorld=world
-        if not status or not status.battle_active then self:stop('对战结束');return end
+        if paused() then return end
         local now=options.now()
         if type(now)~='number' then return end
-        local hasBoss=false
-        for _,entry in ipairs(members or {})do
-            if entry.class_path==BOSS then hasBoss=true;break end
-        end
-        if not hasBoss then self:stop('没有烈焰参战');return end
-        local active,roster={},{}
-        for _,entry in ipairs(members or {})do
-            local actor=entry.actor
+        local arenaActive=status and status.battle_active
+        local active,roster,fieldTargets={},{},{}
+        local function addSource(actor,team)
             local key=U.key(actor)
-            if key and alive(actor) and U.inWorld(actor,world) and (entry.team=='blue' or entry.team=='red')
-                and not entry.stand and not entry.reserve and not entry.aid then
-                roster[key]=entry
-                if entry.class_path==BOSS and (tag(actor,ON_POLE) or 0)>0 then
-                    local source=self.sources[key] or {actor=actor}
-                    if gone(source.area) then source.area=options.area(actor,world) end
-                    if not gone(source.area) and U.inWorld(source.area,world) then
-                        source.team=entry.team
-                        self.sources[key]=source
-                        active[key]=source
+            if not key or active[key] or not alive(actor) or not U.inWorld(actor,world) or (tag(actor,ON_POLE) or 0)<=0 then return end
+            local field=team=='map'
+            local previous=self.sources[key]
+            local source=previous and previous.field==field and same(previous.actor,actor) and previous or {actor=actor,field=field}
+            if gone(source.area) then source.area=options.area(actor,world) end
+            if not gone(source.area) and U.inWorld(source.area,world) then
+                source.team=team
+                active[key]=source
+            end
+        end
+        for _,entry in ipairs(members or {})do
+            if selectable(entry) then
+                local actor=entry.actor
+                local arenaEntry=arenaActive and arenaSide(entry.team)
+                local target=entry.team=='companion' and fieldSource(actor)
+                if arenaEntry or target then
+                    local key=U.key(actor)
+                    if key and alive(actor) and U.inWorld(actor,world) then
+                        roster[key]=entry
+                        if target then
+                            fieldTargets[key]=target
+                            addSource(target,'map')
+                        elseif entry.class_path==BOSS then addSource(actor,entry.team) end
                     end
                 end
             end
         end
+        local function opponent(actor,entry)
+            if entry.team=='companion' then return fieldTargets[U.key(actor)] end
+            return options.opponent(actor)
+        end
         self.sources=active
+        if not next(active) and not next(self.seats) and not next(pickups) then
+            retryAt,waiting,failedFor={},{},{}
+            return
+        end
         for key,seat in pairs(self.seats)do
             local owner=roster[U.key(seat.actor)]
-            local target=owner and options.opponent(seat.actor)
+            local target=owner and opponent(seat.actor,owner)
             local carrier=owner and options.carrier(seat.actor)
             if not active[U.key(seat.source.actor)] or not owner or not same(carrier,seat.carrier)
                 or (seat.pickup and seat.pickup.cancelled) or (not same(target,seat.source.actor) and not (seat.pickup and not seat.pickup.ended)) or not clearTags(seat.source.actor,PROTECTED)
@@ -954,14 +1003,18 @@ function LionNPC.new(options)
         end
         for key,pickup in pairs(pickups)do
             local carrier=roster[key] and options.carrier(pickup.actor)
-            if not self.seats[U.key(carrier)] and pickup.ended and now-pickup.ended>4
-                and combat:restoreWeapon(pickup.weapon) then pickups[key]=nil end
+            local stale=not roster[key] or not active[U.key(pickup.source)]
+            if not self.seats[U.key(carrier)] and (stale or pickup.ended and now-pickup.ended>4)
+                and combat:restoreWeapon(pickup.weapon) then
+                if options.challenge.cancelTicket then options.challenge:cancelTicket(pickup.ticket) end
+                pickups[key]=nil
+            end
         end
         if not next(active) then return end
         -- At most one new native actor per support tick, including multi-opponent battles.
         for key,entry in pairs(roster)do
             if entry.class_path~=BOSS and (not retryAt[key] or now>=retryAt[key]) then
-                local target=options.opponent(entry.actor)
+                local target=opponent(entry.actor,entry)
                 local source=active[U.key(target)]
                 if source and source~=failedFor[key] and source.team~=entry.team and options.challenge:holdsHead(entry.actor,source.actor) and clearTags(source.actor,PROTECTED) then
                     local carrier=options.carrier(entry.actor)

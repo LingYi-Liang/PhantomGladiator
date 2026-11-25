@@ -145,8 +145,8 @@ local function fixture(combat,nativeWave)
             tag=function(a,t)return a.tags[t] end})
     end
     h.adapter=LionNPC.new({challenge=h.challenge,log=function(message)h.log[#h.log+1]=message end,
-        now=function()return h.now end,world=function()return h.world end,area=function()return h.area end,
-        location=function(a)assert(not a.gone);return a.at end,hp=function(a)assert(not a.gone);return a.hp end,
+        now=function()return h.now end,paused=function()return h.paused end,world=function()return h.world end,area=function()return h.area end,
+        location=function(a)assert(not a.gone);return a.at end,hp=function(a)assert(not a.gone);h.healthReads=(h.healthReads or 0)+1;return a.hp end,
         ground=function()return 0 end,isDestroying=function(a)return a.gone end,
         statics=function()return statics end,find=function(path)
             if path=='/Script/MotionWarping.MotionWarpingComponent' then return h.warpClass end
@@ -185,6 +185,15 @@ local function enemy(h,mode,radius,path)
     return npc
 end
 local function test(name,fn)fn();print('ok - '..name)end
+
+test('idle arena and companions without a live field wave do not read fighter HP',function()
+    local h=fixture()
+    h.battle.battle_active=false
+    enemy(h);enemy(h)
+    h:unit('/Test/Companion.Companion_C','companion',1,35)
+    h:tick()
+    assert((h.healthReads or 0)==0 and #h.poles==0,'do not verify health for unrelated inactive combatants')
+end)
 
 test('native phase protection and unknown tags keep opponents on the ground',function()
     local h=fixture()
@@ -741,4 +750,35 @@ test('a first jump obstructed by a character can retry a different landing site 
     local a,b=h.poles[1].StandPoint:K2_GetComponentLocation(),h.poles[2].StandPoint:K2_GetComponentLocation()
     assert(a.X~=b.X or a.Y~=b.Y,'retry a different angle')
     assert(h.adapter:stop())
+end)
+
+test('owned companions can take confirmed head rewards from a map wave without an arena battle',function()
+    local combat=combatFixture()
+    local h=fixture(combat)
+    local npc=enemy(h)
+    local wave=require('lion_challenge')
+    local victim=h:unit(wave.CUB,'red',1,25)
+    local unauthorized=enemy(h)
+    h.members={{actor=npc,team='companion'}}
+    h.battle.battle_active=false
+    local allowed,awarded=true,false
+    h.challenge.fieldSource=function(_,a)if a==npc and not h.paused then return h.boss end end
+    h.challenge.canFieldTarget=function(_,a,v)return allowed and a==npc and v==victim end
+    h.challenge.ticket=function(_,a,v)if allowed and a==npc and v==victim then return {wave={field=true}} end end
+    h.challenge.award=function(_,_,a,b)awarded=a==npc and b==h.boss and victim.hp==0;return awarded end
+    h.challenge.holdsHead=function(_,a,b)return awarded and a==npc and b==h.boss end
+    h:tick()
+    assert(not h.adapter:beginPickup(unauthorized,victim,h.members,h.battle))
+    assert(h.adapter:beginPickup(npc,victim,h.members,h.battle))
+    assert(#h.poles==0 and #npc.moves==0)
+    npc.tags['CharacterState.HasTempWeapon.HouHouHouHead']=1;victim.hp=0
+    h.adapter:pickupEnded(npc,true)
+    h:board()
+    assert(awarded and combat.landings==1 and #unauthorized.moves==0)
+    local at=npc.at
+    h.paused=true;h.adapter:tick(h.members,h.battle)
+    assert(h.adapter:holds(npc) and npc.at==at and combat.restored==0,'frozen target polling must not force a dismount')
+    h.paused=false;h:tick()
+    assert(h.adapter:holds(npc) and combat.restored==0)
+    assert(h.adapter:stop() and combat.restored==1)
 end)

@@ -38,4 +38,33 @@ assert(next(lookup:resolve(value('map_A')))==nil)
 bell.alive=true
 options.findAll=function() return {bell,object(5,{GetOuter=function() return w1 end})} end
 lookup=Maps.new(options);assert(next(lookup:resolve(value('map_A')))==nil,'ambiguous subsystem must not be chosen')
+do
+    local now,scans,ready=0,{},false
+    local pipeline=object(6,{GetOuter=function()return w1 end,
+        Conv_LocTextToString=function(_,loc)return 'localized '..loc.Text end})
+    lookup=Maps.new({getWorld=function()return w1 end,clock=function()return now end,
+        findAll=function(class)
+            scans[class]=(scans[class] or 0)+1
+            if class=='BellManager' then return ready and {other,bell} or {} end
+            assert(class=='EventPipelineManager');return {pipeline}
+        end})
+    for _=1,18 do assert(next(lookup:resolve(value('map_A')))==nil) end
+    assert(scans.BellManager==1,'a loading world may not scan all managers once per row')
+    ready=true;now=2
+    assert(lookup:resolve(value('map_A')).map_name=='地图显示名','the same world may become ready after a failed lookup')
+    for i=1,18 do assert(lookup:localize({Text=i})=='localized '..i) end
+    assert(scans.EventPipelineManager==1,'a catalog batch reuses the live pipeline')
+    pipeline.alive=false
+    assert(lookup:localize({Text=1})=='','an invalid cached pipeline must never be used')
+end
+do
+    local now=0
+    lookup=Maps.new({getWorld=function()return w1 end,clock=function()return now end,
+        findAll=function(k)return k=='BellManager' and {bell} or {} end})
+    chapter.ChapterID=value('wrong_chapter')
+    assert(lookup:resolve(value('map_A')).chapter_name=='')
+    chapter.ChapterID=value('chapter_Z')
+    now=2
+    assert(lookup:resolve(value('map_A')).chapter_name=='章节原文','chapter metadata can finish loading after the map')
+end
 print('world_map_catalog: PASS (exact World/row IDs, real names/order, cache, unknown/missing/invalid guards; no game changes)')

@@ -609,6 +609,8 @@ function Weapons.new(o)
         end
         if started then
             w.firstMoveUntil=nil
+            w.push={class=exact and exact.name or nil,at=os.clock()}
+            if o.guard then o.guard:pressed(r) end
             w.chainCount=(w.chainCount or 0)+1
             s.ok=s.ok+1
             if how=='标签' then s.byTag=s.byTag+1
@@ -640,6 +642,7 @@ function Weapons.new(o)
                 back(r,w.wc,'新武器出招不通')
             end
         end
+        return started==true
     end
     local function settleHits(r)
         local w=r.wep;local t=clock();local keep={}
@@ -686,6 +689,7 @@ function Weapons.new(o)
         if not w.grabRecorded then w.grabRecorded=true;if not w.rotation then record('grab',started) end end
         if started then
             w.firstMoveUntil=nil
+            if o.guard then o.guard:pressed(r) end
             for _,d in ipairs(GRAB_READS)do w.grabReads[#w.grabReads+1]={target=target,at=clock()+d,label='+'..d..'s'}end
         end
     end
@@ -951,7 +955,10 @@ function Weapons.new(o)
                 say('本次战技绝技格 读回='..num(stat(r.actor,'UltimateChargeCount')))
             end
         end
-        if confirmed then r.wep.firstMoveUntil=nil end
+        if confirmed then
+            r.wep.firstMoveUntil=nil
+            if o.guard then o.guard:pressed(r) end
+        end
         return confirmed,active
     end
     local function phaseArt(r,t,target)
@@ -1252,7 +1259,11 @@ function Weapons.new(o)
                 call(U.field(actor,'AbilitySystemComponent'),'TryActivateAbility',{Handle=spec.handle},false)
                 local after=specOf(actor,weapon.art)
                 say('临时武器终结技 读回 ActiveCount='..tostring(after and after.active))
-                if after and type(after.active)=='number' and after.active>0 then w.firstMoveUntil=nil;return end
+                if after and type(after.active)=='number' and after.active>0 then
+                    w.firstMoveUntil=nil
+                    if o.guard then o.guard:pressed(r) end
+                    return
+                end
             end
         end
         -- 3-6
@@ -1265,10 +1276,12 @@ function Weapons.new(o)
             if t-(w.comboAt or t)<0.9 then return end
             w.chainCount=0;w.skipTag=nil
         end
+        local pressed=false
         if usable('combo',r)and not w.comboOff and target and dist<=RANGE and t-(w.comboAt or-math.huge)>=LOOP_MS/1000-0.01 then
-            w.comboAt=t
-            combo(r,target,performing,canChain)
+            w.comboAt,w.comboWall=t,os.clock()
+            pressed=combo(r,target,performing,canChain)==true
         end
+        if o.guard then o.guard:settle(r,pressed) end
     end
     local function stopLoop(r)
         local entry=loops[r]

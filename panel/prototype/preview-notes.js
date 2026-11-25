@@ -640,5 +640,272 @@ window.PG_PREVIEW_NOTES = {
       ]
     ],
     "details": []
+  },
+  "0.40.22": {
+    "title": {
+      "zh": "游戏内摄影与战斗修复",
+      "en": "In-game photography and combat fixes"
+    },
+    "added": [
+      [
+        {
+          "since": 4,
+          "zh": "观战页新增「双人自拍」。在开阔处和随从站稳后开启，主角与随从会转向镜头并定格。可换姿势、换随从、拍照，四项操作都能单独绑定键盘或 Xbox 手柄快捷键。姿势取自《影之刃零》原生动作，暂时没有适配动作的随从沿用站姿。构图和实际截图效果待实机验证。",
+          "en": "Spectate adds Duo Selfie. Stand with a companion in an open area to face the camera and freeze the scene. Start or exit, change pose, switch companion and take a photo using separate keyboard or Xbox hotkeys. Companions without a matching native pose keep their stance. In-game framing and screenshot output still need verification.",
+          "legacy": {
+            "zh": "新增主角与随从双人自拍及快捷键。",
+            "en": "Duo selfie hotkeys."
+          }
+        }
+      ],
+      [
+        {
+          "since": 5,
+          "zh": "双人自拍定格后可在游戏中环绕、推拉和调整镜头高度，换姿势时保留机位。已适配的角色可通过原生转头和眼部方向形变跟随镜头，身体留在原姿势。键鼠和双摇杆均有构图控制，动画画面和手柄效果待实机验证。",
+          "en": "After framing a duo selfie, orbit, zoom and adjust camera height in game. Changing poses keeps the camera in place. Supported characters use their native head and eye controls to follow the lens while holding their poses. Keyboard, mouse and both sticks can frame the shot. Animation and controller behavior still need an in-game check.",
+          "legacy": {
+            "zh": "双人自拍可手动调镜头，匹配的头部和眼部跟随取景。",
+            "en": "Adjust the selfie camera and gaze."
+          }
+        }
+      ],
+      [
+        {
+          "since": 6,
+          "zh": "新增独立的游戏内摄影面板，支持普通拍照和双人自拍。在游戏里调视场角、倾斜、景深、补光和滤镜，还能分别替主角和随从选择姿势、表情及看镜头。可隐藏血条，截图时自动收起摄影面板。普通拍照与面板显隐各自可绑键盘或 Xbox 手柄。游戏内画面待实机验证。",
+          "en": "An independent in-game photography panel supports free photo and duo selfie modes. Adjust field of view, roll, depth of field, a fill light and filters in game. Set each subject's pose, expression and look-at separately on compatible models. Hide health bars and automatically tuck away the menu for capture. Free photo and the menu toggle have bindable keyboard and Xbox shortcuts. In-game rendering still needs verification.",
+          "legacy": {
+            "zh": "独立游戏内摄影支持双人自拍、镜头、补光、滤镜和人物控制。",
+            "en": "In-game photography and duo selfie."
+          }
+        }
+      ],
+      [
+        {
+          "since": 7,
+          "zh": "普通拍照的「人物」页可以开启主角看镜头。双人自拍可分别开启主角和随从的看镜头。进入摄影时默认关闭。补上主角后处理网格的查找，并保留角色原有的注视目标。主角实际转头待实机核对。",
+          "en": "In free photo, enable the player's Look at camera option under Subjects. Duo selfies have separate switches for the player and companion. They start off. The player lookup can also find an owned post-process mesh and restore a previous gaze target. The player's head turn still needs a live check.",
+          "legacy": {
+            "zh": "普通拍照和自拍都可选看镜头。",
+            "en": "Optional gaze."
+          }
+        }
+      ],
+      [
+        {
+          "since": 8,
+          "zh": "摄影新增自动对焦、三组独立补光和场景间接光。可以调饱和度、对比度、色温、泛光、色差、颗粒、暗角与模糊，并保存五组预设。也可调整主体显隐和独立眼神、选相框与署名、开构图参考线或请求 HDR 截图。表情和姿势使用本作已有资源，实际画面待实机核对。",
+          "en": "Photography adds autofocus, three private light slots, indirect lighting, color and texture controls, and five preset slots. Adjust subject visibility and eye direction independently, choose a frame and caption, show guides or request HDR capture. Poses and expressions use native game assets. Live rendering still needs verification.",
+          "legacy": {
+            "zh": "摄影新增三灯、调色、构图和预设。",
+            "en": "Photo controls and presets."
+          }
+        },
+        {
+          "since": 15,
+          "zh": "战场新增「最近一场对局」，列出双方开战时的单位、实读等级、周目、难度、数值来源和可核对的原版计算项，支持复制文稿与导出 JSON。观战新增电影运镜和战场血条三档切换，均可单独绑键。镜头按交锋节奏选肩后、贴地、侧跟、高位拉焦或关键动作稳拍，减少频繁切镜和大幅晃动。后台原生数据表改为每轮读取一张。",
+          "en": "The battlefield adds Latest Match with both opening lineups, verified levels, game cycles, difficulties, stat sources and native calculation inputs. Copy a formatted report or export JSON. Spectate adds a cinematic director and three battle HUD modes with separate key bindings. The director uses shoulder, low, side, elevated focus-pull or action shots, with conservative cuts and motion. Native data tables are now read one per heartbeat.",
+          "legacy": {
+            "zh": "对局报告和电影运镜。",
+            "en": "Match report and cinema."
+          }
+        }
+      ]
+    ],
+    "combat": [
+      [
+        {
+          "since": 8,
+          "zh": "大师兄卡片开启「原班配合」后，可以作为七星剑阵随从出战。七位成员组成自己的队伍，遇到大师兄实际锁定的地图敌人后调用原版起手。虚空换琵琶、玉妖铁鬼合击补充了地图随从战的读回，实机等本轮复测。",
+          "en": "Enable the eldest disciple's native party to summon his seven-swords formation as companions. His squad uses the native opening tree against a confirmed map enemy. Added field-battle evidence for Void's pipa and Yao's combination with Iron Ghost. Live checks are pending.",
+          "legacy": {
+            "zh": "随从支持大师兄七星剑阵。",
+            "en": "Companion sword formation."
+          }
+        },
+        {
+          "since": 9,
+          "zh": "修复大师兄延迟起手仍读取红蓝对手的问题。阿瑾也可开启「原班配合」率红衣队战斗，爆脸转化每次召唤最多成功一次。玉面郎君的金面具、铁面具编入原版三人小队。梦华作为随从卡在 41% 血线时，满足原版条件会重试召唤自己的虚空。独立召出的虚空、弦者会把当前敌人交给原版攻击树，荒行子的链刃也会跟随实际对手。上述地图战斗效果待实机验证。",
+          "en": "Fixed the eldest disciple's delayed opener still reading the arena target. A-Jin can lead her native red squad as a companion, with one successful opening transformation per summon. Jade-Face uses the original three-member group with Gold and Iron Mask. If Meng Hua stalls at 41% as a companion, she can retry summoning her own Void under the native conditions. Independently summoned Void and the String Player pass their current enemy to their original attack trees. Huangxingzi's chain blade also tracks the confirmed opponent. Field-battle behavior still needs in-game verification.",
+          "legacy": {
+            "zh": "补齐随从阵式、梦华阶段及技能索敌。",
+            "en": "Companion formation and aim."
+          }
+        },
+        {
+          "since": 10,
+          "zh": "随从挑战地图原版烈焰时会优先索敌同一组小狮子。用原版处决拿到最后一只的狮头后，可上桩和烈焰对射。荒行子随从的链刃确认命中普通地图敌人后，可按原版时机处决，锁血与不可处决的目标仍受保护。大师兄的绝望剑意与红衣女剑客的剑阵版可开启「配合阵容」组成原版小队。骑兵随从的坐骑会接收已确认的敌人。碧海残躯、荡秽和武轩跟随离开召唤点后，会在脱战时核对新落点，再更新各自的技能中心。玉鼎的抓技保护也覆盖已锁血的对应地图首领。地图实战待验证。",
+          "en": "Companions fighting Flame in the story encounter prioritize the cubs from that encounter. Finishing the last cub with the native execution and taking its head lets them climb a pole and trade fire with Flame. Huangxingzi can execute eligible map enemies on a confirmed chain-blade hit, respecting health locks and execution immunity. Sword of Despair and the formation swordswoman can summon as their original squad. Cavalry companions pass confirmed targets to their mounts. Bihai, Danghui and Wuxuan can reposition their private ability anchors after following the player and leaving combat. Yu Ding's grabs respect the corresponding map bosses' phase locks. Field combat still needs an in-game check.",
+          "legacy": {
+            "zh": "随从烈焰挑战、铡刀与剑偶编队。",
+            "en": "Pole duel and finishers."
+          }
+        },
+        {
+          "since": 11,
+          "zh": "红队或蓝队超过三条存活血条时，只缩小该侧并收紧行距。打开游戏内设置菜单会暂时隐藏斗蛐蛐的两侧血条，返回战斗后自动恢复。",
+          "en": "When either side has more than three living health bars, that column shrinks and tightens its rows. Arena bars hide while the in-game settings menu is open and return when it closes.",
+          "legacy": {
+            "zh": "血条自动缩小，游戏设置时隐藏。",
+            "en": "Adaptive battle HUD."
+          }
+        }
+      ],
+      [
+        {
+          "since": 1,
+          "zh": "从图鉴召唤的虚空改拿琵琶。原版靠登场动作换武器，直接召唤没有这段动作，之前一直拿着扇子。梦华自己召出的虚空保持原样。",
+          "en": "Void summoned from the bestiary now holds her pipa. The game switches weapons during her entrance, which a direct summon skips, so she kept the fan. The Void summoned by Meng Hua is unchanged.",
+          "legacy": {
+            "zh": "从图鉴召唤的虚空改拿琵琶。",
+            "en": "Void holds her pipa."
+          }
+        },
+        {
+          "since": 2,
+          "zh": "补上持握读回。虚空换到琵琶后，如果还没拿到手上，会等安全时机再试；演出期间暂停重试。",
+          "en": "The assistant now checks that Void is holding the pipa. If the slot changed but it is still sheathed, it retries after the current paired action.",
+          "legacy": {
+            "zh": "核对虚空确实持握琵琶。",
+            "en": "Verify the pipa grip."
+          }
+        },
+        {
+          "since": 3,
+          "zh": "虚空普通出招或仍在播动作时会等动作结束，再换武器或补持握。",
+          "en": "Void finishes her current ability and animation before the assistant equips the pipa or retries drawing it.",
+          "legacy": {
+            "zh": "虚空收招后再换琵琶。",
+            "en": "Void switches after recovery."
+          }
+        }
+      ]
+    ],
+    "fixes": [
+      [
+        {
+          "since": 1,
+          "zh": "修复魂自己的走位和原版连招打断出招的问题。魂出主武器连段、影之武装和格挡时，原版 AI 每换一步走位都会取消当前动作，还会插进一招绝影双刀。绕圈时间调得越短越明显，表现为原地反复起手、连招中断。现在出招收尾前不受这两种情况影响，收招后没有下一招才让它走开。受击、被处决和死亡照常打断。游戏内效果待实测。",
+          "en": "Hun's own footwork and native combo no longer cut his attacks. The game's AI cancelled the current action before every step, including weapon chains, shadow armaments and guards started by the mod, and slipped in a swing of his own twin blades. Short circling times made him restart the first swing on the spot. A step or a native swing now waits until the recovery has nothing to chain. Hits, executions and death still interrupt. Awaiting in-game confirmation.",
+          "legacy": {
+            "zh": "修复走位和原版连招打断魂的出招。",
+            "en": "Fix interrupted attacks."
+          }
+        },
+        {
+          "since": 2,
+          "zh": "格挡和影武每次重新起手都重新计时。收招会恢复技能原来的可取消状态和冷却，暂时恢复失败会再尝试。出招期间的临时冷却两秒到期，重载后会按原实例补恢复。",
+          "en": "Each new guard or shadow armament starts its own timer. Recovery restores the original cancel flag and cooldown, retrying temporarily rejected writes. The temporary cooldown expires in two game seconds. After a mod reload, the assistant checks the original instance before continuing cleanup.",
+          "legacy": {
+            "zh": "修复格挡计时和重载后残留的魂技能冷却。",
+            "en": "Fix guard recovery."
+          }
+        },
+        {
+          "since": 3,
+          "zh": "续写临时冷却时如果读回中断，收招后仍能恢复原值。重载后找不到的技能最多查三次，避免连续查找卡住支持循环。",
+          "en": "Hun restores the original cooldown even when a refresh succeeds but the immediate readback fails. After a mod reload, a missing ability lookup is limited to three attempts.",
+          "legacy": {
+            "zh": "补上冷却恢复，限制重载后的失败查询。",
+            "en": "Cooldown recovery."
+          }
+        },
+        {
+          "since": 12,
+          "zh": "切换分辨率时，旧血条会保留布局，新血条等尺寸可读再显示。意外脱离视口的血条会自动重建。截图发送前会复核摄影面板已隐藏，退出摄影时恢复血条最近的原生透明度。荒行子的铡刀从实际命中开始计时，助手时停期间保留铡刀和烈焰上桩状态。图鉴读取暂时缺失的地图或章节时会复核，减少重复查找。",
+          "en": "Health bars retain their layout through temporary resolution changes and rebuild if detached from the viewport. The photo panel must be hidden before capture, and leaving photo mode restores the last native opacity of each masked bar. The guillotine timer starts on impact, and the assistant's time stop preserves active guillotine and pole challenges. The codex retries missing map and chapter details with fewer duplicate lookups.",
+          "legacy": {
+            "zh": "修复血条、截图、时停结算和图鉴缓存。",
+            "en": "HUD, photo and combat fixes."
+          }
+        },
+        {
+          "since": 13,
+          "zh": "修复梦华保留剧情联动时卡在 41% 的两条路径。召唤起手已中断并消耗许可时，可补发漏掉的原版召唤事件。虚空在配对前出生失败并腾出原生召唤槽时，也能限次重试。助手会等梦华收招，沿用原版后续联动和解锁。补召会优先用已确认的对手定位。",
+          "en": "Fixed two ways Menghua could stay at 41% with her story link enabled. If the opening sequence ends before sending the summon event, the assistant can resend that native event. If Void fails to spawn before pairing and the native slot is free, a limited retry is also possible. The assistant waits for the current action to clear, uses the confirmed opponent for retry placement when available, and keeps the original pairing and unlock.",
+          "legacy": {
+            "zh": "修复梦华卡在 41% 血线。",
+            "en": "Restore Menghua's 41% link."
+          }
+        },
+        {
+          "since": 14,
+          "zh": "梦华跳过联动时清理残留的原版召唤许可，保留联动时在确认脱战收尾完成后重置补召次数。序章左殇首段演出中断后若仍残留原版 80% 血线，会补原版解锁。小雪的原班召唤、大师兄起手及白衣弟子阵亡通知在明确失败时可有限重试。助手时停、原版处决的临时锁血和华山队友保护期间，暂停可能抢走阶段的自动处决与锁血收尾。",
+          "en": "Skipping Menghua's link clears leftover summon permission. A completed combat reset renews the retry budget when her link is kept. Prologue Zuo Shang can complete his native 80% unlock after an interrupted opener. Xiaoxue's native summons, the eldest disciple's opener and white disciple death notifications can retry after confirmed failures. Automatic executions and lethal cleanup now respect the assistant's time stop, native execution protection and the HuaShan squad health floor.",
+          "legacy": {
+            "zh": "补解锁、队员召唤和处决保护。",
+            "en": "Fix phase unlocks and squad summons."
+          }
+        }
+      ],
+      [
+        {
+          "since": 1,
+          "zh": "修复换图或传送后的持续卡顿。地图卸载后，已经不存在的蓝图挂钩会被反复摘除，某些单位上过场后每 0.5 秒卡约 27 毫秒，到下次召唤才停。现在只认一次，单位再次上场时重新挂上。",
+          "en": "Fixed a lasting stutter after a map change or teleport. Hooks on blueprints that had left with the map were removed again and again, costing about 27 ms every half second until the next summon. They are now handled once and hooked again when the unit returns.",
+          "legacy": {
+            "zh": "修复换图或传送后的持续卡顿。",
+            "en": "Fix post-travel stutter."
+          }
+        },
+        {
+          "since": 2,
+          "zh": "换图后，暂时摘不掉的旧挂钩会立即停止执行。蓝图再次载入时再回收，避免旧回调跟着新回调一起跑。",
+          "en": "Callbacks left over after a map change stop running immediately. The assistant removes their handles when the blueprint is loaded again.",
+          "legacy": {
+            "zh": "换图后立即停用待回收的旧回调。",
+            "en": "Disable stale callbacks on travel."
+          }
+        }
+      ],
+      [
+        {
+          "since": 1,
+          "zh": "传送等地图重新载入后才报「已到达」，15 秒防坠观察从这时开始。之前目标在 50 米内时，载入前就报到达。页面补充说明传送会重载整张地图，召唤单位、随从和排队中的召唤都会取消。",
+          "en": "Teleport reports arrival only after the map has loaded again, and the 15-second fall watch starts there. Targets within 50 m used to report arrival before loading. The page now says that a teleport reloads the map and clears summoned units, companions and the queue.",
+          "legacy": {
+            "zh": "传送在地图重新载入后才报到达。",
+            "en": "Teleport arrival waits for the map to load."
+          }
+        },
+        {
+          "since": 2,
+          "zh": "补上同图传送的误报。角色自己走近目标、换控制器或换角色时，助手会继续等待地图重载。防坠只跟随已确认到达的角色，离开落点附近或换人就结束。",
+          "en": "Walking near the target or changing controllers or pawns no longer confirms a same-map teleport. The fall watch stays with the pawn whose arrival was confirmed and ends when it moves away or is replaced.",
+          "legacy": {
+            "zh": "修复同图步行、换人触发的传送误报。",
+            "en": "Fix false same-map arrivals."
+          }
+        },
+        {
+          "since": 3,
+          "zh": "没确认进入目标地图的传送会保留原来的返回点。加载中暂时读不到世界时继续等，防坠只把确认拉回的次数记为成功。",
+          "en": "A teleport keeps the last return point until the requested map is confirmed. The assistant waits through temporary world read errors and counts only fall recoveries it could verify.",
+          "legacy": {
+            "zh": "失败的传送保留返回点，防坠按成功读回计数。",
+            "en": "Verify returns and fall recovery."
+          }
+        }
+      ],
+      [
+        {
+          "since": 1,
+          "zh": "AI 行为参数里，绕圈时间的说明补充：每绕完一次会重新选左右，低于 1 秒会频繁换向。",
+          "en": "The circling time hints now explain that each circle picks a new side, so values below 1 second turn back and forth.",
+          "legacy": {
+            "zh": "补充绕圈时间的说明。",
+            "en": "Clarified the circling time hints."
+          }
+        }
+      ]
+    ],
+    "details": [
+      {
+        "since": 1,
+        "issue": 40,
+        "zh": "虚空改拿琵琶，本轮已处理，待游戏内确认。",
+        "en": "Void holds her pipa in this build, awaiting in-game confirmation."
+      }
+    ]
   }
 };

@@ -26,6 +26,12 @@ const RealRuntime = (() => {
   const KEY_NAMES = ["spawn", "start", "stop", "refresh_catalog", "toggle_camera", "exit_camera", "cycle_team", "toggle_spectator", "recall_companions", "toggle_time_stop", "toggle_track", "track_pick", "track_next", "dismiss_companions", "hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const TEAMS = ["blue", "red", "neutral", "companion"];
   const EYE_KEYS = ["eyes_player","eyes_npc"];
+  const SELFIE_KEYS = ["toggle_selfie", "selfie_pose", "selfie_next", "selfie_shot"];
+  const STUDIO_KEYS = ["toggle_photo", "photo_panel"];
+  const DIRECTOR_KEYS = ["toggle_cinema", "cycle_battle_hud"];
+  const CINEMA_SHOTS = ["shoulder", "low", "side", "aerial", "action"];
+  const BATTLE_HUD_MODES = ["full", "compact", "hidden"];
+  const SELFIE_DEFAULT = {supported: false, studio: false, mode: "", on: false, ready: false, target: "", posed: 0, style: 0, next: false, message: ""};
   const WEATHER_KEYS = window.PG_I18N?.weatherKeys || [];
   const HUN_KEYS = ["hun_blue", "hun_red", "hun_companion", "hun_neutral"];
   const QUEUE_STUCK_MS = 12000;
@@ -140,7 +146,11 @@ const RealRuntime = (() => {
     // arena_state after a cleanup the mod could not confirm: cleanup_pending / restore_pending need
     // another cleanup, spawn_uncertain needs a game restart. Spawning is blocked meanwhile.
     cleanup: "",
-    keys: Object.fromEntries([...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS].map(k => [k, null])),
+    selfie: { ...SELFIE_DEFAULT },
+    cinemaKeysSupported: false,
+    cinema: { supported: false, active: false, shot: "" },
+    battleHud: { supported: false, mode: "full" },
+    keys: Object.fromEntries([...KEY_NAMES, ...WEATHER_KEYS, ...EYE_KEYS, ...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS].map(k => [k, null])),
     unitKeys: {},
     scan: null,
     synced: null,
@@ -518,10 +528,27 @@ const RealRuntime = (() => {
     s.weather = {supported: online && yes("weather_supported"), choice: v.weather_choice || "map"};
     s.teleport = {supported: online && yes("teleport_supported"), pending: yes("teleport_pending"), canReturn: yes("teleport_can_return"), message: v.teleport_message || "", keysRevision: num("teleport_keys_revision")};
     s.eyesKeysSupported = online && data.function_keys?.eyes_supported === true;
+    s.selfieKeysSupported = online && data.function_keys?.selfie_supported === true;
+    s.studioKeysSupported = online && data.function_keys?.studio_supported === true;
+    s.cinemaKeysSupported = online && data.function_keys?.cinema_supported === true;
+    s.cinema = {
+      supported: online && yes("cinema_supported"),
+      active: online && yes("cinema_active"),
+      shot: online && CINEMA_SHOTS.includes(v.cinema_shot) ? v.cinema_shot : "",
+    };
+    s.battleHud = {
+      supported: online && yes("battle_hud_supported"),
+      mode: online && BATTLE_HUD_MODES.includes(v.battle_hud_mode) ? v.battle_hud_mode : "full",
+    };
+    s.selfie = online && yes("selfie_supported") ? {
+      supported: true, studio: yes("photo_studio"), mode: v.photo_mode || "", on: yes("selfie_on"), ready: yes("selfie_ready"),
+      target: (v.selfie_target || "").split(".").pop(), posed: num("selfie_posed"),
+      style: num("selfie_style"), next: yes("selfie_next"), message: v.selfie_message || "",
+    } : { ...SELFIE_DEFAULT };
     s.xboxKeysSupported = online && yes("xbox_keys_supported");
     s.weatherKeysSupported = online && data.function_keys?.weather_supported === true;
     s.hunKeysSupported = online && data.function_keys?.hun_supported === true;
-    for (const k of [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS]) {
+    for (const k of [...KEY_NAMES, ...WEATHER_KEYS, ...EYE_KEYS, ...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS]) {
       const binding = bindings[k];
       s.keys[k] = binding?.key_code ? { code: binding.key_code, mods: binding.modifiers || 0 } : null;
       if (s.keys[k] && online && binding.error) s.keys[k].error = binding.error;
@@ -582,8 +609,8 @@ const RealRuntime = (() => {
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
-      view: [s.game, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera],
-      keys: [s.game, s.keys, s.eyesKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported, s.xboxKeysSupported],
+      view: [s.game, s.companion, s.blue > 0 && s.red > 0, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera, s.selfie, s.cinema, s.battleHud, s.cinemaKeysSupported, [...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS].map(k => s.keys[k])],
+      keys: [s.game, s.keys, s.eyesKeysSupported, s.selfieKeysSupported, s.studioKeysSupported, s.cinemaKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported, s.xboxKeysSupported],
       grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.longzhuProtectionSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
       battleMusic: [s.game, s.battleMusic, s.localAudio],
@@ -676,7 +703,14 @@ const RealRuntime = (() => {
     else if (action === "set_free_camera") body = { action, speed: payload.speed, turn: payload.turn, smooth: payload.smooth };
     else if (action === "set_stat_mode" || action === "set_companion_stats") body = payload.mode === "custom" ? { action, mode: payload.mode, values: payload.values } : { action, mode: payload.mode };
     else if (action === "set_ai_params") body = { action, values: payload.values };
-    else if (action === "configure_keys") { path = "/api/keybinds"; body = Object.fromEntries((s.eyesKeysSupported ? [...KEY_NAMES,...WEATHER_KEYS,...EYE_KEYS] : s.weatherKeysSupported ? [...KEY_NAMES,...WEATHER_KEYS] : KEY_NAMES).map(k => [k, wireKey(payload.bindings[k])])); }
+    else if (action === "configure_keys") {
+      path = "/api/keybinds";
+      const names = [...KEY_NAMES, ...(s.weatherKeysSupported ? WEATHER_KEYS : []),
+        ...(s.eyesKeysSupported ? EYE_KEYS : []), ...(s.selfieKeysSupported ? SELFIE_KEYS : []),
+        ...(s.studioKeysSupported ? STUDIO_KEYS : []),
+        ...(s.cinemaKeysSupported ? DIRECTOR_KEYS : [])];
+      body = Object.fromEntries(names.map(k => [k, wireKey(payload.bindings[k])]));
+    }
     else body = { action };
     const held = action === "stop" ? owned : action === "clear_neutral" ? s.neutral + s.down.neutral : 0;
     const companionsHeld = action === "dismiss_companions" ? s.companion + s.down.companion : 0;
@@ -882,6 +916,11 @@ const RealRuntime = (() => {
       installation: () => host("betaInstallation"),
       check: code => host("checkBeta", { code }),
       install: id => host("installBeta", { id }),
+    },
+    async latestMatchReport() {
+      const { response, data } = await readJSON("/api/match-report");
+      if (!response.ok) throw fail("rejected");
+      return data.report;
     },
     exportReport: () => host("exportReport"),
     // Prototype demo hooks; the packaged app has no demo panel.

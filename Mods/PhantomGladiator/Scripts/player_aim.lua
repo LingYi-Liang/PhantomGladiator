@@ -1024,6 +1024,10 @@ function Aim.new(options)
         local ability=U.unwrap(context)
         if not U.valid(ability) then return nil end
         local name=className(ability)
+        if options.xukongCast and type(name)=='string' and name:find('^GA_XuKong_Skill_') then
+            local unit=unitOf(ability)
+            if unit and companions[unit]~=nil and options.actorOf then options.xukongCast(options.actorOf(unit),name) end
+        end
         if options.formationCast and (name=='GA_HuaShan_Story_Intro_C' or name=='GA_HuaShan_Troop_Healing_C'
             or name=='GA_HuaShan_Troop_Resurrection_C') then options.formationCast(ability,name) end
         local kind=skillKind(ability,name)

@@ -33,11 +33,13 @@ local function filesystem(files)
 end
 local function harness(extra)
     local h={lines={},members={},fs=filesystem(),opponents={},bosses={},now=0,position={X=0,Y=-800,Z=300},rotation={Pitch=-12,Yaw=90,Roll=0},fov=90}
+    h.cinemaOpponents={}
     local settings={log=function(s)h.lines[#h.lines+1]=s end,path='memory',io=h.fs,members=function()return h.members end,
         hp=function(a)return a.hp end,location=function(a)return a.at end,
         view=function()return h.position,h.rotation end,fov=function()return h.fov end,
         isBoss=function(a)return h.bosses[a]==true end,
-        opponentOf=function(a)return h.opponents[a] end}
+        opponentOf=function(a)return h.opponents[a] end,
+        cinemaOpponentOf=function(a)return h.cinemaOpponents[a] end}
     for key,value in pairs(extra or {})do settings[key]=value end
     h.track=Track.new(settings)
     function h.add(class,x,y,z,team,fields)
@@ -621,6 +623,39 @@ do
         minimum=math.min(minimum,p.Z)
     end
     assert(minimum>=0,'tracked camera went below the floor at Z='..minimum)
+end
+do
+    local reads,activity=0,nil
+    local h=harness({activity=function()reads=reads+1;return activity end})
+    h.add('PlayerCompanion',10,0,100,'companion')
+    assert(not h.track:startCinema().ok,'cinema needs a confirmed arena participant')
+    local a=h.add('Blue',200,0,100,'blue')
+    local b=h.add('Red',2000,0,100,'red')
+    h.cinemaOpponents[a]=b;h.cinemaOpponents[b]=a
+    assert(h.track:startCinema(tostring(a.GetAddress())).ok)
+    local p,r,_,lens=h.track:frame(1/60,0,{})
+    assert(p and r and h.track:status().cinema_shot=='aerial' and lens.focus and lens.fov<90)
+    assert(r.Roll==0)
+    activity='phase'
+    h.run(5)
+    assert(h.track:status().cinema_shot=='aerial','give the existing shot a minimum hold')
+    h.run(2)
+    assert(h.track:status().cinema_shot=='action','use a steady shot when a phase remains active')
+    h.run(8)
+    assert(h.track:status().cinema_shot=='action','no variety cuts during a continuous phase')
+    activity='attack';b.at.X=700
+    h.run(3)
+    assert(h.track:status().cinema_shot=='low','close attacks use low framing after the held phase')
+    b.at.X=2100;activity=nil
+    h.run(10)
+    assert(h.track:status().cinema_shot~='aerial','spare the wide shot during normal fight changes')
+    assert(reads<125,'activity samples are bounded to the tracked pair at four per second')
+    h.cinemaOpponents[a]=nil;h.opponents[a]=h.members[1].actor;b.hp=0
+    h.run(.5)
+    assert(h.track:status().other_class=='','never take the usual AI fallback after one arena side is gone')
+    assert(h.track:stopCinema().ok and not h.track:running() and not h.track:status().cinema_active)
+    assert(h.track:status().framing=='side','cinema does not overwrite the usual framing preference')
+    print('PASS cinema hold, native action cue, rare wide shot, arena targets and bounded sampling')
 end
 print('camera_track: PASS')
 

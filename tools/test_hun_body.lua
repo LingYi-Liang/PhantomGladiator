@@ -476,6 +476,28 @@ test('a body that died and left is cleaned only when its death readback ends; th
     assert(not still:has('look cleanup NPC Hun 1 死亡读回结束（到时或已无效）'),'a dead body still in the arena keeps its parts until it leaves')
     still.mod:tick({});assert(still:has('look cleanup NPC Hun 1 实例离场'))
 end)
+test('the action guard follows a living body whose kit runs, and lets go when it dies, leaves or the mod unloads',function()
+    local h=loadoutFixture(true)
+    h.loadout.kit=true;h.loadout.revision=1;h.loadout.weapons={};h.loadout.phases={}
+    local asked={}
+    local function note(what)return function(_,r)asked[#asked+1]=what..' '..tostring(type(r)=='table' and r.name or r)end end
+    h.options.actionGuard={follow=note('follow'),stop=note('stop'),silence=note('silence')}
+    h.options.weapons={equip=function()end,stop=function()end,cleanup=function()end,silence=function()end}
+    h.options.defense={start=function()end,stop=function()end};h.options.shadows={equip=function()end,cleanup=function()end}
+    h.options.grabGuard={start=function()end,stop=function()end}
+    h.mod=Body.new(h.options);assert(h:run().ok)
+    assert(#asked==0);h:tick(12)
+    local function count(what)local c=0;for _,a in ipairs(asked)do if a:find('^'..what)then c=c+1 end end;return c end
+    assert(count('follow')>=2 and count('stop')==0)
+    local before=count('follow')
+    h.mod:tick({});assert(count('stop')==1 and count('follow')==before,'a body that left is let go')
+    h.mod:silence(true);assert(asked[#asked]=='silence true')
+end)
+test('a body without a kit is not followed by the action guard',function()
+    local h=scheduleFixture();local asked=0
+    h.options.actionGuard={follow=function()asked=asked+1 end,stop=function()end,silence=function()end}
+    h.mod=Body.new(h.options);assert(h:run().ok);h:tick(8);assert(asked==0)
+end)
 test('unload stops the weapon loops',function()
     local h=scheduleFixture();assert(h:run().ok);h.mod:silence();assert(h:has('silence'))
 end)

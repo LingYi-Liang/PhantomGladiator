@@ -104,6 +104,9 @@ const MockRuntime = (() => {
     companionManagerRevision: 0,
     companionStats: { supported: true, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     eyesKeysSupported:true,
+    selfieKeysSupported:true,
+    studioKeysSupported:true,
+    selfie: { supported: true, studio: true, mode: "", on: false, ready: false, target: "", posed: 0, next: false },
     xboxKeysSupported:true,
     track: { eyesSupported:true, supported: true, on: false, framing: "side", resume: 3, target: "", targetClass: "", otherClass: "", targets: [] },
     unitRules: savedUnitRules,
@@ -120,7 +123,7 @@ const MockRuntime = (() => {
     weatherKeysSupported:true,weather:{supported:true,choice:"map"},teleport:{supported:true,pending:false,canReturn:false,message:"",keysRevision:0,keys:{}},
     hunKeysSupported: true,
     battleMusic: { supported: true, mode: "NATIVE", track: "MOYUAN_P1", state: "native", message: "保留原版音乐", playing: 0 },
-    keys: { spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, dismiss_companions: null, hun_blue: null, hun_red: null, hun_companion: null, hun_neutral: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
+    keys: { toggle_photo: null, photo_panel: null, toggle_selfie: null, selfie_pose: null, selfie_next: null, selfie_shot: null, spawn: null, start: null, stop: null, refresh_catalog: null, toggle_camera: null, exit_camera: null, cycle_team: null, toggle_spectator: null, recall_companions: null, dismiss_companions: null, hun_blue: null, hun_red: null, hun_companion: null, hun_neutral: null, toggle_time_stop: null, toggle_track: null, track_pick: null, track_next: null },
     unitKeys: {},               // unitId -> { code, mods }
     nextOutcome: "ok",          // ok | error | uncertain | matchWarn | matchAbort (next spawn only)
     updateScenario: "available",// available | latest | offline
@@ -279,6 +282,41 @@ const MockRuntime = (() => {
         job.message = "镜头跟踪已开启";
         return;
       }
+      case "toggle_photo":
+      case "toggle_selfie": {
+        const duo = job.action === "toggle_selfie";
+        const mode = duo ? "duo" : "free";
+        if (s.selfie.on && s.selfie.mode === mode) { setFreeCam(false); return; }
+        if (s.freeCam && !s.selfie.on || duo && !s.companion) {
+          job.status = "failed";
+          job.message = s.freeCam && !s.selfie.on ? "selfie.exitObserver" : "selfie.summonFirst";
+          return;
+        }
+        setFreeCam(true);
+        s.spectator = s.spectatorBeforeCam;
+        s.frozen = true;
+        Object.assign(s.selfie, { on: true, ready: true, mode, target: duo ? cmPreview.units[0]?.path || "" : "",
+          posed: duo ? 2 : 0, style: 1, next: duo && s.companion > 1 });
+        return;
+      }
+      case "photo_panel":
+        if (!s.selfie.on) { job.status = "failed"; job.message = "selfie.notReady"; }
+        return;
+      case "selfie_pose":
+        if (!s.selfie.ready) { job.status = "failed"; job.message = "selfie.notReady"; return; }
+        s.selfie.style = (s.selfie.style + 1) % 3;
+        s.selfie.posed = s.selfie.style ? 2 : 0;
+        return;
+      case "selfie_next": {
+        if (!s.selfie.ready) { job.status = "failed"; job.message = "selfie.notReady"; return; }
+        const at = cmPreview.units.findIndex(u => u.path === s.selfie.target);
+        s.selfie.target = cmPreview.units[(at + 1) % cmPreview.units.length]?.path || "";
+        return;
+      }
+      case "selfie_shot":
+        if (!s.selfie.ready) { job.status = "failed"; job.message = "selfie.notReady"; return; }
+        job.message = "selfie.shotSent";
+        return;
       case "eyes_player": case "eyes_npc":
         s.freeCam=true;s.track.on=true;s.track.framing="eyes";return;
       case "set_camera_track": {
@@ -527,7 +565,10 @@ const MockRuntime = (() => {
   function setFreeCam(on) {
     if (on === s.freeCam) return;
     if (on) Object.assign(s, { freeCam: true, spectatorBeforeCam: s.spectator, spectator: true });
-    else Object.assign(s, { freeCam: false, frozen: false, spectator: s.spectatorBeforeCam });
+    else {
+      Object.assign(s, { freeCam: false, frozen: false, spectator: s.spectatorBeforeCam });
+      Object.assign(s.selfie, { on: false, ready: false, target: "", posed: 0, next: false });
+    }
   }
   // The camera key pressed in game (prototype demo only).
   function toggleFreeCam() {

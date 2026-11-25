@@ -857,11 +857,13 @@ end
 local tamer=pack.actors[1]
 do
     local f,enabled,requireGroup=nil,true,true
+    local allowCompanion=false
     local sequence={}
     f=escortFixture({formationEnabled=function()return enabled end,retireFormation=function()return true end,
+        companionFormation=function(path)return allowCompanion and path==TAMER end,
         escortsFor=function(_,on)if on then return {{path=DOG,count=6,formation=true}}end end,
         prepareFormation=function(group,rows,w,side)
-            assert((side=='red' or side=='blue') and w==f.world and #rows==7 and #f.arena:members()>=7)
+            assert((side=='red' or side=='blue' or allowCompanion and side=='companion') and w==f.world and #rows==7 and #f.arena:members()>=7)
             for _,row in ipairs(rows)do assert(row.actor.alive and not row.actor.finished and row.transform.Translation)end
             sequence[#sequence+1]='roster';group.bound=true;return requireGroup,'unconfirmed roster'
         end,
@@ -877,7 +879,10 @@ do
     sequence={};enabled=false;assert(f.arena:spawn(TAMER,'blue',1).ok)
     assert(table.concat(sequence,',')=='finish,activate','solo keeps normal entry')
     sequence={};enabled=true;assert(f.arena:spawn(TAMER,'companion',1).ok)
-    assert(#sequence==14 and sequence[2]=='activate','companion keeps its original entry')
+    assert(#sequence==14 and sequence[2]=='activate','unadapted companion keeps its original entry')
+    sequence={};allowCompanion=true;assert(f.arena:spawn(TAMER,'companion',1).ok)
+    assert(table.concat(sequence,',')=='roster,'..string.rep('finish,',7)..'ready,'..string.rep('activate,',6)..'activate',
+        'adapted companion native group is ready before the seven actors activate')
     sequence={};requireGroup=false
     local res=f.arena:spawn(TAMER,'blue',1)
     assert(not res.ok and not table.concat(sequence,','):find('activate',1,true) and f.arena:status().state=='cleanup_pending')
@@ -1266,4 +1271,26 @@ do -- Use the real wave registry through the controller's normal reinforcement a
     cub.tags[Wave.LAST]=1;local ticket=assert(wave:ticket(runner,cub));cub.hp=0
     assert(wave:award(ticket,runner,boss));clock=2;wave:sync(f.arena:members(),true);f.arena:tickReinforcements()
     assert(f.arena:aggroOpponent(runner)==boss,'head holder returns to its own lion')
+end
+
+
+do
+    local now=0
+    local f=fixture({now=function()return now end})
+    local openings,results={},{}
+    f.options.onMatchSnapshot=function(members,relay)
+        assert(#members==2 and relay.enabled==false and stageCount(f,'attack')==0,
+            'capture opening before any attack starts')
+        openings[#openings+1]=members
+    end
+    f.options.onMatchEnded=function(result)results[#results+1]=result end
+    assert(f.arena:spawn(nil,'blue',1).ok and f.arena:spawn(nil,'red',1).ok)
+    assert(f.arena:start().ok and #openings==1)
+    assert(f.arena:start().ok and #openings==1,'repeated start keeps the original opening snapshot')
+    now=3;f.arena:status()
+    now=9;f.actors[2].hp=0
+    for _=1,12 do f.arena:status() end
+    assert(#results==1 and results[1].winner=='blue' and results[1].seconds==6)
+    assert(f.arena:stop().ok and #results==1)
+    print('PASS single pre-attack roster snapshot and verified result')
 end

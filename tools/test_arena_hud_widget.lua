@@ -19,9 +19,9 @@ local library=obj('/Script/UMG.Default__WidgetBlueprintLibrary')
 local texts=obj('/Script/Engine.Default__KismetTextLibrary')
 function texts:Conv_StringToText(value)return value end
 local layout=obj('/Script/UMG.Default__WidgetLayoutLibrary')
-local viewportWidth,sizeReads,scaleReads=3840,0,0
-function layout:GetViewportSize(context)sizeReads=sizeReads+1;assert(context==world and context.alive);return {X=viewportWidth,Y=2160}end
-function layout:GetViewportScale(context)scaleReads=scaleReads+1;assert(context==world and context.alive);return 2 end
+local viewportWidth,viewportHeight,viewportScale,sizeReads,scaleReads=3840,2160,2,0,0
+function layout:GetViewportSize(context)sizeReads=sizeReads+1;assert(context==world and context.alive);return {X=viewportWidth,Y=viewportHeight}end
+function layout:GetViewportScale(context)scaleReads=scaleReads+1;assert(context==world and context.alive);return viewportScale end
 local widget,tree,original
 function library:Create(context,class,player)
     assert(context==world and class==cls and player==pc)
@@ -48,7 +48,12 @@ StaticConstructObject=function(class,outer,name)
     local o=obj('/Test.Tree.'..name)
     function o:GetOuter()return outer end
     if class==overlayClass then
-        o.children={};o.slots={}
+        o.children={};o.slots={};o.RenderTransform={Scale={X=1,Y=1}}
+        function o:SetRenderTransformPivot(value)self.RenderTransformPivot=value end
+        function o:SetRenderScale(value)
+            self.RenderTransform.Scale=value
+            self.scaleWrites=(self.scaleWrites or 0)+1
+        end
         function o:AddChildToOverlay(child)
             self.children[#self.children+1]=child
             local slot=obj('/Test.Slot'..#self.children)
@@ -88,6 +93,84 @@ assert(native.visibility==1 and foreign.visibility==0 and widget.visibility==3,'
 renderer:syncNative({},{},false);assert(native.visibility==0 and foreign.visibility==0)
 widget.Character=other;assert(renderer:update(record,unit,72.5,100,'蓝队 · 测试',1)==false)
 assert(widget.Character==other and renderer:remove(record) and not widget.inViewport)
+-- Whole-bar compaction preserves the original HP/name proportions and packs the viewport rows.
+do
+    local normal=assert(renderer:create(unit))
+    local red={actor=actor,team='red'}
+    local crowded=assert(renderer:create(red))
+    assert(renderer:update(normal,unit,50,100,'normal',3,{},nil,3))
+    assert(renderer:update(crowded,red,73.2,100,'crowded',4,{},nil,4))
+    local function factor(r)return r.overlay.RenderTransform.Scale.X end
+    local screenWidth=viewportWidth/2
+    local dense=factor(crowded)
+    assert(factor(normal)==1 and normal.widget.position.Y==282)
+    assert(dense<1 and dense>0.5 and crowded.overlay.RenderTransform.Scale.Y==dense)
+    assert(crowded.widget.position.Y<414 and crowded.widget.position.Y>18)
+    assert(math.abs(crowded.widget.position.X+crowded.widget.size.X*dense-(screenWidth-24))<.001)
+    assert(crowded.overlay.RenderTransformPivot.X==0 and crowded.overlay.RenderTransformPivot.Y==0)
+    local writes=crowded.overlay.scaleWrites
+    assert(renderer:update(crowded,red,72.5,100,'crowded',4,{},nil,4))
+    assert(crowded.overlay.scaleWrites==writes,'an unchanged scale must not be reapplied')
+    assert(renderer:update(crowded,red,72.5,100,'crowded',4,{},nil,8))
+    local roomy=factor(crowded)
+    assert(roomy<dense and roomy>0.5)
+    viewportHeight=900
+    assert(renderer:update(crowded,red,72.5,100,'crowded',4,{},nil,8))
+    assert(factor(crowded)>=.5 and factor(crowded)<roomy)
+    viewportHeight=2160
+    assert(renderer:update(crowded,red,72.5,100,'crowded',3,{},nil,3))
+    assert(factor(crowded)==1 and crowded.widget.position.Y==282 and crowded.widget.position.X==1196)
+
+    crowded.widget.opacity=0
+    local hidden=assert(renderer:update(crowded,red,60,100,'crowded',3,{},nil,3,true))
+    assert(not hidden.visible and hidden.health and hidden.numbers and crowded.widget.IsInViewport(crowded.widget))
+    assert(crowded.widget.visibility==2 and crowded.overlay.visibility==2
+        and crowded.widget.opacity==0 and crowded.numeric.value=='60 / 100')
+    local shown=assert(renderer:update(crowded,red,59,100,'crowded',3,{},nil,3,false))
+    assert(shown.visible and shown.health and crowded.widget.visibility==3
+        and crowded.overlay.visibility==3 and crowded.widget.opacity==0)
+    assert(renderer:remove(normal) and renderer:remove(crowded))
+end
+-- Viewport changes inside the settings menu may detach existing widgets or report no valid size.
+do
+    local HUD=require('arena_hud')
+    local newcomer=obj('/Test.Newcomer')
+    function newcomer:GetOuter()return world end
+    local list={{actor=actor,team='blue'}}
+    local bars=HUD.new({renderer=renderer,isBoss=function()return true end,hp=function()return 50 end,
+        maxHP=function()return 100 end,getWorld=function()return world end})
+    local actorKey=tostring(actor:GetAddress())
+    local newcomerKey=tostring(newcomer:GetAddress())
+    bars:sync(list)
+    local old=bars.records[actorKey]
+    assert(old and bars:status().visible==1 and old.widget:IsInViewport())
+    old.widget:RemoveFromParent()
+    bars:sync(list)
+    assert(not bars.records[actorKey] and native.visibility==0,
+        'a detached bar must release the record and stop masking the native bar')
+    bars:sync(list)
+    local recovered=bars.records[actorKey]
+    assert(recovered and recovered~=old and bars:status().visible==1 and native.visibility==1)
+    local position=recovered.widget.position
+
+    viewportScale=0;viewportWidth=0
+    list[2]={actor=newcomer,team='red'}
+    local beforeSize=sizeReads
+    bars:sync(list)
+    assert(sizeReads==beforeSize+1,'unavailable geometry is still sampled only once per sync')
+    local pending=bars.records[newcomerKey]
+    assert(pending and bars.records[actorKey]==recovered and recovered.widget.position==position,
+        'a geometry outage must preserve existing widgets and their last known position')
+    assert(bars:status().visible==1 and pending.widget.visibility==2 and pending.widget.position==nil,
+        'a new bar must wait to show until its placement is known')
+    for _=1,6 do bars:sync(list) end
+    viewportScale=2;viewportWidth=3840
+    bars:sync(list)
+    assert(bars.records[actorKey]==recovered and bars.records[newcomerKey]==pending
+        and bars:status().visible==2 and pending.widget.position.X==1196,
+        'the same bars should resume after geometry returns without exhausting creation attempts')
+    bars:clear()
+end
 -- Empty arenas must not search the global widget registry merely to discover no boss HUD yet exists.
 do
     local scans=0;local previous=FindAllOf
@@ -132,7 +215,9 @@ do
     assert(hudBars:status().visible==50 and sizeReads==1 and scaleReads==1,'real HUD sync shares the local viewport snapshot')
     viewportWidth=2400;hudBars:sync(list)
     assert(sizeReads==2 and scaleReads==2,'a later HUD sync must not reuse the previous viewport')
-    assert(hudBars.records[tostring(list[2].actor:GetAddress())].widget.position.X==612)
+    local resizedRed=hudBars.records[tostring(list[2].actor:GetAddress())]
+    local width=resizedRed.widget.size.X*resizedRed.overlay.RenderTransform.Scale.X
+    assert(math.abs(resizedRed.widget.position.X+width-(viewportWidth/2-24))<.001)
     print('real HUD bars=50 syncs=2 size_reads='..sizeReads..' scale_reads='..scaleReads)
     hudBars:clear()
 end

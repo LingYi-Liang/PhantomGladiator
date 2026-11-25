@@ -40,6 +40,8 @@ local function fixture(fname)
         staticFind=function(path)return h.classes[path]end,
         fname=fname or function(name)return name end,
         boardOf=function(actor)return actor.board end,
+        clock=function()return h.now or 0 end,
+        companionOpponent=function(actor)return actor.foe end,
         remember=function(key,restore)return h.session:remember(key,restore)end,
         createInvalidObject=function()return h.null end,inGameThread=function()return h.inGame end,
         registerHook=function(path,callback)
@@ -212,4 +214,32 @@ do
     assert(blue.board.assigned==original and red.board.assigned==h.null)
     assert(native.faction=='Faction.Player' and native.hatredBlock==1 and native.board.assigned==nil)
     print('PASS direct XuKong and XianZhe use the arena target, with faction, hatred and target restored on reset')
+    local companions={
+        {actor=blue,class_path=XUKONG,team='companion'},
+        {actor=red,class_path=bardPath,team='companion'},
+        {actor=native,class_path=XUKONG,team='companion'}}
+    local foeA,foeB=object('Map enemy A'),object('Map enemy B')
+    blue.foe,red.foe,native.foe=foeA,foeB,foeB
+    h.module:prune(companions)
+    h.module:tickCompanions()
+    assert(blue.board.assigned==foeA and red.board.assigned==foeB)
+    assert(native.board.assigned==nil and blue.faction=='Faction.Player' and blue.hatredBlock==1)
+    before=mutations
+    assert(h.session:reset(),'arena cleanup does not undo a companion binding')
+    h.now=1;h.module:tickCompanions()
+    assert(mutations==before)
+    blue.foe=nil
+    red.board.assigned=original -- another native writer takes over
+    red.foe=nil
+    h.now=2;h.module:tickCompanions()
+    assert(blue.board.assigned==original and red.board.assigned==original)
+    local oldBoard=blue.board
+    blue.foe=foeA
+    h.now=3;h.module:tickCompanions()
+    blue.board=object('Replacement blackboard')
+    h.now=4;h.module:tickCompanions()
+    assert(oldBoard.assigned==foeA and blue.board.assigned==foeA)
+    h.module:prune({})
+    assert(blue.board.assigned==h.null and red.board.assigned==original)
+    print('PASS companion native target binding is isolated and restores its own writes')
 end

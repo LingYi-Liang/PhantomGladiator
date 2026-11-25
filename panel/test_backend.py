@@ -626,6 +626,75 @@ class BridgeTests(unittest.TestCase):
         for action in backend.EYE_BINDING_NAMES:
             self.assertEqual(self.bridge._validate({'action':action}),{'action':action})
 
+    def test_selfie_keyboard_and_xbox_keys_use_schema_nine(self):
+        status = self.bridge.runtime / 'status.tsv'
+        initial = status.read_text(encoding='utf8')
+        bindings = dict.fromkeys(backend.BINDING_NAMES, 'UNBOUND')
+        bindings.update(toggle_selfie='VK_119_MOD_1', selfie_pose='VK_195_MOD_2',
+                        selfie_next='VK_206_MOD_1', selfie_shot='VK_120_MOD_0', eyes_npc='VK_87_MOD_2')
+        status.write_text(initial.replace('function_keys_schema\t4', 'function_keys_schema\t8'), encoding='utf8')
+        with self.assertRaisesRegex(backend.ValidationError, '自拍快捷键'):
+            self.bridge.enqueue({'action':'configure_keys','bindings':bindings})
+        status.write_text(initial.replace('function_keys_schema\t4', 'function_keys_schema\t9'), encoding='utf8')
+        self.assertTrue(self.bridge.function_keybinds()['selfie_supported'])
+        job = self.bridge.enqueue({'action':'configure_keys','bindings':bindings})
+        cols = self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual(len(cols), 46)
+        self.assertEqual(cols[-6:], ['VK_87_MOD_2', 'VK_119_MOD_1', 'VK_195_MOD_2', 'VK_120_MOD_0', 'VK_206_MOD_1', '9'])
+        for action in backend.SELFIE_BINDING_NAMES:
+            self.assertEqual(self.bridge._validate({'action':action}), {'action':action})
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue({'action':'configure_keys','bindings':dict(bindings, selfie_next=bindings['selfie_pose'])})
+
+    def test_studio_keyboard_and_pad_bindings_extend_schema_nine(self):
+        status = self.bridge.runtime / 'status.tsv'
+        initial = status.read_text(encoding='utf8')
+        bindings = dict.fromkeys(backend.BINDING_NAMES, 'UNBOUND')
+        bindings.update(toggle_photo='VK_117_MOD_1', photo_panel='VK_196_MOD_1')
+        status.write_text(initial.replace('function_keys_schema\t4', 'function_keys_schema\t9'), encoding='utf8')
+        self.assertFalse(self.bridge.function_keybinds()['studio_supported'])
+        with self.assertRaisesRegex(backend.ValidationError, '摄影快捷键'):
+            self.bridge.enqueue({'action':'configure_keys','bindings':bindings})
+        status.write_text(initial.replace('function_keys_schema\t4', 'function_keys_schema\t10'), encoding='utf8')
+        self.assertTrue(self.bridge.function_keybinds()['studio_supported'])
+        job = self.bridge.enqueue({'action':'configure_keys','bindings':bindings})
+        cols = self.bridge._wire({'id':job['id'],'payload':json.dumps(job['payload'])}).strip().split('\t')
+        self.assertEqual(len(cols), 48)
+        self.assertEqual(cols[-3:], ['VK_117_MOD_1', 'VK_196_MOD_1', '10'])
+
+    def test_director_bindings_extend_schema_ten_without_shifting_existing_codes(self):
+        status = self.bridge.runtime / "status.tsv"
+        initial = status.read_text(encoding="utf8")
+        bindings = dict.fromkeys(backend.BINDING_NAMES, "UNBOUND")
+        bindings.update(photo_panel="VK_196_MOD_1", toggle_cinema="VK_118_MOD_1", cycle_battle_hud="VK_119_MOD_0")
+        status.write_text(initial.replace("function_keys_schema\t4", "function_keys_schema\t10"), encoding="utf8")
+        self.assertFalse(self.bridge.function_keybinds()["cinema_supported"])
+        with self.assertRaisesRegex(backend.ValidationError, "观战录制快捷键"):
+            self.bridge.enqueue({"action": "configure_keys", "bindings": bindings})
+        status.write_text(initial.replace("function_keys_schema\t4", "function_keys_schema\t11"), encoding="utf8")
+        self.assertTrue(self.bridge.function_keybinds()["cinema_supported"])
+        job = self.bridge.enqueue({"action": "configure_keys", "bindings": bindings})
+        wire = self.bridge._wire({"id": job["id"], "payload": json.dumps(job["payload"])}).strip().split("\t")
+        self.assertEqual((len(wire), wire[-4:]), (50, ["VK_196_MOD_1", "VK_118_MOD_1", "VK_119_MOD_0", "11"]))
+        for name in backend.DIRECTOR_BINDING_NAMES:
+            self.assertEqual(self.bridge._validate({"action": name}), {"action": name})
+
+    def test_match_report_keeps_exact_numbers_and_previous_complete_snapshot(self):
+        self.assertEqual(self.bridge.latest_match_report(), {"report": None})
+        report = {"schema": 1, "units": [{"team": "blue", "classPath": UNIT, "combatLevel": 28,
+                   "ng": 2, "stats": {"Health_Max": {"base": 240.25, "current": 0}}}]}
+        self.write("match-report.json.bak", json.dumps(report))
+        self.write("match-report.json", '{"schema":')
+        self.assertEqual(self.bridge.latest_match_report()["report"], report)
+        self.write("match-report.json", json.dumps({**report, "saveNg": 3}))
+        newer = self.bridge.latest_match_report()["report"]
+        self.assertEqual(newer["saveNg"], 3)
+        self.assertNotIn("spawnLevel", newer["units"][0])
+        (self.bridge.runtime / "match-report.json.bak").unlink()
+        self.write("match-report.json", '{"schema":1,"units":[{"health":NaN}]}')
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.latest_match_report()
+
     def test_weather_bindings_travel_in_separate_columns_and_keep_older_schemas(self):
         status=self.bridge.runtime/'status.tsv'
         text=status.read_text(encoding='utf-8')
@@ -1702,6 +1771,20 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(raw), {"revision": 1, "pools": [pool]})
         self.assertEqual(self.request("GET", "/api/monster-pools")[2], raw)
         self.assertFalse(json.loads(self.request("GET", "/api/status")[2])["monster_pools"]["supported"])
+
+    def test_latest_match_route_accepts_local_read_only(self):
+        status, headers, raw = self.request("GET", "/api/match-report")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        self.assertEqual(json.loads(raw), {"report": None})
+        report = {"schema": 1, "build": "fixture", "units": [{"team": "red", "classPath": UNIT, "combatLevel": 30}]}
+        path = self.bridge.runtime / "match-report.json"
+        path.write_text(json.dumps(report), encoding="utf8")
+        status, _, raw = self.request("GET", "/api/match-report")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw), {"report": report})
+        self.assertEqual(self.request("GET", "/api/match-report", headers={"Origin": "https://evil.example"})[0], 403)
+        self.assertFalse((self.bridge.runtime / "inbox.tsv").exists())
 
     def test_origin_host_csrf_and_static_traversal_are_rejected(self):
         for headers in ({"Host": "evil.example"}, {"Origin": "https://evil.example"}, {"Origin": "null"}):

@@ -15,6 +15,8 @@ local TARGET_CHANGED='GameplayEvent.AI.TargetChanged'
 local CATCH_TIME,FINISH_TIME,MAX_HOLD=0.9,3.788884,12
 local PROTECTED={'CharacterState.Immortal','CharacterState.Stand.Invulnerable',
     'CharacterState.Unselectable','CharacterState.Dead','CharacterState.Hitreact.State.Executing','Driver.Driving'}
+local FIELD_DIFFICULTY={['CharacterType.Difficulty.Mob']=true,['CharacterType.Difficulty.Standard']=true,
+    ['CharacterType.Difficulty.Elite']=true}
 
 local function call(object,method,...)
     if not U.valid(object) then return false end
@@ -53,8 +55,14 @@ function Guillotine.new(options)
     local inGameThread=options.inGameThread or IsInGameThread
     local alive=true
     local hooked,captures,targets,pending={},{},{},{}
-    local session,roster,aims=nil,{},{}
+    local session,roster,aims,arenaFighting=nil,{},{},false
+    local nextFieldRefusal=0
     local syncAim
+    local function paused()return options.paused and options.paused()==true end
+    local function companionCaster(member)
+        return options.companionOpponent and member.team=='companion'
+            and not member.stand and not member.reserve and not member.aid
+    end
     local function say(text)options.log('[Guillotine] '..text)end
     local retry=Retry.new({clock=clock,log=say})
     local function read(actor,field)
@@ -72,7 +80,8 @@ function Guillotine.new(options)
     end
     local function source(record)
         local member=roster[record.source]
-        if not member or member.team~=record.sourceTeam or not options.live(member.actor)
+        if not member or member.team~=record.sourceTeam or member.class_path~=MBOSS
+            or not (record.field and companionCaster(member) or participant(member)) or not options.live(member.actor)
             or fullName(member.actor)~=record.sourceName or (read(member.actor,'Health') or 0)<=0 then return nil end
         return member.actor
     end
@@ -92,7 +101,8 @@ function Guillotine.new(options)
         return finite(position) and position or nil
     end
     local function canCatch(actor,member)
-        if not options.live(actor) or not U.npcPath(actor) or member.untargetable or options.isImmortal(member.team) then return false end
+        if not options.live(actor) or not U.npcPath(actor) then return false end
+        if member and (member.untargetable or options.isImmortal(member.team)) then return false end
         if options.immune and options.immune(actor,'grab') then return false end
         local asc=U.field(actor,'AbilitySystemComponent')
         for _,text in ipairs(PROTECTED)do
@@ -101,9 +111,32 @@ function Guillotine.new(options)
         end
         return (read(actor,'Health') or 0)>0
     end
+    local function canExecuteField(attacker,target,targetName,retained)
+        local key=U.key(target)
+        if not key or roster[key] or not options.mapVictim or not canCatch(target) or options.mapVictim(target)~=true then
+            return false,'地图角色归属或保护状态'
+        end
+        local config=U.field(target,'Actor Config')
+        local difficulty=U.struct(U.field(config,'Difficulty Tag'),'TagName')
+        local label=difficulty
+        if type(label)~='string' and difficulty~=nil then
+            local ok,value=pcall(function()return difficulty:ToString()end)
+            label=ok and value or nil
+        end
+        if not FIELD_DIFFICULTY[label] then return false,'原版目标级别 '..tostring(label) end
+        if read(target,'Health_Min')~=0 then return false,'原版锁血或底线未读回' end
+        local got,immune=call(U.field(target,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=fname('CharacterState.CanNotBeExecuted')})
+        if not got or immune~=0 then return false,'处决保护或未读回' end
+        local enemy
+        if retained then enemy=options.companionOpponent(attacker,target,targetName)
+        else enemy=options.companionOpponent(attacker) end
+        if U.key(enemy)~=key or fullName(enemy)~=targetName then return false,'实际敌对目标未读回' end
+        return true
+    end
     local function restoreDelay(record)
-        if record.delay==nil or not options.live(record.targetActor) then return true end
-        local actor=record.targetActor
+        if record.delay==nil then return true end
+        local actor=victim(record)
+        if not actor then return true end
         local actual=U.field(actor,'Death Delay')
         if actual~=record.wantedDelay then return actual~=nil end
         local ok=pcall(function()actor['Death Delay']=record.delay end)
@@ -144,11 +177,15 @@ function Guillotine.new(options)
         end
         record.visualStarted=confirmed
     end
-    local function execute(record,target)
+    local function execute(record,target,attacker,held)
+        if record.field then
+            local allowed,reason=canExecuteField(attacker,target,record.targetName,true)
+            if not allowed then release(record,'地图处决结算暂停 '..reason);return end
+        end
         if options.immune and (options.immune(target,'execution') or options.immune(target,'lethal')) then
             release(record,'魂的方案免疫铡刀致死');return
         end
-        preserveFinish(record,target)
+        if not record.field or held==true then preserveFinish(record,target) end
         local before=read(target,'Health')
         local floor=read(target,'Health_Min')
         record.writeAttempts=(record.writeAttempts or 0)+1
@@ -159,7 +196,7 @@ function Guillotine.new(options)
         say('原版铡刀致死点 '..record.targetName..' Health Override=0 调用='..tostring(called)
             ..' HP='..tostring(before)..' -> '..tostring(after)..' 底线='..tostring(floor)
             ..' '..tostring(ok and why or wrote or ''))
-        if not called and not (finite(after) and after<=0) then
+        if not (finite(after) and after<=0) and (not called or record.field and options.live(target)) then
             if record.writeAttempts>=2 then release(record,'生命归零调用未确认') end
             return
         end
@@ -172,16 +209,18 @@ function Guillotine.new(options)
         if not sameWorld(record) then release(record,'对战会话变化');return end
         local target=victim(record)
         local time=now()
-        if not target or not finite(time) or time<record.started or time-record.started>=MAX_HOLD then
+        if not target or not finite(time) or time<record.hitAt or time-record.hitAt>=MAX_HOLD then
             release(record,'目标离场或抓取超时');return
         end
+        if paused() then return end
         local held,finished=false,false
         if record.holding then held,finished=options.grabHeld(target) end
         if not record.executed then
             local attacker=source(record)
             local member=roster[record.target]
-            if record.abort or not attacker or not member or member.team~=record.targetTeam
-                or options.isImmortal(member.team) or not sourceActive(record.ability,attacker) then
+            local validVictim=record.field and member==nil or (not record.field and arenaFighting and member
+                and participant(member) and member.team==record.targetTeam and not options.isImmortal(member.team))
+            if record.abort or not attacker or not validVictim or not sourceActive(record.ability,attacker) then
                 release(record,record.abort or '致死点前施技者或目标状态变化');return
             end
             local hp=read(target,'Health')
@@ -195,10 +234,10 @@ function Guillotine.new(options)
                 local restored=options.stopGrab('受抓控制变化',target)
                 record.holding=restored~=true
             end
-            local elapsed=time-record.started
+            local elapsed=time-record.hitAt
             local _,dash=call(U.field(target,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=fname('Ability.Action.Hun.Dash')})
             if elapsed>=0.1 and finite(dash) and dash>0 and not record.dashCommit then record.dashCommit=time+0.05 end
-            if elapsed>=CATCH_TIME or (record.dashCommit and time>=record.dashCommit) then execute(record,target) end
+            if elapsed>=CATCH_TIME or (record.dashCommit and time>=record.dashCommit) then execute(record,target,attacker,held) end
             return
         end
         -- The native victim finish lasts past the caster montage. Death and its final animation are independent.
@@ -212,14 +251,20 @@ function Guillotine.new(options)
         if record.abort or not sameWorld(record) then release(record,record.abort or '对战会话变化');return end
         local attacker,target=source(record),victim(record)
         if not attacker or not target or not sourceActive(record.ability,attacker) then release(record,'原生命中身份未读回');return end
+        if paused() then return end
+        if record.field then
+            local allowed,reason=canExecuteField(attacker,target,record.targetName,true)
+            if not allowed then release(record,'地图处决接管暂停 '..reason);return end
+        end
         local time=now()
-        if not finite(time) or type(loop)~='function' or type(cancel)~='function' then release(record,'游戏线程计时未就绪');return end
-        record.started=time
+        if not finite(time) or time<record.hitAt or time-record.hitAt>=MAX_HOLD
+            or type(loop)~='function' or type(cancel)~='function' then release(record,'游戏线程计时未就绪或抓取超时');return end
+        record.started=true
         syncAim(roster[record.source],record.source,target)
         record.holding=true
         local ok,held,detail=pcall(options.playGrab,target,function()
-            return alive and captures[record.source]==record and sameWorld(record)
-        end)
+            return alive and captures[record.source]==record and sameWorld(record) and victim(record)~=nil
+        end,record.field)
         if captures[record.source]~=record then return end
         if not ok or held~=true then
             local restored,result=pcall(options.stopGrab,'受抓接管未完成',target)
@@ -235,7 +280,7 @@ function Guillotine.new(options)
         if captures[record.source]==record then record.timer=handle else pcall(cancel,handle) end
     end
     local function hit(context,payload)
-        if not alive or not session or not hooked[ENDED] or (type(inGameThread)=='function' and not inGameThread()) then return end
+        if not alive or not session or not hooked[ENDED] or (type(inGameThread)=='function' and not inGameThread()) or paused() then return end
         local bullet=U.struct(payload,'OptionalObject')
         local data=fullName(U.field(bullet,'BulletData'))
         if not data or data:match('^%S+ (/.+)$')~=BLADE then return end
@@ -243,16 +288,32 @@ function Guillotine.new(options)
         local ability=U.unwrap(context)
         local sourceKey,targetKey=U.key(attacker),U.key(target)
         local a,b=roster[sourceKey],roster[targetKey]
-        if not a or a.class_path~=MBOSS or not b or a.team==b.team or captures[sourceKey] or targets[targetKey]
-            or pending[targetKey] or not sourceActive(ability,attacker) or not canCatch(target,b) then return end
+        if not a or a.class_path~=MBOSS or not targetKey or captures[sourceKey] or targets[targetKey]
+            or pending[targetKey] or not sourceActive(ability,attacker) then return end
         local sourceName,targetName=fullName(attacker),fullName(target)
-        if not sourceName or not targetName then return end
-        local record={ability=ability,cast=U.key(ability),source=sourceKey,sourceName=sourceName,sourceTeam=a.team,
-            target=targetKey,targetActor=target,targetName=targetName,targetTeam=b.team,session=session,
+        if not sourceName or not targetName or sourceName~=fullName(a.actor) then return end
+        local field=companionCaster(a)==true
+        if field then
+            local allowed,reason=canExecuteField(attacker,target,targetName,false)
+            if not allowed then
+                local t=clock()
+                if t>=nextFieldRefusal then
+                    nextFieldRefusal=t+1
+                    say('地图原生命中暂缓接管 '..targetName..' 原因='..reason)
+                end
+                return
+            end
+        elseif not arenaFighting or not participant(a) or not b or not participant(b) or a.team==b.team or not canCatch(target,b) then
+            return
+        end
+        local hitAt=now()
+        if not finite(hitAt) then return end
+        local record={ability=ability,cast=U.key(ability),source=sourceKey,sourceName=sourceName,sourceTeam=a.team,field=field,
+            target=targetKey,targetActor=target,targetName=targetName,targetTeam=b and b.team,session=session,hitAt=hitAt,
             position=readPosition(ability,attacker)}
         captures[sourceKey]=record
         targets[targetKey]=record
-        say('铡刀原生命中读回 t='..tostring(record.position)..' '..sourceName..' -> '..targetName)
+        say('铡刀原生命中读回 t='..tostring(record.position)..(field and ' 地图随从 ' or ' 擂台 ')..sourceName..' -> '..targetName)
         local queued=pcall(defer,function()
             if alive and captures[sourceKey]==record then
                 local ok,why=pcall(startHold,record)
@@ -287,10 +348,17 @@ function Guillotine.new(options)
     end
     syncAim=function(member,key,hitTarget)
         local actor=member.actor
-        local target=hitTarget or options.opponentOf(key)
+        local target=hitTarget
+        if companionCaster(member) then
+            target=target or options.companionOpponent(actor)
+            if not U.npcPath(target) or U.key(target)==key then return end
+        else
+            target=target or options.opponentOf(key)
+            local opponent=roster[U.key(target)]
+            if not opponent or not participant(opponent) or opponent.team==member.team or opponent.untargetable then return end
+        end
+        if not options.live(target) then return end
         local targetKey=U.key(target)
-        local opponent=roster[targetKey]
-        if not opponent or opponent.team==member.team or opponent.untargetable or not options.live(target) then return end
         local component=U.field(actor,'BP_Guillotine')
         local meshKey=U.key(U.field(target,'Mesh'))
         if not U.valid(component) or not meshKey then return end
@@ -310,51 +378,69 @@ function Guillotine.new(options)
             ..' 一致='..tostring(after==targetKey and afterMesh==meshKey))
         return after==targetKey and afterMesh==meshKey
     end
-    function self:stop()
+    local function clear(arenaOnly)
         local restored=true
-        for _,record in pairs(captures)do if not release(record,'停止或换图') then restored=false end end
-        for key,record in pairs(pending)do if release(record,'重试抓取恢复') then pending[key]=nil else restored=false end end
-        session,roster,aims=nil,{},{}
+        arenaFighting=false
+        for _,record in pairs(captures)do
+            if (not arenaOnly or not record.field) and not release(record,'停止或换图') then restored=false end
+        end
+        for _,record in pairs(pending)do
+            if (not arenaOnly or not record.field) and not release(record,'重试抓取恢复') then restored=false end
+        end
+        if not arenaOnly then session,roster,aims=nil,{},{} end
         return restored
     end
+    function self:stopArena()return clear(true)end
+    function self:stop()return clear(false)end
     function self:prepare(members)
-        self:stop()
+        self:stopArena()
         for _,member in ipairs(members)do if participant(member) and member.class_path==MBOSS then install();return end end
     end
     function self:tick(members,status)
         if not alive then return end
         local fighting=status.battle_active and status.blue_count>0 and status.red_count>0
-        local hasCaster=false
+        local hasCaster,hasCompanion=false,false
         for _,member in ipairs(members)do
-            if participant(member) and member.class_path==MBOSS then hasCaster=true;break end
+            if member.class_path==MBOSS then
+                if fighting and participant(member) then hasCaster=true end
+                if companionCaster(member) then hasCompanion=true end
+                if hasCaster and hasCompanion then break end
+            end
         end
-        if not next(captures) and not next(pending) and (not fighting or not hasCaster) then
-            session,roster,aims=nil,{},{}
+        if not next(captures) and not next(pending) and not hasCaster and not hasCompanion then
+            session,roster,aims,arenaFighting=nil,{},{},false
             return
         end
         local current=options.session()
         if not current.game_ready or not current.game_session then self:stop();return end
         if session~=current.game_session then self:stop();session=current.game_session end
+        arenaFighting=fighting
         roster={}
         for _,member in ipairs(members)do
-            if participant(member) then
-                local key=U.key(member.actor)
-                if key then roster[key]=member end
-            end
+            local key=U.key(member.actor)
+            if key then roster[key]=member end
         end
         for _,record in pairs(captures)do
-            if not fighting and not record.executed then release(record,'致死点前交战结束')
+            if not record.executed and (not source(record) or not record.field and not fighting) then
+                release(record,'施技者离场或交战结束')
             elseif not record.started then startHold(record) end
         end
         for _,record in pairs(pending)do release(record,'重试抓取恢复') end
-        if not fighting or not hasCaster then return end
-        install()
-        for key,member in pairs(roster)do
-            if member.class_path==MBOSS and options.live(member.actor) and (read(member.actor,'Health') or 0)>0 and not captures[key] then
-                syncAim(member,key)
+        if paused() then return end
+        if hasCaster or (hasCompanion and options.mapVictim) then install() end
+        if not hasCaster and not hasCompanion then return end
+        local casters={}
+        for _,member in ipairs(members)do
+            if member.class_path==MBOSS and (companionCaster(member) or (fighting and participant(member)))
+                and options.live(member.actor) and (read(member.actor,'Health') or 0)>0 then
+                local key=U.key(member.actor)
+                if key then
+                    casters[key]=true
+                    if not captures[key] then syncAim(member,key) end
+                end
             end
         end
-        for key in pairs(aims)do if not roster[key] then aims[key]=nil end end
+        for key in pairs(aims)do if not casters[key] then aims[key]=nil end end
     end
     function self:silence()
         alive=false

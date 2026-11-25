@@ -234,4 +234,42 @@ do
     assert(not fight:holds(horse) and horse.destroying==true)
     print('ok - a mount follows its rider into a fight')
 end
+test('a companion sends only its native mount at its current map foe',function()
+    local calls,target={},nil
+    local valid={GetOuter=function()return world end}
+    local companion=rider('BP_Monster_JingYe_C')
+    companion.GetOuter=valid.GetOuter
+    local original=object({GetOuter=valid.GetOuter},'BP_Monster_Horse_JingYe_C')
+    local nearby=object({GetOuter=valid.GetOuter},'BP_Monster_Horse_JingYe_C')
+    local foe=object({GetOuter=valid.GetOuter},'BP_Monster_MoYuan_C')
+    local sp=object({GetOuter=valid.GetOuter,SpawnedAI=original},'BP_AISpawner_C')
+    local mounted=Mounts.new({
+        log=function()end,now=function()return now end,world=function()return world end,
+        hp=function()return 100 end,statics=function()return statics end,
+        scripts=function(a)return a.scripts end,
+        findClass=function()return spawnerClass end,findAll=function()return {sp}end,
+        isDestroying=function()return false end,destroy=function()end,
+        companionOpponent=function(actor)assert(actor==companion);return target end,
+        syncCompanionMount=function(mount,actor,enemy)
+            assert(actor==companion and enemy==foe)
+            calls[#calls+1]=mount;return true
+        end})
+    assert(mounted:prepare(companion,transform,world).ok)
+    companion.scripts={object({Pawn=companion,VehiclePawn=original,VehicleSpawner=sp},'AIScript_Rider_C')}
+    local roster={{actor=companion,team='companion'}}
+    target=foe
+    companion.BP_SGameDriverComponent.DrivingVehicle=nearby
+    mounted:tick(roster);assert(#calls==0)
+    companion.BP_SGameDriverComponent.DrivingVehicle=original
+    now=now+2;mounted:tick(roster);mounted:tick(roster)
+    assert(#calls==1 and calls[1]==original,'the owned native mount has one confirmed target')
+    target=nil;now=now+2;mounted:tick(roster);assert(#calls==1)
+    target=object({GetOuter=function()return object({},'OtherWorld') end},'BP_Monster_MoYuan_C')
+    now=now+2;mounted:tick(roster);assert(#calls==1,'a foreign world enemy does not reach the mount')
+    target=foe;now=now+2;mounted:tick({});assert(#calls==1,'removing the rider from the companion roster stops dispatch')
+    roster[1].stand=true;now=now+2;mounted:tick(roster);assert(#calls==1)
+    roster[1].stand=false
+    companion.BP_SGameDriverComponent.DrivingVehicle=nil
+    now=now+2;mounted:tick(roster);assert(#calls==1,'dismount stops dispatch')
+end)
 print('mounts: all tests passed')

@@ -1,4 +1,4 @@
--- Keep Yu Ding's normal grab when an arena opponent is protected by its native phase floor.
+-- Keep Yu Ding's normal grab when her opponent is protected by a verified native phase floor.
 local U=require('ue_observe')
 local Guard={}
 local ROOT='/PBZCombatAsset/ActorData/Mobs/'
@@ -40,7 +40,7 @@ local function hasHandle(info,key)
 end
 function Guard.new(o)
     local self={}
-    local actors,hooks={},{}
+    local actors,allies,hooks={},{},{}
     local find,load=o.staticFind or StaticFindObject,o.loadAsset or LoadAsset
     local register,unregister=o.registerHook or RegisterHook,o.unregisterHook or UnregisterHook
     local thread=o.inGameThread or IsInGameThread
@@ -54,13 +54,22 @@ function Guard.new(o)
         local ok,v=pcall(thread);return ok and v==true
     end
     local function protected(source,target)
-        local attacker,victim=actors[U.key(source)],actors[U.key(target)]
-        if not attacker or not victim or attacker.team==victim.team or attacker.class_path~=JADE or not VICTIMS[victim.class_path] then return false end
+        local targetKey=U.key(target)
+        local attacker=actors[U.key(source)]
+        if not attacker or attacker.class_path~=JADE or not targetKey then return false end
         local current=o.world();local player=o.player()
         if not same(current,world) or not U.valid(player) or same(player,source) or same(player,target)
             or not U.inWorld(source,current) or not U.inWorld(target,current)
-            or classPath(source)~=JADE or classPath(target)~=victim.class_path
+            or classPath(source)~=JADE
             or call(source,'IsPlayerControlled')==true or call(target,'IsPlayerControlled')==true then return false end
+        local targetClass=classPath(target)
+        if not VICTIMS[targetClass] then return false end
+        if attacker.team=='companion' then
+            if allies[targetKey] or tonumber((call(U.field(source,'Faction Component'),'GetFactionRelation',target)))~=2 then return false end
+        else
+            local victim=actors[targetKey]
+            if not victim or victim.team==attacker.team or victim.class_path~=targetClass then return false end
+        end
         local hp=o.hp(target)
         if type(hp)~='number' or not (hp>0) then return false end
         stats=stats or require('character_stats').new()
@@ -112,7 +121,7 @@ function Guard.new(o)
         say('回收本次致死投的受招慢动作；对象='..U.key(target)..' 调用='..tostring(stopped)..' 个人速度='..tostring(after))
     end
     function self:clear()
-        world=nil;actors={};retry=0
+        world=nil;actors,allies={},{};retry=0
         if next(hooks) and onThread()then
             for path,h in pairs(hooks)do
                 local ok,result=pcall(unregister,path,h[1],h[2])
@@ -124,20 +133,34 @@ function Guard.new(o)
     function self:sync(list,active)
         if not alive then return false end
         local jade,targets={},{}
-        if active then for _,m in ipairs(list)do
-            if not m.reserve and not m.stand and not m.aid and (m.team=='red' or m.team=='blue') then
-                if m.class_path==JADE then jade[m.team]=true elseif VICTIMS[m.class_path] then targets[m.team]=true end
+        for _,m in ipairs(list)do
+            if not m.reserve and not m.stand and not m.aid then
+                local team=m.team
+                if team=='companion' and m.class_path==JADE then
+                    jade.companion=true
+                elseif active and (team=='red' or team=='blue') then
+                    if m.class_path==JADE then jade[team]=true elseif VICTIMS[m.class_path] then targets[team]=true end
+                end
             end
-        end end
-        if not (jade.red and targets.blue or jade.blue and targets.red) then
+        end
+        local arenaPair=jade.red and targets.blue or jade.blue and targets.red
+        if not arenaPair and not jade.companion then
             if world or next(hooks) then self:clear()end
             return true
         end
-        world=o.world and o.world();actors={}
+        world=o.world and o.world();actors,allies={},{}
         if not U.valid(world) or not o.player or not onThread() then return false end
         for _,m in ipairs(list)do
-            if not m.reserve and not m.stand and not m.aid and (m.team=='blue' or m.team=='red') and (m.class_path==JADE or VICTIMS[m.class_path]) then
-                local key=U.key(m.actor);if key then actors[key]=m end
+            local team=m.team
+            local key=U.key(m.actor)
+            if key then
+                if team=='companion' then allies[key]=true end
+                if not m.reserve and not m.stand and not m.aid then
+                    if (team=='companion' and m.class_path==JADE)
+                        or (arenaPair and (team=='blue' or team=='red') and (m.class_path==JADE or VICTIMS[m.class_path])) then
+                        actors[key]=m
+                    end
+                end
             end
         end
         local complete=true

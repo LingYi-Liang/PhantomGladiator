@@ -208,9 +208,19 @@ function Mounts.new(options)
             record.key,tostring(seat),tostring(relation or '?'),registered,socket==nil and '?' or tostring(socket),
             tostring(blocked or '?'),snapshot.lockKnown and tostring(snapshot.locked==record.key) or '?',distance and string.format('%.1f',distance) or '?'))
     end
-    function self:tick()
+    function self:tick(members)
+        if not next(self.records) then return end
         local t=now()
         local snapshot
+        local companions={}
+        if options.companionOpponent and options.syncCompanionMount then
+            for _,member in ipairs(members or {})do
+                if member.team=='companion' and not member.stand and not member.reserve and not member.aid then
+                    local key=U.key(member.actor)
+                    if key and self.records[key] then companions[key]=true end
+                end
+            end
+        end
         for key,record in pairs(self.records)do
             if gone(record.rider) then self:release(record,'已不在场上')
             elseif not record.anchorOnly and not record.mount then
@@ -218,7 +228,15 @@ function Mounts.new(options)
                 local late=t-record.at>WAIT
                 local seated=U.valid(mount)
                 local vehicleSpawner
-                if not seated and late and t>=(record.nextScriptRead or 0) then
+                if companions[key] then
+                    if (seated or late) and t>=(record.nextScriptRead or 0) then
+                        record.nextScriptRead=t+2
+                        local native,spawner=scriptMount(record)
+                        if U.valid(native) and (not seated or U.key(native)==U.key(mount)) then
+                            mount,vehicleSpawner=native,spawner
+                        else mount=nil end
+                    end
+                elseif not seated and late and t>=(record.nextScriptRead or 0) then
                     record.nextScriptRead=t+2
                     mount,vehicleSpawner=scriptMount(record)
                 end
@@ -235,6 +253,26 @@ function Mounts.new(options)
                 elseif late and not record.warned then
                     record.warned=true;self.failures=self.failures+1
                     say(string.format('骑兵 %s：%d 秒内没骑上坐骑，继续等本体的坐骑记录',record.name,WAIT))
+                end
+            end
+            if companions[key] and self.records[key]==record and U.valid(record.mount) and t>=(record.nextCompanionAim or 0) then
+                record.nextCompanionAim=t+1
+                local rider=record.rider
+                local seat=U.field(U.field(rider,'BP_SGameDriverComponent'),'DrivingVehicle')
+                if U.key(seat)==U.key(record.mount) and Mounts.isOurs(record.spawner)
+                    and U.key(U.field(rider,'Spawner'))==U.key(record.spawner) and (options.hp(rider) or 0)>0 then
+                    local world=options.world()
+                    local target=options.companionOpponent(rider)
+                    if U.inWorld(rider,world) and U.inWorld(seat,world) and U.inWorld(target,world) then
+                        local native,spawner=scriptMount(record)
+                        if U.key(native)==U.key(seat) and U.key(spawner)==U.key(record.vehicleSpawner) then
+                            local aligned=options.syncCompanionMount(seat,rider,target)==true
+                            if record.companionAim~=U.key(target) or record.companionAimOk~=aligned then
+                                record.companionAim,record.companionAimOk=U.key(target),aligned
+                                say(string.format('随从骑兵 %s 坐骑目标 %s 读回=%s',record.name,className(target),tostring(aligned)))
+                            end
+                        end
+                    end
                 end
             end
             if self.records[key]==record and record.name=='BP_Monster_JingYe_C' and options.player and t-record.at>=2

@@ -2,6 +2,16 @@
 local U=require('ue_observe')
 local Renderer={}
 local CLASS='/Game/PBZContent/UI/Hud/WB_BossHPBar.WB_BossHPBar_C'
+local ROW_HEIGHT,ROW_PITCH=128,132
+local SIDE_MARGIN,TOP_MARGIN,BOTTOM_MARGIN=24,18,24
+local MIN_SCALE=0.5
+local HIDDEN,SHOWN=2,3 -- ESlateVisibility.Hidden and HitTestInvisible.
+local function densityScale(count,height)
+    if type(count)~='number' or count<=3 then return 1 end
+    local density=math.sqrt(3/count)
+    local fit=height and (height-TOP_MARGIN-BOTTOM_MARGIN)/(count*ROW_PITCH) or density
+    return math.max(MIN_SCALE,math.min(density,fit))
+end
 local function same(a,b)local key=U.key(a);return key~=nil and key==U.key(b)end
 local function call(obj,name,...)
     assert(U.valid(obj),'invalid widget object: '..name)
@@ -10,6 +20,9 @@ end
 local function text(value)
     if type(value)=='string' then return value end
     local ok,s=pcall(function()return value:ToString()end);return ok and s or nil
+end
+local function dimension(value)
+    return type(value)=='number' and value>0 and value<math.huge
 end
 local function readText(block)
     if not U.valid(block) then return nil end
@@ -20,6 +33,23 @@ function Renderer.new(options)
     local function library(path)local value=StaticFindObject(path);assert(U.valid(value),'missing '..path);return value end
     local function makeText(value)
         return call(library('/Script/Engine.Default__KismetTextLibrary'),'Conv_StringToText',value)
+    end
+    local function viewport(world,frame)
+        local key=U.key(world)
+        local cached=frame and key and frame[key]
+        if cached~=nil then return cached end
+        local ok,screen=pcall(function()
+            local layout=library('/Script/UMG.Default__WidgetLayoutLibrary')
+            local size=call(layout,'GetViewportSize',world)
+            local scale=call(layout,'GetViewportScale',world)
+            local width,height=U.struct(size,'X'),U.struct(size,'Y')
+            if dimension(width) and dimension(height) and dimension(scale) then
+                return {width=width/scale,height=height/scale}
+            end
+        end)
+        screen=ok and screen or false
+        if frame and key then frame[key]=screen end
+        return screen
     end
     function self:create(unit)
         local record={};local ok,why=pcall(function()
@@ -53,7 +83,7 @@ function Renderer.new(options)
             assert(same(U.field(tree,'RootWidget'),overlay),'private root readback mismatch')
             record.numeric=numeric;record.overlay=overlay;record.world=world;record.pc=pc
             assert(U.valid(unit.actor) and U.valid(widget));widget.Character=unit.actor
-            call(widget,'SetVisibility',3) -- ESlateVisibility.HitTestInvisible in this build.
+            call(widget,'SetVisibility',SHOWN)
             call(widget,'AddToViewport',-1) -- Keep menus and the normal HUD above this layer.
             call(widget,'Init',unit.actor)
             assert(same(U.field(widget,'Character'),unit.actor),'private actor binding failed')
@@ -70,34 +100,46 @@ function Renderer.new(options)
         if value>0 and rounded==0 then rounded=0.1 end
         return rounded%1==0 and string.format('%.0f',rounded) or string.format('%.1f',rounded)
     end
-    function self:update(record,unit,hp,maximum,title,row,frame,vitals)
+    function self:update(record,unit,hp,maximum,title,row,frame,vitals,sideCount,hidden)
         local widget,numeric=record.widget,record.numeric
-        if not U.valid(widget) or not U.valid(numeric) or not same(U.field(widget,'Character'),unit.actor) then return false,'private binding lost' end
+        if not U.valid(widget) or not U.valid(numeric) or not U.valid(record.overlay)
+            or not same(U.field(widget,'Character'),unit.actor) then return false,'private binding lost' end
         local ok,result=pcall(function()
             assert(U.valid(record.world),'HUD world unavailable')
-            local worldKey=U.key(record.world)
-            local screenWidth=frame and worldKey and frame[worldKey]
-            if not screenWidth then
-                local layout=library('/Script/UMG.Default__WidgetLayoutLibrary')
-                local size=call(layout,'GetViewportSize',record.world);local scale=call(layout,'GetViewportScale',record.world)
-                local width=U.struct(size,'X');assert(type(width)=='number' and type(scale)=='number' and scale>0,'viewport size unavailable')
-                screenWidth=width/scale
-                if frame and worldKey then frame[worldKey]=screenWidth end
+            assert(call(widget,'IsInViewport')==true,'private viewport attachment lost')
+            local screen=viewport(record.world,frame)
+            if screen then
+                local screenWidth=screen.width
+                local barWidth=math.min(700,math.max(240,(screenWidth-72)/2))
+                local factor=densityScale(sideCount,screen.height)
+                local oldFactor=record.factor or 1
+                if oldFactor~=factor then
+                    -- Scale our overlay as a whole, preserving the native strips and added numeric line.
+                    -- Each bar has its own viewport slot, so row spacing is reduced explicitly below.
+                    call(record.overlay,'SetRenderTransformPivot',{X=0,Y=0})
+                    call(record.overlay,'SetRenderScale',{X=factor,Y=factor})
+                    local scale=U.struct(U.field(record.overlay,'RenderTransform'),'Scale')
+                    local x,y=U.struct(scale,'X'),U.struct(scale,'Y')
+                    assert(type(x)=='number' and type(y)=='number' and math.abs(x-factor)<.001 and math.abs(y-factor)<.001,
+                        'private bar scale readback mismatch')
+                    record.factor=factor
+                    if row==1 then log(string.format('[ArenaHUD] %s 侧 %d 条血条缩放读回 %.2f',unit.team,sideCount or 1,x)) end
+                end
+                local placement=unit.team..':'..row..':'..screenWidth..':'..factor
+                if record.placement~=placement then
+                    local x=unit.team=='blue' and SIDE_MARGIN or screenWidth-SIDE_MARGIN-barWidth*factor
+                    call(widget,'SetAlignmentInViewport',{X=0,Y=0})
+                    call(widget,'SetDesiredSizeInViewport',{X=barWidth,Y=ROW_HEIGHT})
+                    call(widget,'SetPositionInViewport',{X=x,Y=TOP_MARGIN+(row-1)*ROW_PITCH*factor},false)
+                    record.placement=placement
+                end
             end
-            local barWidth=math.min(700,math.max(240,(screenWidth-72)/2))
-            local x=unit.team=='blue' and 24 or screenWidth-24-barWidth
-            local placement=unit.team..':'..row..':'..screenWidth
-            if record.placement~=placement then
-                call(widget,'SetAlignmentInViewport',{X=0,Y=0})
-                call(widget,'SetDesiredSizeInViewport',{X=barWidth,Y=128})
-                call(widget,'SetPositionInViewport',{X=x,Y=18+(row-1)*132},false)
-                record.placement=placement
-            end
-            -- The native widget may hide itself after combat/cinematic tag events.
-            -- This instance belongs only to this Mod and must stay visible while alive.
-            if call(widget,'GetVisibility')~=3 then call(widget,'SetVisibility',3)end
-            call(record.overlay,'SetVisibility',3)
-            call(numeric,'SetVisibility',3)
+            -- Keep native combat/cinematic events from hiding an owned bar outside the menu.
+            -- Leave render opacity to the photography mask.
+            local visibility=(hidden or not record.placement) and HIDDEN or SHOWN
+            if call(widget,'GetVisibility')~=visibility then call(widget,'SetVisibility',visibility)end
+            if call(record.overlay,'GetVisibility')~=visibility then call(record.overlay,'SetVisibility',visibility)end
+            call(numeric,'SetVisibility',SHOWN)
             local name=U.field(widget,'BossName')
             if readText(name)~=title then call(widget,'ForSeq_SetNameText',makeText(title))end
             local box=U.field(widget,'BossNameHorBox');if U.valid(box) then call(box,'SetVisibility',3)end
@@ -120,13 +162,14 @@ function Renderer.new(options)
             end
             if readText(numeric)~=value then call(numeric,'SetText',makeText(value))end
             actual=U.field(bar,'CurPercent')
-            local state={visible=call(widget,'IsVisible')==true,names=readText(name)==title,
+            local state={visible=call(widget,'IsVisible')==true,names=readText(name)==title,layoutPending=not screen,
                 health=(healthVerified==true or (not vitals and type(actual)=='number' and math.abs(actual-ratio)<0.002)),shachi=shachiVerified,numbers=readText(numeric)==value}
-            local signature=title..':'..math.floor(ratio*10)..':'..tostring(state.visible)..':'..tostring(state.names)..':'..tostring(state.health)..':'..tostring(state.numbers)..':'..tostring(shachiVerified)
+            local signature=title..':'..math.floor(ratio*10)..':'..tostring(state.visible)..':'..tostring(state.names)..':'..tostring(state.health)..':'..tostring(state.numbers)..':'..tostring(shachiVerified)..':'..tostring(state.layoutPending)
             if record.signature~=signature then
                 record.signature=signature
                 log('[ArenaHUD] 显示读回 name='..title..' HP='..value..' visible='..tostring(state.visible)
-                    ..' name_ok='..tostring(state.names)..' hp_ok='..tostring(state.health)..' number_ok='..tostring(state.numbers)..' shachi_ok='..tostring(shachiVerified))
+                    ..' name_ok='..tostring(state.names)..' hp_ok='..tostring(state.health)..' number_ok='..tostring(state.numbers)
+                    ..' shachi_ok='..tostring(shachiVerified)..' layout_pending='..tostring(state.layoutPending))
             end
             return state
         end)

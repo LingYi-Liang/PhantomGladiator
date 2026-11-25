@@ -19,6 +19,7 @@ local world=object('World');local assets,props,byPath={},{},{}
 local domainPath='/SGameAI/Tools/MobDomain/BP_MobDomain.BP_MobDomain_C'
 local spawnerPath='/SGameAI/Tools/Spawner/BP_AISpawner.BP_AISpawner_C'
 local root='/PBZCombatAsset/ActorData/Mobs/035_HuaShan/'
+local masks='/Game/RenewalContent/Actors/Mobs/Normal/'
 local function leaf(path)return path:match('%.([^%.]+)$') end
 local function fn(v)return {ToString=function()return v end}end
 local function pathOf(o)return o:GetFullName():match('^%S+ (.+)$')end
@@ -106,7 +107,7 @@ function statics:FinishSpawningActor(a)
     if a:GetClass()==cls(spawnerPath)then assert(a.InitialSpawn==false and a.AutoRespawnOnDead==false and a.SpawnedAI==nil)end
     a.finished=true;return a
 end
-local t=0;local foes={};local worldNow=world;local list={}
+local t=0;local foes,companionFoes={},{};local worldNow=world;local list={}
 local ai=object('AILibrary')
 function ai:SetValueAsVectorByTag(bb,tag,v)bb[tag.TagName:ToString()]=v end
 function ai:GetValueAsVectorByTag(bb,tag)return bb[tag.TagName:ToString()]end
@@ -125,6 +126,7 @@ local function lookup(p)return libs[p] or cls(p)end
 local opts={world=function()return worldNow end,statics=function()return statics end,find=lookup,load=lookup,fname=fn,
     now=function()return t end,hp=function(a)return a.hp end,aiOf=function(a)return a.ai end,
     opponent=function(a)return foes[a]end,busy=function(a)return a.busy==true end,
+    companionOpponent=function(a)return companionFoes[a]end,companionFighting=function(a)return a.combat==true end,
     location=function(a)return a.at end,log=function(l)logs[#logs+1]=l end,
     invalid=function()return {IsValid=function()return false end}end,
     construct=function(c,d)
@@ -146,11 +148,18 @@ local function fighter(path,position)
     return actor
 end
 local function party(red,team,offset)
+    local jade=red=='jade'
+    local pair=red=='puppet' or red=='swordswoman'
     local leader=red and 'BP_Monster_HuaShan_RedTroop_BigBro' or 'BP_Monster_HuaShan_Blue'
     local child=red and 'BP_Monster_HuaShan_RedTroop_Soldier' or 'BP_Monster_HuaShan_White'
+    local maskOrder={'BP_Monster_JadeMaskMan','BP_Monster_GoldMaskMan','BP_Monster_IronMaskMan'}
+    local puppet=root..'BP_Monster_HuaShan_JianOu.BP_Monster_HuaShan_JianOu_C'
+    local swordswoman='/PBZCombatAsset/ActorData/Mobs/034_EMei/BP_Monster_EMei_Sword_JianZhen.BP_Monster_EMei_Sword_JianZhen_C'
+    local pairOrder=red=='puppet' and {puppet,swordswoman} or {swordswoman,puppet}
     local token={nativeFormation=true};local rows={}
-    for i=1,7 do
-        local id=i==1 and leader or child;local path=root..id..'.'..id..'_C'
+    for i=1,pair and 2 or jade and 3 or 7 do
+        local id=jade and maskOrder[i] or (i==1 and leader or child)
+        local path=pair and pairOrder[i] or (jade and masks or root)..id..'.'..id..'_C'
         local actor=fighter(path,{X=offset+30*i,Y=10,Z=64})
         rows[i]={actor=actor,path=path,transform={Translation=actor.at},parent=i>1 and rows[1].actor or nil}
         list[#list+1]={actor=actor,class_path=path,team=team,formationGroup=token,formation=i==1}
@@ -236,7 +245,79 @@ local private=rows[1].actor.MobGroup
 assert(private~=template and private.MobDomain:GetClass()==cls(domainPath) and private:GetOuter()==private.MobDomain)
 assert(#template.Members==0 and template.MobDomain==world)
 sharedDefault=false
-manage:roster({});t=9;manage:tick();manage:silence(true)
+local pet,allied=party(false,'companion',9000)
+assert(manage:prepare(pet,allied,world,'companion'),'white formation can join the map as a companion')
+assert(manage:ready(pet) and manage:activated(pet))
+local leader=allied[1].actor
+local mapEnemy=fighter('/Game/Fixture.MapEnemy_C',{X=12000,Y=10,Z=64})
+local petDomain=leader.MobGroup.MobDomain
+assert(not petDomain:IsActorInMobDomain(aj) and not petDomain:IsActorInMobDomain(mapEnemy))
+assert(#leader.Spawner:GetOtherAliveMembersInGroup()==6)
+companionFoes[leader]=mapEnemy
+leader.at={X=11400,Y=8,Z=61}
+total=#events
+leader.combat=false;t=9;manage:tick();assert(#events==total)
+leader.combat=true;t=10;manage:tick();t=10.6;manage:tick()
+assert(#events==total+1 and events[#events]==leader)
+assert(leader.ai.BlackboardComponent['AI.BlackboardKey.Vector.DomainCenter'].X==11400)
+assert(petDomain:IsActorInMobDomain(mapEnemy) and not petDomain:IsActorInMobDomain(aj) and not mapEnemy.MobGroup)
+t=11;manage:tick();assert(#events==total+1)
+companionFoes[leader]=nil;leader.combat=false;t=12;manage:tick();t=14;manage:tick()
+assert(not petDomain:IsActorInMobDomain(mapEnemy))
+leader.Controller.tree=nil
+companionFoes[leader]=mapEnemy;leader.combat=true;t=15;manage:tick();t=15.6;manage:tick()
+assert(#events==total+2 and events[#events]==leader)
+local redPet,redAllied=party(true,'companion',13000)
+assert(Party.supportsCompanion(redAllied[1].path),'red native leader must offer its formation to companions')
+assert(manage:prepare(redPet,redAllied,world,'companion') and manage:ready(redPet) and manage:activated(redPet))
+local ajFollower=redAllied[1].actor
+assert(#ajFollower.Spawner:GetOtherAliveMembersInGroup()==6)
+local before=#opens
+companionFoes[ajFollower]=mapEnemy
+t=16;manage:tick();assert(#opens==before)
+ajFollower.combat=true;t=17;manage:tick();t=18;manage:tick()
+assert(#opens==before+1 and opens[#opens]==ajFollower)
+assert(ajFollower.MobGroup.MobDomain:IsActorInMobDomain(mapEnemy) and not mapEnemy.MobGroup)
+local jade,maskRows=party('jade','companion',15000)
+assert(Party.supportsCompanion(maskRows[1].path))
+assert(manage:prepare(jade,maskRows,world,'companion') and manage:ready(jade) and manage:activated(jade))
+local jadeLeader=maskRows[1].actor
+local openCount,eventCount=#opens,#events
+companionFoes[jadeLeader]=mapEnemy;jadeLeader.combat=true
+companionFoes[ajFollower]=nil;ajFollower.combat=false
+t=19;manage:tick();t=21;manage:tick()
+companionFoes[ajFollower]=mapEnemy;ajFollower.combat=true
+t=22;manage:tick()
+assert(#opens==openCount and #events==eventCount,'Jade has no HuaShan opener and the red transformation is once per life')
+local peers=jadeLeader.Spawner:GetOtherAliveMembersInGroup()
+assert(#peers==2 and peers[1]:GetPawn()==maskRows[2].actor and peers[2]:GetPawn()==maskRows[3].actor)
+assert(not mapEnemy.MobGroup and jadeLeader.MobGroup.MobDomain:IsActorInMobDomain(mapEnemy))
+maskRows[2].actor.hp=0
+assert(#jadeLeader.Spawner:GetOtherAliveMembersInGroup()==1)
+local puppetToken,puppetRows=party('puppet','companion',17000)
+local swordToken,swordRows=party('swordswoman','companion',19000)
+assert(Party.supportsCompanion(puppetRows[1].path) and Party.supportsCompanion(swordRows[1].path),
+    'both original Sword of Despair formation cards should support a private companion party')
+local generalSword=puppetRows[2].path:gsub('JianZhen','Top')
+local originalPlacement=puppetRows[2].path
+puppetRows[2].path=generalSword
+assert(not manage:prepare(puppetToken,puppetRows,world,'companion'),
+    'the original healing tree filters the formation sword class, not the other red swordswoman')
+puppetRows[2].path=originalPlacement
+for _,arrangement in ipairs({{puppetToken,puppetRows},{swordToken,swordRows}})do
+    local token,roster=arrangement[1],arrangement[2]
+    assert(manage:prepare(token,roster,world,'companion') and manage:ready(token) and manage:activated(token))
+    local first,second=roster[1].actor,roster[2].actor
+    local members=first:GetAISpawner():GetOtherAliveMembersInGroup()
+    assert(#members==1 and members[1]:GetPawn()==second and first:GetMobGroup()==second:GetMobGroup())
+    assert(#second:GetMobGroup():GetAliveMemberPawns()==2)
+    companionFoes[first]=mapEnemy;first.combat=true
+end
+assert(puppetRows[1].actor:GetMobGroup()~=swordRows[1].actor:GetMobGroup())
+t=23;manage:tick()
+assert(#opens==openCount and #events==eventCount,'this original pair does not use the unrelated HuaShan opening')
+assert(puppetRows[1].actor.MobGroup.MobDomain:IsActorInMobDomain(mapEnemy) and not mapEnemy.MobGroup)
+manage:roster({});t=24;manage:tick();manage:silence(true)
 for _,a in ipairs(created)do assert(not a.live)end
-for _,rows in ipairs({blue,red,twins})do for _,r in ipairs(rows)do assert(r.actor.live and not r.actor.Spawner and not r.actor.MobGroup)end end
-print('PASS native memberships before dispatch, two private domains, 6 recipients, same-group donor and revival, independent opening and cleanup')
+for _,rows in ipairs({blue,red,twins,allied,redAllied,maskRows,puppetRows,swordRows})do for _,r in ipairs(rows)do assert(r.actor.live and not r.actor.Spawner and not r.actor.MobGroup)end end
+print('PASS private HuaShan, Jade and Sword of Despair groups, companion encounters, native membership, same-group revival, and cleanup')

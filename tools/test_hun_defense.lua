@@ -77,6 +77,7 @@ local function fixture(ai,wrongOwner,resources,rejectFirst)
         register=function(path,callback) assert(path:find('OnEvadeDamage',1,true));t.result=callback;return 11,12 end,
         unregister=function(_,a,b) assert(a==11 and b==12);t.result=nil end,
         log=function(message) t.logs=t.logs or {};t.logs[#t.logs+1]=message end,
+        guard={pressed=function(_,x)assert(x==r);t.announced=(t.announced or 0)+1 end},
         now=function()return t.time end, random=function()return t.roll end,
         loop=function(ms,callback)
             assert(ms==20);t.callback=callback
@@ -104,6 +105,7 @@ do
     h.frames[1]=frame(h.time+.04,false)
     old();assert(h.presses==0,'a retired defense timer acted on the new lifetime')
     h.callback();assert(h.presses==1)
+    assert(h.announced==1,'a started guard is announced to the action guard')
 end
 do
     local h=fixture();local specs=h.asc.ActivatableAbilities.Items

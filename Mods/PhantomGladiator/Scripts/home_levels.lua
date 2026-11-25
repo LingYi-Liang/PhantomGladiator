@@ -18,7 +18,7 @@ local CYCLE_LEVELS=25
 local MAX_CYCLE=6
 local MAX_PICK=MAX_LEVEL+MAX_CYCLE*CYCLE_LEVELS
 -- Global Mob Level Offset of each difficulty (GlobalConfig_Combat_*): only the lowest sets one.
-local GLOBAL={handicapped=-1}
+local GLOBAL={handicapped=-1,easy=0,normal=0,hard=0,nightmare=0}
 -- Codex home map -> its areas in DT_AIAreaLevel, for units without native levels; `extra` areas carry the map's
 -- name but are not where its own units live (血色森林's XueSeSenLin is 24, its FujizhilinA–C are 4–6).
 local MAP_AREAS={
@@ -70,6 +70,12 @@ local function spawned(level,context)
     local lv=level+(GLOBAL[string.lower(tostring(context.difficulty or ''))] or 0)
     if lv<1 then lv=1 end
     return lv+cycleBonus(context.cycle,context.exempt)
+end
+
+local function provenance(base,context)
+    return {levelBase=base,difficultyOffset=GLOBAL[string.lower(tostring(context.difficulty or ''))],
+        cycle=context.cycle,cycleExempt=context.exempt,
+        cycleBonus=context.cycle and (context.cycle==0 or context.exempt~=nil) and cycleBonus(context.cycle,context.exempt) or nil}
 end
 
 function Levels.new(options)
@@ -134,12 +140,13 @@ function Levels.new(options)
     local function nativeChoices(unit,ctx)
         local list,byKey={}, {}
         for _,row in ipairs(native[unit] or {})do
-            local level,area,map,count=spawned(tonumber(row[1]) or 0,ctx),row[2] or '',row[3] or '',tonumber(row[4]) or 1
+            local base=tonumber(row[1]) or 0
+            local level,area,map,count=spawned(base,ctx),row[2] or '',row[3] or '',tonumber(row[4]) or 1
             local key=level..'\t'..map..'\t'..part(area)
             local entry=byKey[key]
             if entry then entry.count=entry.count+count
             else
-                entry={level=level,source='native',map=mapName(map),map_id=map,part=part(area),area=area,count=count}
+                entry={level=level,base=base,source='native',map=mapName(map),map_id=map,part=part(area),area=area,count=count}
                 byKey[key]=entry;list[#list+1]=entry
             end
         end
@@ -174,16 +181,16 @@ function Levels.new(options)
             for _,name in ipairs(areas)do
                 local level=self.areas[name]
                 if level then
-                    local entry={level=spawned(level,ctx),source='area',map=home.name,part=part(name)}
+                    local entry={level=spawned(level,ctx),base=level,source='area',map=home.name,part=part(name),area=name}
                     list[#list+1]=entry
                     if not deepest or entry.level>deepest.level then deepest=entry end
                 end
             end
             for _,name in ipairs(areas.extra or {})do
-                if self.areas[name] then list[#list+1]={level=spawned(self.areas[name],ctx),source='extra',map=home.name,part=''} end
+                if self.areas[name] then list[#list+1]={level=spawned(self.areas[name],ctx),base=self.areas[name],source='extra',map=home.name,part='',area=name} end
             end
         elseif home and home.map==PROLOGUE then
-            deepest={level=spawned(1,ctx),source='prologue',map=home.name,part=''}
+            deepest={level=spawned(1,ctx),base=1,source='prologue',map=home.name,part=''}
             list[#list+1]=deepest
         end
         return list,deepest
@@ -197,7 +204,7 @@ function Levels.new(options)
         local ctx=summonContext(actor)
         local _,default=self:choices(unit,ctx)
         return default and {level=default.level,source=default.source,map=default.map,part=default.part,area=default.area,
-            count=default.count,difficulty=ctx.difficulty,cycle=ctx.cycle,exempt=ctx.exempt} or nil
+            count=default.count,difficulty=ctx.difficulty,cycle=ctx.cycle,exempt=ctx.exempt,report=provenance(default.base,ctx)} or nil
     end
 
     -- The level of where a point of this world is, from the game's own spawners (native_places.lua): the highest
@@ -218,7 +225,8 @@ function Levels.new(options)
         local p=within or closest
         if not p then return nil end
         local dx,dy,dz=p[1]-x,p[2]-y,p[3]-z
-        return {level=spawned(p[4],summonContext(actor)),distance=math.sqrt(dx*dx+dy*dy+dz*dz),near=within~=nil}
+        local ctx=summonContext(actor)
+        return {level=spawned(p[4],ctx),distance=math.sqrt(dx*dx+dy*dy+dz*dz),near=within~=nil,report=provenance(p[4],ctx)}
     end
 
     -- A live map reference already includes the save's cycle. Rebase only when that contribution is known.
@@ -232,11 +240,14 @@ function Levels.new(options)
         end
         local base=level-cycleBonus(current,exempt)
         if base<1 then return nil,'参照怪的基础等级无法换算' end
-        return base+cycleBonus(self.cycle-1,exemption(actor))
+        local wanted,ownExempt=self.cycle-1,exemption(actor)
+        return base+cycleBonus(wanted,ownExempt),nil,{levelBase=base,cycle=wanted,cycleExempt=ownExempt,
+            cycleBonus=(wanted==0 or ownExempt~=nil) and cycleBonus(wanted,ownExempt) or nil,levelReference=level,referenceCycle=current}
     end
 
     function self:withoutPlace(actor)
-        return spawned(1,summonContext(actor))
+        local ctx=summonContext(actor)
+        return spawned(1,ctx),provenance(1,ctx)
     end
 
     function self:export()

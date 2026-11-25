@@ -13,6 +13,8 @@ local FIRST_HOP=POSE_DIR..'Hun_LionHead_B_Dodge_F_R.Hun_LionHead_B_Dodge_F_R'
 local HOP=POSE_DIR..'Hun_LionHead_B_Battle_Walk_Fwd_R.Hun_LionHead_B_Battle_Walk_Fwd_R'
 local IDLE=POSE_DIR..'Hun_LionHead_B_Battle_Idle_R.Hun_LionHead_B_Battle_Idle_R'
 local HEAD_TAG='CharacterState.HasTempWeapon.HouHouHouHead'
+local POLE_TAG='CharacterState.AbilityState.LionDancer.OnPole'
+local ABILITY_UTILS='/Script/SGameUtils.Default__AbilityUtils'
 local ABILITY='/Script/GameplayAbilities.Default__AbilitySystemBlueprintLibrary'
 local SWITCH='GameplayEvent.Ability.Action.TempWeapon.ForceSwitch'
 local LAUNCH_FRAME,SHOT_END=0.990279,2.766667
@@ -69,6 +71,35 @@ function Combat.new(options)
         local ok,count=call(U.field(actor,'AbilitySystemComponent'),'GetGameplayTagCount',{TagName=name(HEAD_TAG)})
         return ok and type(count)=='number' and count or nil
     end
+    local function poleCount(asc)
+        local ok,count=call(asc,'GetGameplayTagCount',{TagName=name(POLE_TAG)})
+        return ok and type(count)=='number' and count>=0 and count or nil
+    end
+    local function offerPoleTarget(seat,control)
+        if not seat.confirmed or not seat.pickup or not seat.pickup.planned or not control.nativeHead then return end
+        local asc=U.field(seat.actor,'AbilitySystemComponent')
+        local count=poleCount(asc)
+        if count==nil or count>0 then return end
+        local utils=object(ABILITY_UTILS)
+        local added=call(utils,'AddLooseGameplayTag',seat.actor,{TagName=name(POLE_TAG)},false)
+        local after=poleCount(asc)
+        if (after and after>0) or (after==nil and added) then control.poleTag={asc=asc,utils=utils} end
+        say('已落桩挑战者通知原版舞狮选招 actor='..seat.key..' 桩标签读回='..tostring(after))
+    end
+    local function restorePoleTarget(seat,control)
+        local record=control.poleTag
+        if not record or not live(seat.actor,seat.world)
+            or not same(U.field(seat.actor,'AbilitySystemComponent'),record.asc) then return true end
+        local before=poleCount(record.asc)
+        if before==nil then return false end
+        if before==0 or record.expected and before<=record.expected then control.poleTag=nil;return true end
+        if record.expected then return false end
+        local removed=call(record.utils,'RemoveLooseGameplayTag',seat.actor,{TagName=name(POLE_TAG)},false)
+        local after=poleCount(record.asc)
+        if after and after<before then control.poleTag=nil;return true end
+        if removed and after==nil then record.expected=before-1 end
+        return false
+    end
     local function weaponsOf(actor)
         return U.field(actor,'Character Weapons Component')
     end
@@ -119,6 +150,7 @@ function Combat.new(options)
         local control=seat.combat
         if not control then return true end
         local restored=stopPose(control)
+        restored=restorePoleTarget(seat,control) and restored
         if matches(control.bullet,seat,control) then
             local state=U.field(control.bullet,'BulletStatus')
             if state==1 or state==2 then call(control.bullet,'Deactivate',0.0) end
@@ -190,6 +222,7 @@ function Combat.new(options)
             say('上桩改用狮头 actor='..seat.key..' 暂停原招调用='..tostring(ok)..' 读回='..tostring(read))
             if not ok or read~=true then return false end
         end
+        offerPoleTarget(seat,control)
         return true
     end
     function self:held(seat)

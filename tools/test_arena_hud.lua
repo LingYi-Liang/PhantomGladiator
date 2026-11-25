@@ -9,10 +9,10 @@ local renderer={}
 function renderer:create(unit)
     created=created+1;return {widget=object(100+created),actor=unit.actor}
 end
-function renderer:update(record,unit,hp,maximum,title,row)
+function renderer:update(record,unit,hp,maximum,title,row,_,_,sideCount,hidden)
     if record.actor~=unit.actor then return false,'fixture rebind' end
-    updates[#updates+1]={hp=hp,maximum=maximum,title=title,row=row}
-    return {visible=true,health=true,names=true,numbers=true}
+    updates[#updates+1]={hp=hp,maximum=maximum,title=title,row=row,sideCount=sideCount,hidden=hidden}
+    return {visible=not hidden,health=true,names=true,numbers=true}
 end
 function renderer:remove(record)removed=removed+1;record.widget.alive=false;return true end
 function renderer:syncNative(desired,privateKeys)self.desired=desired;self.privateKeys=privateKeys end
@@ -81,6 +81,41 @@ do
     assert(updates[#updates-1].title=='蓝队 · 虚空' and updates[#updates].title=='红队 · 弦者')
     assert(updates[#updates].hp==70 and updates[#updates].maximum==100)
     extraBars:clear()
+end
+
+do
+    local hidden=false
+    local compact=HUD.new({renderer=renderer,isBoss=function()return true end,
+        hp=function(actor)return actor.hp end,maxHP=function()return 100 end,
+        menuHidden=function(active)return active and hidden end})
+    local rows={}
+    for i=1,7 do
+        local actor=object(20+i);actor.hp=100
+        rows[i]={actor=actor,team=i<=4 and 'blue' or 'red',class_path='/Game/Test.Test_C'}
+    end
+    local first=#updates+1
+    compact:sync(rows)
+    assert(updates[first].sideCount==4 and updates[first+3].row==4
+        and updates[first+4].sideCount==3 and updates[first+6].row==3,'each side sees its own live total')
+    rows[2].actor.hp=0
+    compact:sync(rows)
+    assert(updates[#updates-3].sideCount==3,'losing a blue bar restores the three-bar layout')
+    local before=created
+    hidden=true
+    rows[8]={actor=object(28),team='red',class_path='/Game/Test.Test_C'};rows[8].actor.hp=100
+    compact:sync(rows)
+    assert(compact:status().visible==0 and created==before,'menu hides existing bars and defers new widgets')
+    assert(updates[#updates].hidden and renderer.desired['28'],'native duplicates stay suppressed for arena units')
+    hidden=false
+    compact:sync(rows)
+    assert(compact:status().visible==7 and created==before+1,'closing the menu restores bars without rebuilding old ones')
+    compact:cycleMode();compact:sync(rows)
+    assert(compact:mode()=='compact' and updates[#updates-4].sideCount==4,'compact mode also shrinks the three-bar side')
+    compact:cycleMode();compact:sync(rows)
+    assert(compact:mode()=='hidden' and compact:status().visible==0)
+    compact:cycleMode();compact:sync(rows)
+    assert(compact:mode()=='full' and compact:status().visible==7)
+    compact:clear()
 end
 io.open=realOpen
 print('arena_hud: PASS (independent ownership, rebind recovery, real HP/max, dead hide, bounded creation, cleanup, both codex formats, names and team labels in the game language)')

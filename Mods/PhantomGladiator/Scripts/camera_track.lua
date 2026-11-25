@@ -5,6 +5,7 @@
 -- The hand comes first, one channel at a time: the mouse takes the angle, the wheel the distance, WASD/QE the position. A
 -- channel left alone for the resume time eases back to automatic (0: it stays where the hand left it).
 local U=require('ue_observe')
+local Cinema=require('arena_cinema')
 local Track={}
 Track.DEFAULTS={framing='side',resume=3}
 Track.FRAMINGS={side=true,shoulder=true,orbit=true,eyes=true}
@@ -113,11 +114,12 @@ function Track.new(options)
         return value
     end
     -- Who can be followed: on the field, not a stand or a reserve, with health left. Bosses first.
-    local function candidates()
+    local function candidates(cinema)
         local list,present={},{}
         for _,member in ipairs(options.members() or {})do
             local key=U.key(member.actor)
-            if key and not member.stand and not member.reserve and alive(member.actor) then
+            if key and not member.stand and not member.reserve
+                and (not cinema or member.team=='blue' or member.team=='red') and alive(member.actor) then
                 present[key]=true
                 list[#list+1]={actor=member.actor,key=key,team=member.team,boss=isBoss(member.actor,key),order=#list}
             end
@@ -127,7 +129,7 @@ function Track.new(options)
             if a.boss~=b.boss then return a.boss end
             return a.order<b.order
         end)
-        if self.framing=='eyes' and options.player then
+        if not cinema and self.framing=='eyes' and options.player then
             local player=options.player();local key=U.key(player)
             if key and alive(player) and not present[key] then table.insert(list,1,{actor=player,key=key,team='player'})end
         end
@@ -160,6 +162,13 @@ function Track.new(options)
         if key then r.otherRadius,r.otherHalf=capsule(who) else r.otherRadius,r.otherHalf=nil,nil end
         say('对手='..className(who)..' 主目标='..className(r.target))
     end
+    local function opponent(r,actor)
+        local read
+        if r.cinema then read=options.cinemaOpponentOf else read=options.opponentOf end
+        if not read then return end
+        local ok,who=pcall(read,actor)
+        if ok and alive(who) then return who end
+    end
     local function setTarget(r,actor,why)
         r.target,r.targetKey=actor,U.key(actor)
         local named,identity=pcall(function()return actor:GetFullName()end)
@@ -169,10 +178,7 @@ function Track.new(options)
         r.lostAt=nil
         r.lastAt=nil
         setOther(r,nil)
-        if alive(actor) and options.opponentOf then
-            local ok,who=pcall(options.opponentOf,actor)
-            if ok and alive(who) then setOther(r,who) end
-        end
+        if alive(actor) then setOther(r,opponent(r,actor)) end
         say(string.format('主目标=%s（%s） 对手=%s 构图=%s 回归=%d秒',className(actor),why,className(r.other),self.framing,self.resume))
     end
     function self:running()return run~=nil end
@@ -183,14 +189,14 @@ function Track.new(options)
         boss={}
         say('结束（'..tostring(why)..'） 主目标='..className(r.target))
     end
-    local function begin(actor,position,rotation,why)
+    local function begin(actor,position,rotation,why,cinema)
         local at=located(actor) or position
         local gap=math.sqrt((at.X-position.X)^2+(at.Y-position.Y)^2+(at.Z-position.Z)^2)
         local distance=clamp(gap,MIN_DIST,MAX_DIST)
         local forward=direction(rotation.Yaw,rotation.Pitch)
         -- Starts exactly where the camera is, so the view moves over, not jumps.
         local fov=options.fov and options.fov() or nil
-        run={fov=type(fov)=='number' and fov>5 and fov<175 and fov or 90,
+        run={cinema=cinema,fov=type(fov)=='number' and fov>5 and fov<175 and fov or 90,
             look={X=position.X+forward.X*distance,Y=position.Y+forward.Y*distance,Z=position.Z+forward.Z*distance},
             distance=distance,shown=distance,baseDist=distance,zoom=1,
             yaw=rotation.Yaw,pitch=rotation.Pitch,baseYaw=rotation.Yaw,basePitch=rotation.Pitch,offYaw=0,offPitch=0,
@@ -204,7 +210,7 @@ function Track.new(options)
         local position,rotation
         if options.view then position,rotation=options.view() end
         if not position or not rotation then return answer(false,'不在自由观战中，镜头跟踪没有开始') end
-        local list=candidates()
+        local list=candidates(run and run.cinema~=nil)
         local chosen
         for _,entry in ipairs(list)do if entry.key==targetKey then chosen=entry end end
         if self.framing=='eyes' and targetKey and targetKey~='' and not chosen then return answer(false,'eyes.noTarget') end
@@ -217,6 +223,23 @@ function Track.new(options)
         end
         begin(chosen.actor,position,rotation,'开始')
         return answer(true,'镜头跟踪已开启')
+    end
+    function self:startCinema(targetKey)
+        local position,rotation
+        if options.view then position,rotation=options.view() end
+        if not position or not rotation then return answer(false,'不在自由观战中，电影运镜没有开始') end
+        local list=candidates(true)
+        local chosen
+        local wanted=targetKey or (run and run.targetKey)
+        for _,entry in ipairs(list)do if entry.key==wanted then chosen=entry;break end end
+        chosen=chosen or inView(list,position,rotation)
+        if not chosen then return answer(false,'场上没有可以取景的蓝红阵营单位') end
+        begin(chosen.actor,position,rotation,'电影运镜开始',Cinema.new())
+        return answer(true,'电影运镜已开启')
+    end
+    function self:stopCinema()
+        if run and run.cinema then self:stop('关闭电影运镜') end
+        return answer(true,'电影运镜已关闭')
     end
     function self:finish()
         self:stop('关闭')
@@ -233,7 +256,7 @@ function Track.new(options)
         local position,rotation
         if options.view then position,rotation=options.view() end
         if not position or not rotation then return answer(false,'不在自由观战中') end
-        local chosen=inView(candidates(),position,rotation)
+        local chosen=inView(candidates(run and run.cinema~=nil),position,rotation)
         if not chosen then return answer(false,'场上没有可跟踪的单位') end
         if not retarget(chosen.actor,'锁定屏幕中央') then begin(chosen.actor,position,rotation,'锁定屏幕中央') end
         return answer(true,'镜头跟踪：锁定屏幕中央的单位')
@@ -243,7 +266,7 @@ function Track.new(options)
         local position,rotation
         if options.view then position,rotation=options.view() end
         if not position or not rotation then return answer(false,'不在自由观战中') end
-        local list=candidates()
+        local list=candidates(run and run.cinema~=nil)
         if #list==0 then return answer(false,'场上没有可跟踪的单位') end
         local index=0
         for i,entry in ipairs(list)do if run and entry.key==run.targetKey then index=i end end
@@ -269,11 +292,11 @@ function Track.new(options)
                 self:stop('离开玩家第一人称')
             end
             self.framing,self.resume=framing,resume
-            if run then run.eyeCheck=nil end
+            if run then run.eyeCheck=nil;run.cinema=nil end
         end
         if targetKey and targetKey~='' then
             if not run then return self:start(targetKey) end
-            for _,entry in ipairs(candidates())do
+            for _,entry in ipairs(candidates(run.cinema~=nil))do
                 if entry.key==targetKey then
                     retarget(entry.actor,'助手选择')
                     return answer(true,'镜头跟踪：换目标')
@@ -307,12 +330,14 @@ function Track.new(options)
         if not options.world or not eyeFrame(probe,0,options.world()) then return answer(false,'eyes.noTarget') end
         local saved=self:set('eyes',self.resume)
         if not saved.ok then return saved end
-        if run then retarget(actor,'第一人称') else begin(actor,position,rotation,'第一人称') end
+        if run then run.cinema=nil;retarget(actor,'第一人称') else begin(actor,position,rotation,'第一人称') end
         return answer(true,'eyes.started')
     end
     function self:status()
         local r=run
+        local cinema=r and r.cinema
         return {on=r~=nil,framing=self.framing,resume=self.resume,target=r and r.targetKey or '',
+            cinema_active=cinema~=nil,cinema_shot=cinema and cinema.shot or '',
             target_class=r and className(r.target) or '',other_class=r and r.other and className(r.other) or ''}
     end
     -- For the app's list: key:class:team;...
@@ -423,7 +448,7 @@ function Track.new(options)
     function self:frame(dt,now,input)
         local r=run
         if not r then return nil end
-        if self.framing=='eyes' then
+        if not r.cinema and self.framing=='eyes' then
             local at,rot=eyeFrame(r,now,input.world)
             if not at then self:stop('第一人称目标已失效');return nil end
             return at,rot
@@ -433,17 +458,14 @@ function Track.new(options)
             if r.slowUntil==math.huge then r.slowUntil=now+RETARGET_SECONDS end
             if alive(r.target) then
                 r.lostAt=nil
-                if options.opponentOf then
-                    local ok,who=pcall(options.opponentOf,r.target)
-                    setOther(r,ok and alive(who) and who or nil)
-                end
+                setOther(r,opponent(r,r.target))
             elseif not r.lostAt then
                 r.lostAt=now
                 say('主目标倒下 '..className(r.target)..'，停 '..HOLD_SECONDS..' 秒')
             elseif now-r.lostAt>=HOLD_SECONDS then
                 local successor=alive(r.other) and r.other or nil
                 if not successor then
-                    local list=candidates()
+                    local list=candidates(r.cinema~=nil)
                     successor=list[1] and list[1].actor or nil
                 end
                 if not successor then
@@ -453,6 +475,10 @@ function Track.new(options)
                 r.slowUntil=now+RETARGET_SECONDS
                 setTarget(r,successor,'原目标倒下')
             end
+            if r.cinema and options.activity then
+                local got,activity=pcall(options.activity,r.target,r.other)
+                r.cinemaActivity=got and activity or nil
+            end
         end
         local a=located(r.target)
         if a then r.lastAt=a else a=r.lastAt end
@@ -460,15 +486,36 @@ function Track.new(options)
             self:stop('读不到主目标的位置')
             return nil
         end
-        local b=r.otherKey and alive(r.other) and located(r.other) or nil
+        -- Cinematic mode reuses the quarter-second life check above instead of reading the other actor's HP each frame.
+        local b=r.otherKey and (r.cinema or alive(r.other)) and located(r.other) or nil
         local framing,resume=self.framing,self.resume
         local smooth=input.smooth or 40
         local tanH=math.tan(math.rad(r.fov/2))
         local half=math.max(r.targetHalf or 100,r.otherHalf or 0)
         local sep=b and math.sqrt((b.X-a.X)^2+(b.Y-a.Y)^2) or 0
         -- Where it looks and how far back it wants to be.
-        local wantLook,auto
-        if framing=='shoulder' then
+        local wantLook,auto,shot
+        if r.cinema then
+            local before=r.cinema.shot
+            shot=Cinema.frame(r.cinema,dt,{a=a,b=b,gap=sep,target=r.targetKey,other=r.otherKey,radius=r.targetRadius,
+                half=r.targetHalf,otherRadius=r.otherRadius,otherHalf=r.otherHalf,activity=r.cinemaActivity,
+                manual=input.frozen or r.mouseAt or r.wheelAt or r.panAt or (input.mx or 0)~=0 or (input.my or 0)~=0
+                    or (input.wheel or 0)~=0 or (input.forward or 0)~=0 or (input.right or 0)~=0 or (input.up or 0)~=0})
+            framing=shot.side
+            local pull=b and shot.pull*math.min(1,OPPONENT_REACH/math.max(1,sep)) or 0
+            wantLook={X=a.X+(b and b.X-a.X or 0)*pull,Y=a.Y+(b and b.Y-a.Y or 0)*pull,
+                Z=a.Z+(b and b.Z-a.Z or 0)*pull+shot.raise}
+            if framing=='shoulder' then
+                local lead=math.rad(r.yaw)
+                local beside=math.min(95,r.targetRadius*.65+32)
+                wantLook.X=wantLook.X-math.sin(lead)*beside
+                wantLook.Y=wantLook.Y+math.cos(lead)*beside
+            end
+            auto=shot.distance
+            if before~=shot.name then
+                say(string.format('电影机位=%s 距离=%.1fm 动作=%s',shot.name,sep/100,tostring(r.cinemaActivity or '')))
+            end
+        elseif framing=='shoulder' then
             local y=math.rad(r.yaw)
             local side=r.targetRadius+SHOULDER_SIDE
             wantLook={X=a.X-math.sin(y)*side,Y=a.Y+math.cos(y)*side,Z=a.Z+LOOK_HIGH}
@@ -482,7 +529,7 @@ function Track.new(options)
             wantLook={X=a.X,Y=a.Y,Z=a.Z+LOOK_HIGH}
             auto=SOLO_DIST
         end
-        auto=clamp(auto,math.max(MIN_DIST,half*HEIGHT_ROOM/(tanH*ASPECT)),MAX_DIST)
+        if not shot then auto=clamp(auto,math.max(MIN_DIST,half*HEIGHT_ROOM/(tanH*ASPECT)),MAX_DIST) end
         -- The mouse: in orbit it turns the view for good, otherwise it holds the angle until it has been left alone.
         local turn=(input.turn or 100)/100
         local mx,my=input.mx or 0,input.my or 0
@@ -511,13 +558,17 @@ function Track.new(options)
                     goal=math.abs(wrap(first-r.baseYaw))<=math.abs(wrap(second-r.baseYaw)) and first or second
                     zone,rate=SIDE_ZONE,SIDE_RATE
                 else goal,zone,rate=axis,SHOULDER_ZONE,SHOULDER_RATE end
+                if shot then
+                    -- Small motion belongs to the elevated rig only; all shots still ease into a held angle.
+                    goal,zone,rate=goal+shot.yawDrift,shot.name=='aerial' and .3 or math.min(zone,12),52
+                end
                 local gap=wrap(goal-r.baseYaw)
                 if math.abs(gap)>zone then
                     local step=math.min(math.abs(gap)-zone,rate*dt)
                     r.baseYaw=r.baseYaw+(gap>0 and step or -step)
                 end
             end
-            r.basePitch=r.basePitch+(DEFAULT_PITCH-r.basePitch)*ease(dt,TAU_PITCH)
+            r.basePitch=r.basePitch+((shot and shot.pitch or DEFAULT_PITCH)-r.basePitch)*ease(dt,TAU_PITCH)
         end
         -- The wheel holds the distance the same way.
         local wheel=input.wheel or 0
@@ -649,7 +700,20 @@ function Track.new(options)
                 end
             end
         end
-        return camera,{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0},floorZ
+        local lens
+        if shot then
+            local current=r.cinemaFov or r.fov
+            r.cinemaFov=current+(shot.fov-current)*ease(dt,.8)
+            lens={fov=r.cinemaFov}
+            if shot.focus then
+                -- Pull the focal plane to the actual, collision-adjusted distance instead of the planned camera rail.
+                local dx,dy,dz=camera.X-origin.X,camera.Y-origin.Y,camera.Z-origin.Z
+                local focal=math.sqrt(dx*dx+dy*dy+dz*dz)
+                lens.focus=math.max(100,focal*(.60+.40*shot.focus))
+                lens.aperture=5.6+2.4*shot.focus
+            end
+        end
+        return camera,{Pitch=r.pitch,Yaw=r.yaw%360,Roll=0},floorZ,lens
     end
     return self
 end

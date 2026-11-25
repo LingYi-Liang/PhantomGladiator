@@ -66,6 +66,15 @@ test('active montages, executing actors and bosses never enter idle wait',functi
     h.actor.casting=false;h.actor.tags['CharacterState.Hitreact.State.Executing']=1;assert(not h.c:wait(h.actor,h.boss))
     h.actor.tags={};h.actor.boss=true;assert(not h.c:wait(h.actor,h.boss)and h.pause==0)
 end)
+test('the native execution protection tag covers the temporary one-point floor',function()
+    local h=fixture()
+    assert(h.c:inExecution(h.actor)==false)
+    h.actor.tags['CharacterState.Stand.Invulnerable.Execution']=1
+    assert(h.c:inExecution(h.actor)==true)
+    h.actor.tags={}
+    h.actor.tags['CharacterState.Stand.Invulnerable']=1
+    assert(h.c:inExecution(h.actor)==false,'other invulnerability keeps its own phase handling')
+end)
 test('combat-state minions keep their current action and repair only missing hatred',function()
     local h=fixture();h.actor.ai.CurrentStateTag={TagName='AI.State.Combat'};h.hates=false;h.actor.casting=true
     assert(h.c:maintain(h.actor,h.boss)and h.add==1 and h.engage==0)

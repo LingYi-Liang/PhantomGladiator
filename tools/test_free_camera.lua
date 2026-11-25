@@ -199,6 +199,33 @@ test('the view is told only while the player has the camera',function()
     assert(c:release());assert(c:view()~=nil)
     assert(c:stop('F7'));assert(c:view()==nil,'stopped')
 end)
+test('photo camera keeps the normal observer protection off and verifies the borrowed view',function()
+    local h=harness()
+    h.options.guard={enter=function()error('observer protection hides the player')end,
+        tick=function()error('observer protection is not active in selfie mode')end,stop=function()return true end}
+    local c=h:new()
+    h.paused=true;assert(not c:enter('photo') and h.paused)
+    h.paused=false;assert(c:enter('photo'))
+    local frames,final=0,nil
+    local borrower={frame=function()frames=frames+1 end,cameraLost=function(_,why)final=why end}
+    local view=c:borrow(borrower)
+    assert(view==h.camera and not c:release() and not c:borrow())
+    h:tick();assert(frames==1)
+    local there={X=200,Y=150,Z=180}
+    local facing={Pitch=1,Yaw=270,Roll=0}
+    assert(view:K2_SetActorLocationAndRotation(there,facing,false,{},true))
+    assert(not c:viewConfirmed(borrower,there,facing))
+    h.povFollows=true
+    function h.manager:GetCameraRotation()return {Pitch=1,Yaw=-90,Roll=0} end
+    assert(c:viewConfirmed(borrower,there,facing))
+    assert(not c:viewConfirmed({},there,facing))
+    assert(c:freeze(true).ok and h.paused)
+    h.input={MouseY=2,W=1,Gamepad_RightX=.7,Gamepad_LeftX=.1,Gamepad_RightY=.2}
+    local input=c:photoInput(borrower)
+    assert(input.my==2 and input.forward==1 and input.right==.7 and input.lookUp==.2)
+    assert(c:photoInput({})==nil,'only the paused photo borrower can read photo controls')
+    assert(c:stop('test exit') and final=='test exit' and not h.paused and h.pc.target==h.pawn)
+end)
 test('while following, the track says where the camera goes; a failure or an end falls back to the free camera',function()
     local h=harness();local c=h.cameraController
     local track={on=true,stops={}}
@@ -243,6 +270,34 @@ test('the field of view is told while the camera runs',function()
     assert(c:fieldOfView()==nil)
     assert(c:enter());assert(c:fieldOfView()==80)
     assert(c:stop('F7'));assert(c:fieldOfView()==nil)
+end)
+test('cinema optics are restored before borrowing the camera and after leaving tracking',function()
+    local h=harness();local c=h.cameraController
+    local track={on=true}
+    function track:running()return self.on end
+    function track:stop()self.on=false end
+    function track:frame()return {X=50,Y=50,Z=80},{Pitch=-10,Yaw=0,Roll=0},nil,{fov=53,focus=800,aperture=7} end
+    h.options.track=function()return track end
+    assert(c:enter())
+    local component=h.camera.CameraComponent
+    component.PostProcessSettings={bOverride_DepthOfFieldFocalDistance=false,DepthOfFieldFocalDistance=0,
+        bOverride_DepthOfFieldFstop=false,DepthOfFieldFstop=4}
+    component.PostProcessBlendWeight=.25
+    function component:SetPostProcessBlendWeight(v)assert(self.alive);self.PostProcessBlendWeight=v end
+    h:tick()
+    assert(component.FieldOfView==53 and component.PostProcessSettings.DepthOfFieldFocalDistance==800
+        and component.PostProcessSettings.bOverride_DepthOfFieldFstop and component.PostProcessBlendWeight==.75)
+    local owner={}
+    assert(c:borrow(owner)==h.camera)
+    assert(component.FieldOfView==80 and not component.PostProcessSettings.bOverride_DepthOfFieldFocalDistance
+        and component.PostProcessSettings.DepthOfFieldFocalDistance==0 and component.PostProcessBlendWeight==.25)
+    assert(c:release(owner))
+    for _=1,5 do h:tick()end
+    assert(component.FieldOfView==53)
+    track.on=false
+    for _=1,5 do h:tick()end
+    assert(component.FieldOfView==80 and component.PostProcessBlendWeight==.25 and component.PostProcessSettings.DepthOfFieldFstop==4)
+    assert(c:stop('test exit'))
 end)
 test('preexisting guards and another systems increment are preserved',function()
     local h=harness();h.pc.moveDepth=2;h.pc.lookDepth=1

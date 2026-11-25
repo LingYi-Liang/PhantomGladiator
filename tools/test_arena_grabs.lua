@@ -281,6 +281,43 @@ test('Yu Ding chooses the native nonlethal branch only against living protected 
         assert(h.grabs:sync(h.members,true,true));cb(slow);assert(stops==1,'a retired callback cannot act in the next fight')
         assert(h.grabs:restore())
     end
+    test('a companion Jade keeps native map phase floors and the normal grab branch',function()
+        typed(h.blue,ROOT..'078_MengHua/BP_Monster_MengHua.BP_Monster_MengHua_C')
+        h.blue.hp=max
+        h.red['Faction Component']=h:object('Faction Component',{GetFactionRelation=function(_,target)
+            return target==h.blue and h.mapRelation or 1
+        end})
+        h.mapRelation=2
+        h.members[2].team='companion'
+        local rows={h.members[2]}
+        h.grabs=h:new();assert(h.grabs:sync(rows,false,true))
+        local rule=require('jade_grab_guard').paths[2]
+        local callback=assert(hooks[rule],'a single Jade companion does not need an active arena for phase protection')
+        local target=h.blue
+        local ability=h:object('Map grab',{bIsActive=true,GetAvatarActorFromActorInfo=function()return h.red end,
+            ['Lock Target']={Component=h:object('Map lock',{GetOwner=function()return target end})},
+            ['Execution Info']={Executor=h.red}})
+        typed(ability,rule:match('^(.*):IsKill$'))
+        local out={value=true,type=function()return 'RemoteUnrealParam'end,get=function(self)return self.value end,set=function(self,v)self.value=v end}
+        callback(ability,out)
+        assert(out.value==false,'the current hostile map lock retains its phase')
+        out.value=true
+        ability['Execution Info'].Target=h.blue
+        ability['Execution Info'].IsTarget=false
+        ability['Execution Info'].ExecutionHandle={Handle=3}
+        ability['Execution Info'].ExecutedHandle={Handle=7}
+        target=player;callback(ability,out)
+        assert(out.value==false,'the actual hostile recipient keeps its protection after a target switch')
+        out.value=true;h.mapRelation=1;callback(ability,out);assert(out.value,'friendly map actor keeps native behavior')
+        h.mapRelation=2
+        local rec=h.members[1];rec.team='companion';rows[2]=rec
+        assert(h.grabs:sync(rows,false,true));callback(ability,out)
+        assert(out.value,'even hostile-looking companions are never classified as map foes')
+        rows[2]=nil;rec.team='blue'
+        assert(h.grabs:sync(rows,false,true))
+        assert(h.grabs:restore());callback(ability,out);assert(out.value,'dismissal retires the callback')
+        h.members[2].team='red'
+    end)
     h.options.registerHook=function()return nil,nil end
     h.grabs=h:new();assert(h.grabs:sync(h.members,true,true))
     for _,event in ipairs(h.events)do if event.path:find(jadeRoot,1,true) then assert(event.NonPlayerGE==h.original) end end

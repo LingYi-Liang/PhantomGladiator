@@ -1,6 +1,7 @@
 -- Free observation without replacing UPlayer.PlayerController or possessing a pawn.
 -- All engine access runs on the game thread. A small recovery journal survives reload.
 local U=require('ue_observe')
+local CinemaLens=require('cinema_lens')
 local Camera={}
 -- The app's 自由视角设置 (Runtime/free-camera-settings.tsv, v0.38.2): speed in cm/s, turn in percent of the raw
 -- mouse, smoothing in percent of the easing below.
@@ -223,7 +224,12 @@ function Camera.new(options)
     function self:isFrozen()return self.active and self.session~=nil and self.session.frozen~=nil end
     local function trackOf()return options.track and options.track() or nil end
     function self:stop(reason)
+        local borrowed=self.session and self.session.borrowed
         self.active=false;self.session=nil
+        if borrowed and borrowed.owner then
+            local ok,why=pcall(borrowed.owner.cameraLost,borrowed.owner,reason)
+            if not ok then log('[FreeCamera] 借用方退出读回失败 '..tostring(why)) end
+        end
         meter:pause()
         local track=trackOf()
         if track then pcall(track.stop,track,'退出自由观战') end
@@ -374,11 +380,15 @@ function Camera.new(options)
                     end
                 end
             end
-            if options.guard then
+            if options.guard and not s.photo then
                 local t=os.clock();options.guard:tick(guardContext(self.record));parts.guard=(os.clock()-t)*1000
             end
-            -- Lent to the execution camera: it moves the camera, input waits.
-            if s.borrowed then return end
+            -- A borrower owns the shot; ordinary camera input waits.
+            if s.borrowed then
+                local owner=s.borrowed.owner
+                if owner then owner:frame(dt,now) end
+                return
+            end
             local mx,my=axis(s.pc,'MouseX'),axis(s.pc,'MouseY')
             local forward=axis(s.pc,'W')-axis(s.pc,'S')
             local right=axis(s.pc,'D')-axis(s.pc,'A')
@@ -387,16 +397,17 @@ function Camera.new(options)
             local up=math.max(axis(s.pc,'E'),axis(s.pc,'SpaceBar'))-math.max(axis(s.pc,'Q'),axis(s.pc,'LeftControl'),axis(s.pc,'RightControl'))
             local fast=math.max(axis(s.pc,'LeftShift'),axis(s.pc,'RightShift'))>0
             local tuning=self.tuning
-            local position,rotation,trackFloor
+            local position,rotation,trackFloor,cinemaLens
             -- 镜头跟踪 (camera_track.lua) says where the camera goes while it runs; a failure there only ends the following.
             local track=trackOf()
             if track and track:running() then
                 local readWheel,wheel=call(s.pc,'GetInputAnalogKeyState',key('MouseWheelAxis'))
                 local t=os.clock()
-                local framed,at,facing,floor=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
-                    wheel=readWheel and number(wheel) and wheel or 0,turn=tuning.turn,speed=tuning.speed,smooth=tuning.smooth,world=s.world})
+                local framed,at,facing,floor,lens=pcall(track.frame,track,dt,now,{mx=mx,my=my,forward=forward,right=right,up=up,fast=fast,
+                    wheel=readWheel and number(wheel) and wheel or 0,turn=tuning.turn,speed=tuning.speed,smooth=tuning.smooth,world=s.world,
+                    frozen=s.frozen~=nil})
                 parts.track=(os.clock()-t)*1000
-                if framed then position,rotation,trackFloor=at,facing,floor
+                if framed then position,rotation,trackFloor,cinemaLens=at,facing,floor,lens
                 else
                     log('[FreeCamera] 镜头跟踪出错，退回自由视角：'..tostring(at))
                     pcall(track.stop,track,'出错')
@@ -404,6 +415,18 @@ function Camera.new(options)
                 if position then
                     s.aimYaw,s.aimPitch=rotation.Yaw%360,math.max(-89,math.min(89,rotation.Pitch))
                     s.velocity={X=0,Y=0,Z=0}
+                end
+            end
+            if cinemaLens and not s.cinemaLens and not s.cinemaLensUnavailable then
+                s.cinemaLens=CinemaLens.new(s.camera,log)
+                s.cinemaLensUnavailable=s.cinemaLens==nil
+                if s.cinemaLensUnavailable then log('[ArenaCinema] 私有镜头归属读回失败') end
+            end
+            if s.cinemaLens then
+                local applied=s.cinemaLens:update(cinemaLens,now)
+                if not applied and not s.cinemaLensFailed then
+                    s.cinemaLensFailed=true
+                    log('[ArenaCinema] 私有镜头参数恢复暂未读回')
                 end
             end
             if not position then
@@ -461,9 +484,10 @@ function Camera.new(options)
         end
         if self.active then meter:add((os.clock()-started)*1000,started,parts) end
     end
-    function self:enter()
+    function self:enter(mode)
+        local photo=mode=='photo'
         if not self.alive then return false end
-        if self.active then return true end
+        if self.active then return not photo end
         if self.record then self:recover(true);if self.record then return false end end
         local ok,err=pcall(function()
             local pc=options.getController();assert(U.valid(pc),'player controller unavailable')
@@ -486,6 +510,7 @@ function Camera.new(options)
             local lib=StaticFindObject('/Script/Engine.Default__GameplayStatics')
             local cls=StaticFindObject('/Script/Engine.CameraActor')
             assert(U.valid(lib) and U.valid(cls),'native camera class/library unavailable')
+            if photo then assert(pausedOf(lib,world)==false,'请先退出游戏菜单再自拍') end
             local timed,now=call(lib,'GetRealTimeSeconds',world);assert(timed and number(now),'clock unavailable')
             local record={move_owned='0',look_owned='0',input_owned='0'}
             remember(record,'world',world);remember(record,'controller',pc);remember(record,'pawn',pawn);remember(record,'target',target)
@@ -530,8 +555,9 @@ function Camera.new(options)
             local read,actual=call(pc,'GetViewTarget')
             assert(read and same(actual,camera),'view target not verified')
             assert(same(U.field(pc,'Player'),player) and same(U.field(pc,'Pawn'),pawn),'original player/controller association changed')
-            if options.guard then options.guard:enter(guardContext(record)) end
-            self.session={pc=pc,player=player,pawn=pawn,world=world,lib=lib,camera=camera,position=location,rotation=rotation,lastTime=now,
+            -- Selfie keeps the subjects visible and leaves damage, collision and hatred alone.
+            if options.guard and not photo then options.guard:enter(guardContext(record)) end
+            self.session={photo=photo,pc=pc,player=player,pawn=pawn,world=world,lib=lib,camera=camera,position=location,rotation=rotation,lastTime=now,
                 aimYaw=rotation.Yaw%360,aimPitch=math.max(-89,math.min(89,rotation.Pitch)),velocity={X=0,Y=0,Z=0}}
             self.active=true
             -- Once a frame. Up to v0.38.1 a 16 ms timer ran out of step with the frames: some frames moved the view twice,
@@ -618,15 +644,66 @@ function Camera.new(options)
     end
     -- 处决镜头 (execution_camera.lua) moves this camera for one execution; the view target stays, input movement
     -- waits, and release puts the camera back where the player left it.
-    function self:borrow()
+    function self:borrow(owner)
         local s=self.session
         if not self.active or not s or s.borrowed or not U.valid(s.camera) then return nil end
-        s.borrowed={position=s.position,rotation=s.rotation}
+        if s.cinemaLens and not s.cinemaLens:restore() then return nil end
+        s.borrowed={position=s.position,rotation=s.rotation,owner=owner}
         return s.camera,s.position,s.rotation
     end
-    function self:release()
+    function self:photoInput(owner,withMenu)
         local s=self.session
-        if not s or not s.borrowed then return false end
+        if not s or not s.photo or not s.frozen or not s.borrowed or s.borrowed.owner~=owner then return end
+        local function stick(name)
+            local ok,v=call(s.pc,'GetInputAnalogKeyState',key(name))
+            if not ok or not number(v) or math.abs(v)<.18 then return 0 end
+            return math.max(-1,math.min(1,v))
+        end
+        local got,wheel=call(s.pc,'GetInputAnalogKeyState',key('MouseWheelAxis'))
+        local pan=axis(s.pc,'D')-axis(s.pc,'A')+stick('Gamepad_LeftX')
+        local lookRight=stick('Gamepad_RightX')
+        local input={
+            mx=axis(s.pc,'MouseX'),my=axis(s.pc,'MouseY'),turn=self.tuning.turn,speed=self.tuning.speed,
+            right=pan+lookRight,pan=pan,lookRight=lookRight,
+            forward=axis(s.pc,'W')-axis(s.pc,'S')+stick('Gamepad_LeftY'),
+            up=axis(s.pc,'E')-axis(s.pc,'Q'),lookUp=stick('Gamepad_RightY'),
+            wheel=got and number(wheel) and wheel or 0,
+        }
+        if withMenu then
+            local function down(a,b)
+                local _,v=call(s.pc,'IsInputKeyDown',key(a))
+                if v==true then return true end
+                _,v=call(s.pc,'IsInputKeyDown',key(b))
+                return v==true
+            end
+            input.nav={
+                menu=down('Tab','Gamepad_Special_Right'),exit=down('Escape','Gamepad_FaceButton_Right'),
+                capture=down('SpaceBar','Gamepad_FaceButton_Left'),confirm=down('Enter','Gamepad_FaceButton_Bottom'),
+                prevTab=down('PageUp','Gamepad_LeftShoulder'),nextTab=down('PageDown','Gamepad_RightShoulder'),
+                up=down('Up','Gamepad_DPad_Up'),down=down('Down','Gamepad_DPad_Down'),
+                less=down('Left','Gamepad_DPad_Left'),more=down('Right','Gamepad_DPad_Right'),
+            }
+        end
+        return input
+    end
+    function self:viewConfirmed(owner,location,rotation)
+        local s=self.session
+        if not s or not s.borrowed or s.borrowed.owner~=owner then return false end
+        local read,target=call(s.pc,'GetViewTarget')
+        if not read or not same(target,s.camera) then return false end
+        local manager=U.field(s.pc,'PlayerCameraManager')
+        local gotPosition,at=call(manager,'GetCameraLocation')
+        local gotRotation,facing=call(manager,'GetCameraRotation')
+        at=gotPosition and vec(at) or nil
+        facing=gotRotation and rot(facing) or nil
+        return at~=nil and facing~=nil and distance(at,location)<5
+            and math.abs((facing.Yaw-rotation.Yaw+180)%360-180)<2
+            and math.abs((facing.Pitch-rotation.Pitch+180)%360-180)<2
+            and math.abs((facing.Roll-rotation.Roll+180)%360-180)<2
+    end
+    function self:release(owner)
+        local s=self.session
+        if not s or not s.borrowed or s.borrowed.owner~=owner then return false end
         local back=s.borrowed;s.borrowed=nil
         s.aimYaw,s.aimPitch,s.velocity=back.rotation.Yaw%360,back.rotation.Pitch,{X=0,Y=0,Z=0}
         local moved=call(s.camera,'K2_SetActorLocationAndRotation',back.position,back.rotation,false,{},true)

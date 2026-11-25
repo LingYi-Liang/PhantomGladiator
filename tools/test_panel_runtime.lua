@@ -617,6 +617,19 @@ test("the first ready pump and manual refresh spread the five catalog reads over
     assert(countReads==10 and maxPerPump==1 and count(h,"bridge_tick")==16)
     assert(table.concat(order,",")=="codex,spawners,tables,areas,home,codex,spawners,tables,areas,home")
 end)
+test("catalog step pending is continued on the following ready callback",function()
+    local h=harness()
+    local steps=0
+    h.runtime=h.new({tableCatalog={step=function(_,session,generation)
+        assert(session==h.sessionState.game_session and generation==0)
+        steps=steps+1
+        if steps<=2 then return {pending=true} end
+        return {ok=true}
+    end}})
+    h.runtime:start()
+    for _=1,5 do h:tick() end
+    assert(steps==3 and count(h,"bridge_tick")==5,"pending tables must not enter error backoff")
+end)
 test("catalog work is spread across heartbeats and failed sources can be retried without blocking input",function()
     local h=harness();local reads={};local generation,homes=0,{}
     local function work(name)
@@ -728,6 +741,23 @@ test("recall goes to the companions from the app and from its function key; keys
     h:tick();assert(h.result.ok,h.result.message)
     h.keys.F5();h:drain();assert(recalls==2,'the recall key recalls')
     assert(h.reported.key_recall_companions=='VK_116_MOD_0' or h.runtime.functionKeys:token('recall_companions')=='VK_116_MOD_0')
+end)
+test("selfie uses the same receipts and hotkey router, including exit after readiness changes",function()
+    local h=harness();local on,shots=false,0
+    local photo={
+        toggle=function()assert(h.inGame);on=not on;return {ok=true}end,
+        shot=function()assert(h.inGame);shots=shots+1;return {ok=on}end,
+        status=function()return {on=on,ready=on,posed=2,style=1,next=true,target='BP_Companion_C',message=''}end,
+    }
+    h.runtime=h.new({support={selfie=photo,status=function()return {}end,tick=function()end}});h.runtime:start();h:tick()
+    assert(h.reported.selfie_supported and not h.reported.selfie_on and h.reported.function_keys_schema==9)
+    h.inbox={action='configure_keys',key_toggle_selfie='VK_116_MOD_0',key_selfie_shot='VK_119_MOD_0'}
+    h:tick();assert(h.result.ok,h.result.message)
+    h.keys.F5();h:drain();assert(on)
+    h:tick();assert(h.reported.selfie_ready and h.reported.selfie_target=='BP_Companion_C' and h.reported.key_selfie_shot=='VK_119_MOD_0')
+    h.keys.F8();h:drain();assert(shots==1)
+    h.sessionState.game_ready=false
+    h.keys.F5();h:drain();assert(not on)
 end)
 test("spawn difficulty takes its token from the key_spawn column and reports the game difficulty",function()
     local h=harness();local level='FOLLOW'
@@ -865,6 +895,40 @@ test('camera tracking: the keys open the free camera first, the settings reach t
         assert(not none.result.ok)
     end
     assert(none.reported.track_supported==false)
+end)
+test('cinema opens and rolls back its camera and live HUD reports its mode',function()
+    local h=harness()
+    local active,frozen,cine,canStart=false,false,false,false
+    local mode,entries,exits='full',0,0
+    local track={
+        status=function()return {on=cine,cinema_active=cine,cinema_shot=cine and 'low' or ''}end,
+        targets=function()return '' end,
+        startCinema=function()
+            assert(active)
+            cine=canStart
+            return {ok=cine}
+        end,
+        stopCinema=function()cine=false;return {ok=true}end}
+    local camera={
+        status=function()return {active=active,frozen=frozen}end,
+        toggle=function()entries=entries+1;active=true;return {ok=true}end,
+        exit=function()exits=exits+1;active=false;return {ok=true}end}
+    local support={
+        status=function()return {battle_hud_mode=mode}end,
+        cycleBattleHUD=function()mode='compact';return {ok=true}end}
+    h.runtime=h.new({track=track,camera=camera,support=support});h.runtime:start()
+    h.inbox={action='toggle_cinema'};h:tick()
+    assert(not h.result.ok and not active and entries==1 and exits==1)
+    canStart=true
+    h.inbox={action='toggle_cinema'};h:tick()
+    assert(h.result.ok and cine and h.reported.cinema_active==true and h.reported.cinema_shot=='low')
+    h.inbox={action='toggle_cinema'};h:tick()
+    assert(h.result.ok and not cine and active,'stopping cinematic retains free camera')
+    h.inbox={action='cycle_battle_hud'};h:tick()
+    assert(h.result.ok and h.reported.battle_hud_mode=='compact' and h.reported.function_keys_schema==11)
+    frozen=true
+    h.inbox={action='toggle_cinema'};h:tick()
+    assert(not h.result.ok and not cine)
 end)
 test('unit rules: the card reaches the module, its value goes lower case, and the app reads them back',function()
     local h=harness()

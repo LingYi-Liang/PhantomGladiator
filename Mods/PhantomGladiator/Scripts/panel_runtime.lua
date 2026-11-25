@@ -72,8 +72,13 @@ function Runtime.new(options)
         local status=options.session:status()
         if status.game_ready~=true then return status.game_ready_reason or "游戏尚未就绪" end
     end
+    local function selfieActive()
+        local module=options.support and options.support.selfie
+        return module~=nil and module:status().on
+    end
     -- nil once the free camera is running; otherwise why it could not be opened.
     local function openCamera()
+        if selfieActive() then return {ok=false,message='selfie.exitFirst'} end
         if not options.camera then return {ok=false,message='自由观战模块未加载',spawned_count=0} end
         if options.camera:status().active then return nil end
         local why=readyError();if why then return {ok=false,message=why,spawned_count=0} end
@@ -136,6 +141,36 @@ function Runtime.new(options)
         end,
         select_unit=function(command) return options.arena:select(command.unit_id,command.team,command.count) end,
         cycle_team=function() return options.arena:cycleTeam() end,
+        toggle_selfie=function()
+            local m=options.support and options.support.selfie
+            if not m then return {ok=false,message='selfie.unavailable'} end
+            local why=not m:status().on and readyError()
+            if why then return {ok=false,message=why} end
+            return m:toggle()
+        end,
+        toggle_photo=function()
+            local m=options.support and options.support.selfie
+            if not m or not m.studioSupported then return {ok=false,message='selfie.unavailable'} end
+            local why=not m:status().on and readyError()
+            if why then return {ok=false,message=why} end
+            return m:standard()
+        end,
+        photo_panel=function()
+            local m=options.support and options.support.selfie
+            return m and m.studioSupported and m:panel() or {ok=false,message='selfie.unavailable'}
+        end,
+        selfie_pose=function()
+            local m=options.support and options.support.selfie
+            return m and m:pose() or {ok=false,message='selfie.unavailable'}
+        end,
+        selfie_shot=function()
+            local m=options.support and options.support.selfie
+            return m and m:shot() or {ok=false,message='selfie.unavailable'}
+        end,
+        selfie_next=function()
+            local m=options.support and options.support.selfie
+            return m and m:next() or {ok=false,message='selfie.unavailable'}
+        end,
         toggle_camera=function()
             if not options.camera then return {ok=false,message='自由观战模块未加载',spawned_count=0}end
             local status=options.camera:status()
@@ -150,6 +185,7 @@ function Runtime.new(options)
         -- 时停 (the app's switch and the function key of the same name): in the free camera on or off; outside it the
         -- camera opens first, frozen, for a screenshot. Leaving the camera ends it.
         toggle_time_stop=function()
+            if selfieActive() then return {ok=false,message='selfie.exitFirst'} end
             if not options.camera or not options.camera.freeze then return {ok=false,message='自由观战模块未加载',spawned_count=0}end
             local status=options.camera:status()
             if status.active then return options.camera:freeze(not status.frozen) end
@@ -165,6 +201,25 @@ function Runtime.new(options)
             if options.track:status().on then return options.track:finish() end
             local failed=openCamera();if failed then return failed end
             return options.track:start()
+        end,
+        toggle_cinema=function()
+            local track=options.track
+            if not track or not track.startCinema or not track.stopCinema or not options.camera then
+                return {ok=false,message='电影运镜模块未加载'}
+            end
+            if track:status().cinema_active then return track:stopCinema() end
+            local cameraStatus=options.camera:status()
+            if cameraStatus.frozen then return {ok=false,message='请先关闭时停，再开启电影运镜'} end
+            local failed=openCamera();if failed then return failed end
+            local ok,result=pcall(track.startCinema,track)
+            if (not ok or not result or result.ok~=true) and not cameraStatus.active then options.camera:exit() end
+            return ok and result or {ok=false,message='电影运镜未找到可用对局'}
+        end,
+        cycle_battle_hud=function()
+            local why=readyError();if why then return {ok=false,message=why} end
+            local support=options.support
+            if not support or not support.cycleBattleHUD then return {ok=false,message='战斗血条控制未加载'} end
+            return support:cycleBattleHUD()
         end,
         track_pick=function()
             if not options.track then return {ok=false,message='镜头跟踪模块未加载',spawned_count=0} end
@@ -515,6 +570,11 @@ function Runtime.new(options)
         out.companion_executions=options.companionExecutions and options.companionExecutions:status().on==true or false
         local track=options.track and options.track:status() or nil
         out.track_supported=track~=nil
+        out.cinema_supported=(options.track~=nil and type(options.track.startCinema)=='function' and type(options.track.stopCinema)=='function') or nil
+        if out.cinema_supported and track then
+            out.cinema_active=track.cinema_active==true
+            out.cinema_shot=track.cinema_shot or ''
+        end
         if track then
             out.track_on=track.on==true;out.track_framing=track.framing;out.track_resume=track.resume
             out.track_target=track.target;out.track_target_class=track.target_class;out.track_other_class=track.other_class
@@ -535,6 +595,8 @@ function Runtime.new(options)
         out.boss_hud_registered=support.registered or 0
         out.boss_hud_visible=support.visible or 0
         out.boss_hud_pending=support.pending or 0
+        out.battle_hud_supported=(options.support~=nil and type(options.support.cycleBattleHUD)=='function') or nil
+        if out.battle_hud_supported then out.battle_hud_mode=support.battle_hud_mode or 'full' end
         out.boss_hud_health_verified=support.health_verified or 0
         out.boss_hud_names_verified=support.names_verified or 0
         out.boss_hud_numbers_verified=support.numbers_verified or 0
@@ -690,8 +752,25 @@ function Runtime.new(options)
         end
         out.first_person_supported=options.track~=nil and type(options.track.firstPerson)=='function'
         out.xbox_keys_supported=self.router.xboxSupported==true
-        out.function_keys_schema=8;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
-        for _,action in ipairs(ACTIONS) do out['key_'..action]=self.functionKeys:token(action)end
+        local selfie=options.support and options.support.selfie
+        local studio=selfie and selfie.studioSupported==true
+        if selfie then
+            local s=selfie:status()
+            out.selfie_supported=true
+            out.selfie_on=s.on;out.selfie_ready=s.ready;out.selfie_target=s.target
+            if studio then out.photo_studio=true;out.photo_mode=s.mode end
+            out.selfie_posed=s.posed;out.selfie_style=s.style;out.selfie_next=s.next;out.selfie_message=s.message
+        end
+        local cinemaKeys=out.cinema_supported and out.battle_hud_supported
+        out.function_keys_schema=cinemaKeys and 11 or studio and 10 or selfie and 9 or 8;out.function_keys_epoch=functions.epoch;out.function_keys_revision=functions.revision
+        for _,action in ipairs(ACTIONS)do
+            local studioKey=action=='toggle_photo' or action=='photo_panel'
+            local selfieKey=action=='toggle_selfie' or action:sub(1,7)=='selfie_'
+            local cinemaKey=action=='toggle_cinema' or action=='cycle_battle_hud'
+            if (not studioKey or studio) and (not selfieKey or selfie) and (not cinemaKey or cinemaKeys) then
+                out['key_'..action]=self.functionKeys:token(action)
+            end
+        end
         return out
     end})
     return self
@@ -805,6 +884,13 @@ function Runtime:inputCurrent(request)
 end
 
 function Runtime:existingModeInput(action,request)
+    if action=='toggle_selfie' or action=='toggle_photo' or action=='photo_panel' then
+        local selfie=self.options.support and self.options.support.selfie
+        return selfie~=nil and selfie:status().on
+    end
+    if action=='toggle_cinema' then
+        return self.options.track~=nil and self.options.track:status().cinema_active==true
+    end
     if action~='toggle_camera' and action~='toggle_track' and action~='toggle_time_stop' then return false end
     local mode=action=='toggle_track' and self.options.track or self.options.camera
     if not mode then return false end
@@ -925,10 +1011,12 @@ function Runtime:start()
     end
     local codex=add('图鉴',self.options.codex,'export')
     add('当前地图刷怪配置',self.options.spawnCatalog,'export',true)
-    add('原生数据表',self.options.tableCatalog,'export')
+    local tableCatalog=self.options.tableCatalog
+    local tableMethod=tableCatalog and type(tableCatalog.step)=='function' and 'step' or 'export'
+    local tables=add('原生数据表',tableCatalog,tableMethod)
     local areas=add('区域等级',self.options.areaLevels,'export',true)
     local homes=add('单位归属等级',self.options.homeLevels,'refresh')
-    local pending,manual=true,false
+    local pending,manual,generation=true,false,0
     self.requestCatalogRefresh=function()
         if manual then
             for _,task in ipairs(sources)do
@@ -936,7 +1024,7 @@ function Runtime:start()
             end
         end
         for _,task in ipairs(sources)do task.done=false;task.retryAt=nil;task.failures=nil end
-        pending=true;manual=true
+        pending=true;manual=true;generation=generation+1
     end
     local function maintainCatalog(session)
         local now=os.clock()
@@ -954,7 +1042,13 @@ function Runtime:start()
                     if not task.done then
                         waiting=true
                         if not task.retryAt or now>=task.retryAt then
-                            local ok,result=pcall(task.module[task.method],task.module)
+                            local ok,result
+                            if task==tables and tableMethod=='step' then
+                                ok,result=pcall(task.module.step,task.module,session.game_session,generation)
+                                if ok and type(result)=='table' and result.pending==true then return true end
+                            else
+                                ok,result=pcall(task.module[task.method],task.module)
+                            end
                             if ok and (result==true or type(result)=='table' and result.ok==true) then
                                 task.done=true;task.retryAt=nil;task.failures=nil
                                 if homes and (task==codex or task==areas) then homes.done=false;homes.retryAt=nil end

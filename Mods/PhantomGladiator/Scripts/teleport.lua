@@ -16,6 +16,8 @@ Teleport.SUBSYSTEM='PBZSaveLoadSubsystem'
 Teleport.MAX_COORD=2e7        -- cm; the last arena stands at z = 4.5e6
 Teleport.READBACK_SECONDS=40
 Teleport.ARRIVED_CM=5000      -- within this of the target horizontally, in the target level, counts as arrived
+-- The native call reloads the world even for a nearby point on the same map. A new pawn or controller,
+-- or walking into the target radius, is not evidence that the world reloaded.
 -- After the arrival the floor may not be streamed in yet (another teleport mod added "fall protection during
 -- loading" to this same native route). For HOLD_SECONDS the player's height is watched every tick: FALL_CM below the
 -- target, the movement is stopped and the player is put back at the target, at most MAX_PULLS times.
@@ -55,18 +57,27 @@ function Teleport.new(o)
     local function say(s)(o.log or function()end)('[Teleport] '..s)end
     -- Where the real player is now: level name and position (read only).
     function self:here()
-        local player=o.player()
-        if not U.valid(player)then return nil,'玩家不可读'end
-        local world=o.worldName()
-        if type(world)~='string'or not world:match(WORLD)then return nil,'当前地图名不可读'end
+        local playerRead,player=pcall(o.player)
+        if not playerRead or not U.valid(player)then return nil,'玩家不可读'end
+        local worldRead,world=pcall(o.worldName)
+        if not worldRead or type(world)~='string'or not world:match(WORLD)then return nil,'当前地图名不可读'end
         local got,location=call(player,'K2_GetActorLocation')
         local x,y,z=U.struct(location,'X'),U.struct(location,'Y'),U.struct(location,'Z')
         if not got or not(finite(x)and finite(y)and finite(z))then return nil,'玩家位置不可读'end
         local _,rotation=call(player,'K2_GetActorRotation')
         local yaw=U.struct(rotation,'Yaw')
-        return {world=world,x=x,y=y,z=z,yaw=type(yaw)=='number'and yaw==yaw and yaw or 0}
+        return {world=world,x=x,y=y,z=z,yaw=type(yaw)=='number'and yaw==yaw and yaw or 0},nil,U.key(player)
     end
     function self:busy()return pending~=nil end
+    local function worldKey()
+        if not o.worldKey then return nil end
+        local ok,value=pcall(o.worldKey)
+        return ok and type(value)=='string' and value~='' and value or nil
+    end
+    local function nearTarget(now,place)
+        local dx,dy=now.x-place.x,now.y-place.y
+        return dx*dx+dy*dy<=Teleport.ARRIVED_CM^2
+    end
     -- A fast timer of its own while a teleport is being read back or held; the support loop's tick is the fallback.
     local timer,lastTick
     local function stopTimer()
@@ -83,7 +94,11 @@ function Teleport.new(o)
             if lastTick and t>=lastTick and t-lastTick<Teleport.TICK_MS*.00075 then return end
             local request=pending
             local ticked,why=pcall(self.tick,self)
-            if not ticked and request==pending then say('读回中断：'..tostring(why));pending=nil;stopTimer()end
+            if not ticked and request==pending then
+                pending=nil;stopTimer()
+                self.last={ok=false,message=request.hold and '防坠读回中断' or '传送读回中断，未确认到达',place=request.label}
+                say('读回中断：'..tostring(why))
+            end
         end)
         if timer~=ticket then
             if ok and handle and o.cancel and (not timer or timer.handle~=handle) then pcall(o.cancel,handle) end
@@ -98,17 +113,23 @@ function Teleport.new(o)
     end
     -- Stops the fall and puts the player back at the target; returns whether the position read back near it.
     local function pull(p,now)
-        local player=o.player()
-        p.hold.pulls=p.hold.pulls+1
-        say('即将 防坠拉回 第'..p.hold.pulls..'次 '..p.label..' 当前高度='..num(now.z)..' 目标高度='..num(p.place.z)
+        local got,player=pcall(o.player)
+        local hold=p.hold
+        if not got or U.key(player)~=hold.pawn or worldKey()~=hold.world then return end
+        hold.pulls=hold.pulls+1
+        say('即将 防坠拉回 第'..hold.pulls..'次 '..p.label..' 当前高度='..num(now.z)..' 目标高度='..num(p.place.z)
             ..' StopMovementImmediately + K2_TeleportTo(目标)')
         local _,movement=call(player,'GetMovementComponent')
         call(movement,'StopMovementImmediately')
-        local moved=call(player,'K2_TeleportTo',{X=p.place.x,Y=p.place.y,Z=p.place.z},{Pitch=0,Yaw=p.place.yaw or 0,Roll=0})
-        local after=self:here()
-        local back=after~=nil and math.abs(after.z-p.place.z)<Teleport.FALL_CM
-        say('防坠拉回 读回 调用='..tostring(moved==true)..' 当前='..text(after)..' 回到目标高度='..tostring(back))
-        return back
+        if pending~=p or U.key(player)~=hold.pawn or worldKey()~=hold.world then return end
+        local called,result=call(player,'K2_TeleportTo',{X=p.place.x,Y=p.place.y,Z=p.place.z},{Pitch=0,Yaw=p.place.yaw or 0,Roll=0})
+        local after,_,pawn=self:here()
+        local back=after~=nil and pawn==hold.pawn and worldKey()==hold.world and after.world==p.place.world
+            and nearTarget(after,p.place) and math.abs(after.z-p.place.z)<Teleport.FALL_CM
+        if back then hold.recovered=hold.recovered+1 end
+        hold.failed=not back
+        say('防坠拉回 读回 调用='..tostring(called==true)..' 返回='..tostring(result)
+            ..' 当前='..text(after)..' 回到目标高度='..tostring(back))
     end
     -- Starts the game's teleport. Returns {ok=, message=}; the arrival is read back by tick().
     function self:go(place)
@@ -127,54 +148,66 @@ function Teleport.new(o)
         say('即将 传送 '..label..' 目标='..text(place)..' 朝向='..num(place.yaw or 0)..' 当前='..text(before)
             ..' 调用 PBZSaveLoadSubsystem:TeleportTo(地图名, 位置, None)（与原版传送机关同一调用）')
         local transform={Rotation=Teleport.quat(place.yaw),Translation={X=place.x,Y=place.y,Z=place.z},Scale3D={X=1,Y=1,Z=1}}
-        local called=call(subsystem,'TeleportTo',fname(place.world),transform,fname('None'))
-        if not called then
+        local from=worldKey()
+        local called,accepted=call(subsystem,'TeleportTo',fname(place.world),transform,fname('None'))
+        if not called or accepted==false then
             say('传送 调用失败 '..label..'；没有等待读回')
             self.last={ok=false,message='传送调用失败，位置没有变',place=label}
             return {ok=false,message=self.last.message}
         end
-        pending={place=place,label=label,before=before,started=clock(),lines=0}
+        pending={place=place,label=label,before=before,started=clock(),from=from,reloaded=false}
         lastTick=nil
-        startTimer()
-        self.back=before
         self.last={ok=true,pending=true,message='已发起传送，等待游戏加载',place=label}
+        startTimer()
         return {ok=true,message='已发起传送：'..(label~=''and label or text(place))..'；到位结果见状态'}
     end
-    -- Back to where the player stood before the last teleport this load.
+    -- Back to the departure point of the last witnessed load of a requested map.
     function self:goBack()
         if not self.back then return {ok=false,message='这次加载还没有传送过，没有可返回的位置'}end
         local place=self.back
         return self:go({world=place.world,x=place.x,y=place.y,z=place.z,yaw=place.yaw,name='传送前的位置'})
     end
-    -- Reads the arrival back once a call: the player in the target level, near the target horizontally (the height
-    -- is the fall watch's business), or READBACK_SECONDS gone. Then watches the height for HOLD_SECONDS.
+    -- Reads the arrival back once a call: the map loaded again, the player in the target level, near the target
+    -- horizontally (the height is the fall watch's business), or READBACK_SECONDS gone. Then watches the height for
+    -- HOLD_SECONDS.
     function self:tick()
         if not pending then return end
         local p=pending
         lastTick=clock()
-        local now=self:here()
+        local now,_,pawn=self:here()
         if pending~=p then return end
+        local observed=now and worldKey()
         if p.hold then
-            local done=clock()>=p.hold.untilTime
-            if not done and now and now.world==p.place.world and now.z<p.place.z-Teleport.FALL_CM then
-                if p.hold.pulls<Teleport.MAX_PULLS then pull(p,now)else done=true end
+            local hold=p.hold
+            local moved=now and (now.world~=p.place.world or not nearTarget(now,p.place)
+                or pawn and hold.pawn and pawn~=hold.pawn or observed and hold.world and observed~=hold.world)
+            local done=clock()>=hold.untilTime or moved
+            if not done and now and pawn and pawn==hold.pawn and observed and observed==hold.world
+                and now.z<p.place.z-Teleport.FALL_CM then
+                if hold.pulls<Teleport.MAX_PULLS then pull(p,now)else done=true end
             end
             if done and pending==p then
                 pending=nil;stopTimer()
-                say('防坠观察结束 '..p.label..' 拉回'..p.hold.pulls..'次 当前='..text(now))
-                self.last={ok=true,message=p.hold.pulls>0 and('已到达（落下去过，拉回'..p.hold.pulls..'次）')or'已到达',place=p.label}
+                say('防坠观察结束 '..p.label..' 尝试='..hold.pulls..' 已确认拉回='..hold.recovered..' 当前='..text(now))
+                local message=hold.failed and '已到达目标地图，防坠拉回未确认'
+                    or hold.recovered>0 and ('已到达（落下去过，拉回'..hold.recovered..'次）') or '已到达'
+                self.last={ok=not hold.failed,message=message,place=p.label}
             end
             return
         end
         local waited=clock()-p.started
-        local arrived=false
-        if now and now.world==p.place.world then
-            local dx,dy=now.x-p.place.x,now.y-p.place.y
-            arrived=math.sqrt(dx*dx+dy*dy)<=Teleport.ARRIVED_CM
+        local reloaded=now and (now.world~=p.before.world or p.from and observed and observed~=p.from)
+        if reloaded and not p.reloaded then
+            p.reloaded=true
+            say('地图已重新载入 '..p.label..' 用时='..string.format('%.1f',waited)..'秒 当前='..text(now))
         end
-        if arrived then
-            p.hold={untilTime=clock()+Teleport.HOLD_SECONDS,pulls=0}
-            say('传送读回 到位 '..p.label..' 当前='..text(now)..' 用时='..string.format('%.1f',waited)..'秒；接下来'
+        if pending~=p then return end
+        local destinationLoaded=reloaded and now.world==p.place.world
+        if destinationLoaded then self.back=p.before end
+        if destinationLoaded and nearTarget(now,p.place) then
+            p.hold={untilTime=clock()+Teleport.HOLD_SECONDS,pulls=0,recovered=0,world=observed,pawn=pawn}
+            say('传送读回 到位 '..p.label..' 目标='..text(p.place)..' 当前='..text(now)..' 重新载入='..tostring(p.reloaded)
+                ..' 用时='..string.format('%.1f',waited)..'秒；接下来'
                 ..Teleport.HOLD_SECONDS..'秒观察高度，掉下去就拉回')
             self.last={ok=true,message='已到达',place=p.label}
         elseif waited>=Teleport.READBACK_SECONDS then

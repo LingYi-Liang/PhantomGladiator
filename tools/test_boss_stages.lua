@@ -19,6 +19,12 @@ locations[player]={X=1000,Y=0,Z=150}
 local tags={}
 local hooks,unhooked={},{}
 local FLYUP='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Bullet/BP_ZuoShang_GroundWeapon_Base.BP_ZuoShang_GroundWeapon_Base_C:FlyUp'
+local CA01='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_01.GA_ZuoShang_CA_01_C:'
+local END01=CA01..'K2_OnEndAbility'
+local UNLOCK01='Added_C04B104040EC81809D3C0AB11E2ED1C0'
+local PHASE1='CharacterState.AbilityState.ZuoShang.Phase1'
+local GE80='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/AIConfig/GE_ZuoShang_MinHealth_80.GE_ZuoShang_MinHealth_80_C'
+local effect80=object({GetFullName=function()return 'BlueprintGeneratedClass '..GE80 end,IsAnyClass=function()return true end},'GE_ZuoShang_MinHealth_80_C')
 local CA02='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Ability/Abilities/GA_ZuoShang_CA_02.GA_ZuoShang_CA_02_C:'
 local ON_END=CA02..'K2_OnEndAbility'
 local UNLOCK='Added_284246B1411E4F95F9C50FB89CB71ABF'
@@ -27,6 +33,9 @@ local transitionLoaded=false
 local saves={LengTu_Combat='{"UnLockTags":[" CharacterState.AbilityState.LengTu.Save.P4 "]}'}
 local mapActors={}
 local loadable={}
+local activeWorld=world
+local idleCompanions={}
+local groundAvailable=true
 local function classFor(name)
     classes[name]=classes[name] or object({},name..'_C')
     return classes[name]
@@ -36,7 +45,8 @@ local statics=object({
         assert(w==world and collision==1 and owner~=nil and owner.alive and scale==1,'placed with the boss as owner')
         local name=cls.GetFName and nil
         for n,c in pairs(classes)do if c==cls then name=n end end
-        local actor=object({collision=true,cls=cls,Owner=owner},name..'_C')
+        local actor=object({collision=true,cls=cls,Owner=owner,GetOuter=function()return w end},name..'_C')
+        actor.K2_SetActorLocationAndRotation=function(self,at)locations[self]=at;return true end
         actor.SetActorEnableCollision=function(self,on)self.collision=on end
         actor.GetActorEnableCollision=function(self)return self.collision end
         if name:find('^BP_ZuoShang_GroundWeapon') then
@@ -57,6 +67,8 @@ local statics=object({
     end},'Default__GameplayStatics')
 local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()return now end,
     location=function(a)return locations[a] end,
+    world=function()return activeWorld end,
+    idleCompanion=function(actor)return idleCompanions[actor]==true end,
     isDestroying=function(a)return a.destroying==true end,
     hp=function(a)return a.hp or 100 end,
     player=function()return player end,
@@ -65,6 +77,7 @@ local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()retur
         local folder=name:find('^BP_LengTu_') and '077_LengTu/' or name:find('^BP_Monster_GuiChai_Red_') and '069_GuiChai_Red/Setup/'
             or name=='BP_ZuoShang_House' and '054_ZuoShang/House/' or name:find('^BP_ZuoShang_GroundWeapon') and '054_ZuoShang/Bullet/'
             or name:find('^BP_ZuoShang_') and '054_ZuoShang/'
+            or name=='BP_Monster_CanQu_BiHai_ToCenter' and 'CanQu_BiHai/Ability/Passive/'
         assert(folder and path=='/PBZCombatAsset/ActorData/Mobs/'..folder..name..'.'..name..'_C',path)
         if name=='BP_LengTu_FriendlySummonSlot_01' then return nil end   -- not loaded yet
         return classFor(name)
@@ -72,11 +85,12 @@ local stage=Stages.new({log=function(s)lines[#lines+1]=s end,now=function()retur
     loadClass=function(path)loadable[#loadable+1]=path;return classFor(path:match('/([%w_]+)%.[%w_]+_C$'))end,
     statics=function()return statics end,
     findAll=function(name)return mapActors[name] or {}end,
-    ground=function(w,x,y,z)assert(w==world);return 0 end,
+    ground=function(w,x,y,z)assert(w==world);return groundAvailable and 0 or nil end,
     tagCount=function(actor,tag)return tags[tag] or 0 end,
     fname=function(text)return {ToString=function()return text end}end,
     staticFind=function(path)
-        if not transitionLoaded and (path==ON_END or path==CA02..UNLOCK) then return nil end
+        if not transitionLoaded and (path==ON_END or path==CA02..UNLOCK or path==END01 or path==CA01..UNLOCK01) then return nil end
+        if path==GE80 then return effect80 end
         return object({},'Function')
     end,
     registerHook=function(path,callback)hooks[path]=callback;return 7,8 end,
@@ -89,6 +103,7 @@ local function test(name,fn)fn();print('ok - '..name)end
 local transform={Translation={X=0,Y=0,Z=190},Rotation={X=0,Y=0,Z=0,W=1},Scale3D={X=1,Y=1,Z=1}}
 local function boss(name)
     local b=object({['Actor ID']={ToString=function()return 'LengTu_Combat' end}},name)
+    b.GetOuter=function()return world end
     b.ResetTags=function(self)saves[self['Actor ID']:ToString()]='{"UnLockTags":[" "]}';self.reset=true end
     return b
 end
@@ -504,5 +519,86 @@ test('interrupted CA_02 repairs only a managed living leftshang that still has t
     endAbility(ability,true)
     assert(calls==1,'a released actor is no longer managed')
     tags[PHASE2]=0
+end)
+test('a canceled CA_01 with the owned native 80 percent effect uses the original unlock once',function()
+    local zuoshang=boss('BP_Monster_ZuoShang_C')
+    zuoshang.AttributeSetBase=object({Health_Min={CurrentValue=800},Health_Max={CurrentValue=1000},
+        Shachi_Min={CurrentValue=10}},'AttributeSet')
+    local count,calls=1,0
+    zuoshang.AbilitySystemComponent=object({GetOwner=function()return zuoshang end,
+        GetGameplayEffectCount=function(_,cls)assert(cls==effect80);return count end},'AbilitySystemComponent')
+    assert(stage:prepare(zuoshang,transform,world).ok)
+    stage:finished(zuoshang)
+    transitionLoaded=true
+    now=now+2
+    stage:tick()
+    local endAbility=assert(hooks[END01],'the exact original CA_01 End is observed')
+    local avatar=zuoshang
+    local ability=object({GetAvatarActorFromActorInfo=function()return avatar end,
+        GetOuter=function()return avatar end},'GA_ZuoShang_CA_01_C')
+    ability[UNLOCK01]=function()
+        calls=calls+1
+        tags[PHASE1]=0
+        count=0
+        zuoshang.AttributeSetBase.Health_Min.CurrentValue=600
+        zuoshang.AttributeSetBase.Shachi_Min.CurrentValue=0
+    end
+    tags[PHASE1]=1
+    avatar=boss('BP_Monster_ZuoShang_C')
+    endAbility(ability,true)
+    assert(calls==0,'no story boss may receive the unlock')
+    avatar=zuoshang
+    count=0;endAbility(ability,true)
+    assert(calls==0,'a matching displayed floor without the native effect is insufficient')
+    count=1;zuoshang.AttributeSetBase.Health_Min.CurrentValue=600;endAbility(ability,true)
+    assert(calls==0,'a different live floor must not be unlocked')
+    zuoshang.AttributeSetBase.Health_Min.CurrentValue=800
+    endAbility(ability,true);endAbility(ability,true)
+    assert(calls==1 and count==0 and tags[PHASE1]==0)
+    assert(zuoshang.AttributeSetBase.Health_Min.CurrentValue==600,'leave the new phase floor to the native sequence')
+    stage:releaseActor(zuoshang)
+end)
+test('a map companion renews its private native center away from the summoning point',function()
+    local bihai=boss('BP_Monster_CanQu_BiHai_C')
+    local path='/PBZCombatAsset/ActorData/Mobs/CanQu_BiHai/BP_Monster_CanQu_BiHai.BP_Monster_CanQu_BiHai_C'
+    assert(stage:prepare(bihai,transform,world).ok)
+    local marker=placed('BP_Monster_CanQu_BiHai_ToCenter').actor
+    local row={actor=bihai,team='blue',class_path=path}
+    local members={row}
+    local start=locations[marker]
+    assert(start.X==631 and start.Y==202 and start.Z==23)
+    locations[bihai]={X=3000,Y=100,Z=110}
+    idleCompanions[bihai]=true
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'arena positions remain unchanged')
+    row.team='companion'
+    idleCompanions[bihai]=false
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'combat or unreadable idle state does not move a live marker')
+    idleCompanions[bihai]=true
+    members[2]={actor=boss('Pawn_C'),team='companion',summoner=bihai}
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'a native summon may still use its parent marker')
+    members[2]=nil
+    activeWorld=object({},'OtherWorld')
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'never move a marker with a stale world')
+    activeWorld=world
+    local shared=boss('BP_Monster_CanQu_BiHai_C')
+    assert(stage:prepare(shared,transform,world).ok)
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'shared markers stay in place')
+    stage:releaseActor(shared)
+    local lookup=statics.GetActorOfClass
+    local mapMarker=object({GetOuter=function()return world end},'BP_Monster_CanQu_BiHai_ToCenter_C')
+    function statics:GetActorOfClass(w,c)
+        if c==marker.cls then return mapMarker end
+        return lookup(self,w,c)
+    end
+    now=now+2;stage:tick(members);assert(locations[marker]==start and not locations[mapMarker])
+    statics.GetActorOfClass=lookup
+    groundAvailable=false
+    now=now+2;stage:tick(members);assert(locations[marker]==start,'no ground means no guessed center')
+    groundAvailable=true
+    now=now+2;stage:tick(members)
+    local moved=locations[marker]
+    assert(moved.X==3631 and moved.Y==302 and moved.Z==23,'retain scene offsets around the current location with ground readback')
+    now=now+2;stage:tick(members);assert(locations[marker]==moved,'do not repeat a confirmed rebase')
+    stage:releaseActor(bihai)
 end)
 print('test_boss_stages: all passed')

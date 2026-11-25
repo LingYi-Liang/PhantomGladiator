@@ -169,7 +169,10 @@ function Body.new(o)
         if r and (r.team=='neutral' or r.team=='companion') then return U.valid(o.target and o.target(r.actor,r.team)) end
         return battle
     end
+    local actionGuard=o.actionGuard or require('hun_action_guard').new({log=o.log,find=find,fname=fname,current=owned,
+        register=o.register,unregister=o.unregister,world=o.world,now=o.now or clock})
     local weapons=o.weapons or Weapons.new({log=o.log,find=find,load=loadClass,fname=fname,clock=o.now or clock,loop=o.loop,cancel=o.cancel,
+        guard=actionGuard,
         stats=getStats,hp=o.hp,battle=fighting,opponents=opponents,nativeTarget=o.nativeTarget,pairProtected=o.pairProtected,
         qteFamily=qteFamily,steps=o.weaponSteps,current=owned})
     local function optional(module,method,...)
@@ -325,7 +328,7 @@ function Body.new(o)
     end
     local kitOptions={log=o.log,find=find,load=loadClass,findAll=findAll,fname=fname,current=owned,stats=getStats,stat=stat,
         hp=o.hp,aiOf=o.aiOf,nativeTarget=o.nativeTarget,pairProtected=o.pairProtected,fighting=fighting,now=gameNow,clock=gameNow,
-        paused=o.paused,loop=o.loop,cancel=o.cancel}
+        paused=o.paused,loop=o.loop,cancel=o.cancel,guard=actionGuard}
     local defense=o.defense or require('hun_defense').new(kitOptions)
     local grabGuard=o.grabGuard or require('hun_grab_guard').new(kitOptions)
     local supply=o.supply or require('hun_supply').new(kitOptions)
@@ -798,7 +801,7 @@ function Body.new(o)
         r.kitStopping=true
         role:restore(r)
         executionImmunity(r,true)
-        optional(grabGuard,'stop',r)
+        optional(grabGuard,'stop',r);optional(actionGuard,'stop',r)
         optional(defense,'stop',r);optional(supply,'stop',r);optional(shadows,'cleanup',r)
         optional(weapons,'stop',r,why or '停止');releaseEffects(r)
     end
@@ -881,6 +884,7 @@ function Body.new(o)
     function self:tick(members,battleActive)
         if not self.alive then return end
         battle=battleActive==true
+        optional(actionGuard,'tick')
         if next(records)then lastMembers=members or{};self:follow(members)else lastMembers={}end
         if next(dying)then tickDeaths()end
     end
@@ -982,6 +986,8 @@ function Body.new(o)
                 if r.brainTimerPending then startBrain(r) end
                 if r.defenseTimerPending then optional(defense,'retryTimer',r) end
                 if r.weaponTimerPending then optional(weapons,'retryTimer',r) end
+                if r.weaponSetupCheck and r.loadout and r.loadout.kit then optional(actionGuard,'follow',r) end
+            elseif records[key]==r and r.dead then optional(actionGuard,'stop',r)
             end
             if records[key]==r and r.phase=='observed' and not r.dead and r.appearance then
                 motionTime=motionTime or gameNow()
@@ -1069,6 +1075,7 @@ function Body.new(o)
         for key in pairs(samplers)do stopSampler(key,'Mod 卸载')end
         role:silence()
         optional(grabGuard,'silence')
+        optional(actionGuard,'silence',onGameThread)
         optional(defense,'silence',restore)
         optional(weapons,'silence',restore)
         optional(supply,'silence')

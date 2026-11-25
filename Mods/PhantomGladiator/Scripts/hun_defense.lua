@@ -302,6 +302,7 @@ function Defense.new(o)
         s.pending = {kind=kind, hit=hitTime, expires=hitTime+0.35}
         r.intent = r.intent or {}
         r.intent.busyUntil = math.max(r.intent.busyUntil or 0, now + 0.18)
+        if o.guard then o.guard:pressed(r) end
         if kind=='dashOnly' then
             say(r,'无反击闪避启动读回 动作计数='..tostring(tag(asc,'Ability.Action.Hun.Dash')))
         elseif kind=='deflect' then

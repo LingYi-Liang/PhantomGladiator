@@ -127,7 +127,7 @@ local function fixture(opts)
         loop=function(ms,fn)assert(ms==200 or ms==50);h.periods=h.periods or {};h.periods[#h.periods+1]=ms;h.loops[#h.loops+1]=fn;if h.rejectTimer then return false end;return #h.loops end,cancel=function(handle)h.cancelled[handle]=true end,
         stats=function()return h.stats end,hp=function(actor)return h.hp[actor]end,battle=function()return h.battle end,
         opponents=function()return h.opponents or {h.enemy}end,qteFamily=function(actor)return h.qte==actor end,
-        construct=opts.construct,
+        construct=opts.construct,guard=opts.guard,
         nativeTarget=opts.nativeTarget and function(actor)return opts.nativeTarget(h,actor)end,
         createInvalid=function()return {IsValid=function()return false end}end,
         register=function(path,callback)
@@ -307,12 +307,15 @@ test('combo: the handle is the fallback when the tag call starts nothing; nothin
 end)
 test('grab: the DualHook body activates its GEx by handle, reads ActiveCount and the target grab state; the switch off does not',function()
     local GEX=L.DualHook.grab
-    local h=fixture({body={grants={{GEX,42,{'Ability.Action.Hun.DualHook.GEx'}}}}})
+    local announced=0
+    local h=fixture({guard={pressed=function()announced=announced+1 end,settle=function()end},
+        body={grants={{GEX,42,{'Ability.Action.Hun.DualHook.GEx'}}}}})
     h.mod.bodies=1 -- the second body of the load takes DualHook
     h.mod:equip(h.r);assert(h.r.wep.weapon=='DualHook')
     h:tick(10.4)
     assert(h:count('activate hun 42')==1 and h:logged('即将 魂用投技 实例='..h.r.name..' GA_Hun_DualHook_GEx_C AbilitySystemComponent:TryActivateAbility(句柄=42)')==1)
     assert(h:logged('ActiveCount 0→1 启动=true')==1 and h.mod.streak.grab==0)
+    assert(announced>=1,'a started grab is announced to the action guard')
     h.enemy.AbilitySystemComponent.tags['Ability.Executed']=1
     h:tick(1.6);assert(h:logged('魂用投技 目标读回 实例='..h.r.name..' +0.4s')==1 and h:logged('+1.5s 目标=Thug_1 Ability.Executed=1')==1)
     h:tick(30);assert(h:count('activate hun 42')==1,'the spec is still active: no second activation')
@@ -392,8 +395,8 @@ local function item(native,weight,level)
     end
     error(native)
 end
-local function armed(profile,body,construct,nativeTarget)
-    local h=fixture({profile=true,body=body,construct=construct,nativeTarget=nativeTarget})
+local function armed(profile,body,construct,nativeTarget,guard)
+    local h=fixture({profile=true,body=body,construct=construct,nativeTarget=nativeTarget,guard=guard})
     for p in pairs(Catalog.configs) do
         if not h.assets[p] then h.assets[p]=object('Weapon '..p) end
     end
@@ -811,6 +814,25 @@ test('weapon input waits through wind-up, permits the authored follow-up, and sp
     assert(input.triedFollow and h:count('activate hun 204')==1 and h:count('activate hun 125')==0,'route the confirmed combo through native input')
     input.InActionPhase=false;h:tick(.2)
     assert(h:count('activate hun 125')==1 and h.stats.values.UltimateChargeCount==2)
+end)
+test('every pass tells the action guard whether it pressed an attack, and leaves the press for it to recognise',function()
+    local a=item('YuuBlade')
+    local light='/PBZCombatAsset/ActorData/Players/Hun/Abilities/DoubleBalde/YuuBlade/GA_Hun_YuuBlade_A.GA_Hun_YuuBlade_A_C'
+    local seen,presses={},0
+    local h
+    local function h_r()return h.r end
+    h=armed({weapons={a}},{grants={{light,206,{'Ability.Action.Hun.Light.A.Normal'}}}},nil,nil,
+        {settle=function(_,r,pressed)seen[#seen+1]={r,pressed}end,pressed=function(_,r)assert(r==h_r());presses=presses+1 end})
+    h.assets[a.path]['Equip Abilities']={object('BlueprintGeneratedClass '..light)}
+    h:tick(0);h:tick(.25)
+    assert(h:count('activate hun 206')>=1 and #seen>=1 and seen[1][1]==h.r and seen[1][2]==true)
+    assert(presses==h:count('activate hun 206'),'every accepted press is announced')
+    assert(h.r.wep.push.class=='GA_Hun_YuuBlade_A_C' and type(h.r.wep.push.at)=='number' and type(h.r.wep.comboWall)=='number')
+    local input=h.actor['Ability Input Component'];input.InActionPhase=true
+    input.ActionPhase={TagName='CharacterState.Action.Phase.Act'}
+    seen={};h:tick(.25);assert(#seen>=1 and seen[1][2]==false,'nothing to press during the swing')
+    h.enemy.at=vec(900,0,0);seen={};local wall=h.r.wep.comboWall;h:tick(.25)
+    assert(h.r.wep.comboWall==wall,'out of range the loop is not looking for a chain')
 end)
 test('a freshly pressed guard protects the gap before the next brain update',function()
     local a=item('Tang');local h=armed({weapons={a}})

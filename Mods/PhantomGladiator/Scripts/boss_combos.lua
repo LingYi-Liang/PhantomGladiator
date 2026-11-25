@@ -142,7 +142,7 @@ function Combos.new(options)
     local function companionEnemy(actor)
         if not options.companionTarget or not alive(actor) then return end
         local ok,target=pcall(options.companionTarget,actor)
-        if ok then return U.key(target) end
+        if ok then return U.key(target),target end
     end
     local function boundPartner(actor,partner)
         local bbLib,aiLib=find(BB_LIB),find(AI_LIB)
@@ -334,7 +334,7 @@ function Combos.new(options)
         for path,hook in pairs(hooks)do pcall(UnregisterHook,path,hook.pre,hook.post);hooks[path]=nil end
     end
 
-    local function link(pair,team,a,b,key)
+    local function link(pair,team,a,b,key,enemy)
         retry:reset()
         links[key]={key=key,pair=pair,team=team,a=a,b=b,partnerSet={},ownedKeys={},trees={}}
         seenGate={}
@@ -342,7 +342,8 @@ function Combos.new(options)
         self.linked=self.linked+1
         installHooks()
         holdPartners(links[key])
-        say(string.format('连携 %s 队伍=%s：%s + %s；%s',pair.name,team,className(a),className(b),prepareTrees()))
+        local target=team=='companion' and ('；共同敌人='..tostring(nameOf(enemy) or className(enemy))) or ''
+        say(string.format('连携 %s 队伍=%s：%s + %s；%s%s',pair.name,team,className(a),className(b),prepareTrees(),target))
     end
     local function unlink(key,reason)
         local record=links[key]
@@ -380,10 +381,11 @@ function Combos.new(options)
                     local cls=className(member.actor)
                     for _,pair in ipairs(Combos.PAIRS)do
                         local side=cls==pair.classes[1] and 1 or cls==pair.classes[2] and 2
-                        local enemy=side and companionEnemy(member.actor)
+                        local enemy,target
+                        if side then enemy,target=companionEnemy(member.actor) end
                         if enemy then
                             groups[pair]=groups[pair] or {}
-                            local group=groups[pair][enemy] or {{},{}}
+                            local group=groups[pair][enemy] or {{},{},target=target}
                             groups[pair][enemy]=group
                             table.insert(group[side],member.actor)
                         end
@@ -403,7 +405,7 @@ function Combos.new(options)
                 for _,group in pairs(enemies)do
                     for i=1,math.min(#group[1],#group[2])do
                         local a,b=group[1][i],group[2][i]
-                        keep[U.key(a)..':'..U.key(b)]={pair,'companion',a,b}
+                        keep[U.key(a)..':'..U.key(b)]={pair,'companion',a,b,group.target}
                     end
                 end
             end
@@ -414,7 +416,7 @@ function Combos.new(options)
             end
         end
         for key,p in pairs(keep)do
-            if not links[key] then link(p[1],p[2],p[3],p[4],key)
+            if not links[key] then link(p[1],p[2],p[3],p[4],key,p[5])
             elseif not links[key].retiring then installHooks();holdPartners(links[key]);watchTrees(links[key]) end
         end
         if next(keep) then checkDispatched() end

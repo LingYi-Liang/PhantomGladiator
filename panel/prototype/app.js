@@ -57,9 +57,11 @@
   const NEXUS = "https://www.nexusmods.com/phantombladezero/mods/363";
   const fromNexus = () => S.channel === "nexus";
   // Function keys accepted by backend.py (BINDING_NAMES); all of them start unbound.
-  const KEY_ICONS = { spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", hun_blue: "user-plus", hun_red: "user-plus", hun_companion: "shield", hun_neutral: "swords", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
-  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["eyes_player","eyes_npc","toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next"]], ["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]];
-  KEY_GROUPS.push(["weather", I18N.weatherKeys]);
+  const SELFIE_KEYS = ["toggle_photo", "toggle_selfie", "photo_panel", "selfie_pose", "selfie_next", "selfie_shot"];
+  const DIRECTOR_KEYS = ["toggle_cinema", "cycle_battle_hud"];
+  const KEY_ICONS = { toggle_cinema: "video", cycle_battle_hud: "sliders", toggle_photo: "video", photo_panel: "sliders", toggle_selfie: "video", selfie_pose: "swap", selfie_next: "user-plus", selfie_shot: "video", spawn: "user-plus", start: "play", stop: "trash", cycle_team: "swap", toggle_camera: "video", exit_camera: "x", toggle_spectator: "shield", refresh_catalog: "scan", recall_companions: "zap", dismiss_companions: "trash", hun_blue: "user-plus", hun_red: "user-plus", hun_companion: "shield", hun_neutral: "swords", toggle_time_stop: "stop", toggle_track: "target", track_pick: "target", track_next: "arrow-right" };
+  const KEY_GROUPS = [["fight", ["spawn", "start", "stop", "cycle_team"]], ["watch", ["eyes_player","eyes_npc","toggle_camera", "exit_camera", "toggle_time_stop", "toggle_spectator", "toggle_track", "track_pick", "track_next", ...DIRECTOR_KEYS]], ["companion", ["recall_companions", "dismiss_companions"]], ["hun", ["hun_blue", "hun_red", "hun_companion", "hun_neutral"]]];
+  KEY_GROUPS.push(["weather", I18N.weatherKeys], ["selfie", SELFIE_KEYS]);
   const NO_KEYS = Object.fromEntries(Object.keys(KEY_ICONS).map(action => [action, null]));
   const VK_CODES = { Space: 32, Pause: 19, CapsLock: 20, NumLock: 144, ScrollLock: 145, Backquote: 192, NumpadEnter: 13, Tab: 9, Enter: 13, Backspace: 8, Delete: 46, Insert: 45, Home: 36, End: 35, PageUp: 33, PageDown: 34, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Minus: 189, Equal: 187, BracketLeft: 219, BracketRight: 221, Backslash: 220, Semicolon: 186, Quote: 222, Comma: 188, Period: 190, Slash: 191, NumpadAdd: 107, NumpadSubtract: 109, NumpadMultiply: 106, NumpadDivide: 111, NumpadDecimal: 110 };
   const VK_NAMES = { 8: "Backspace", 9: "Tab", 13: "Enter", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "←", 38: "↑", 39: "→", 40: "↓", 45: "Insert", 46: "Delete", 106: "Num*", 107: "Num+", 109: "Num-", 110: "Num.", 111: "Num/", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 219: "[", 220: "\\", 221: "]", 222: "'" };
@@ -519,7 +521,7 @@
     BP_Monster_FemaleDoll_QinNv: "phantom", BP_Monster_FemaleDoll_QinNv_Ice: "phantom", BP_Monster_YanQianSui: "phantom", BP_Monster_GuWanYue: "phantom",
     BP_Monster_MoTian_LongZhu_01: "phantom", BP_Monster_FemaleVessel_YuZan: "phantom", BP_Monster_XuKong: "phantom", BP_Monster_XianZhe: "phantom", BP_Monster_MengHua: "menghua_stage",
   };
-  const ENTOURAGE_UNITS = new Set(["BP_Monster_HuaShan_Blue", "BP_Monster_HuaShan_RedTroop_BigBro", "BP_Monster_JadeMaskMan", "BP_Monster_FemaleVessel_YuZan", "BP_Monster_CanQu_BiHai", "BP_Monster_Danghui", "BP_Monster_XiaoXue"]);
+  const ENTOURAGE_UNITS = new Set(["BP_Monster_HuaShan_Blue", "BP_Monster_HuaShan_RedTroop_BigBro", "BP_Monster_HuaShan_JianOu", "BP_Monster_EMei_Sword_JianZhen", "BP_Monster_JadeMaskMan", "BP_Monster_FemaleVessel_YuZan", "BP_Monster_CanQu_BiHai", "BP_Monster_Danghui", "BP_Monster_XiaoXue"]);
   const UNIT_RULE_VALUES = { entourage: ["off","on"], lock: ["execute", "kill"], phantom: ["off", "keep"], remote_reflect: ["keep", "off"], menghua_stage: ["keep", "skip"] };
   const REMOTE_REFLECT_NATIVE = {
     BP_Monster_JingYe: "shieldReflect.native.jingye",
@@ -1704,6 +1706,7 @@
     el.innerHTML = `<div class="dock-title"><span style="display:flex;align-items:center;gap:8px">${esc(t("field.title"))}<span class="phase phase-${S.fight}">${esc(t("field.phase." + S.fight))}</span>${clock}</span>
         <button class="btn btn-ghost stop-btn" type="button" data-action="stop" ${stopDisabled ? "disabled" : ""} title="${esc(t("field.stopHint"))}">${ui.busy.has("stop") ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("trash", "icon-sm")}${esc(t("field.stop"))}${keyCap(S.keys.stop)}</button></div>
       <div class="scoreboard">${side("blue")}<div class="vs">VS</div>${side("red")}</div>
+      ${RT.latestMatchReport ? `<div class="match-report-entry"><button class="btn btn-secondary btn-sm" type="button" data-action="match-report-open">${icon("info", "icon-sm")}${esc(t("matchReport.title"))}</button></div>` : ""}
       ${note}${unfinished}
       ${actions}`;
     for (const team of ["blue", "red"]) {
@@ -1711,9 +1714,263 @@
       ui.lastCounts[team] = S[team];
     }
   }
+  const MATCH_STATS = [
+    "Health", "Health_Max", "Shachi", "Shachi_Max", "Attack", "ShachiAttack",
+    "Health_Max_Lv1", "Shachi_Max_Lv1", "Attack_Lv1", "ShachiAttack_Lv1",
+    "Resistance_Physical", "TakenReductionMultiplier_Physical", "TakenVulnerabilityMultiplier_Physical",
+    "Resistance_Poise", "Resistance_ImpactShachi", "Resistance_DefenceShachi",
+  ];
+  const MATCH_CORE_STATS = ["Health_Max", "Shachi_Max", "Attack", "ShachiAttack"];
+  const reportNumber = value => typeof value === "number" && Number.isFinite(value);
+  const reportText = value => typeof value === "string" && value.trim() ? value
+    : reportNumber(value) ? new Intl.NumberFormat(locale(), { maximumFractionDigits: 6 }).format(value)
+      : t("matchReport.unknown");
+
+  function reportChoice(prefix, value) {
+    if (typeof value !== "string" || !value) return t("matchReport.unknown");
+    const key = prefix + value;
+    const label = t(key);
+    return label === key ? value : label;
+  }
+  function reportDifficulty(value) {
+    return reportChoice("diff.", typeof value === "string" ? value.toUpperCase() : value);
+  }
+  function reportName(unit) {
+    const id = typeof unit.classPath === "string" ? unit.classPath.split(".").pop().replace(/_C$/, "") : "";
+    return byId.get(id)?.name || id || t("matchReport.unknown");
+  }
+  function reportNg(value) {
+    return reportNumber(value) ? t("matchReport.ngN", { n: reportText(value) }) : t("matchReport.unknown");
+  }
+  function reportMetadata(report) {
+    const recorded = typeof report.createdAt === "string" ? Date.parse(report.createdAt) : NaN;
+    return [
+      [t("matchReport.map"), reportText(report.map)],
+      [t("matchReport.saveNg"), reportNg(report.saveNg)],
+      [t("matchReport.levelMode"), reportChoice("level.mode.", report.levelMode)],
+      [t("matchReport.statsMode"), reportChoice("stats.mode.", report.statsMode)],
+      [t("matchReport.defaultDifficulty"), reportDifficulty(report.defaultDifficulty)],
+      [t("matchReport.build"), reportText(report.build)],
+      ...(Number.isFinite(recorded) ? [[t("matchReport.created"), new Date(recorded).toLocaleString(locale())]] : []),
+    ];
+  }
+  function reportUnitFields(unit) {
+    const fields = [
+      [t("matchReport.combatLevel"), reportText(unit.combatLevel)],
+      [t("matchReport.unitNg"), reportNg(unit.ng)],
+      [t("matchReport.unitDifficulty"), reportDifficulty(unit.difficulty)],
+      [t("matchReport.levelSource"), reportChoice("matchReport.levelSource.", unit.levelSource)],
+      [t("matchReport.spawnLevel"), reportText(unit.spawnLevel)],
+    ];
+    const optional = ["originalLevel", "requestedLevel", "preparedLevel", "levelBase", "difficultyOffset", "cycleBonus",
+      "levelMap", "levelArea", "levelReference", "referenceCycle", "classPath", "combatConfig"];
+    for (const key of optional) {
+      const value = unit[key];
+      if (reportNumber(value) || typeof value === "string" && value) {
+        fields.push([t("matchReport." + key), reportText(value)]);
+      }
+    }
+    if (unit.spawnDifficulty) fields.push([t("matchReport.spawnDifficulty"), reportDifficulty(unit.spawnDifficulty)]);
+    if (unit.statsMode) fields.push([t("matchReport.statsMode"), reportChoice("stats.mode.", unit.statsMode)]);
+    if (typeof unit.levelWriteVerified === "boolean") {
+      fields.push([t("matchReport.levelReadback"), t(unit.levelWriteVerified ? "matchReport.verified" : "matchReport.unverified")]);
+    }
+    if (typeof unit.formation === "boolean") {
+      fields.push([t("matchReport.formation"), t(unit.formation ? "matchReport.formationOn" : "matchReport.formationOff")]);
+    }
+    if (unit.storyLink === "keep" || unit.storyLink === "skip") {
+      fields.push([t("matchReport.storyLink"), t("matchReport.storyLink." + unit.storyLink)]);
+    }
+    return fields;
+  }
+  function reportStatRows(unit) {
+    return MATCH_STATS.flatMap(key => {
+      const value = unit.stats?.[key];
+      const curve = unit.levelCurve?.[key];
+      if (!value && !curve) return [];
+      const modifiers = Array.isArray(curve?.mods) ? curve.mods : [];
+      const parts = modifiers.filter(mod => mod && typeof mod === "object").map(mod =>
+        [mod.source, mod.type, mod.value].filter(part => typeof part === "string" || reportNumber(part)).join(" "));
+      return [{ name: t("matchReport.attr." + key), applied: reportText(value?.current), base: reportText(value?.base),
+        curve: curve && (reportNumber(curve.raw) || reportNumber(curve.adjusted))
+          ? t("matchReport.curveRead", { level: reportText(curve.level), raw: reportText(curve.raw), adjusted: reportText(curve.adjusted) })
+          : "", mods: parts.filter(Boolean) }];
+    });
+  }
+  function matchUnits(report, team) {
+    return report.units.filter(unit => unit && typeof unit === "object" && unit.team === team);
+  }
+  function reportFieldList(fields) {
+    return fields.map(([key, value]) => '<div><dt>' + esc(key) + '</dt><dd>' + esc(value) + '</dd></div>').join("");
+  }
+  function reportRole(unit) {
+    return [unit.reserve && t("matchReport.reserve"), unit.escort && t("matchReport.escort"),
+      unit.summoned && t("matchReport.summoned")].filter(Boolean).join(" · ");
+  }
+  function matchUnitHTML(unit) {
+    const stats = reportStatRows(unit);
+    const rows = stats.map(row => '<tr><th scope="row">' + esc(row.name) + '</th><td>' + esc(row.applied) +
+      '</td><td>' + esc(row.base) + '</td><td>' + esc([row.curve, ...row.mods].filter(Boolean).join(" · ") || "–") + '</td></tr>').join("");
+    const title = reportName(unit);
+    const role = reportRole(unit);
+    return '<article class="match-unit"><h4>' + esc(title) + (role ? '<small>' + esc(role) + '</small>' : '') + '</h4>' +
+      '<dl class="match-unit-meta">' + reportFieldList([
+        [t("matchReport.combatLevel"), reportText(unit.combatLevel)],
+        [t("matchReport.unitNg"), reportNg(unit.ng)],
+        [t("matchReport.unitDifficulty"), reportDifficulty(unit.difficulty)],
+      ]) + '</dl><dl class="match-unit-stats">' + reportFieldList(MATCH_CORE_STATS.map(key =>
+        [t("matchReport.attr." + key), reportText(unit.stats?.[key]?.current)])) + '</dl>' +
+      '<details class="match-unit-detail"><summary>' + esc(t("matchReport.detail")) + '</summary>' +
+      '<dl class="match-unit-meta">' + reportFieldList(reportUnitFields(unit).slice(3)) + '</dl>' +
+      (rows ? '<div class="match-stat-scroll"><table class="match-stat-table"><thead><tr><th>' + esc(t("matchReport.attribute")) +
+        '</th><th>' + esc(t("matchReport.applied")) + '</th><th>' + esc(t("matchReport.base")) + '</th><th>' +
+        esc(t("matchReport.curve")) + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '') + '</details></article>';
+  }
+  function matchOutcome(report) {
+    const outcome = report.result;
+    if (!outcome || typeof outcome !== "object" || !["blue", "red", "draw"].includes(outcome.winner)) return "";
+    const name = t("field.winner." + outcome.winner);
+    return reportNumber(outcome.seconds) ? name + " · " + fmtClock(outcome.seconds) : name;
+  }
+  function reportDamageLines(report) {
+    const formula = report.damageFormula;
+    if (!formula?.npcPhysicalBase) return [];
+    const lines = [t("matchReport.damagePhysical")];
+    if (formula.npcShachiBase) lines.push(t("matchReport.damageShachi"));
+    for (const team of ["blue", "red"]) {
+      const example = formula.examples?.[team];
+      if (!example) continue;
+      const source = matchUnits(report, team).find(unit => unit.slot === example.attackerSlot);
+      const target = matchUnits(report, team === "blue" ? "red" : "blue").find(unit => unit.slot === example.defenderSlot);
+      if (!source || !target) continue;
+      const values = [];
+      const term = (label, amount, fraction) => t(label) + " " + reportText(amount) +
+        (reportNumber(fraction) ? " (" + reportText(fraction * 100) + "%)" : "");
+      if (reportNumber(example.npcPhysicalBase)) values.push(term("matchReport.physicalTerm", example.npcPhysicalBase, example.npcPhysicalRatio));
+      if (reportNumber(example.npcShachiBase)) values.push(term("matchReport.shachiTerm", example.npcShachiBase, example.npcShachiRatio));
+      if (values.length) lines.push(teamName(team) + " " + reportName(source) + " → " + reportName(target) + " · " + values.join(" · "));
+    }
+    lines.push(t("matchReport.damageLimit"));
+    return lines;
+  }
+  function matchReportHTML(report, status) {
+    const head = '<div class="dialog-head"><h2 id="dlg-title">' + esc(t("matchReport.title")) + '</h2></div>';
+    const close = '<button class="btn btn-ghost" type="button" data-action="dialog-close" data-autofocus>' + esc(t("common.done")) + '</button>';
+    if (!report) {
+      return head + '<div class="dialog-body"><p role="status">' + esc(t("matchReport." + status)) +
+        '</p></div><div class="dialog-foot">' + close + (status === "error"
+          ? '<button class="btn btn-secondary" type="button" data-action="match-report-open">' + esc(t("matchReport.retry")) + '</button>'
+          : '') + '</div>';
+    }
+    const outcome = matchOutcome(report);
+    const columns = ["blue", "red"].map(team => {
+      const units = matchUnits(report, team);
+      return '<section class="match-team match-team-' + team + '"><h3>' + esc(teamName(team)) +
+        '</h3>' + (units.length ? units.map(matchUnitHTML).join("") : '<p class="muted">' + esc(t("matchReport.noUnits")) + '</p>') + '</section>';
+    });
+    const damage = reportDamageLines(report);
+    const formula = damage.length
+      ? '<section class="match-formula"><h3>' + esc(t("matchReport.damageTitle")) + '</h3>' +
+        damage.map(line => '<p>' + esc(line) + '</p>').join("") + '</section>' : "";
+    return head + '<div class="dialog-body match-report"><p class="muted">' + esc(t("matchReport.snapshot")) + '</p>' +
+      '<dl class="match-summary">' + reportFieldList(reportMetadata(report)) + '</dl>' +
+      (outcome ? '<p class="match-outcome">' + esc(outcome) + '</p>' : '') +
+      (report.truncated === true ? '<p class="muted">' + esc(t("matchReport.truncated")) + '</p>' : '') +
+      '<div class="match-columns">' + columns.join("") + '</div>' + formula + '</div><div class="dialog-foot">' + close +
+      '<button class="btn btn-secondary" type="button" data-action="match-report-copy">' + esc(t("matchReport.copy")) +
+      '</button><button class="btn btn-primary" type="button" data-action="match-report-save">' + esc(t("matchReport.save")) + '</button></div>';
+  }
+  async function openMatchReport() {
+    if (typeof RT.latestMatchReport !== "function") return;
+    if (dlg?.kind === "match-report") setDialog(matchReportHTML(null, "loading"));
+    else openDialog("match-report", matchReportHTML(null, "loading"), "dialog-wide match-report-dialog");
+    const owner = dlg;
+    try {
+      const report = await RT.latestMatchReport();
+      if (dlg !== owner) return;
+      owner.report = report?.schema === 1 && Array.isArray(report.units) ? report : null;
+      setDialog(matchReportHTML(owner.report, "empty"));
+    } catch {
+      if (dlg === owner) setDialog(matchReportHTML(null, "error"));
+    }
+  }
+  function reportCopyText(report) {
+    const field = ([key, value]) => key + " · " + value;
+    const lines = [t("matchReport.title"), t("matchReport.snapshot"), ...reportMetadata(report).map(field)];
+    const result = matchOutcome(report);
+    if (result) lines.push(result);
+    for (const team of ["blue", "red"]) {
+      lines.push("", teamName(team));
+      for (const unit of matchUnits(report, team)) {
+        lines.push([reportName(unit), reportRole(unit)].filter(Boolean).join(" · "), ...reportUnitFields(unit).map(field));
+        for (const row of reportStatRows(unit)) {
+          lines.push([field([row.name, row.applied]), field([t("matchReport.base"), row.base]), row.curve, ...row.mods]
+            .filter(Boolean).join(" · "));
+        }
+      }
+    }
+    const damage = reportDamageLines(report);
+    if (damage.length) lines.push("", t("matchReport.damageTitle"), ...damage);
+    return lines.join("\n");
+  }
+  function copyMatchReport() {
+    if (dlg?.kind === "match-report" && dlg.report) return copyText(reportCopyText(dlg.report), false);
+  }
+  function saveMatchReport() {
+    if (dlg?.kind !== "match-report" || !dlg.report) return;
+    const link = document.createElement("a");
+    const blob = new Blob([JSON.stringify(dlg.report, null, 2) + "\n"], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = "PhantomGladiator-match-report.json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function selfieRow() {
+    const photo = S.selfie;
+    if (RT.online() && !photo.supported) return "";
+    const busy = ui.busy.has("selfie"), canEnter = RT.ready() && S.companion > 0 && !S.freeCam;
+    const status = photo.on
+      ? photo.ready ? t("selfie.ready", { name: trackUnitName(photo.target) || t("selfie.companion"), n: photo.posed }) : t("selfie.preparing")
+      : photo.message ? reasonText("", photo.message)
+      : S.freeCam ? t("selfie.exitObserver")
+      : S.companion ? t("selfie.hint") : t("selfie.summonFirst");
+    const button = (action, text, enabled) => `<button class="btn btn-secondary btn-sm" type="button" data-action="selfie-command" data-command="${action}" ${enabled && !busy ? "" : "disabled"}>${esc(text)}${keyCap(S.keys[action])}</button>`;
+    if (photo.studio) {
+      return `<div class="control-row${photo.on ? " is-on" : ""}">
+        <span class="control-icon">${icon("video")}</span>
+        <div class="control-main">
+          <div class="control-title">${esc(t(photo.on ? (photo.mode === "duo" ? "photo.duo" : "photo.standard") : "photo.title"))}</div>
+          <div class="control-desc" role="status">${esc(t("photo.inGame"))}</div>
+        </div>
+        ${photo.on ? button(photo.mode === "duo" ? "toggle_selfie" : "toggle_photo", t("photo.leave"), RT.online()) : ""}
+      </div>
+      ${photo.on ? "" : `<div class="stat-actions">
+        ${button("toggle_photo", t("photo.standard"), RT.ready() && !S.freeCam)}
+        ${button("toggle_selfie", t("photo.duo"), canEnter)}
+      </div>`}`;
+    }
+    return `<div class="control-row${photo.on ? " is-on" : ""}">
+      <span class="control-icon">${icon("video")}</span>
+      <div class="control-main">
+        <div class="control-title">${esc(t("selfie.title"))}</div>
+        <div class="control-desc" role="status">${esc(status)}</div>
+      </div>
+      ${button("toggle_selfie", t(photo.on ? "selfie.exit" : "selfie.enter"), photo.on ? RT.online() : canEnter)}
+    </div>
+    ${photo.on ? `${photo.ready ? `<p class="control-desc">${esc(t("selfie.controlHint"))}</p>` : ""}<div class="stat-actions">
+      ${button("selfie_pose", t("selfie.pose"), photo.ready)}
+      ${button("selfie_next", t("selfie.next"), photo.ready && photo.next)}
+      ${button("selfie_shot", t("selfie.shot"), photo.ready)}
+    </div>` : ""}`;
+  }
   function renderView() {
     const el = $("#dock-view");
     if (!el) return;
+    if (S.selfie.on) {
+      el.innerHTML = `<div class="dock-title">${esc(t("view.title"))}</div><div class="control-list">${selfieRow()}</div>`;
+      return;
+    }
     const phase = S.spectatorPhase, on = S.spectator, cam = S.freeCam;
     // While the F6 camera runs it owns spectator mode, so the switch waits until the camera exits.
     const desc = cam ? t("view.spectator.byCam") : phase === "switching" ? t("view.spectator.switching") : phase === "restoring" ? t("view.spectator.restoring") : t(on ? "view.spectator.on" : "view.spectator.desc");
@@ -1724,6 +1981,7 @@
       : `<button class="btn btn-secondary btn-sm" type="button" data-action="camera-enter" ${RT.ready() && !camBusy ? "" : "disabled"}>${ui.busy.has("toggle_camera") ? '<span class="spinner" style="width:12px;height:12px"></span>' : icon("video", "icon-sm")}${esc(t("view.freecam.enter"))}</button>`;
     el.innerHTML = `<div class="dock-title">${esc(t("view.title"))}</div>
       <div class="control-list">
+        ${selfieRow()}
         <div class="control-row${cam ? " is-on" : ""}">
           <span class="control-icon">${icon("video")}</span>
           <div class="control-main"><div class="control-title">${esc(t("view.freecam"))}${cam ? `<span class="chip chip-green">${esc(t("view.freecam.active"))}</span>` : keyCap(S.keys.toggle_camera)}</div><div class="control-desc">${esc(t(cam ? "view.freecam.on" : "view.freecam.desc"))}</div>${keyLineHTML("toggle_camera")}</div>
@@ -1731,6 +1989,7 @@
         </div>
         ${timeStopRow()}
         ${trackRow()}
+        ${directorRows()}
         ${camSettingsHTML()}
         <div class="control-row${on && !phase ? " is-on" : ""}">
           <span class="control-icon">${icon("shield")}</span>
@@ -1740,6 +1999,34 @@
         ${clockHudRow()}
         ${executionCameraRow()}
       </div>`;
+  }
+  function directorRows() {
+    const cinema = S.cinema, hud = S.battleHud;
+    const cinemaBusy = ui.busy.has("toggle_cinema");
+    const hudBusy = ui.busy.has("cycle_battle_hud");
+    const hasPair = S.blue > 0 && S.red > 0;
+    const canStart = RT.ready() && hasPair && !S.frozen;
+    const canSwitchCinema = (cinema?.active ? RT.online() : canStart) && !cinemaBusy;
+    const shot = cinema?.shot ? t("view.cinema.shot." + cinema.shot) : t("view.cinema.active");
+    const cinemaDesc = cinema?.active ? shot : t(S.frozen ? "view.cinema.unfreeze" : hasPair ? "view.cinema.desc" : "view.cinema.needsPair");
+    return `${cinema?.supported ? `<div class="control-row${cinema.active ? " is-on" : ""}">
+      <span class="control-icon">${icon("video")}</span>
+      <div class="control-main">
+        <div class="control-title">${esc(t("view.cinema"))}${keyCap(S.keys.toggle_cinema)}</div>
+        <div class="control-desc">${esc(cinemaDesc)}</div>
+        ${S.cinemaKeysSupported ? keyLineHTML("toggle_cinema") : ""}
+      </div>
+      <button class="btn btn-secondary btn-sm" type="button" data-action="director-cinema" aria-busy="${cinemaBusy}" ${canSwitchCinema ? "" : "disabled"}>${esc(t(cinema.active ? "view.cinema.stop" : "view.cinema.start"))}</button>
+    </div>` : ""}
+    ${hud?.supported ? `<div class="control-row">
+      <span class="control-icon">${icon("sliders")}</span>
+      <div class="control-main">
+        <div class="control-title">${esc(t("view.battleHud"))}${keyCap(S.keys.cycle_battle_hud)}</div>
+        <div class="control-desc" role="status">${esc(t("view.battleHud.mode." + hud.mode))}</div>
+        ${S.cinemaKeysSupported ? keyLineHTML("cycle_battle_hud") : ""}
+      </div>
+      <button class="btn btn-secondary btn-sm" type="button" data-action="director-hud" aria-busy="${hudBusy}" ${RT.ready() && !hudBusy ? "" : "disabled"}>${esc(t("view.battleHud.cycle"))}</button>
+    </div>` : ""}`;
   }
   // 时停 (toggle_time_stop, free_camera.lua): the game stands still and the free camera keeps moving; outside the
   // camera it opens first. Leaving the camera ends it.
@@ -1884,7 +2171,7 @@
   function reasonText(code, detail = "") {
     const keyConflict = /(?:^|：)([^：]+) 已被其它Mod或UE4SS占用$/.exec(detail);
     if (keyConflict) return t("keys.externalConflict", { key: keyConflict[1] });
-    if (/^(?:weather|eyes)\.[A-Za-z]+$/.test(detail)) return t(detail);
+    if (/^(?:weather|eyes|selfie|photo)\.[A-Za-z]+$/.test(detail)) return t(detail);
     const translatedDetail = PGLanguageSupport.message(detail);
     if (translatedDetail !== detail) return translatedDetail;
     const queueDetail = queueSettingsMessage(detail);
@@ -2150,7 +2437,7 @@
           ${S.keys[action] ? `<button class="icon-btn icon-btn-sm" type="button" data-action="key-clear" data-key-action="${action}" ${usable && !ui.keysSaving ? "" : "disabled"} aria-label="${esc(t("keys.clear"))}" title="${esc(t("keys.clear"))}">${icon("x", "icon-sm")}</button>` : ""}`;
     return `<div class="row key-row${capturing ? " is-capturing" : ""}${note?.type === "conflict" || (capturing && note?.type === "err") ? " has-error" : ""}">
       <span class="row-icon">${icon(KEY_ICONS[action] || "keyboard")}</span>
-      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${RT.online() && keyNeedsUpdate(action) ? `<div class="key-note err">${esc(t(action.startsWith("eyes_") ? "eyes.update" : action.startsWith("weather_") ? "weather.update" : action === "dismiss_companions" ? "keys.dismiss.update" : "keys.hun.update"))}</div>` : ""}${noteHTML}</div>
+      <div class="row-main"><div class="row-title">${esc(t("keys.action." + action))}</div><div class="row-desc">${esc(t("keys.desc." + action))}</div>${RT.online() && keyNeedsUpdate(action) ? `<div class="key-note err">${esc(t(DIRECTOR_KEYS.includes(action) ? "cinema.update" : SELFIE_KEYS.includes(action) ? "selfie.update" : action.startsWith("eyes_") ? "eyes.update" : action.startsWith("weather_") ? "weather.update" : action === "dismiss_companions" ? "keys.dismiss.update" : "keys.hun.update"))}</div>` : ""}${noteHTML}</div>
       <div class="row-side">${side}</div>
     </div>`;
   }
@@ -2179,7 +2466,7 @@
       : I18N.lang === "zh" ? k.error : t("keys.savedInactive", { key: keyLabel(k) });
     return { type: "err", text };
   }
-  function keyNeedsUpdate(action) { return (action.startsWith("eyes_") && !S.eyesKeysSupported) || (action.startsWith("weather_") && !S.weatherKeysSupported) || (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
+  function keyNeedsUpdate(action) { return (DIRECTOR_KEYS.includes(action) && !S.cinemaKeysSupported) || ((action === "toggle_photo" || action === "photo_panel") && !S.studioKeysSupported) || (SELFIE_KEYS.includes(action) && !S.selfieKeysSupported) || (action.startsWith("eyes_") && !S.eyesKeysSupported) || (action.startsWith("weather_") && !S.weatherKeysSupported) || (action === "dismiss_companions" && !S.dismissKeySupported) || (/^hun_/.test(action) && !S.hunKeysSupported); }
   function hotkeysHTML() {
     const unitKeys = Object.entries(S.unitKeys), bound = Object.values(S.keys).filter(Boolean).length;
     return `<div class="stack">
@@ -3327,7 +3614,9 @@
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_passage": return t("action.set_companion_passage", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_minion_executions": return t("action.set_companion_minion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
-      case "eyes_player": case "eyes_npc": return t("keys.action."+job.action);
+      case "toggle_photo": case "photo_panel": case "toggle_selfie": case "selfie_pose": case "selfie_next": case "selfie_shot":
+      case "eyes_player": case "eyes_npc": case "toggle_cinema": case "cycle_battle_hud":
+        return t("keys.action."+job.action);
       case "set_camera_track": return t("action.set_camera_track");
       case "set_unit_rule": return t("action.set_unit_rule", { name: byId.get(p.unit || p.unit_id)?.name || p.unit || p.unit_id, value: p.rule === "remote_reflect" ? t("shieldReflect." + p.value) : ["menghua_stage","execution_minions"].includes(p.rule) ? unitRuleLabel(p.unit || p.unit_id, p.rule, p.value) : t(`unitRule.${p.rule}.${p.value}`) });
       case "set_stat_mode": return t("action.set_stat_mode", { mode: t("stats.mode." + p.mode) });
@@ -3442,16 +3731,22 @@
       <div class="dialog-body"><p>${esc(t("scan.confirmBody"))}</p></div>
       <div class="dialog-foot"><button class="btn btn-ghost" type="button" data-action="dialog-close">${esc(t("common.cancel"))}</button><button class="btn btn-primary" type="button" data-action="scan-confirm" data-autofocus>${icon("scan", "icon-sm")}${esc(t("settings.scan.btn"))}</button></div>`, "dialog-sm");
   }
-  async function copyText(text) {
+  async function copyText(text, preview = true) {
     try { await navigator.clipboard.writeText(text); }
     catch {
+      const previous = document.activeElement;
       const area = Object.assign(document.createElement("textarea"), { value: text });
-      document.body.appendChild(area);
+      (document.querySelector("#dialog") || document.body).appendChild(area);
       area.select();
-      document.execCommand("copy");
+      const copied = document.execCommand("copy");
       area.remove();
+      previous?.focus({ preventScroll: true });
+      if (!copied) {
+        toast({ kind: "error", title: t("matchReport.copyFailed") });
+        return;
+      }
     }
-    toast({ kind: "success", title: t("common.copied"), body: text, timeout: 2500 });
+    toast({ kind: "success", title: t("common.copied"), body: preview ? text : undefined, timeout: 2500 });
   }
 
   // ---------- Onboarding ----------
@@ -3661,6 +3956,10 @@
     "clear-queue": () => clearQueue(),
     eyes_player: () => run("eyes_player", {ok:() => t("eyes.started")}),
     eyes_npc: () => run("eyes_npc", {ok:() => t("eyes.started")}),
+    "selfie-command": el => {
+      const action = el.dataset.command;
+      if (SELFIE_KEYS.includes(action)) run(action, { busyKey: "selfie", ok: job => action === "selfie_shot" ? reasonText("", job.message) : "" });
+    },
     "track-toggle": () => run("toggle_track", { ok: j => t(/关闭/.test(j.message || "") ? "toast.track.off" : "toast.track.on") }),
     "time-stop": () => run("toggle_time_stop", { ok: j => t(/解除/.test(j.message || "") ? "toast.timeStop.off" : "toast.timeStop.on") }),
     "cam-reset": () => {
@@ -3748,6 +4047,11 @@
     "stats-save": () => { closeDialog(); applyStats(undefined, ui.statDialogSet); },
     "stats-clear": () => { ui.statDrafts[ui.statDialogSet] = {}; for (const input of document.querySelectorAll(".dialog .stat-input")) input.value = ""; },
     "clock-hud": () => toggleClockHud(),
+    "director-cinema": () => run("toggle_cinema"),
+    "director-hud": () => run("cycle_battle_hud"),
+    "match-report-open": () => openMatchReport(),
+    "match-report-copy": () => copyMatchReport(),
+    "match-report-save": () => saveMatchReport(),
     "execution-camera": () => toggleExecutionCamera(),
     "companion-executions": () => toggleCompanionExec(),
     "companion-passage": () => toggleCompanionPass(),

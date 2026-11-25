@@ -139,12 +139,22 @@ function Stats.new()
     local self={effects={}}
     -- Every attribute is writable (custom spawn stats); stat matching copies only Stats.fields.
     local allowed={};for _,field in ipairs(Stats.allFields)do allowed[field]=true end
-    function self:read(actor,field)
-        local set,why=attributeSet(actor);if not set then return nil,why end
+    local function readField(set,field)
         local data,ok=U.field(set,field)
         local base=U.struct(data,'BaseValue');local current=U.struct(data,'CurrentValue')
         if not ok or not finite(base) or not finite(current) then return nil,'属性不可读: '..field end
         return {base=base,current=current}
+    end
+    function self:read(actor,field)
+        local set,why=attributeSet(actor);if not set then return nil,why end
+        return readField(set,field)
+    end
+    -- Partial readback for one observation. An unavailable field does not erase the other values.
+    function self:readMany(actor,fields)
+        local set,why=attributeSet(actor);if not set then return nil,why end
+        local data={}
+        for _,field in ipairs(fields)do data[field]=readField(set,field) end
+        return data
     end
     function self:snapshot(actor)
         local result={}

@@ -97,6 +97,21 @@ end
 function Vitals.montagePlaying(actor)
     return (poseState(actor,false))
 end
+-- The phase of the running action: its input component's, else a Combo or Cancel tag on the ASC.
+function Vitals.phase(actor,fname)
+    local input=U.field(actor,'Ability Input Component')
+    if U.field(input,'InActionPhase')==true then
+        local phase=U.struct(U.field(input,'ActionPhase'),'TagName')
+        if type(phase)=='string' then return phase end
+        local ok,name=pcall(function()return phase:ToString()end)
+        return ok and type(name)=='string' and name or nil
+    end
+    local asc=U.field(actor,'AbilitySystemComponent')
+    for _,phase in ipairs({'CharacterState.Action.Phase.Combo','CharacterState.Action.Phase.Cancel'}) do
+        local _,count=call(asc,'GetGameplayTagCount',{TagName=fname(phase)})
+        if type(count)=='number' and count>0 then return phase end
+    end
+end
 -- The input map lists the preceding ability tag throughout a swing. Only the
 -- native Combo and Cancel phases open its transition window.
 function Vitals.actionState(actor,fname)

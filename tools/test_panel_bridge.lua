@@ -258,11 +258,14 @@ test("every status entry the panel reports is written, well past the old cap of 
     local fs = filesystem()
     fs.files["runtime/command-journal.tsv"] = ""
     local values = {}
-    for i = 1, 150 do values["entry_" .. i] = i end
+    for i = 1, 320 do values["entry_" .. i] = i end
     local bridge = create(fs, function() error("must not execute") end, { status = function() return values end })
     bridge:tick()
     local status = fs.files["runtime/status.tsv"]
-    for i = 1, 150 do assert(status:find("entry_" .. i .. "\t" .. i .. "\n", 1, true), "entry_" .. i .. " dropped") end
+    for i = 1, 320 do assert(status:find("entry_" .. i .. "\t" .. i .. "\n", 1, true), "entry_" .. i .. " dropped") end
+    for i = 1, 320 do values["entry_" .. i] = string.rep('行',200) end
+    bridge:tick()
+    assert(#fs.files['runtime/status.tsv']<=65536,'the backend must be able to read the whole status payload')
 end)
 
 test("select_unit validates target fields but does not imply spawning", function()
@@ -439,7 +442,21 @@ test('v3 key configuration adds recall and time stop as keys nine and ten; both 
     local eyes8=keys7:gsub('keys7','eyes8'):gsub('\t7\n','\tVK_120_MOD_0\tVK_119_MOD_1\t8\n')
     deliver(fs,eyes8);bridge:tick()
     assert(#got==6 and got[6].schema_version==8 and got[6].key_eyes_player=='VK_120_MOD_0' and got[6].key_eyes_npc=='VK_119_MOD_1' and got[6].key_weather_rain=='VK_120_MOD_4')
-    got[6]=nil;got[5]=nil
+    local selfie9=eyes8:gsub('eyes8','selfie9'):gsub('\t8\n','\tVK_119_MOD_0\tVK_195_MOD_2\tVK_120_MOD_0\tVK_206_MOD_1\t9\n')
+    deliver(fs,selfie9);bridge:tick()
+    assert(#got==7 and got[7].schema_version==9 and got[7].key_eyes_npc=='VK_119_MOD_1')
+    assert(got[7].key_toggle_selfie=='VK_119_MOD_0' and got[7].key_selfie_pose=='VK_195_MOD_2'
+        and got[7].key_selfie_shot=='VK_120_MOD_0' and got[7].key_selfie_next=='VK_206_MOD_1')
+    deliver(fs,selfie9:gsub('selfie9','bad9'):gsub('\t9\n','\t8\n'));bridge:tick();assert(#got==7)
+    local studio10=selfie9:gsub('selfie9','studio10'):gsub('\t9\n','\tVK_121_MOD_2\tVK_196_MOD_1\t10\n')
+    deliver(fs,studio10);bridge:tick()
+    assert(#got==8 and got[8].schema_version==10 and got[8].key_toggle_photo=='VK_121_MOD_2'
+        and got[8].key_photo_panel=='VK_196_MOD_1' and got[8].key_selfie_shot=='VK_120_MOD_0')
+    local cinema11=studio10:gsub('studio10','cinema11'):gsub('\t10\n','\tVK_70_MOD_2\tVK_71_MOD_1\t11\n')
+    deliver(fs,cinema11);bridge:tick()
+    assert(#got==9 and got[9].schema_version==11 and got[9].key_toggle_photo=='VK_121_MOD_2'
+        and got[9].key_toggle_cinema=='VK_70_MOD_2' and got[9].key_cycle_battle_hud=='VK_71_MOD_1')
+    got[9]=nil;got[8]=nil;got[7]=nil;got[6]=nil;got[5]=nil
     got[4]=nil
     deliver(fs,command('c0','set_unit_rule','BP_Monster_MoTian','blue',1,{'LOCK','KILL','',''}));bridge:tick()
     assert(unitRule and unitRule.unit_id=='BP_Monster_MoTian' and unitRule.key_spawn=='LOCK' and unitRule.key_start=='KILL')

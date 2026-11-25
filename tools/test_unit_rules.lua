@@ -26,7 +26,7 @@ local function actor(class)
 end
 do
     local fs=filesystem();local rules=new(fs)
-    for _,id in ipairs({'BP_Monster_HuaShan_Blue','BP_Monster_HuaShan_RedTroop_BigBro','BP_Monster_JadeMaskMan','BP_Monster_FemaleVessel_YuZan','BP_Monster_XiaoXue','BP_Monster_Danghui','BP_Monster_CanQu_BiHai'})do
+    for _,id in ipairs({'BP_Monster_HuaShan_Blue','BP_Monster_HuaShan_RedTroop_BigBro','BP_Monster_HuaShan_JianOu','BP_Monster_EMei_Sword_JianZhen','BP_Monster_JadeMaskMan','BP_Monster_FemaleVessel_YuZan','BP_Monster_XiaoXue','BP_Monster_Danghui','BP_Monster_CanQu_BiHai'})do
         assert(rules:get(id,'entourage')=='off' and rules:set(id,'entourage','on').ok)
         assert(new(fs):get(id,'entourage')=='on' and rules:set(id,'entourage','off').ok)
     end

@@ -4,9 +4,14 @@ local U=require('ue_observe')
 local M={}
 local ROOT='/PBZCombatAsset/ActorData/Mobs/035_HuaShan/'
 local function mob(id)return ROOT..id..'.'..id..'_C' end
+local PUPPET='BP_Monster_HuaShan_JianOu'
+local SWORD='BP_Monster_EMei_Sword_JianZhen'
+local swordPath='/PBZCombatAsset/ActorData/Mobs/034_EMei/'..SWORD..'.'..SWORD..'_C'
 M.parties={
     BP_Monster_HuaShan_Blue={{path=mob('BP_Monster_HuaShan_White'),count=6,formation=true}},
     BP_Monster_HuaShan_RedTroop_BigBro={{path=mob('BP_Monster_HuaShan_RedTroop_Soldier'),count=6,formation=true}},
+    [PUPPET]={{path=swordPath,count=1,formation=true}},
+    [SWORD]={{path=mob(PUPPET),count=1,formation=true}},
 }
 local MASK='/Game/RenewalContent/Actors/Mobs/Normal/'
 M.parties.BP_Monster_JadeMaskMan={}
@@ -15,10 +20,22 @@ for _,id in ipairs({'BP_Monster_GoldMaskMan','BP_Monster_IronMaskMan'})do
 end
 M.xiao='BP_Monster_XiaoXue'
 function M.id(path)return type(path)=='string' and path:match('%.(BP_Monster_[%w_]+)_C$')end
-function M.retireFormation(path)
-    local id=M.id(path)
-    return id=='BP_Monster_HuaShan_Blue' or id=='BP_Monster_HuaShan_RedTroop_BigBro'
+local JADE_TREE='/014_JadeMaskMan/AI/AllOutAttack/'
+local nativeGroups={}
+local function nativeGroup(path,tree)
+    local members={path}
+    for _,escort in ipairs(M.parties[M.id(path)])do
+        for _=1,escort.count do members[#members+1]=escort.path end
+    end
+    nativeGroups[path]={members=members,tree=tree}
 end
+nativeGroup(mob('BP_Monster_HuaShan_Blue'),ROOT..'BehaviorTree/')
+nativeGroup(mob('BP_Monster_HuaShan_RedTroop_BigBro'),ROOT..'BehaviorTree/')
+nativeGroup(mob(PUPPET),ROOT..'BehaviorTree/JianOu/')
+nativeGroup(swordPath,ROOT..'BehaviorTree/JianOu/')
+nativeGroup(MASK..'BP_Monster_JadeMaskMan.BP_Monster_JadeMaskMan_C',JADE_TREE)
+function M.nativeGroup(path)return nativeGroups[path]end
+function M.retireFormation(path)return nativeGroups[path]~=nil end
 local passives={
     [M.xiao]={GA_SummonPassive_XiaoXue_C=4},
     BP_Monster_FemaleVessel_YuZan={GA_YuZan_Passive_Summon_C=3,GA_YuZan_Passive_Summon_P2_C=5},
@@ -31,6 +48,8 @@ function M.supports(id)return passives[id]~=nil or M.parties[id]~=nil end
 local ASSIGN='/SGameAI/BehaviorTree/Task/BTTask_AssignBehaviorTreesToGroupMember.BTTask_AssignBehaviorTreesToGroupMember_C:ExecuteInternal'
 local SUMMON='/SGameAI/Core/AIScript/GA_SummonPassive.GA_SummonPassive_C:OnReceivedSpawnSummonsEvent'
 local FINISH=SUMMON:gsub(':OnReceivedSpawnSummonsEvent$',':OnSpawnFinish')
+local AI='/Script/SGameAI.Default__SGameAIFunctionLibrary'
+local XIAO_RETRY_SECONDS=2
 local function call(obj,method,...)
     if not U.valid(obj) then return end
     local args=table.pack(...);local ok,value=pcall(function()return obj[method](obj,table.unpack(args,1,args.n))end)
@@ -41,6 +60,7 @@ function M.new(o)
     local wantAssign,wantPassive=false,false
     local alive=true
     local edits={}
+    local aiLibrary
     local function member(actor)
         local key=U.key(actor);local r=key and members[key]
         if r and r.name==call(actor,'GetFullName') and U.inWorld(actor,o.world()) then return r end
@@ -73,7 +93,7 @@ function M.new(o)
         end
         members,groups,leaders=nextMembers,nextGroups,nextLeaders
         if next(members) then self:tick() else detach() end
-        for k,n in pairs(sent)do if not members[k] or members[k].name~=n then sent[k]=nil end end
+        for k,receipt in pairs(sent)do if not members[k] or members[k].name~=receipt.name then sent[k]=nil end end
     end
     local function assign(task)
         task=U.unwrap(task)
@@ -85,8 +105,9 @@ function M.new(o)
         if not r or (o.hp(pawn) or 0)<=0 or not U.inWorld(task,o.world()) then return end
         local leader=leaders[r.owner]
         if not leader or not member(leader.actor) or (o.hp(leader.actor)or 0)<=0 or not leader.enabled or not M.parties[leader.id] then return end
+        if leader.id==PUPPET or leader.id==SWORD then return end
         local tree=call(U.field(task,'TreeAsset'),'GetFullName')
-        if type(tree)~='string' or not tree:find(leader.id=='BP_Monster_JadeMaskMan' and '/014_JadeMaskMan/AI/AllOutAttack/' or ROOT..'BehaviorTree/',1,true) then return end
+        if type(tree)~='string' or not tree:find(leader.id=='BP_Monster_JadeMaskMan' and JADE_TREE or ROOT..'BehaviorTree/',1,true) then return end
         local peers={}
         for _,p in ipairs(groups[r.owner]) do
             if p~=r and p.team==r.team and member(p.actor)==p and (o.hp(p.actor) or 0)>0 then peers[#peers+1]=p.actor end
@@ -142,20 +163,49 @@ function M.new(o)
         configure(r,a,cap)
         if not r.enabled or r.id~=M.xiao then return end
         local k=U.key(r.actor)
-        if sent[k] or U.field(a,'MaxSummonCount')~=4 or (o.hp(r.actor)or 0)<=0 then return end
+        local abilityKey=U.key(a)
+        local receipt=sent[k]
+        if not abilityKey or (receipt and (receipt.done or receipt.abilityKey~=abilityKey or receipt.attempts>=2))
+            or U.field(a,'MaxSummonCount')~=4 or (o.hp(r.actor)or 0)<=0 then return end
         local rows=U.array(U.field(a,'SpawnedSummonInstances'));if not rows then return end
-        sent[k]=r.name
-        if #rows>0 then return end
-        -- The native handler subtracts living AND pending summons before choosing its own minions.
+        if not receipt then
+            receipt={name=r.name,abilityKey=abilityKey,attempts=0}
+            sent[k]=receipt
+        end
+        local now=o.now()
+        if #rows>0 then
+            for _,row in ipairs(rows)do
+                if U.struct(row,'bPawnPending')==false and U.valid(U.struct(row,'Pawn')) then
+                    receipt.done=true
+                    return
+                end
+            end
+            receipt.sawRows=true
+            return
+        end
+        if receipt.nextAt and now<receipt.nextAt then return end
+        receipt.nextAt=now+XIAO_RETRY_SECONDS
+        if receipt.attempts>0 or receipt.sawRows then
+            if not U.valid(aiLibrary) then
+                local ok,value=pcall(o.find,AI)
+                if ok and U.valid(value) then aiLibrary=value end
+            end
+            if U.field(a,'bIsActive')~=true or call(aiLibrary,'GetPendingSummonCount',a)~=0 then return end
+        end
+        receipt.attempts=receipt.attempts+1
+        -- Leave an accepted or completed native summon alone. An empty native slot only permits one retry.
         local ok=pcall(function()a:OnReceivedSpawnSummonsEvent({EventMagnitude=4,Instigator=r.actor})end)
-        o.log('[Entourage] 小雪原生召唤请求 '..tostring(ok)..'；已有实例 '..#rows..'；结果由召唤名单确认')
+        o.log('[Entourage] 小雪原生召唤请求 '..tostring(ok)..' 尝试='..receipt.attempts..'；结果由召唤名单确认')
     end
     local function born(ability,child)
         local r,a,cap=ownedPassive(ability);child=U.unwrap(child)
         if not r or not r.enabled or not U.inWorld(child,o.world()) then return end
         configure(r,a,cap)
         local path=U.npcPath(child)
-        if path and U.key(child)~=U.key(r.actor) then o.adopt(child,r.actor,path) end
+        if path and U.key(child)~=U.key(r.actor) then
+            if r.id==M.xiao then sent[U.key(r.actor)]={name=r.name,done=true} end
+            o.adopt(child,r.actor,path)
+        end
     end
     local retry=0
     function self:tick()
