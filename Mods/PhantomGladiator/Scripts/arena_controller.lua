@@ -29,6 +29,8 @@ function Arena.new(options)
     local units, selected, team, count = {}, nil, "blue", 1
     local corpseGroups,lastCorpseCheck={},nil
     local rosterRevision,indexRevision=0,-1
+    local rosterSerial=0
+    local rosterOrdinals={blue={},red={}}
     local byKey,unkeyed={},{}
     local state, message, busy = "idle", "请选择单位与队伍", false
     local lastRestoreConfirmed = true
@@ -149,13 +151,13 @@ function Arena.new(options)
         if not ok or not finite(hp) then return nil,'HP=UNKNOWN' end
         if hp<=0 and options.holdsDeath then
             local checked,pending=invoke('holdsDeath',unit.actor)
-            if checked and pending==true then return nil,'HP=0；原生重生判定中' end
+            if checked and pending==true then return nil,'HP=0；原生重生判定中',hp end
         end
         if hp>0 and options.confirmedDead then
             local checked,dead=invoke('confirmedDead',unit.actor)
-            if checked and dead then return false,'原生死亡已确认；HP='..tostring(hp) end
+            if checked and dead then return false,'原生死亡已确认；HP='..tostring(hp),hp end
         end
-        return hp>0,'HP='..tostring(hp)
+        return hp>0,'HP='..tostring(hp),hp
     end
 
     -- A summon its summoner keeps hidden in reserve for a later phase (冷荼's seven stand-by dolls,
@@ -383,6 +385,23 @@ function Arena.new(options)
         return copy
     end
 
+    -- A submitted unit identifier binds to one owned actor in this controller's lifetime.
+    -- Escorts and skill summons stay attached to the explicit spawning record.
+    local function registerRoster(unit, worldKey, parent)
+        local ordinals=rosterOrdinals[unit.team]
+        if not ordinals then return end
+        unit.rosterWorld=worldKey
+        unit.rosterKey=actor_key(unit.actor)
+        unit.rosterName=actor_name(unit.actor)
+        unit.rosterParent=parent
+        if parent then return end
+        rosterSerial=rosterSerial+1
+        unit.rosterId='A'..rosterSerial
+        local ordinal=(ordinals[unit.class_path] or 0)+1
+        ordinals[unit.class_path]=ordinal
+        unit.rosterOrdinal=ordinal
+    end
+
     -- side 'opposing': the summon is there to fight its summoner's side (arena_summon_links.lua, 冷荼's _NPC helpers).
     -- main.lua takes such a helper out as it comes; this is for one that could not be. In a blue/red fight it joins the other team as a helper (unit.aid): its attacks land on the summoner's side, the
     -- game's own summon combat picks its targets, it is not sent at anyone nor sent at, and it does not count among
@@ -400,7 +419,9 @@ function Arena.new(options)
         if not owner then return {ok=false,message='召唤者不在本擂台，未接管单位'} end
         local team,aid=owner.team,nil
         if side=='opposing' and (owner.team=='blue' or owner.team=='red') then team=owner.team=='blue' and 'red' or 'blue';aid=true end
-        units[#units+1]={actor=actor,team=team,class_path=classPath,slot=next_slot(team),summoner=owner.actor,needsJoin=true,aid=aid}
+        local unit={actor=actor,team=team,class_path=classPath,slot=next_slot(team),summoner=owner.actor,needsJoin=true,aid=aid}
+        units[#units+1]=unit
+        registerRoster(unit,owner.rosterWorld,owner)
         local synced=notify_units()
         -- The numbers the player set for this side go on what its units summon too.
         if options.summonAdopted then
@@ -623,6 +644,38 @@ function Arena.new(options)
             and (unit.team=='red' or unit.team=='blue') and (target.team=='red' or target.team=='blue')
             and unit.team~=target.team and unit.assignedKey==target.key and targetable(target) and may_maintain(unit,revision)
     end
+    -- Skill code can ask for a target before the next AI update is allowed to
+    -- replace the old assignment. Resolve only the protected boss's own wave.
+    function instance:phaseOpponent(key,original)
+        if not battleActive or not original or not options.phaseBlocksAim or not options.preferredTargets then return end
+        local me=unit_by_key(key)
+        if not me or me.aid or me.needsJoin or (me.team~='red' and me.team~='blue') then return end
+        local checked,blocked=invoke('phaseBlocksAim',me.actor,original)
+        if not checked or blocked~=true then return end
+        local ok,set=invoke('preferredTargets',me.actor,me.team,actor_key(original))
+        if not ok or type(set)~='table' then return end
+        local function eligible(candidate)
+            return candidate and candidate.team~=me.team and not candidate.aid and not candidate.needsJoin and targetable(candidate)
+        end
+        local assigned=me.assignedKey and set[me.assignedKey] and unit_by_key(me.assignedKey)
+        if eligible(assigned) then return assigned.actor end
+        local got,here=invoke('getLocation',me.actor)
+        here=got and vector(here) or nil
+        local best,bestDistance,bestKey
+        for candidateKey in pairs(set)do
+            local candidate=unit_by_key(candidateKey)
+            if eligible(candidate) then
+                local read,there=invoke('getLocation',candidate.actor)
+                there=read and vector(there) or nil
+                local d=here and there and ((here.X-there.X)^2+(here.Y-there.Y)^2) or math.huge
+                if not best or d<bestDistance or (d==bestDistance and candidateKey<bestKey) then
+                    best,bestDistance,bestKey=candidate.actor,d,candidateKey
+                end
+            end
+        end
+        return best
+    end
+
     function instance:opponentOf(key)
         local me=key and unit_by_key(key)
         if not me or (me.team~='blue' and me.team~='red') then return nil end
@@ -630,7 +683,11 @@ function Arena.new(options)
             me=unit_by_key(actor_key(me.summoner))
             if not me or stand(me) or alive_readback(me)~=true then return nil end
         end
-        if me.assignedTarget and fighting(unit_by_key(me.assignedKey)) then return me.assignedTarget end
+        if me.assignedTarget then
+            local priority=self:phaseOpponent(me.key or key,me.assignedTarget)
+            if priority then return priority end
+            if fighting(unit_by_key(me.assignedKey)) then return me.assignedTarget end
+        end
         local okHere,here=invoke('getLocation',me.actor)
         here=okHere and vector(here) or nil
         local best,bestDistance
@@ -1167,8 +1224,11 @@ function Arena.new(options)
                 if okSpawn and live(actor) == true and not duplicate then
                     -- 先接管所有权并通知root，再调用可能失败的登场操作。
                     local spec=dual==true and team=='companion' and not escort and require('companion_profile').phase(unitPath) and {} or nil
-                    units[#units + 1] = { actor = actor, team = team, slot = slot, class_path=unitPath,needsJoin=battleActive,companionSpec=spec,
-                        formationGroup=group,reportEscort=escort~=nil }
+                    local parent=escort and unit_by_key(actor_key(escort.parent))
+                    local unit={actor=actor,team=team,slot=slot,class_path=unitPath,needsJoin=battleActive,companionSpec=spec,
+                        formationGroup=group,reportEscort=escort~=nil}
+                    units[#units+1]=unit
+                    if not escort or parent then registerRoster(unit,actor_key(world),parent) end
                     if group and group.retire then
                         local got,name=invoke('name',actor)
                         if got and type(name)=='string' and name~='' then units[#units].formationName=name end
@@ -1603,8 +1663,16 @@ function Arena.new(options)
         relay.blue=relay.enabled and blue or 0;relay.red=relay.enabled and red or 0
     end
 
-    local function readStatus(members)
+    local function currentRosterWorld()
+        local gotPlayer,player=invoke('getPlayer')
+        if not gotPlayer or live(player)~=true then return end
+        local gotWorld,world=invoke('getWorld',player)
+        if gotWorld then return actor_key(world),world end
+    end
+
+    local function readStatus(members,roster)
         prune()
+        local rosterWorld=roster and currentRosterWorld()
         local blue, red, neutral, unreadable, dead,neutralOwned,summons = 0, 0, 0, 0, 0,0,0
         local companions,companionOwned,reserve,stands,aids=0,0,0,0,0
         local unread={}
@@ -1612,7 +1680,7 @@ function Arena.new(options)
             if unit.summoner then summons=summons+1 end
             if unit.team=='neutral' then neutralOwned=neutralOwned+1 end
             if unit.team=='companion' then companionOwned=companionOwned+1 end
-            local alive,proof=alive_readback(unit)
+            local alive,proof,hp=alive_readback(unit)
             local isStand=stand(unit)
             local hidden=not isStand and alive==true and dormant(unit)
             if hidden~=(unit.dormant==true) then
@@ -1638,10 +1706,15 @@ function Arena.new(options)
             end
             unit.countedAlive=alive
             if members then members[#members+1]=memberRow(unit,isStand) end
+            if rosterWorld and unit.rosterId and unit.rosterWorld==rosterWorld then
+                roster[#roster+1]={id=unit.rosterId,team=unit.team,path=unit.class_path,ordinal=unit.rosterOrdinal,
+                    state=alive==nil and 'unknown' or alive and 'alive' or 'down',hp=hp}
+            end
         end
+        local over=battleActive and (blue+(unread.blue or 0)+relay.blue==0 or red+(unread.red or 0)+relay.red==0)
+        if over then fight.winner=fight.winner or (blue>0 and 'blue' or red>0 and 'red' or 'draw') end
         local okNow,now=invoke('now')
         if okNow and finite(now) then
-            local over=battleActive and (blue+(unread.blue or 0)+relay.blue==0 or red+(unread.red or 0)+relay.red==0)
             if battleActive and blue>0 and red>0 and (not fight.started or fight.ended) then
                 fight={started=now};log('战斗计时开始 蓝='..blue..' 红='..red..' 游戏时间='..string.format('%.2f',now))
             elseif over and fight.started and not fight.ended then
@@ -1657,11 +1730,67 @@ function Arena.new(options)
         return { blue_count = blue, red_count = red, blue_unreadable=unread.blue or 0,red_unreadable=unread.red or 0,neutral_count = neutral, total = blue + red + neutral,
             owned_records = #units,neutral_owned=neutralOwned,companion_count=companions,companion_owned=companionOwned,unreadable_count = unreadable, dead_count=dead,max_units=maxUnits,summon_count=summons,reserve_count=reserve,stand_count=stands,aid_count=aids,battle_active=battleActive,current_unit = selected or "", current_team = team,
             current_count = count,team_revision=teamRevision, state = state, message = message, busy = busy,
+            roster=roster,roster_editable=(not battleActive or over) and state~='cleanup_pending'
+                and state~='restore_pending' and state~='spawn_uncertain' and state~='operation_failed',
+            winner=over and fight.winner or nil,
             battle_clock=fight.started and (fight.ended and 'ended' or 'running') or '',
             battle_seconds=fight.started and math.max(0,(fight.ended or fight.now)-fight.started) or 0 }
     end
 
-    function instance:status()return readStatus()end
+    function instance:status(includeRoster)
+        return readStatus(nil,includeRoster and {} or nil)
+    end
+
+    function instance:removeRosterUnit(id)
+        return run(function()
+            if type(id)~='string' or not id:match('^A[1-9]%d*$') then return response(false,'单位编号无效') end
+            local status=readStatus()
+            if not status.roster_editable or spawn_block() then
+                return response(false,'战斗或清理进行中，暂时无法移除单位')
+            end
+            local root
+            for _,unit in ipairs(units)do if unit.rosterId==id then root=unit;break end end
+            if not root then return response(false,'该单位已离场，请刷新阵容') end
+            local worldKey,world=currentRosterWorld()
+            if not worldKey or root.rosterWorld~=worldKey then return response(false,'单位已不在当前地图') end
+
+            -- Spawn records precede their children. Recheck identities before destroying the owned group
+            -- and leave the selected unit registered if any of its helpers could not be removed.
+            local picked,plan={},{}
+            for _,unit in ipairs(units)do
+                if unit==root or picked[unit.rosterParent] then
+                    picked[unit]=true
+                    plan[#plan+1]=unit
+                end
+            end
+            local function matches(unit)
+                if unit.rosterWorld~=worldKey or not unit.rosterKey or actor_key(unit.actor)~=unit.rosterKey
+                    or actor_name(unit.actor)~=unit.rosterName or unit.rosterName:lower():match('^unknown%(') then return false end
+                if options.inCompanionWorld then
+                    local checked,same=invoke('inCompanionWorld',unit.actor,world)
+                    return checked and same==true
+                end
+                return true
+            end
+            for _,unit in ipairs(plan)do
+                if removed(unit.actor)~=false or not matches(unit) then
+                    return response(false,'单位身份或所属地图未确认，移除未执行')
+                end
+            end
+            for i=#plan,1,-1 do
+                local unit=plan[i]
+                if removed(unit.actor)==false and matches(unit) then invoke('destroy',unit.actor) end
+                local gone,proof=removed(unit.actor)
+                log('阵容移除 '..id..' actor='..tostring(unit.rosterName)..'；读回='..proof)
+                if gone~=true then
+                    prune()
+                    return response(false,'移除尚未确认，名单保留未回收单位')
+                end
+            end
+            prune()
+            return response(true,'已移除选中的单位',{destroyed_count=#plan})
+        end)
+    end
     -- Both consumers in one support tick see the same reserve state. Commands still take fresh reads.
     function instance:snapshot()
         local members={}

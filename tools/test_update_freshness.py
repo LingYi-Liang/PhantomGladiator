@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def main():
     helper = runpy.run_path(str(ROOT / "tools/test_update_check.py"), run_name="fixture")
-    pages, requests = {}, []
+    pages, redirects, requests = {}, {}, []
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -30,6 +30,16 @@ def main():
         def do_GET(self):
             url = urlsplit(self.path)
             requests.append((url.path, parse_qs(url.query), self.headers.get("Cache-Control", "")))
+            if url.path == "/api/rate-limited":
+                self.send_response(403)
+                self.send_header("X-RateLimit-Remaining", "0")
+                self.end_headers()
+                return
+            if url.path in redirects:
+                self.send_response(302)
+                self.send_header("Location", redirects[url.path])
+                self.end_headers()
+                return
             body = pages.get(url.path)
             if url.path == "/nonce/latest.json":
                 body = manifest("0.40.13" if parse_qs(url.query).get("pg_check") else "0.40.11", "nonce")
@@ -63,6 +73,13 @@ def main():
     pages["/api/preview"] = json.dumps(dict(release, prerelease=True))
     pages["/api/draft"] = json.dumps(dict(release, draft=True))
     pages["/api/incomplete"] = json.dumps(dict(release, assets=[]))
+    redirects.update({
+        "/web/live/latest": "tag/v0.40.13",
+        "/web/newer/latest": base + "/web/newer/tag/v0.40.14",
+        "/web/other-repo/latest": base + "/web/another/tag/v0.40.13",
+        "/web/other-origin/latest": base.replace("127.0.0.1", "localhost") + "/web/other-origin/tag/v0.40.13",
+        "/web/prerelease/latest": "tag/v0.40.13-beta-1",
+    })
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         with tempfile.TemporaryDirectory(prefix="pg-fresh-update-") as scratch:

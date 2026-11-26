@@ -299,10 +299,21 @@ function Runtime.new(options)
             if not options.clockHUD then return {ok=false,message='画面计时模块未加载',spawned_count=0} end
             return options.clockHUD:set(command.key_start)
         end,
+        -- RED or BLUE in key_spawn, ON or OFF in key_start (attack_flash.lua).
+        set_attack_flash=function(command)
+            local module=options.support and options.support.attackFlash
+            if not module then return {ok=false,message='招式预警模块未加载'} end
+            return module:set(command.key_spawn:lower(),command.key_start)
+        end,
         -- ON or OFF in key_start (execution_camera.lua).
         set_execution_camera=function(command)
             if not options.executionCamera then return {ok=false,message='处决镜头模块未加载',spawned_count=0} end
             return options.executionCamera:set(command.key_start)
+        end,
+        set_execution_appearance=function(command)
+            local appearance=options.support and options.support.executionAppearance
+            if not appearance then return {ok=false,message='处决外观设置不可用'} end
+            return appearance:set(command.key_start)
         end,
         -- The unit in unit_id, the rule in key_spawn and its value in key_start, upper case on the wire (unit_rules.lua).
         set_unit_rule=function(command)
@@ -344,6 +355,19 @@ function Runtime.new(options)
                 local stopped=music:stop()
                 if not stopped.ok then result.ok=false;result.message=(result.message or '')..'；'..stopped.message end
             end
+            return result
+        end,
+        remove_arena_unit=function(command)
+            local why=readyError()
+            if not self.arenaRoster then return {ok=false,message='阵容管理模块未加载'} end
+            local session,id=(command.unit_id or ''):match('^([%w_-]+)|(A[1-9]%d*)$')
+            if why or not session or session~=sessionStatus().game_session then
+                return {ok=false,message=why or '阵容已变更，请重新打开名单'}
+            end
+            if self.summonQueue.relayStarted then return {ok=false,message='接力交战中，暂时无法移除单位'} end
+            if options.support then options.support:discover() end
+            local result=options.arena:removeRosterUnit(id)
+            self.arenaRoster:refresh()
             return result
         end,
         clear_neutral=function()
@@ -482,9 +506,13 @@ function Runtime.new(options)
     for _,id in ipairs(require('map_weather').commands)do
         self.handlers['weather_'..id]=function()return weather(id)end
     end
+    if options.arena.removeRosterUnit then
+        self.arenaRoster=require('arena_roster').new({path=options.path,write=options.rosterWrite,clock=options.rosterClock})
+    end
     self.bridge=Bridge.new({path=options.path,log=self.log,handlers=self.handlers,
         session=function() return options.session and options.session:status() or {} end,status=function()
-        local arena=options.arena:status()
+        local rosterDue=self.arenaRoster and self.arenaRoster:due()
+        local arena=options.arena:status(rosterDue)
         local catalog=options.exporter:status()
         local spectator=options.spectator and options.spectator:status() or {}
         local out={build=options.build,blue_count=arena.blue_count,red_count=arena.red_count,
@@ -515,6 +543,13 @@ function Runtime.new(options)
         out.summon_queue_relay_started=queue.relayStarted==true;out.summon_queue_generated=queue.generated
         local reserves=queue:reserves();out.summon_queue_blue_reserve=reserves.blue;out.summon_queue_red_reserve=reserves.red
         out.arena_battle_active=arena.battle_active==true
+        if arena.winner then out.arena_winner=arena.winner end
+        if self.arenaRoster then
+            if rosterDue and session.game_ready==true and arena.roster then
+                self.arenaRoster:publish(session.game_session,arena.roster_editable and not queue.relayStarted,arena.roster)
+            end
+            out.arena_roster_revision=self.arenaRoster.revision
+        end
         out.monster_pool_queue_waiting=#self.poolQueue.jobs
         local policy=options.spawnPolicy and options.spawnPolicy.status() or {}
         out.spawn_trial_policy=policy.version or ''
@@ -553,7 +588,16 @@ function Runtime.new(options)
         out.clock_hud=clockHUD.on==true
         out.clock_hud_state=clockHUD.state or 'off'
         out.clock_hud_failures=clockHUD.failures or 0
+        local attackFlash=options.support and options.support.attackFlash
+        if attackFlash then
+            local state=attackFlash:status()
+            out.attack_flash_supported=true
+            out.attack_flash_red=state.red
+            out.attack_flash_blue=state.blue
+        end
         local executionCamera=options.executionCamera and options.executionCamera:status() or {}
+        local appearance=options.support and options.support.executionAppearance
+        if appearance then out.execution_appearance_legacy=appearance.on==true end
         out.execution_camera_supported=not not options.executionCamera
         out.execution_camera=executionCamera.on==true
         out.execution_camera_state=executionCamera.state or 'off'

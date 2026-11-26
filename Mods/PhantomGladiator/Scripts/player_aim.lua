@@ -14,8 +14,12 @@ Aim.paths={character=STATICS..'GetPlayerCharacter',pawn=STATICS..'GetPlayerPawn'
     lock='/MagCombatAbilities/Abilities/BP_ActionAbilityBase.BP_ActionAbilityBase_C:Request Lock Target',
     bullet='/SGameCombatSystem/Bullet/TargetSelector/BP_BulletTargetSelector_LockTarget.BP_BulletTargetSelector_LockTarget_C:SelectTarget',
     bulletAbility='/PBZCombatAsset/Prototypes/Bullet/TargetSelector/BP_BulletTargetSelector_FromAbility.BP_BulletTargetSelector_FromAbility_C:SelectTarget'}
-local ORDER={'character','pawn','force','lock','bullet','bulletAbility'}
-local LABEL={character='取玩家角色',pawn='取玩家Pawn',force='强制锁玩家',lock='锁定落在玩家',bullet='子弹目标',bulletAbility='子弹目标(招式)',flying='飞行中目标'}
+local INPUT_LIBRARY='/Script/ProjectPBZ.PBZBlueprintFunctionLibrary:'
+Aim.paths.walkInputAdd=INPUT_LIBRARY..'AddInputModeTag'
+Aim.paths.walkInputRemove=INPUT_LIBRARY..'RemoveInputModeTag'
+local ORDER={'character','pawn','force','lock','bullet','bulletAbility','walkInputAdd','walkInputRemove'}
+local LABEL={character='取玩家角色',pawn='取玩家Pawn',force='强制锁玩家',lock='锁定落在玩家',bullet='子弹目标',bulletAbility='子弹目标(招式)',flying='飞行中目标',
+    walkInputAdd='拦截NPC输入限制',walkInputRemove='隔离NPC输入恢复'}
 -- 左殇's flying weapons: the target the bullet actually holds once it starts (ABulletActorBase.CurrentTarget), and where it ends.
 local FLYING_DIR='/PBZCombatAsset/ActorData/Mobs/054_ZuoShang/Weapon/'
 local FLYING={}
@@ -84,18 +88,16 @@ for _,name in ipairs({
     'GA_XuKong_Skill_04_C',                                                               -- 虚空
     'GA_DangHui_SwitchSelf_C',                                                            -- 荡秽's swap dodge
     'GAA_ForceLockTarget_C',                                                              -- the shared "force lock target" action
-    'GAA_ForcePlayerWalk_C',                                                              -- the shared "force the player to walk" action (SELF below)
     'BP_YuBi_CA02_Arena_C',                                                              -- boundary actor and ASC cache
     'BP_Bullet_LengTu_StickyWire_C',                                                     -- rope user skeletal-mesh target
     'BP_QiShu_Bing_Icicle_C',                                                            -- in-range frost victim comparison and application
 })do AIMS[name]=true end
 Aim.aims=AIMS
--- Actions that do something to "the player" as the one a boss performs for, not as a target: GAA_ForcePlayerWalk puts
--- the force-walk attitude and input-mode tags on GetPlayerCharacter when it begins and takes them off when it ends
--- (银发左殇's GA_ZuoShang_CA_01 uses it). Cast by one of this mod's units the real player must not be slowed, and the
--- opponent may change between the two calls and keep the tags; the caster itself stands in for both calls.
-local SELF={GAA_ForcePlayerWalk_C=true}
-Aim.self=SELF
+-- This action runs at the beginning, every tick, and at the end. Its actor states belong on the caster.
+-- PBZ's input library still uses the local controller's NBInputComponent regardless of the imposer.
+local FORCE_WALK='GAA_ForcePlayerWalk_C'
+local WALK_LEASE_SECONDS=15
+local WALK_HOOKS={character=true,walkInputAdd=true,walkInputRemove=true}
 
 local function addr(object)
     return U.key(object)
@@ -119,6 +121,8 @@ function Aim.new(options)
     local companions={}
     local teams={}
     local roster={}    -- unit address -> full object identity and flying-weapon capability
+    local walkOwners,walkActions={},{}
+    local emptyActor
     local seenLines,lines={},0
     local quietSince,summaryAt,passedWindow=nil,nil,0
     local uninstallAt=0
@@ -210,6 +214,11 @@ function Aim.new(options)
         if companions[key] then return options.companionTargetOf(companions[key],castTarget,castName)end
         return options.opponentOf(key)
     end
+    local function phaseAimOpponent(key,current)
+        if not options.phaseAimOpponent or not U.valid(current) then return end
+        local ok,target=pcall(options.phaseAimOpponent,key,current)
+        if ok and U.valid(target) then return target end
+    end
     -- A companion's enemy of a moment ago (companion_target.lua lastEnemy), for a skill lock taken while its AI
     -- target key is empty; nil for blue and red, whose opponent is the arena's.
     local function lastEnemyOf(key)
@@ -298,6 +307,147 @@ function Aim.new(options)
             say('没改写的取玩家调用 调用方='..cls..' 函数='..LABEL[name])
         end
     end
+    -- This cue reads Pawn 0 only for a faction check before spawning its own particles.
+    -- Pass a confirmed NPC opponent for that one visual check when the player is neutral or friendly.
+    local function attackFlashPawn(object,index)
+        local flash=options.attackFlash
+        if not flash or U.unwrap(index)~=0 then return end
+        local color=flash:colorFor(object)
+        if not color then return end
+        local ok,avatar=pcall(function()return object:GetAvatarActor()end)
+        avatar=ok and U.unwrap(avatar) or nil
+        local unit=U.key(avatar)
+        if not unit or fighters[unit]~=true or phaseBusy(unit) then return end
+        if options.paused and options.paused() then return end
+        local named,identity=pcall(function()return avatar:GetFullName()end)
+        if not named or type(identity)~='string' or not roster[unit] or roster[unit].name~=identity then return end
+        local player=options.player()
+        local playerKey=U.key(player)
+        if not playerKey or playerKey==unit then return end
+        local relation=options.readRelation(avatar,player)
+        if relation~=0 and relation~=1 then return end
+        local okTarget,target=pcall(opponentOf,unit)
+        if not okTarget then return end
+        local targetKey=U.key(target)
+        if not targetKey or targetKey==playerKey or sameTeam(unit,targetKey) or not U.npcPath(target) then return end
+        if options.readRelation(avatar,target)~=2 then return end
+        if not seenLines['attackFlash.'..color] then
+            seenLines['attackFlash.'..color]=true
+            say('补显示'..(color=='red' and '红光' or '蓝光')..'；对玩家关系读回='..relation..'；对手关系读回=2；特效由原生动作播放')
+        end
+        return target
+    end
+
+    local function fullName(object)
+        local ok,name=pcall(function()return object:GetFullName()end)
+        if ok and type(name)=='string' then return name end
+    end
+    local function emptyWalkActor()
+        if emptyActor==nil then
+            local ok,value=pcall(options.invalid or CreateInvalidObject)
+            if ok and value~=nil and not U.valid(value) then emptyActor=value end
+        end
+        return emptyActor
+    end
+    local function noteWalk(key,text)
+        if seenLines[key] then return end
+        seenLines[key]=true
+        say(text)
+    end
+    local function walkOwner(action)
+        local actionKey=U.key(action)
+        local actionName=actionKey and fullName(action)
+        if not actionName then return end
+        local lease=walkActions[actionKey]
+        local now=clock()
+        local read,avatar=pcall(function()return action:GetAvatarActor()end)
+        avatar=read and U.unwrap(avatar) or nil
+        local ownerKey=U.key(avatar)
+        local ownerName=ownerKey and fullName(avatar)
+        if ownerKey and isPlayerActor(avatar) then
+            walkActions[actionKey]=nil
+            return
+        end
+        local world=options.world and options.world()
+        local worldKey=U.key(world)
+        if options.world and not worldKey then return end
+        if lease and (lease.actionName~=actionName or lease.worldKey~=worldKey or now>lease.expires) then
+            walkActions[actionKey]=nil
+            lease=nil
+        end
+        if ownerKey then
+            if not ownerName or (worldKey and not U.inWorld(avatar,world)) then return end
+            local named=walkOwners[ownerKey]
+            local stillSame=lease and lease.ownerKey==ownerKey and lease.ownerName==ownerName
+            if named==ownerName or stillSame then
+                if stillSame then lease.expires=now+WALK_LEASE_SECONDS
+                else
+                    walkActions[actionKey]={actionName=actionName,ownerKey=ownerKey,ownerName=ownerName,
+                        actor=avatar,worldKey=worldKey,expires=now+WALK_LEASE_SECONDS}
+                end
+                return true,avatar
+            end
+            -- A shared action now running for a different valid caster keeps its original behavior.
+            walkActions[actionKey]=nil
+        elseif lease then
+            local actor=lease.actor
+            if U.key(actor)==lease.ownerKey and fullName(actor)==lease.ownerName
+                and (not worldKey or U.inWorld(actor,world)) and not isPlayerActor(actor) then return true,actor end
+            return true
+        end
+    end
+    local function forceWalkCharacter(action,index)
+        if U.unwrap(index)~=0 then return end
+        local owned,actor=walkOwner(action)
+        if not owned then return end
+        local inputHooksReady=hooks.walkInputAdd and hooks.walkInputRemove
+        local answer=inputHooksReady and actor or emptyWalkActor()
+        if answer==nil then
+            noteWalk('walk-empty-failed','强制慢走隔离对象未读回，保留原生查找')
+            return
+        end
+        self.redirected=self.redirected+1
+        self.counts.character=self.counts.character+1;self.window.character=self.window.character+1
+        if actor and inputHooksReady then
+            noteWalk('walk-caster','改写 取玩家角色 调用方='..FORCE_WALK..' → 施法者自己 '..className(actor)..'（不作用于玩家）')
+        elseif actor then
+            noteWalk('walk-hook-unavailable','强制慢走输入挂钩未确认，原生玩家角色查询改为空对象')
+        else
+            noteWalk('walk-actor-cleared','强制慢走原施法者已离场，原生玩家角色查询改为空对象')
+        end
+        return answer
+    end
+    local function inputTagName(tag)
+        local value=U.struct(U.unwrap(tag),'TagName')
+        if type(value)=='string' then return value end
+        local ok,name=pcall(function()return value:ToString()end)
+        if ok and type(name)=='string' then return name end
+    end
+    local function walkInput(name,context,tag,imposer)
+        if not self.alive or not (next(walkOwners) or next(walkActions)) then return end
+        local action=U.unwrap(context)
+        if className(action)~=FORCE_WALK then return end
+        if name=='walkInputRemove' then imposer,tag=tag,U.field(action,'InputTag') end
+        if inputTagName(tag)~='InputType.OnlyMove' or not walkOwner(action) then return end
+        local empty=emptyWalkActor()
+        if empty==nil then
+            noteWalk('walk-input-unavailable','强制慢走输入隔离未读回：原生空对象不可用')
+            return
+        end
+        local writable=U.kind(imposer)
+        if writable~='RemoteUnrealParam' and writable~='LocalUnrealParam' then
+            noteWalk('walk-input-param','强制慢走输入隔离未读回：Imposer 不可写')
+            return
+        end
+        local wrote=pcall(function()imposer:set(empty)end)
+        local read,value=pcall(function()return imposer:get()end)
+        local blocked=wrote and read and not U.valid(value)
+        if blocked then
+            self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
+        end
+        noteWalk('walk-'..name..'-'..tostring(blocked),LABEL[name]..' InputType.OnlyMove Imposer 空对象读回='..tostring(blocked))
+    end
+
     local dragonReads=0
     local function callback(name)
         return function(_,context,index)
@@ -306,10 +456,16 @@ function Aim.new(options)
                 local answer=options.boundaryCharacter(context,index)
                 if answer~=nil then return answer end
             end
-            if not next(fighters) then return nil end
+            local lookForWalk=name=='character' and (next(walkOwners) or next(walkActions))
+            if not lookForWalk and not next(fighters) then return nil end
             local object=U.unwrap(context)
             if not U.valid(object) then return nil end
             local cls=className(object)
+            if lookForWalk and cls==FORCE_WALK then return forceWalkCharacter(object,index) end
+            if not next(fighters) then return nil end
+            if name=='pawn' and cls=='GAAction_WeaponParticle_BlueRedEye_C' then
+                return attackFlashPawn(object,index)
+            end
             if options.formationPlayerLookup and ((name=='character' and cls=='GA_HuaShan_Troop_Healing_C')
                 or (name=='pawn' and cls=='GA_HuaShan_RedTroop_BigBro_Skill_08_01_C')) and U.unwrap(index)==0 then
                 local answer=options.formationPlayerLookup(object)
@@ -333,17 +489,6 @@ function Aim.new(options)
                 unit=unitOf(object)
             end
             if not unit or phaseBusy(unit) or (options.paused and options.paused()) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
-            if SELF[cls] then
-                local got,caster=pcall(function()return options.actorOf and options.actorOf(unit)end)
-                if not got or not U.valid(caster) or U.key(caster)~=unit then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
-                self.redirected=self.redirected+1
-                self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
-                if lines<LINES and not seenLines[name..cls] then
-                    seenLines[name..cls]=true;lines=lines+1
-                    say(string.format('改写 %s 调用方=%s → 施法者自己 %s（不作用于玩家） 累计=%d',LABEL[name],cls,className(caster),self.counts[name]))
-                end
-                return caster
-            end
             local ok,target=pcall(opponentOf,unit)
             if not ok or not U.valid(target) then self.passed=self.passed+1;passedWindow=passedWindow+1;return nil end
             if warning and not U.npcPath(target) then return nil end
@@ -473,8 +618,10 @@ function Aim.new(options)
         local unit=unitOf(ability)
         if not unit or phaseBusy(unit) or (options.paused and options.paused()) then return nil end
         local onAlly=sameTeam(unit,U.key(owner))
-        if not onStand and not onAlly and not isPlayer(owner) then return nil end
-        local okTarget,target=pcall(opponentOf,unit)
+        local phaseTarget=phaseAimOpponent(unit,owner)
+        if not phaseTarget and not onStand and not onAlly and not isPlayer(owner) then return nil end
+        local okTarget,target=true,phaseTarget
+        if not target then okTarget,target=pcall(opponentOf,unit) end
         if not okTarget or not U.valid(target) then okTarget,target=pcall(lastEnemyOf,unit) end
         if not okTarget or not U.valid(target) then return nil end
         local root=U.field(target,'RootComponent')
@@ -487,7 +634,7 @@ function Aim.new(options)
         if (lockLines[where] or 0)<2 then
             lockLines[where]=(lockLines[where] or 0)+1
             local back=U.field(ability,'Lock Target')
-            say(string.format('招式的锁定落在%s，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',onStand and '替身' or onAlly and '友方' or '玩家',where,className(target),tostring(okSet),tostring(okOut),
+            say(string.format('招式的锁定落在%s，改成对手 招式=%s -> %s 写入=%s 返回值=%s 读回=%s 累计=%d',phaseTarget and '上桩烈焰' or onStand and '替身' or onAlly and '友方' or '玩家',where,className(target),tostring(okSet),tostring(okOut),
                 addr(back and U.struct(back,'Component'))==addr(root) and '生效' or '没生效',self.counts.lock))
         end
         return nil
@@ -519,7 +666,9 @@ function Aim.new(options)
                 local intended=companions[key] and U.key(target)
                 if intended and U.key(hit)==intended then return nil end
                 if companions[key] and not U.valid(target) and isPlayer(hit) then return false end
-                if fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit)) then
+                local phaseTarget=phaseAimOpponent(key,hit)
+                if phaseTarget then target=phaseTarget
+                elseif fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit)) then
                     local where=U.valid(U.unwrap(ability)) and className(U.unwrap(ability)) or '?'
                     if not bulletSeen['ok'..where] and bulletLines<BULLET_LINES then
                         bulletSeen['ok'..where]=true;bulletLines=bulletLines+1
@@ -590,8 +739,10 @@ function Aim.new(options)
         local okTarget,target=pcall(opponentOf,key)
         target=okTarget and U.valid(target) and target or nil
         local _,hit=holderOf(bullet)
+        local phaseTarget=kind=='start' and phaseAimOpponent(key,hit)
+        if phaseTarget then target=phaseTarget end
         local note=''
-        if kind=='start' and target and not (hit and fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit))) and not (options.paused and options.paused()) then
+        if kind=='start' and target and (phaseTarget or not (hit and fighters[U.key(hit)]==true and not sameTeam(key,U.key(hit)))) and not (options.paused and options.paused()) then
             local root=U.field(target,'RootComponent')
             if U.valid(root) then
                 local had=hit and className(hit) or '空'
@@ -1101,13 +1252,14 @@ function Aim.new(options)
 
     -- A blueprint that is not loaded yet (a selector comes in with the first bullet data) is tried again while the fight runs.
     local function needed(name)
-        return next(fighters)~=nil and not hooks[name] and (not FLYING[name] or flyingWanted)
+        local walkReady=WALK_HOOKS[name] and (next(walkOwners) or next(walkActions))
+        return (walkReady or next(fighters)~=nil) and not hooks[name] and (not FLYING[name] or flyingWanted)
             and (name~='iceSpawn' or iceWanted) and (not RAIN_END[name] or next(rainSearch) or next(effects))
     end
     register=function(name)
         if not needed(name) then return end
         local path=Aim.paths[name]
-        if not retry:ready(path) then return end
+        if not retry:ready(path) or not retry:ready(path..':register') then return end
         local okFind,found=pcall(StaticFindObject,path)
         retry:result(path,okFind and U.valid(found))
         if not okFind or not U.valid(found) then
@@ -1117,14 +1269,38 @@ function Aim.new(options)
             or (name=='bullet' or name=='bulletAbility') and function(...)return retarget(name,...)end
             or name=='launch' and launched or name=='skillStart' and skillStarted
             or RAIN_END[name] and retireParticle or name=='iceSpawn' and iceSpawn
+            or (name=='walkInputAdd' or name=='walkInputRemove') and function(_,...)walkInput(name,...)end
             or FLYING[name] and function(context)
                 self.counts[name]=self.counts[name]+1;self.window[name]=self.window[name]+1
                 return flight(FLYING[name],context)
             end or callback(name)
         local ok,pre,post=pcall(RegisterHook,path,handler,function()end)
-        if ok and type(pre)=='number' and type(post)=='number' then
-            hooks[name]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post)
-        else retry:result(path..':register',false,tostring(pre))end
+        local registered=ok and type(pre)=='number' and type(post)=='number'
+        retry:result(path..':register',registered,not registered and tostring(pre) or nil)
+        if registered then hooks[name]={pre=pre,post=post};say('挂钩注册ID读回 '..name..' pre='..pre..' post='..post) end
+    end
+    local function armWalkHooks()
+        register('character')
+        register('walkInputAdd')
+        register('walkInputRemove')
+    end
+    local function canOwnWalk(member)
+        return member.team=='blue' or member.team=='red' or
+            (member.team=='companion' and type(options.companionTargetOf)=='function')
+    end
+    -- The controller publishes summoned actors before finishing their spawn or starting AI.
+    -- Keep these three guards ready for native opening moves even when the duel has not ticked.
+    function self:prepareWalk(members)
+        if not self.alive then return end
+        local current={}
+        for _,member in ipairs(members)do
+            if canOwnWalk(member) then
+                local key=U.key(member.actor)
+                if key then current[key]=fullName(member.actor) end
+            end
+        end
+        walkOwners=current
+        if next(walkOwners) then armWalkHooks() end
     end
     local function install()
         for _,fn in ipairs({'StaticFindObject','RegisterHook','UnregisterHook'})do
@@ -1148,23 +1324,27 @@ function Aim.new(options)
             if restore~=false then releaseEffect(item,frame) end
             effects[key]=nil
         end
-        local kept={}
+        local kept,remainingBattleHooks={},false
+        local keepWalk=not force and next(walkOwners)~=nil
         for name,hook in pairs(hooks)do
-            local ok,result=pcall(UnregisterHook,Aim.paths[name],hook.pre,hook.post)
-            if not ok or result==false then kept[name]=hook end
+            if keepWalk and WALK_HOOKS[name] then kept[name]=hook
+            else
+                local ok,result=pcall(UnregisterHook,Aim.paths[name],hook.pre,hook.post)
+                if not ok or result==false then kept[name]=hook;remainingBattleHooks=true end
+            end
         end
         local parts={}
         for _,name in ipairs(ORDER)do parts[#parts+1]=LABEL[name]..'='..self.counts[name] end
         parts[#parts+1]=LABEL.flying..'='..self.counts.flying
-        say('摘除挂钩（'..reason..'） 改写 '..table.concat(parts,' ')..' 其他调用照旧='..self.passed..' 摘除失败='..tostring(next(kept)~=nil))
+        say('摘除挂钩（'..reason..'） 改写 '..table.concat(parts,' ')..' 其他调用照旧='..self.passed..' 摘除失败='..tostring(remainingBattleHooks))
         hooks=kept
-        if not next(hooks) then self.state='idle';self.message='没有需要适配的攻击单位';uninstallAt=0 end
+        if not remainingBattleHooks then self.state='idle';self.message='没有需要适配的攻击单位';uninstallAt=0 end
     end
 
     function self:tick()
         if not self.alive then return end
         local now=clock()
-        local units,current,added={},{},false
+        local units,current,walkCurrent,added={},{},{},false
         flyingWanted=false
         iceWanted=false
         menghuaHits=false
@@ -1175,15 +1355,15 @@ function Aim.new(options)
         local fighting=options.fighting()
             for _,member in ipairs(members)do
                 local companion=member.team=='companion' and type(options.companionTargetOf)=='function'
-                if (companion or fighting and (member.team=='blue' or member.team=='red')) and (not member.reserve or member.stand) then
+                if canOwnWalk(member) then
                     local key=U.key(member.actor)
+                    local identity=key and fullName(member.actor)
+                    if identity then walkCurrent[key]=identity end
                     -- A stand can cast a skill, but cannot be the opponent a skill aims at.
-                    if key then
+                    if key and (companion or fighting) and (not member.reserve or member.stand) then
                         units[key]=member.stand and 'stand' or true
                         teams[key]=member.team
                         if companion and not member.stand then companions[key]=member.actor end
-                        local named,identity=pcall(function()return member.actor:GetFullName()end)
-                        identity=named and type(identity)=='string'and identity or nil
                         local entry=roster[key]
                         if not identity or not entry or entry.name~=identity then
                             if not entry or identity and entry.name~=identity then added=true end
@@ -1202,19 +1382,27 @@ function Aim.new(options)
                 end
             end
         roster=current
+        walkOwners=walkCurrent
+        local worldKey=next(walkActions) and options.world and U.key(options.world())
+        for key,lease in pairs(walkActions)do
+            if now>lease.expires or options.world and lease.worldKey~=worldKey then walkActions[key]=nil end
+        end
         fighters=units
         if added then retry:reset() end
         if next(fighters) then
             quietSince=nil
-            if not next(hooks) and self.state~='failed' then install()
+            if self.state=='idle' then install()
             else
                 for _,name in ipairs(ORDER)do register(name) end
             end
-        elseif options.boundaryPending and options.boundaryPending() then
-            quietSince=nil -- A companion's native field can finish after the roster changes.
-        elseif next(hooks) then
-            quietSince=quietSince or now
-            if now-quietSince>=UNHOOK_SECONDS then uninstall('战斗已结束') end
+        else
+            if next(walkOwners) or next(walkActions) then armWalkHooks() end
+            if next(walkActions) or options.boundaryPending and options.boundaryPending() then
+                quietSince=nil -- A force-walk or native field can finish after the roster changes.
+            elseif next(hooks) and (not next(walkOwners) or self.state~='idle') then
+                quietSince=quietSince or now
+                if now-quietSince>=UNHOOK_SECONDS then uninstall('战斗已结束') end
+            end
         end
         if menghuaHits or hooks.menghuaHit then syncHitProbe(now) end
         summaryAt=summaryAt or now
@@ -1230,7 +1418,10 @@ function Aim.new(options)
         end
     end
     function self:status()return {state=self.state,redirected=self.redirected,passed=self.passed,message=self.message}end
-    function self:silence(reason,onGameThread)self.alive=false;uninstall(reason or 'Mod卸载',true,onGameThread==true)end
+    function self:silence(reason,onGameThread)
+        self.alive=false;walkOwners,walkActions={},{}
+        uninstall(reason or 'Mod卸载',true,onGameThread==true)
+    end
     return self
 end
 return Aim

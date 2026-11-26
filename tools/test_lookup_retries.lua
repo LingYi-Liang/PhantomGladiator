@@ -88,7 +88,9 @@ test('all eight absent flying paths have an exact 64-query polling bound over 18
     local h=aimFixture('BP_Monster_ZuoShang_C');h.run(0,180)
     local total=0;for _,n in pairs(h.counts)do total=total+n end
     report('all_missing',h)
-    assert(totalFlying(h)==64 and total==107)
+    local add,remove=h.count('walkInputAdd'),h.count('walkInputRemove')
+    assert(add==8 and remove==8,'force-walk input hooks must back off just like other missing hooks')
+    assert(totalFlying(h)==64 and total-add-remove==107)
 end)
 test('a new unit resets pending discovery even during the long backoff',function()
     local h=aimFixture('BP_Monster_ZuoShang_C');h.run(0,80)

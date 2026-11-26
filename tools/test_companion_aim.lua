@@ -52,6 +52,7 @@ local function harness()
             opponentOf=function(key)return h.targets[key] end,abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
             paused=function()return h.paused end,phaseBusyKey=h.phaseBusyKey,phaseBusy=h.phaseBusy,
+            invalid=function()return h.emptyObject end,
             companionTargetOf=function(actor,target,name)
                 if h.companionTarget then return h.companionTarget(actor,target,name) end
                 return h.targets[tostring(actor:GetAddress())]
@@ -65,6 +66,15 @@ local function key(actor)return tostring(actor.GetAddress())end
 local function test(name,fn)fn();print('ok - '..name)end
 if arg[2]=='fixture'then return harness,object,key end
 
+
+local function inputImposer(value)
+    local slot=value
+    return {type=function()return 'RemoteUnrealParam'end,get=function()return slot end,
+        set=function(_,replacement)slot=replacement end}
+end
+local function forceWalk(h,avatar)
+    return object('GAA_ForcePlayerWalk_C',{GetAvatarActor=avatar,InputTag={TagName='InputType.OnlyMove'}})
+end
 
 local only=arg[2]
 if not only or only=='scope' then test('ordinary companion attacks redirect to the current enemy without a blue-red fight',function()
@@ -102,6 +112,80 @@ if not only or only=='walk' then test('the force-walk action of a big move falls
     avatar=blue;assert(h.ask('character',action)==blue,'an arena fighter too')
     avatar=h.player;assert(h.ask('character',action)==h.player,'the own use of the player is left alone')
     avatar=object('BP_Monster_Stranger_C');assert(h.ask('character',action)==h.player,'a map boss that is not ours keeps the native behaviour')
+end)end
+if not only or only=='walk' then test('a prepared arena actor can open with ForceWalk before the first battle tick',function()
+    local h=harness();h.emptyObject={IsValid=function()return false end}
+    local caster=h.unit('blue')
+    local action=forceWalk(h,function()return caster end)
+    local aim=h.new();aim:prepareWalk(h.members)
+    assert(not h.fighting and not h.hooks[Aim.paths.pawn])
+    assert(h.ask('character',action)==caster,'first native lookup stays on the caster')
+    local imposer=inputImposer(caster)
+    h.hooks[Aim.paths.walkInputAdd](nil,action,action.InputTag,imposer)
+    assert(imposer:get()==h.emptyObject,'opening cannot assign OnlyMove to the player input component')
+end)end
+if not only or only=='walk' then test('native OnlyMove on the local input component is blocked for an owned action through pause and cleanup',function()
+    local h=harness();h.emptyObject={IsValid=function()return false end}
+    local aid=h.unit('blue');local foe=h.unit('red')
+    h.targets[key(aid)]=foe;h.fighting=true
+    h.phaseBusyKey=function(k)return k==h.busy end
+    local aim=h.new();aim:tick()
+    local avatar=aid
+    local action=forceWalk(h,function()return avatar end)
+    local mode={}
+    local function nativeAdd(context,tag)
+        local receiver=h.ask('character',context)
+        local imposer=inputImposer(receiver)
+        local hook=h.hooks[Aim.paths.walkInputAdd]
+        if hook then hook(nil,context,{TagName=tag},imposer) end
+        local final=imposer:get()
+        if final and final:IsValid() then mode[final]=tag end
+        return receiver,final
+    end
+    local function nativeRemove(context)
+        local imposer=inputImposer(h.ask('character',context))
+        local hook=h.hooks[Aim.paths.walkInputRemove]
+        if hook then hook(nil,context,imposer) end
+        local final=imposer:get()
+        if final and final:IsValid() then mode[final]=nil end
+        return final
+    end
+    mode[aid]='Other mode'
+    assert(nativeAdd(action,'InputType.OnlyMove')==aid)
+    assert(mode[aid]=='Other mode' and not mode[h.player],
+        'changing the imposer alone still changes the local input mode')
+    local otherTag=inputImposer(aid)
+    h.hooks[Aim.paths.walkInputAdd](nil,action,{TagName='InputType.AnotherMode'},otherTag)
+    assert(otherTag:get()==aid,'only suppress the native OnlyMove tag on this action')
+    h.fighting=false;h.paused=true;h.busy=key(aid);h.now=1;aim:tick()
+    assert(nativeAdd(action,'InputType.OnlyMove')==aid and not mode[h.player],
+        'fight win, pause and a native phase do not change ownership')
+    h.members={};h.now=13;avatar=nil;aim:tick()
+    assert(h.ask('character',action)==aid,'a missing avatar at action end keeps the exact live caster')
+    assert(nativeRemove(action)==h.emptyObject and mode[aid]=='Other mode',
+        'same owned action ending after removal leaves another mode untouched')
+    aid.alive=false
+    assert(h.ask('character',action)==h.emptyObject,'a destroyed caster never falls back to the real player')
+    avatar=h.player
+    assert(nativeAdd(action,'InputType.OnlyMove')==h.player and mode[h.player]=='InputType.OnlyMove',
+        'a reused action instance whose avatar is now the real player works natively')
+    assert(nativeRemove(action)==h.player and not mode[h.player])
+    h.now=14;aim:tick();h.now=25;aim:tick()
+    assert(not next(h.hooks),'finish and ownership change release hooks after the quiet interval')
+end)end
+if not only or only=='walk' then test('missing native input hook uses a verified null getter and leaves unrelated input alone',function()
+    local h=harness();h.emptyObject={IsValid=function()return false end}
+    local oldFind=StaticFindObject
+    StaticFindObject=function(path)
+        if path==Aim.paths.walkInputAdd then return end
+        return oldFind(path)
+    end
+    local caster=h.unit('blue');h.unit('red');h.fighting=true
+    local action=forceWalk(h,function()return caster end)
+    local aim=h.new();aim:tick()
+    assert(h.ask('character',action)==h.emptyObject)
+    assert(h.ask('pawn',action)==h.player,'original action only asks for character index zero')
+    assert(h.all():find('强制慢走输入挂钩未确认',1,true))
 end)end
 if not only or only=='effects' then test('companion particle skills arm isolated effects while player and native phase skills stay untouched',function()
     local h=harness();h.phaseBusyKey=function(k)return h.busy==k end

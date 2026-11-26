@@ -109,7 +109,7 @@ local function harness(saved,withSpectator,withCodex)
         if name=='xbox_keys' then return assert(loadfile('Mods/PhantomGladiator/Scripts/xbox_keys.lua','t',env))() end
         if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
         if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
-        assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys' or name=='teleport_places' or name=='teleport_keys')
+        assert(name=='map_weather' or name=='ue_observe' or name=='key_router' or name=='function_keybinds' or name=='perf_meter' or name=='unit_keybinds' or name=='summon_queue' or name=='monster_pool_keys' or name=='teleport_places' or name=='teleport_keys' or name=='arena_roster' or name=='companion_profile' or name=='execution_appearance')
         return assert(loadfile('Mods/PhantomGladiator/Scripts/'..name..'.lua','t',env))()
     end
     env.Key={};local keyNames={}
@@ -800,6 +800,62 @@ test("the on-screen clock switch takes ON/OFF from key_start and reports its sta
     assert(h.result.ok and on and h.reported.clock_hud and h.reported.clock_hud_state=='waiting' and h.reported.clock_hud_supported)
     local missing=harness();missing.runtime:start();missing.inbox={action='set_clock_hud',key_start='ON'};missing:tick()
     assert(not missing.result.ok and missing.reported.clock_hud_supported==false)
+end)
+
+test('arena roster publishes confirmed instances and ignores a stale removal session',function()
+    local h=harness();local removed=false
+    local arena={}
+    arena.status=function(_,includeRoster)
+        return {roster_editable=true,roster=includeRoster and (removed and {} or
+            {{id='A1',team='blue',path='/Game/Test.Test_C',ordinal=1,state='alive',hp=250}}) or nil}
+    end
+    arena.removeRosterUnit=function(_,id)
+        assert(h.inGame and id=='A1');removed=true;return {ok=true,message='gone'}
+    end
+    h.runtime=h.new({arena=arena,rosterClock=function()return 1 end,
+        rosterWrite=function(path,data)h.files[path]=data;return true end})
+    h.runtime:start();h:tick()
+    assert(h.reported.arena_roster_revision==1 and h.files['memory/arena-roster.tsv']:find('A1\tblue',1,true))
+    h.inbox={action='remove_arena_unit',unit_id='old-session|A1'};h:tick()
+    assert(not h.result.ok and not removed)
+    h.inbox={action='remove_arena_unit',unit_id='test-session|A1'};h:tick()
+    assert(h.result.ok and removed and h.reported.arena_roster_revision==2)
+    assert(not h.files['memory/arena-roster.tsv']:find('A1',1,true))
+end)
+
+test('legacy execution appearance is opt-in, saved, and reported after the game acknowledges it',function()
+    local h=harness()
+    local make=h.env.require('execution_appearance').new
+    local args={path='memory',read=function(p)return h.files[p]end,write=function(p,data)
+        assert(h.inGame)
+        if h.failWrite then return false end
+        h.files[p]=data;return true
+    end}
+    local appearance=make(args)
+    h.runtime=h.new({support={executionAppearance=appearance,status=function()return {}end,tick=function()end}})
+    h.runtime:start();h:tick()
+    assert(h.reported.execution_appearance_legacy==false)
+    h.inbox={action='set_execution_appearance',key_start='ON'};h:tick()
+    assert(h.result.ok and h.reported.execution_appearance_legacy and make(args).on)
+    h.failWrite=true
+    h.inbox={action='set_execution_appearance',key_start='OFF'};h:tick()
+    assert(not h.result.ok and h.reported.execution_appearance_legacy)
+    h.failWrite=false
+    h.inbox={action='set_execution_appearance',key_start='OFF'};h:tick()
+    assert(h.result.ok and h.reported.execution_appearance_legacy==false and not make(args).on)
+end)
+
+test('attack flash command reads back each color independently',function()
+    local h=harness();local state={red=false,blue=false}
+    local flash={set=function(_,color,token)
+        assert(h.inGame);state[color]=token=='ON';return {ok=true,message='saved'}
+    end,status=function()return state end}
+    h.runtime=h.new({support={attackFlash=flash,status=function()return {}end,tick=function()end}});h.runtime:start()
+    h.inbox={action='set_attack_flash',key_spawn='RED',key_start='ON'};h:tick()
+    assert(h.result.ok and h.reported.attack_flash_supported and h.reported.attack_flash_red and not h.reported.attack_flash_blue)
+    h.inbox={action='set_attack_flash',key_spawn='BLUE',key_start='ON'};h:tick()
+    h.inbox={action='set_attack_flash',key_spawn='RED',key_start='OFF'};h:tick()
+    assert(h.result.ok and not h.reported.attack_flash_red and h.reported.attack_flash_blue)
 end)
 
 test('off-combat regen uses a game-thread switch and reports verified state',function()

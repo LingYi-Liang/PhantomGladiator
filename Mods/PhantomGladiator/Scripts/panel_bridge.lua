@@ -20,8 +20,8 @@ local ACTIONS = { spawn = true, queue_spawn = true, set_summon_queue = true, con
     toggle_selfie=true,selfie_pose=true,selfie_shot=true,selfie_next=true,toggle_photo=true,photo_panel=true,
     toggle_track = true, track_pick = true, track_next = true, set_camera_track = true, toggle_cinema=true, cycle_battle_hud=true,
     set_offcombat_regen = true, set_battle_music = true,
-    configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,toggle_stat_match=true,
-    eyes_player=true,eyes_npc=true,set_weather=true,set_companion_passage=true,set_companion_minion_executions=true,teleport=true,teleport_back=true,configure_teleport_key=true,toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_execution_camera=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
+    configure_keys = true,configure_unit_key=true, select_unit = true, toggle_spectator = true,clear_neutral=true,remove_arena_unit=true,toggle_stat_match=true,
+    eyes_player=true,eyes_npc=true,set_weather=true,set_companion_passage=true,set_companion_minion_executions=true,teleport=true,teleport_back=true,configure_teleport_key=true,toggle_camera=true,exit_camera=true,cycle_team=true,set_spawn_difficulty=true,dismiss_companions=true,recall_companions=true,toggle_time_stop=true,set_free_camera=true,set_fun_feature=true,set_boss_combos=true,set_team_immortal=true,set_clock_hud=true,set_attack_flash=true,set_execution_camera=true,set_execution_appearance=true,set_companion_executions=true,set_stat_mode=true,set_companion_stats=true,set_ai_params=true,set_spawn_level=true,repair_save=true }
 local ACK_STATUS = { ok = true, error = true, uncertain = true }
 
 local function clean(value, limit)
@@ -154,7 +154,7 @@ function Bridge:_sessionError(command)
     if id~=command.id or session~=current.game_session then
         return "stale_game_session: 指令属于旧会话或缺少绑定，请重新请求"
     end
-    if (command.action=="spawn" or command.action=="queue_spawn" or command.action=="manage_companion" or command.action=="summon_mu_companion" or command.action=="hun_body_probe" or command.action=="start" or command.action=="toggle_spectator")
+    if (command.action=="spawn" or command.action=="queue_spawn" or command.action=="manage_companion" or command.action=="summon_mu_companion" or command.action=="hun_body_probe" or command.action=="remove_arena_unit" or command.action=="start" or command.action=="toggle_spectator")
         and current.game_ready~=true then
         return "game_not_ready: 尚未进入可控制场景，指令未执行"
     end

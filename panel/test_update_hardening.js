@@ -68,6 +68,12 @@ for (const lang of ["zh", "en"]) {
   assert(context.aboutHTML().includes(i18n.t("about.stableChannel")));
   assert(context.updateHTML().includes(i18n.t("update.latest.body", { v: "0.40.13" })));
   assert(!context.releaseHistoryHTML().includes("beta-") && context.releaseHistoryHTML().includes(currentChip));
+  for (const code of ["offline", "updateUnconfirmed"]) {
+    context.ui.update = { phase: "error", error: { code, tried: ["cdn"] } };
+    const error = context.updateHTML();
+    assert(error.includes(i18n.t("update.installedVersion", { v: "0.40.13" })));
+    assert(!error.includes("v0.40.12"), "update errors must report the assistant version, not the running mod");
+  }
   delete context.S.expectedBuild;
   assert(context.helpMenuHTML().includes("v0.40.13"), "older hosts fall back to app version");
 }

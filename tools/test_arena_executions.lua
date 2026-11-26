@@ -150,10 +150,22 @@ local function harness()
         function e:K2_SetActorRotation(rotation)h.calls[#h.calls+1]=string.format('turn %.0f',rotation.Yaw);self.yaw=rotation.Yaw;return true end
         function e:K2_GetActorRotation()return {Pitch=0,Yaw=self.yaw,Roll=0} end
         function e:AddComponentByClass(cls,manual,transform,deferred)
-            local comp=object('SkeletalMeshComponent_0',{})
+            local comp=object('SkeletalMeshComponent_0',{visible=true})
+            function comp:GetOwner()return e end
             function comp:K2_AttachToComponent(parent,socket)self.parent=parent;self.socket=socket end
-            function comp:SetSkeletalMeshAsset(asset)self.asset=asset end
-            function comp:SetVisibility(visible)self.visible=visible end
+            function comp:SetSkeletalMeshAsset(asset)
+                if asset then self.visibleAtInstall=self.visible and not self.bHiddenInGame end
+                self.asset=asset
+                if opts.unhideOnMesh and asset then self.visible=true;self.bHiddenInGame=false end
+            end
+            function comp:IsVisible()return self.visible end
+            function comp:SetVisibility(visible)
+                if not (opts.ignoreHide or (opts.unhideOnMesh and self.asset)) then self.visible=visible end
+            end
+            function comp:SetHiddenInGame(hidden)
+                if not (opts.ignoreHide or (opts.unhideOnMesh and self.asset)) then self.bHiddenInGame=hidden end
+            end
+            function comp:IsBeingDestroyed()return self.destroyed==true end
             function comp:PlayAnimation(anim,loop)self.playing=anim:GetFName():ToString();self.position=0;self.rate=1 end
             function comp:SetPosition(position)self.position=position end
             function comp:GetPosition()return self.position end
@@ -161,7 +173,10 @@ local function harness()
             function comp:GetPlayRate()return self.rate end
             function comp:GetAnimInstance()return object('SingleNode',{SetRootMotionMode=function(_,mode)comp.rootMotion=mode end})end
             function comp:IsPlaying()return self.playing~=nil end
-            function comp:K2_DestroyComponent(target)self.destroyed=(target==self);h.calls[#h.calls+1]='destroy body' end
+            function comp:K2_DestroyComponent(target)
+                if not opts.ignoreDestroy then self.destroyed=(target==self) end
+                h.calls[#h.calls+1]='destroy body'
+            end
             h.components[#h.components+1]=comp
             h.calls[#h.calls+1]='add '..cls:GetFName():ToString()..' manual='..tostring(manual)
             return comp
@@ -318,7 +333,7 @@ do
         local mate=h.enemy({X=300,Y=0,Z=0})
         local stranger=h.enemy({X=100,Y=0,Z=0})
         h.members={{actor=mate,team='companion'},{actor=stranger,team='companion'}}
-        h.tags[cub]={['CharacterState.CanWeakExecute.Weak']=1}
+        h.tags[cub]={['CharacterState.CanWeakExecute.Weak']=1,['CharacterType.HouHouHou.LastOne']=1}
         h.fighting=false
         local may=false
         local pickups=0
@@ -334,6 +349,60 @@ do
         exec:stop('arena only',true)
         assert(exec:status().active)
         exec:stop('full cleanup')
+    end)
+    regression('a tagged last cub on its native 20% floor requests only the native lion-head pair',function()
+        local function arenaCase(opts)
+            local h=harness()
+            local lion=pair('Execution.Type.Combat','GA_Hun_BEx_HouHouHou_01_C','GA_Hun_BEd_HouHouHou_01_C')
+            lion.TargetRequiredTags={'CharacterType.HouHouHou.LastOne'}
+            local owner=h.boss('BP_Monster_LionDancer_P2',4000,0)
+            local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',opts.hp or 6807,opts.floor or 6807,{rank='Mob',pairs={lion},locks={}})
+            local close=h.enemy({X=100,Y=0,Z=0})
+            local assigned=h.enemy({X=300,Y=0,Z=0})
+            local unrelated=h.enemy({X=50,Y=0,Z=0})
+            h.attrs[cub].Health_Max=34035
+            h.tags[cub]={['CharacterType.HouHouHou.LastOne']=opts.missingTag and 0 or 1}
+            if opts.blocked then h.tags[cub]['CharacterState.Stand.Invulnerable']=1 end
+            if opts.noGround then h.tags[close]={['CharacterState.Space.Ground']=0} end
+            if opts.weak then h.tags[cub]['CharacterState.CanWeakExecute.Weak']=1 end
+            close['Faction Component']=object('Faction',{GetFactionRelation=function(_,target)
+                assert(target==cub);return opts.friendly and 0 or 2
+            end})
+            unrelated['Faction Component']=object('Faction',{GetFactionRelation=function()return 2 end})
+            h.members={{actor=unrelated,team='blue'},{actor=close,team='blue'},{actor=assigned,team='blue'},
+                {actor=owner,team='red'},{actor=cub,team='red',class_path=require('lion_challenge').CUB,summoner=owner}}
+            local chosen,completion
+            local exec=h.new({
+                lastLionOwner=function(a)if a==cub then return opts.wrongWave and unrelated or owner end end,
+                assignedOpponent=function(a)
+                    if a==close then return owner end
+                    if a==assigned and opts.preferAssigned then return cub end
+                    if a==unrelated then return close end
+                end,
+                lionPickup=function(actor,victim)
+                    assert(victim==cub);chosen=actor;return not opts.noTicket
+                end,
+                lionPickupEnded=function(_,done) completion=done end,
+            })
+            h.run(exec,2)
+            local status=exec:status()
+            if opts.noTicket then assert(chosen==close and status.started==0 and #h.calls==0);return end
+            if opts.expectNone then assert(not chosen and status.started==0);return end
+            assert(chosen==(opts.preferAssigned and assigned or close) and status.started==1)
+            h.run(exec,8)
+            assert(h.attrs[cub].Health==6807 and h.attrs[cub].Health_Min==6807 and completion~=true,
+                'a refused native death cannot spend the authentic cub or claim a head')
+        end
+        arenaCase({})
+        arenaCase({preferAssigned=true})
+        arenaCase({noTicket=true})
+        arenaCase({missingTag=true,expectNone=true})
+        arenaCase({wrongWave=true,weak=true,expectNone=true})
+        arenaCase({floor=6000,expectNone=true})
+        arenaCase({hp=7000,expectNone=true})
+        arenaCase({blocked=true,expectNone=true})
+        arenaCase({noGround=true,expectNone=true})
+        arenaCase({friendly=true,expectNone=true})
     end)
     regression('a scripted phase is not borrowed as a target or executor and resumes after the phase',function()
         for _,which in ipairs({'boss','executor'})do
@@ -557,6 +626,95 @@ do
     h.attrs[boss].Health=100;h.attrs[boss].Health_Min=100
     h.run(exec,5)
     assert(exec:status().started==1,'one try per boss')
+end
+
+-- The replacement mesh is never installed on a pose driver that cannot be hidden.
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100,100)
+    local enemy=h.enemy({X=300,Y=0,Z=0},{ignoreHide=true})
+    h.members={{actor=boss,team='red'},{actor=enemy,team='blue'}}
+    local exec=h.new();h.run(exec,2)
+    local body=assert(h.components[1])
+    assert(not body.asset and body.destroyed and enemy.Mesh.LeaderPoseComponent==nil,h.all())
+    assert(exec:status().active,'the original execution still proceeds without the temporary effect')
+    print('PASS a declined hide skips loading the player appearance entirely')
+end
+
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100,100)
+    local enemy=h.enemy({X=300,Y=0,Z=0},{unhideOnMesh=true})
+    h.members={{actor=boss,team='red'},{actor=enemy,team='blue'}}
+    local exec=h.new();h.run(exec,2)
+    local body=assert(h.components[1])
+    assert(body.visibleAtInstall==false and not body.asset and body.destroyed and enemy.Mesh.LeaderPoseComponent==nil,h.all())
+    print('PASS a render asset that re-enables its own visibility is dropped')
+end
+
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100,100)
+    local settings={ignoreDestroy=true}
+    local enemy=h.enemy({X=300,Y=0,Z=0},settings)
+    h.members={{actor=boss,team='red'},{actor=enemy,team='blue'}}
+    local exec=h.new();h.run(exec,2)
+    local body=assert(h.components[1])
+    assert(body.visibleAtInstall==false and not body.visible,h.all())
+    h.run(exec,MOYUAN_RUN+1)
+    assert(not exec:status().active and not body.destroyed and not body.visible and not enemy.Mesh.LeaderPoseComponent,h.all())
+    assert(h.all():find('移除借来的骨架=false',1,true),h.all())
+    settings.ignoreDestroy=false
+    h.run(exec,1.5)
+    assert(body.destroyed and h.all():find('重试移除借用骨架，读回=true',1,true),h.all())
+    print('PASS destruction is reported from readback and retried while the driver remains hidden')
+end
+
+do
+    local h=harness()
+    local boss=h.boss('BP_Monster_MoTian',100,100)
+    local enemy=h.enemy({X=300,Y=0,Z=0},{ignoreHide=true})
+    h.members={{actor=boss,team='red'},{actor=enemy,team='blue'}}
+    local exec=h.new({legacyBorrowedAppearance=function()return true end})
+    h.run(exec,2)
+    local body=assert(h.components[1])
+    assert(body.visibleAtInstall==true and body.visible and body.asset and enemy.Mesh.LeaderPoseComponent==body,h.all())
+    h.run(exec,MOYUAN_RUN+1)
+    assert(body.destroyed and not body.asset and enemy.Mesh.LeaderPoseComponent==nil,h.all())
+    print('PASS opt-in red versus blue execution preserves legacy visual setup and still verifies removal')
+end
+
+-- A deleted driver no longer owns a native mesh, but the surviving NPC still has the
+-- pose policies set at setup. Undo only those; don't overwrite outside reassignment.
+do
+    for _,variant in ipairs({'engine removed driver', 'outside leader', 'executor invalid'}) do
+        local h=harness()
+        local boss=h.boss('BP_Monster_MoTian',100,100)
+        local executor=h.enemy({X=300,Y=0,Z=0})
+        h.members={{actor=boss,team='red'},{actor=executor,team='blue'}}
+        local exec=h.new();h.run(exec,2)
+        local body=assert(h.components[1])
+        assert(executor.Mesh.bFollowerShouldTickPose==true)
+        if variant=='executor invalid' then
+            local prior=h.count('leader CharacterMesh0 -> nil')
+            function executor:IsValid()return false end
+            exec:stop(variant)
+            assert(h.count('leader CharacterMesh0 -> nil')==prior and not body.destroyed,h.all())
+        else
+            body.destroyed=true
+            function body:IsValid()return false end
+            local external=variant=='outside leader' and object('OutsideLeader') or nil
+            executor.Mesh.LeaderPoseComponent=external
+            exec:stop(variant)
+            if external then
+                assert(executor.Mesh.LeaderPoseComponent==external and executor.Mesh.bFollowerShouldTickPose==true,h.all())
+            else
+                assert(executor.Mesh.LeaderPoseComponent==nil and executor.Mesh.bFollowerShouldTickPose==false,h.all())
+            end
+            assert(h.count('destroy body')==0,'the removed component must not be destroyed a second time')
+        end
+    end
+    print('PASS a removed or invalid pose driver still releases owned state without touching a foreign leader or invalid actor')
 end
 
 -- 彭猛: his pair is in his own finishing skill, found by class. He falls during the execution: the executor's clip

@@ -69,6 +69,46 @@ end
 
 if arg[2]=='fixture'then return fixture,stageCount end
 local f = fixture()
+
+do
+    local h=fixture({now=function()return 10 end})
+    assert(h.arena:spawn(nil,'blue',2).ok and h.arena:spawn(nil,'red',1).ok and h.arena:spawn(nil,'companion',1).ok)
+    local first,second,red,companion=table.unpack(h.actors)
+    local helper={alive=true,name='helper'}
+    assert(h.arena:adoptSummon(helper,first,'/Game/Helper.Helper_C','fixture').ok)
+    local rows=h.arena:status(true).roster
+    assert(#rows==3 and rows[1].ordinal==1 and rows[2].ordinal==2 and rows[2].hp==400)
+    assert(not h.arena:removeRosterUnit(nil).ok and helper.alive and companion.alive)
+    local own=h.options.destroy
+    h.options.destroy=function(actor)if actor~=helper then own(actor) end end
+    assert(not h.arena:removeRosterUnit(rows[1].id).ok and first.alive and helper.alive)
+    h.options.destroy=own
+    assert(h.arena:removeRosterUnit(rows[1].id).ok and not first.alive and not helper.alive)
+    assert(second.alive and red.alive and companion.alive and not h.arena:removeRosterUnit(rows[1].id).ok)
+    assert(h.arena:spawn(nil,'blue',1).ok and h.arena:status(true).roster[3].ordinal==3)
+    assert(h.arena:start().ok and not h.arena:status().roster_editable)
+    assert(not h.arena:removeRosterUnit(rows[2].id).ok and second.alive)
+    red.hp=0
+    assert(h.arena:status().winner=='blue' and h.arena:status().roster_editable)
+    assert(h.arena:removeRosterUnit(rows[2].id).ok and not second.alive and companion.alive)
+    local final=h.arena:status(true).roster[2]
+    assert(h.arena:removeRosterUnit(final.id).ok and h.arena:status().winner=='blue')
+    assert(stageCount(h,'restore')==0)
+    print('PASS targeted roster removal, helper ownership, stable duplicate numbering and completed result')
+end
+do
+    local h=fixture()
+    assert(h.arena:spawn(nil,'red',1).ok)
+    local row=h.arena:status(true).roster[1]
+    local actor=h.actors[1]
+    actor.name='recycled'
+    assert(not h.arena:removeRosterUnit(row.id).ok and actor.alive)
+    actor.name='unit1'
+    local newWorld={alive=true}
+    h.options.getWorld=function()return newWorld end
+    assert(#h.arena:status(true).roster==0 and not h.arena:removeRosterUnit(row.id).ok and actor.alive)
+    print('PASS targeted roster removal rejects actor reuse and another world')
+end
 local warningSpawn=fixture({activate=function()return true,'activated','数值未统一，已回滚到原生值' end})
 assert(warningSpawn.arena:spawn(nil,'blue',1).ok)
 local warningResult=warningSpawn.arena:spawn(nil,'red',1)
@@ -1259,13 +1299,22 @@ do -- Use the real wave registry through the controller's normal reinforcement a
     reflected(f.world);f.world.name='world'
     local wave=Wave.new({world=function()return f.world end,hp=function(a)return a.hp or 400 end,tag=function(a,t)return a.tags[t] end})
     f.options.preferredTargets=function(a,s,current)return wave:preferred(a,s,current)end
+    f.options.phaseBlocksAim=function(a,b)return wave:blocksAim(a,b)end
     assert(f.arena:spawn('/Catalog/Walker.Walker_C','blue',1).ok and f.arena:spawn(Wave.BOSS,'red',1).ok)
     local runner,boss=reflected(f.actors[1]),reflected(f.actors[2])
     assert(f.arena:start().ok and f.arena:aggroOpponent(runner)==boss)
     boss.tags[Wave.ON_POLE]=1
     local cub=reflected({name='owned-cub',alive=true})
     assert(f.arena:adoptSummon(cub,boss,Wave.CUB,'native summoner').ok)
+    -- The cub is registered even if the attacker's current action prevents an immediate AI retarget.
+    f.options.actionBusy=function(a)return a==runner end
     clock=1;wave:sync(f.arena:members(),true);f.arena:tickReinforcements()
+    assert(f.arena:aggroOpponent(runner)==boss,'the current action keeps its AI assignment')
+    assert(f.arena:opponentOf(runner.name)==cub,'the skill lookup can already pick the wave cub')
+    f.options.actionBusy=nil
+    clock=1.5;f.arena:tickReinforcements()
+    assert(f.arena:phaseOpponent(runner.name,boss)==cub)
+    assert(f.arena:phaseOpponent(runner.name,cub)==nil,'do not widen requests to other opponents')
     assert(f.arena:aggroOpponent(runner)==cub,'switch even when the original boss is still alive and targetable')
     local count=stageCount(f,'attack');f.arena:tickReinforcements();assert(stageCount(f,'attack')==count,'stable target')
     cub.tags[Wave.LAST]=1;local ticket=assert(wave:ticket(runner,cub));cub.hp=0

@@ -316,13 +316,40 @@ function Lock.new(options)
         end
         return left==0 and unknown==0
     end
-    local function forgetFresh(fresh,living,fighting,now)
+    local function finalDeath(actor,wholeGroup)
+        if not options.finalDeath then return not wholeGroup end
+        local checked,dead=pcall(options.finalDeath,actor,wholeGroup)
+        return checked and dead==true
+    end
+    local function forgetFresh(fresh,living,members,fighting,now)
         local terminal,fallenTeams={},{}
+        local formations,finished
+        local function formationDefeated(member)
+            local group=member.formationGroup
+            if fighting or type(group)~='table' or not group.nativeFormation or not group.retire or group.forming then return false end
+            if not formations then
+                formations,finished={},{}
+                for _,row in ipairs(members)do
+                    local key=row.formationGroup
+                    if key then
+                        local rows=formations[key] or {}
+                        rows[#rows+1]=row;formations[key]=rows
+                    end
+                end
+            end
+            if finished[group]==nil then
+                -- The permanent revive/vanish tags can outlive the entire squad. Verify every still-owned
+                -- member has finished dying before clearing the opponent's references to those bodies.
+                finished[group]=true
+                for _,row in ipairs(formations[group])do
+                    if row.team~=member.team or not finalDeath(row.actor,true) then finished[group]=false;break end
+                end
+            end
+            return finished[group]
+        end
         for _,member in ipairs(fresh)do
             local key=U.key(member.actor)
-            local checked,dead=true,true
-            if key and options.finalDeath then checked,dead=pcall(options.finalDeath,member.actor) end
-            if key and checked and dead==true then
+            if key and (finalDeath(member.actor) or formationDefeated(member)) then
                 terminal[key]=member.team;fallenTeams[member.team]=true
                 local confirmed=forget(member.actor,living,not fighting)
                 forgotten[key]=confirmed and true or now+FORGET_SECONDS
@@ -405,7 +432,7 @@ function Lock.new(options)
         for key in pairs(dropped)do if not known[key] then dropped[key]=nil end end
         for key in pairs(pendingSense)do if not known[key] then pendingSense[key]=nil end end
         for key in pairs(pendingDrop)do if not known[key] then pendingDrop[key]=nil end end
-        if #fresh>0 then forgetFresh(fresh,living,fighting,now) end
+        if #fresh>0 then forgetFresh(fresh,living,members,fighting,now) end
         for key in pairs(identities)do if not forgotten[key] and not dropped[key] then identities[key]=nil end end
         if next(teams) then
             quietSince=nil

@@ -106,6 +106,8 @@ const RealRuntime = (() => {
     statMatch: { enabled: false, mode: "game", modeSupported: false, baseline: null, matched: 0, failures: 0, reset: false, customCount: 0, customized: 0, rejected: [], rejectedCount: 0, values: {} },
     // companion_stats_*: the companions' own set; game | custom (stat_match.lua). All the values come from /api/companion-stats.
     companionManagerRevision: null,
+    arenaRosterRevision: null,
+    arenaRosterSession: null,
     companionStats: { supported: false, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
     // spawn_difficulty_*: the level new units take (FOLLOW = the game's), the game's own level, counts.
     // spawn_level: the level a summon gets (the highest map enemy near the player at the last look), and that enemy.
@@ -123,6 +125,7 @@ const RealRuntime = (() => {
     clock: { state: "", seconds: 0 },
     // clock_hud_*: the on-screen clock switch and whether the game shows it (battle_clock_hud.lua).
     clockHud: { supported: false, on: false, state: "off" },
+    executionAppearance: { supported: false, on: false },
     // execution_camera_*: the execution camera switch, and whether it is playing now (execution_camera.lua).
     executionCamera: { supported: false, on: false, state: "off" },
     // companion_executions*: whether companions may execute bosses (companion_executions.lua).
@@ -150,6 +153,7 @@ const RealRuntime = (() => {
     cinemaKeysSupported: false,
     cinema: { supported: false, active: false, shot: "" },
     battleHud: { supported: false, mode: "full" },
+    attackFlash: { supported: false, red: false, blue: false },
     keys: Object.fromEntries([...KEY_NAMES, ...WEATHER_KEYS, ...EYE_KEYS, ...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS].map(k => [k, null])),
     unitKeys: {},
     scan: null,
@@ -380,8 +384,14 @@ const RealRuntime = (() => {
 
     let game = online ? (g.ready ? "ready" : "notInMap") : launching && Date.now() - launching < 180000 ? "connecting" : "offline";
     s.modVersion = v.build || "";
+    s.executionAppearance = {
+      supported: online && v.execution_appearance_legacy != null,
+      on: online && yes("execution_appearance_legacy"),
+    };
     if (online && s.expectedBuild && s.modVersion && s.modVersion !== s.expectedBuild) game = "mismatch";
     s.game = game;
+    s.arenaRosterRevision = online && v.arena_roster_revision != null ? num("arena_roster_revision") : null;
+    s.arenaRosterSession = online ? g.game_session : null;
     s.hunBodySupported = online && yes('hun_body_probe_supported');
     s.summonQueue = {
       supported: online && typeof v.summon_queue_enabled === "string",
@@ -427,7 +437,8 @@ const RealRuntime = (() => {
       s.synced = v.current_unit ? { unit_id: shortOf(v.current_unit), team: v.current_team, count: num("current_count") } : null;
       const battle = yes("arena_battle_active") || v.arena_state === "battle_requested";
       s.fight = s.summonQueue.relayStarted ? "fighting" : !battle ? "idle" : s.blue > 0 && s.red > 0 ? "fighting" : "ended";
-      s.winner = s.fight === "ended" ? (s.blue ? "blue" : s.red ? "red" : "draw") : "";
+      const reportedWinner = ["blue", "red", "draw"].includes(v.arena_winner) ? v.arena_winner : "";
+      s.winner = s.fight === "ended" ? (reportedWinner || (s.blue ? "blue" : s.red ? "red" : "draw")) : "";
       s.cleanup = ["cleanup_pending", "restore_pending", "spawn_uncertain"].includes(v.arena_state) ? v.arena_state : "";
       const m = s.statMatch, base = v.stat_match_baseline_unit;
       m.enabled = yes("stat_match_enabled");
@@ -540,6 +551,11 @@ const RealRuntime = (() => {
       supported: online && yes("battle_hud_supported"),
       mode: online && BATTLE_HUD_MODES.includes(v.battle_hud_mode) ? v.battle_hud_mode : "full",
     };
+    s.attackFlash = {
+      supported: online && yes("attack_flash_supported"),
+      red: online && yes("attack_flash_red"),
+      blue: online && yes("attack_flash_blue"),
+    };
     s.selfie = online && yes("selfie_supported") ? {
       supported: true, studio: yes("photo_studio"), mode: v.photo_mode || "", on: yes("selfie_on"), ready: yes("selfie_ready"),
       target: (v.selfie_target || "").split(".").pop(), posed: num("selfie_posed"),
@@ -601,15 +617,16 @@ const RealRuntime = (() => {
       sel: [s.game, s.cleanup, s.team, s.synced, s.spectator, s.statMatch.mode, s.statMatch.customCount, s.statMatch.baseline?.id, s.companionStats.mode, s.companionStats.customCount, s.companionStats.supported, s.keys.spawn?.code, s.keys.spawn?.mods, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
       companionManager: [s.companionManagerRevision],
+      arenaRoster: [s.game, s.arenaRosterSession, s.arenaRosterRevision],
       companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, s.companionPass.on, s.companionMinionExec.on, { ...s.companionStats, values: undefined }],
       match: [s.game, { ...s.statMatch, values: undefined }],
       diff: [s.game, s.difficulty, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       fun: [s.game, s.fun, s.weather, s.weatherKeysSupported, WEATHER_KEYS.map(k => s.keys[k])],
-      battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, owned, [s.keys.start, s.keys.stop],
+      battle: [s.game, s.cleanup, s.blue, s.red, s.neutral, s.down.blue, s.down.neutral, s.unreadable, s.fight, s.winner, owned, s.arenaRosterRevision != null, [s.keys.start, s.keys.stop],
         s.immortal.supported, s.immortal.blue, s.immortal.red, s.immortal.failures, s.clock.state, !!(s.summonQueue.on && (s.summonQueue.waiting || s.summonQueue.transit || s.summonQueue.running))],
       // Only the clock text moves every second; the battle card is not rebuilt for it.
       clock: [s.clock.state, s.clock.seconds],
-      view: [s.game, s.companion, s.blue > 0 && s.red > 0, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera, s.selfie, s.cinema, s.battleHud, s.cinemaKeysSupported, [...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS].map(k => s.keys[k])],
+      view: [s.game, s.companion, s.blue > 0 && s.red > 0, s.spectator, s.spectatorPhase, s.freeCam, s.frozen, s.camSettings, [s.keys.toggle_camera, s.keys.toggle_spectator, s.keys.toggle_time_stop, s.keys.toggle_track, s.keys.track_pick, s.keys.track_next], s.track, s.clockHud, s.executionCamera, s.executionAppearance, s.selfie, s.cinema, s.battleHud, s.attackFlash, s.cinemaKeysSupported, [...SELFIE_KEYS, ...STUDIO_KEYS, ...DIRECTOR_KEYS].map(k => s.keys[k])],
       keys: [s.game, s.keys, s.eyesKeysSupported, s.selfieKeysSupported, s.studioKeysSupported, s.cinemaKeysSupported, s.weatherKeysSupported, s.dismissKeySupported, s.hunKeysSupported, s.xboxKeysSupported],
       grid: [s.entourageSupported, s.unitRulesSupported, s.remoteReflectSupported, s.longzhuProtectionSupported, s.xianzhePhantomSupported, s.menghuaStageSupported, s.executionMinionsSupported, s.unitRules],
       settings: [s.game, s.scan],
@@ -668,7 +685,7 @@ const RealRuntime = (() => {
   }
   async function executeCommand(action, payload) {
     if (!online()) throw fail("offline");
-    if (["spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"].includes(action) && !ready()) throw fail("notInMap");
+    if (["spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator", "remove_arena_unit"].includes(action) && !ready()) throw fail("notInMap");
     if ((action === "toggle_camera" || action === "toggle_time_stop") && !s.freeCam && !ready()) throw fail("notInMap");
     let path = "/api/command", body;
     if (action === "spawn" || action === "queue_spawn" || action === "select_unit") body = { action, unit_id: gameId(payload.unit_id), team: payload.team, count: payload.count };
@@ -687,14 +704,15 @@ const RealRuntime = (() => {
     else if (action === "configure_summon_queue") body = { action, ...payload };
     else if (action === "set_team_immortal") body = { action, team: payload.team, enabled: payload.enabled };
     else if (action === "set_clock_hud") body = { action, enabled: payload.enabled };
-    else if (action === "manage_companion") body = { action, unit_id: payload.unit_id };
+    else if (action === "set_attack_flash") body = { action, color: payload.color, enabled: payload.enabled };
+    else if (action === "manage_companion" || action === "remove_arena_unit") body = { action, unit_id: payload.unit_id };
     else if (action === "set_offcombat_regen") body = { action, enabled: payload.enabled };
     else if (action === "set_weather") body = {action, mode:payload.mode};
     else if (action === "teleport") body = { action, place: payload.place };
     else if (action === "configure_teleport_key") body = { action, place: payload.place, key_code: payload.key_code, modifiers: payload.modifiers };
     else if (action === "set_battle_music") body = { action, mode: payload.mode, track: payload.track };
     else if (action === 'hun_body_probe') body = { action, team: payload.team, count: payload.count, profile_revision: payload.profile_revision };
-    else if (action === "set_execution_camera") body = { action, enabled: payload.enabled };
+    else if (action === "set_execution_camera" || action === "set_execution_appearance") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_executions") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_passage") body = { action, enabled: payload.enabled };
     else if (action === "set_companion_minion_executions") body = { action, enabled: payload.enabled };
@@ -764,8 +782,10 @@ const RealRuntime = (() => {
     if (action === "set_boss_combos" && done.status === "succeeded") s.combo.on = payload.enabled;
     if (action === "set_team_immortal" && done.status === "succeeded") s.immortal[payload.team] = payload.enabled;
     if (action === "set_clock_hud" && done.status === "succeeded") s.clockHud.on = payload.enabled;
+    if (action === "set_attack_flash" && done.status === "succeeded") s.attackFlash[payload.color] = payload.enabled;
     if (action === "set_offcombat_regen" && done.status === "succeeded") Object.assign(s.offCombatRegen, { on: payload.enabled, state: payload.enabled ? "waiting" : "off" });
     if (action === "set_execution_camera" && done.status === "succeeded") s.executionCamera.on = payload.enabled;
+    if (action === "set_execution_appearance" && done.status === "succeeded") s.executionAppearance.on = payload.enabled;
     if (action === "set_companion_executions" && done.status === "succeeded") s.companionExec.on = payload.enabled;
     if (action === "set_companion_passage" && done.status === "succeeded") s.companionPass.on = payload.enabled;
     if (action === "set_companion_minion_executions" && done.status === "succeeded") s.companionMinionExec.on = payload.enabled;
@@ -904,6 +924,11 @@ const RealRuntime = (() => {
     // The companions' own set, from its own file.
     async companionManager() {
       const { response, data } = await readJSON("/api/companion-manager");
+      if (!response.ok) throw fail("rejected");
+      return data;
+    },
+    async arenaRoster() {
+      const { response, data } = await readJSON("/api/arena-roster");
       if (!response.ok) throw fail("rejected");
       return data;
     },

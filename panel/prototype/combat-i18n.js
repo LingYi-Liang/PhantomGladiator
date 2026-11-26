@@ -907,6 +907,9 @@ I18N.add("en", {
 });
 
 I18N.add("zh", {
+  "view.attackFlash.red": "补显示红光预警",
+  "view.attackFlash.blue": "补显示蓝光预警",
+  "view.attackFlash.desc": "观战或随从交战时，补播招式自带的对应光效。",
   "view.cinema": "电影运镜",
   "view.cinema.start": "开启",
   "view.cinema.stop": "退出运镜",
@@ -1023,6 +1026,9 @@ I18N.add("zh", {
 });
 
 I18N.add("en", {
+  "view.attackFlash.red": "Show red attack flashes",
+  "view.attackFlash.blue": "Show blue attack flashes",
+  "view.attackFlash.desc": "Restore the original flashes in arena and companion fights.",
   "view.cinema": "Cinematic camera",
   "view.cinema.start": "Start",
   "view.cinema.stop": "Stop camera cuts",

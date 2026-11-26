@@ -776,6 +776,7 @@ namespace PhantomGladiator
         readonly bool preview;
         readonly string workDirectory;
         readonly string releaseApi;
+        readonly string releasePage;
         Dictionary<string, object> manifest;
         List<PartDownload.Part> partFiles;
         List<PartDownload.Source> partSources;
@@ -784,12 +785,16 @@ namespace PhantomGladiator
         bool switchingToStable;
 
         public UpdateClient(BuildInfo b, bool preview = false, string releaseApi = null)
+            : this(b, preview, releaseApi, null) { }
+
+        internal UpdateClient(BuildInfo b, bool preview, string releaseApi, string releasePage)
         {
             build=b;
             this.preview=preview;
             workDirectory=Paths.In(preview ? "beta-updates" : "updates");
-            this.releaseApi=releaseApi ?? (Regex.IsMatch(b.Repo ?? "", @"^[\w.-]+/[\w.-]+$")
-                ? "https://api.github.com/repos/" + b.Repo + "/releases/latest" : null);
+            var knownRepo = Regex.IsMatch(b.Repo ?? "", @"^[\w.-]+/[\w.-]+$");
+            this.releaseApi = releaseApi ?? (knownRepo ? "https://api.github.com/repos/" + b.Repo + "/releases/latest" : null);
+            this.releasePage = releasePage ?? (releaseApi == null && knownRepo ? "https://github.com/" + b.Repo + "/releases/latest" : null);
         }
 
         public void UseBetaOffer(BetaOffer offer)
@@ -806,7 +811,7 @@ namespace PhantomGladiator
             downloaded=null;
         }
 
-        static string Get(string url, int timeout)
+        static HttpWebRequest CreateUpdateRequest(string url, int timeout)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
             req.Timeout = timeout;
@@ -815,7 +820,12 @@ namespace PhantomGladiator
             req.CachePolicy = new System.Net.Cache.RequestCachePolicy(System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
             req.Headers[HttpRequestHeader.CacheControl] = "no-cache, no-store";
             req.Headers[HttpRequestHeader.Pragma] = "no-cache";
-            using (var res = (HttpWebResponse)req.GetResponse())
+            return req;
+        }
+
+        static string Get(string url, int timeout)
+        {
+            using (var res = (HttpWebResponse)CreateUpdateRequest(url, timeout).GetResponse())
             using (var r = new StreamReader(res.GetResponseStream(), Encoding.UTF8))
                 return r.ReadToEnd();
         }
@@ -854,6 +864,12 @@ namespace PhantomGladiator
             public Dictionary<string, object> Package;
         }
 
+        static string StableReleaseVersion(string tag)
+        {
+            var version = tag.StartsWith("v", StringComparison.Ordinal) ? tag.Substring(1) : tag;
+            return StableVersion(version) ? version : null;
+        }
+
         ReleaseInfo FetchRelease()
         {
             try
@@ -863,9 +879,8 @@ namespace PhantomGladiator
                 if (data == null || !data.ContainsKey("tag_name") || !(data["tag_name"] is string)
                     || !data.ContainsKey("draft") || !(data["draft"] is bool) || (bool)data["draft"]
                     || !data.ContainsKey("prerelease") || !(data["prerelease"] is bool) || (bool)data["prerelease"]) return null;
-                var tag=(string)data["tag_name"];
-                var version=tag.StartsWith("v",StringComparison.Ordinal) ? tag.Substring(1) : tag;
-                if (!StableVersion(version)) return null;
+                var version = StableReleaseVersion((string)data["tag_name"]);
+                if (version == null) return null;
                 var result=new ReleaseInfo { Version=version };
                 var assets=data.ContainsKey("assets") ? data["assets"] as System.Collections.ArrayList : null;
                 if (assets == null) return result;
@@ -892,6 +907,32 @@ namespace PhantomGladiator
                 return result;
             }
             catch (Exception) { return null; }
+        }
+
+        // The public latest page can confirm the stable tag when the API is unavailable.
+        // Only the manifest or the API provides the package metadata needed to install.
+        ReleaseInfo FetchReleasePage()
+        {
+            Uri page;
+            if (!Uri.TryCreate(releasePage, UriKind.Absolute, out page)) return null;
+            var tagPrefix = new Uri(page, "tag/").GetLeftPart(UriPartial.Path);
+            try
+            {
+                var req = CreateUpdateRequest(FreshUrl(releasePage), 4000);
+                req.AllowAutoRedirect = false;
+                using (var res = (HttpWebResponse)req.GetResponse())
+                {
+                    var status = (int)res.StatusCode;
+                    Uri target;
+                    if (status < 300 || status >= 400 ||
+                        !Uri.TryCreate(page, res.Headers[HttpResponseHeader.Location], out target)) return null;
+                    var destination = target.GetLeftPart(UriPartial.Path);
+                    if (!destination.StartsWith(tagPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+                    var version = StableReleaseVersion(destination.Substring(tagPrefix.Length));
+                    return version == null ? null : new ReleaseInfo { Version = version };
+                }
+            }
+            catch (WebException) { return null; }
         }
 
         Dictionary<string,object> Offer(Dictionary<string,object> value,string lang)
@@ -939,7 +980,11 @@ namespace PhantomGladiator
                 { outcome="available"; return Offer(best,lang); }
                 var listed=sources.Select(p=>Task.Run(()=>FetchNewestListed(p[1]))).ToArray();
                 var retry=sources.Select((p,i)=>Task.Run(()=>found[i]==null ? Fetch(p[1]) : null)).ToArray();
-                var release=Task.Run(()=>FetchRelease());
+                var release = Task.Run(() =>
+                {
+                    var api = FetchRelease();
+                    return new { Api = api, Page = api == null ? FetchReleasePage() : null };
+                });
                 for (var i=0;i<sources.Count;i++)
                 {
                     var list=listed[i].Result;var fallback=retry[i].Result;
@@ -947,8 +992,11 @@ namespace PhantomGladiator
                     checks.Add(new { source=sources[i][0],stage="fresh-versions",version=list==null ? null : list["version"] });
                     if (found[i]==null) checks.Add(new { source=sources[i][0],stage="plain-retry",version=fallback==null ? null : fallback["version"] });
                 }
-                var verified=release.Result;
-                checks.Add(new { source="release",stage="stable-release",version=verified==null ? null : verified.Version });
+                var confirmation = release.Result;
+                checks.Add(new { source="release",stage="stable-release",version=confirmation.Api == null ? null : confirmation.Api.Version });
+                if (confirmation.Api == null && releasePage != null)
+                    checks.Add(new { source="release-page",stage="stable-release",version=confirmation.Page == null ? null : confirmation.Page.Version });
+                var verified = confirmation.Api ?? confirmation.Page;
                 if (verified!=null && verified.Package!=null)
                 {
                     if (best!=null && (string)best["version"]==verified.Version)

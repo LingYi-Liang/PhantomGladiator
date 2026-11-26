@@ -14,12 +14,17 @@ namespace PhantomGladiator
             Console.WriteLine((ok ? "PASS " : "FAIL ") + message);
             if (!ok) failures++;
         }
-        static UpdateClient Client(string path, string version, string build, string api)
+        static UpdateClient Client(string path, string version, string build, string api, string page = null)
         {
             var info = new BuildInfo { AppVersion=version, ModBuild=build };
             info.Manifests.Add("cdn|" + server + "/" + path + "/latest.json");
+            var apiUrl = server + "/api/" + api;
+            var pageCtor = typeof(UpdateClient).GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(c => c.GetParameters().Length == 4);
+            if (page != null && pageCtor != null)
+                return (UpdateClient)pageCtor.Invoke(new object[] { info, false, apiUrl, server + "/web/" + page + "/latest" });
             var ctor = typeof(UpdateClient).GetConstructors().FirstOrDefault(c => c.GetParameters().Length == 3);
-            return ctor == null ? new UpdateClient(info) : (UpdateClient)ctor.Invoke(new object[] { info, false, server + "/api/" + api });
+            return ctor == null ? new UpdateClient(info) : (UpdateClient)ctor.Invoke(new object[] { info, false, apiUrl });
         }
         static void Refuses(UpdateClient client, string message)
         {
@@ -28,6 +33,16 @@ namespace PhantomGladiator
         }
         static bool Available(Dictionary<string, object> value, string version)
         { return !(bool)value["latest"] && (string)value["version"] == version; }
+
+        static void ConfirmsCurrent(UpdateClient client, string message)
+        {
+            try
+            {
+                var result = client.Check("zh");
+                Expect((bool)result["latest"] && (bool)result["confirmed"] && (string)result["version"] == "0.40.13", message);
+            }
+            catch (HostError error) { Expect(false, message + ": " + error.Code); }
+        }
 
         static int Main(string[] args)
         {
@@ -58,6 +73,20 @@ namespace PhantomGladiator
             Refuses(Client("current","0.40.13","v0.40.13","draft"),"a draft cannot confirm the public latest version");
             Refuses(Client("stale","0.40.11","v0.40.11","incomplete"),"a newer tag without installable package metadata cannot claim latest");
             Refuses(Client("stale","0.40.11","v0.40.11-beta-3","incomplete"),"a known newer stable release prevents promoting a beta to an older cached package");
+            ConfirmsCurrent(Client("current", "0.40.13", "v0.40.13", "rate-limited", "live"),
+                "the public release redirect confirms the installed stable version during API rate limiting");
+            Refuses(Client("current", "0.40.13", "v0.40.13", "rate-limited", "newer"),
+                "a newer release redirect without package metadata must not report up to date");
+            Refuses(Client("current", "0.40.13", "v0.40.13-beta-2", "rate-limited", "newer"),
+                "a newer release redirect must block a beta promotion to an older cached package");
+            Refuses(Client("current", "0.40.13", "v0.40.13", "rate-limited", "other-repo"),
+                "another repository's release redirect cannot confirm the version");
+            Refuses(Client("current", "0.40.13", "v0.40.13", "rate-limited", "other-origin"),
+                "a release redirect to another origin cannot confirm the version");
+            Refuses(Client("current", "0.40.13", "v0.40.13", "rate-limited", "prerelease"),
+                "a prerelease redirect cannot confirm the public latest version");
+            Refuses(Client("current", "0.40.13", "v0.40.13", "rate-limited", "unavailable"),
+                "a matching cached package alone still cannot confirm the version");
             var requests=new System.Net.WebClient().DownloadString(server+"/requests");
             Expect(requests.Contains("pg_check") && requests.Contains("no-cache"),"fresh checks set a nonce and request cache bypass");
             Console.WriteLine("update freshness failures="+failures);

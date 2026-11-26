@@ -286,7 +286,7 @@
 
   // ---------- Overlays ----------
   const overlays = $("#overlays");
-  let pop = null, dlg = null;
+  let pop = null, dlg = null, arenaRosterView = null;
   function openPopover(anchor, html, { cls = "", align = "start", role = "menu" } = {}) {
     closePopover();
     const el = document.createElement("div");
@@ -351,7 +351,10 @@
       scheduleAutoUpdate();
     }
     if (kind==="companion-manager") { cm=null; ui.statDrafts.companion=null; }
+    const arenaTeam = kind === "arena-roster" ? arenaRosterView?.origin : null;
+    if (kind === "arena-roster") arenaRosterView = null;
     if (restore && prev && document.contains(prev)) prev.focus();
+    else if (restore && arenaTeam) document.querySelector('.side-manage[data-team="' + arenaTeam + '"]')?.focus();
     else if (restore && kind==="companion-manager") (document.querySelector('[data-action="'+(prev?.dataset?.action || "cm-open")+'"]') || document.querySelector('[data-action="cm-open"]'))?.focus();
     if (restore && kind !== "language-support") showLanguageNotice();
   }
@@ -1633,12 +1636,130 @@
     if (!before.baseline) return n > 1 ? t("toast.summon.baselineMore", { n: n - 1 }) : t("toast.summon.baseline");
     return m.matched > before.matched ? t("toast.summon.matched", { name: base.name }) : "";
   }
+  function rosterAvailable() {
+    return RT.ready() && S.arenaRosterRevision != null;
+  }
+
+  function rosterUnitId(unit) {
+    return unit.path.split("/").pop().split(".")[0];
+  }
+
+  function arenaRosterHTML(view) {
+    const data = view.data, current = data?.ready && data.session === S.arenaRosterSession;
+    const editable = current && data.editable && S.fight !== "fighting";
+    const units = current ? data.units.filter(unit => unit.team === view.team && !view.removed.has(unit.id)) : [];
+    const tabs = ["blue", "red"].map(team => `<button class="seg-btn" type="button" aria-pressed="${team === view.team}" data-action="arena-roster-team" data-team="${team}"><span class="team-dot" style="background:var(--${team})"></span>${esc(teamName(team))}</button>`).join("");
+    const rows = units.map(unit => {
+      const item = byId.get(rosterUnitId(unit)), name = item?.name || rosterUnitId(unit);
+      const label = name + " #" + unit.ordinal;
+      const health = unit.hp == null ? "" : " · " + t("field.rosterHP", { n: fmtNum(unit.hp) });
+      const state = t("field.rosterState." + unit.state);
+      return `<div class="arena-roster-row">
+        <span class="avatar sp-${item?.species || "GuaiMian"}${item ? artClass(item) : ""}">${item ? avatarArt(item) : ""}<span class="avatar-initial" aria-hidden="true">${esc(item?.initial || "?")}</span></span>
+        <div class="row-main"><div class="row-title">${esc(label)}</div><div class="row-desc">${esc(state + health)}</div></div>
+        <button class="btn btn-secondary btn-sm arena-remove" type="button" data-action="arena-roster-remove" data-id="${esc(unit.id)}" aria-label="${esc(t("field.rosterRemoveNamed", { name: label }))}" ${editable && !view.pending ? "" : "disabled"}>${esc(t(view.pending === unit.id ? "field.rosterRemoving" : "field.rosterRemove"))}</button>
+      </div>`;
+    }).join("");
+    const unavailable = view.error ? "field.rosterReadFailed" : data ? "field.rosterWaiting" : "field.rosterLoading";
+    const retry = view.error || (data && !current);
+    return `<div class="dialog-head"><h2 id="dlg-title">${esc(t("field.rosterManage"))}</h2>
+        <button class="icon-btn icon-btn-sm" type="button" data-action="dialog-close" aria-label="${esc(t("common.close"))}">${icon("x")}</button></div>
+      <div class="dialog-body arena-roster-body">
+        <div class="seg arena-roster-tabs" role="group" aria-label="${esc(t("field.rosterTeam"))}">${tabs}</div>
+        ${current ? `<p class="muted arena-roster-note">${esc(t(editable ? "field.rosterScope" : "field.rosterReadOnly"))}</p>
+          ${rows ? `<div class="arena-roster-list">${rows}</div>` : `<p class="arena-roster-empty">${esc(t("field.emptySide"))}</p>`}`
+          : `<p class="arena-roster-empty">${esc(t(unavailable))}</p>${retry ? `<button type="button" class="btn btn-secondary btn-sm" data-action="arena-roster-retry">${esc(t("field.rosterRetry"))}</button>` : ""}`}
+        <div class="arena-roster-feedback" role="status">${esc(view.feedback)}</div>
+      </div>`;
+  }
+
+  function drawArenaRoster(view) {
+    if (view !== arenaRosterView || dlg?.kind !== "arena-roster") return;
+    const scroll = $("#dialog .dialog-body")?.scrollTop || 0;
+    const active = document.activeElement;
+    const action = active?.dataset.action, id = active?.dataset.id, side = active?.dataset.team;
+    setDialog(arenaRosterHTML(view));
+    const target = action === "arena-roster-remove" && id
+      ? $("#dialog [data-id='" + CSS.escape(id) + "']:not(:disabled)") || $("#dialog .arena-roster-tabs [aria-pressed='true']")
+      : action === "arena-roster-team" && side ? $("#dialog .arena-roster-tabs [data-team='" + side + "']")
+      : action === "dialog-close" ? $("#dialog [data-action='dialog-close']") : null;
+    target?.focus({ preventScroll: true });
+    $("#dialog .dialog-body").scrollTop = scroll;
+  }
+
+  function loadArenaRoster(view) {
+    if (!view || view !== arenaRosterView || !RT.arenaRoster) return;
+    view.needsRead = true;
+    if (view.reading) return view.reading;
+    async function refresh() {
+      while (view.needsRead && view === arenaRosterView) {
+        view.needsRead = false;
+        try {
+          const data = await RT.arenaRoster();
+          if (view !== arenaRosterView) return;
+          if (view.session !== data.session) {
+            view.session = data.session;
+            view.feedback = "";
+            view.removed.clear();
+          }
+          if (!view.error && view.data?.session === data.session && view.data?.revision === data.revision
+            && view.data?.ready === data.ready && view.lastFight === S.fight) continue;
+          view.data = data;
+          view.lastFight = S.fight;
+          view.error = false;
+        } catch {
+          if (view !== arenaRosterView) return;
+          view.data = null;
+          view.error = true;
+        }
+        drawArenaRoster(view);
+      }
+    }
+    view.reading = refresh().finally(() => { view.reading = null; });
+    return view.reading;
+  }
+
+  function openArenaRoster(team) {
+    if (!rosterAvailable() || !["blue", "red"].includes(team)) return;
+    const view = { team, origin: team, data: null, pending: null, removed: new Set(), feedback: "" };
+    openDialog("arena-roster", arenaRosterHTML(view), "dialog-wide");
+    arenaRosterView = view;
+    loadArenaRoster(view);
+  }
+
+  async function removeArenaRosterUnit(id) {
+    const view = arenaRosterView;
+    const data = view?.data;
+    if (!data?.ready || !data.editable || view.pending || data.session !== S.arenaRosterSession || S.fight === "fighting") return;
+    const unit = data.units.find(row => row.id === id && row.team === view.team && !view.removed.has(id));
+    if (!unit) return;
+    const unitId = rosterUnitId(unit), name = (byId.get(unitId)?.name || unitId) + " #" + unit.ordinal;
+    view.pending = id;
+    view.feedback = "";
+    drawArenaRoster(view);
+    try {
+      const job = await run("remove_arena_unit", { payload: { unit_id: data.session + "|" + id } });
+      if (job?.status === "succeeded" && data.session === S.arenaRosterSession) {
+        view.removed.add(id);
+        const team = ui.roster[unit.team], count = team[unitId] || 0;
+        if (count === 1) delete team[unitId];
+        else if (count > 1) team[unitId] = count - 1;
+        view.feedback = t("field.rosterRemoved", { name });
+        renderBattle();
+      }
+    } finally {
+      view.pending = null;
+      drawArenaRoster(view);
+      loadArenaRoster(view);
+    }
+  }
+
   function rosterHTML(team) {
     const entries = Object.entries(ui.roster[team]);
     if (!entries.length) return `<div class="side-chips"><span class="roster-empty">${esc(t("field.emptySide"))}</span></div>`;
     const shown = entries.slice(0, 2).map(([id, n]) => `<span class="roster-item" title="${esc(byId.get(id)?.name)} ×${n}"><span>${esc(byId.get(id)?.name)}</span><b>×${n}</b></span>`).join("");
     const rest = entries.slice(2);
-    const more = rest.length ? `<span class="roster-item" title="${esc(rest.map(([id, n]) => `${byId.get(id)?.name} ×${n}`).join("\n"))}">+${rest.length}</span>` : "";
+    const more = rest.length ? `<button class="roster-item roster-more" type="button" aria-haspopup="dialog" data-action="arena-roster-open" data-team="${team}" aria-label="${esc(t("field.rosterMore", { n: rest.length }))}" ${rosterAvailable() ? "" : "disabled"}>+${rest.length}</button>` : "";
     return `<div class="side-chips">${shown}${more}</div>`;
   }
   // 不倒下 (set_team_immortal, immortal_teams.lua): the units of a side switched on keep their HP.
@@ -1670,7 +1791,10 @@
     // Once someone summons into the beaten side again, the result gives way to a new start.
     const showResult = S.fight === "ended" && !(S.blue > 0 && S.red > 0) && !relayReady;
     const side = team => `<div class="side side-${team}${showResult && S.winner === team ? " is-winner" : ""}${showResult && S.winner && S.winner !== team ? " is-loser" : ""}">
-        <div class="side-name"><span class="team-dot" style="background:var(--${team})"></span>${esc(teamName(team))}</div>
+        <div class="side-head">
+          <div class="side-name"><span class="team-dot" style="background:var(--${team})"></span>${esc(teamName(team))}</div>
+          <button class="side-manage" type="button" aria-haspopup="dialog" data-action="arena-roster-open" data-team="${team}" aria-label="${esc(t("field.rosterManageTeam", { team: teamName(team) }))}" ${rosterAvailable() ? "" : "disabled"}>${esc(t("field.rosterManage"))}${icon("chevron-right", "icon-sm")}</button>
+        </div>
         <div class="side-count" id="count-${team}">${S[team]}</div>
         <div class="side-sub">${esc(t("field.aliveOf", { n: summoned(team) }))}</div>
         ${rosterHTML(team)}
@@ -1990,6 +2114,7 @@
         ${timeStopRow()}
         ${trackRow()}
         ${directorRows()}
+        ${attackFlashRows()}
         ${camSettingsHTML()}
         <div class="control-row${on && !phase ? " is-on" : ""}">
           <span class="control-icon">${icon("shield")}</span>
@@ -1998,7 +2123,22 @@
         </div>
         ${clockHudRow()}
         ${executionCameraRow()}
+        ${executionAppearanceRow()}
       </div>`;
+  }
+  function attackFlashRows() {
+    const flash = S.attackFlash || {};
+    return ["red", "blue"].map(color => {
+      const on = flash[color] === true;
+      const busy = ui.busy.has("attack-flash-" + color);
+      const title = t("view.attackFlash." + color);
+      const desc = color === "red" ? t(RT.online() && !flash.supported ? "fun.old" : "view.attackFlash.desc") : "";
+      return `<div class="control-row${on ? " is-on" : ""}">
+        <span class="control-icon">${icon("zap")}</span>
+        <div class="control-main"><div class="control-title">${esc(title)}</div>${desc ? `<div class="control-desc">${esc(desc)}</div>` : ""}</div>
+        <button class="switch" type="button" role="switch" aria-checked="${on}" aria-busy="${busy}" data-action="attack-flash" data-color="${color}" aria-label="${esc(title)}" ${RT.online() && flash.supported && !busy ? "" : "disabled"}></button>
+      </div>`;
+    }).join("");
   }
   function directorRows() {
     const cinema = S.cinema, hud = S.battleHud;
@@ -2157,6 +2297,20 @@
   function toggleExecutionCamera() {
     const enabled = !S.executionCamera.on;
     run("set_execution_camera", { payload: { enabled }, ok: () => t(enabled ? "toast.execCam.on" : "toast.execCam.off") });
+  }
+
+  function executionAppearanceRow() {
+    const mode = S.executionAppearance || {};
+    const on = mode.on === true;
+    const busy = ui.busy.has("set_execution_appearance");
+    const title = t("view.execAppearance");
+    const hint = t("view.execAppearance.hint");
+    return `<div class="control-row${on ? " is-on" : ""}" title="${esc(hint)}">
+      <span class="control-icon">${icon("swords")}</span>
+      <div class="control-main"><div class="control-title">${esc(title)}${icon("help", "icon-sm")}</div></div>
+      <span class="visually-hidden" id="exec-appearance-hint">${esc(hint)}</span>
+      <button class="switch" type="button" role="switch" data-action="execution-appearance" aria-checked="${on}" aria-busy="${busy}" aria-label="${esc(title)}" aria-describedby="exec-appearance-hint" ${RT.online() && mode.supported && !busy ? "" : "disabled"}></button>
+    </div>`;
   }
 
   // ---------- Commands ----------
@@ -3423,9 +3577,14 @@
         return head(t("update.title")) + `<div class="dialog-body">${state('<span class="state-badge"><span class="spinner spinner-lg"></span></span>', t("update.checking"), t("update.checking.sub"))}${installedNotesHTML()}</div>`;
       case "latest":
         return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge ok">${icon("check")}</span>`, t(installed.includes("-") ? "update.previewTitle" : "update.latest.title"), t(installed.includes("-") ? "update.previewInstalled" : "update.latest.body", { v: installed }))}${installedNotesHTML()}${releaseHistoryHTML(true)}</div><div class="dialog-foot"><button class="btn btn-primary" type="button" data-action="dialog-close">${esc(t("common.done"))}</button></div>`;
-      case "error":
-        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedTitle" : "update.error.title"), t(u.error?.code === "updateUnconfirmed" ? "update.unconfirmedBody" : "update.error.body"), `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: (u.error?.tried || []).map(s => t("update.source." + s)).join(" · ") }))}</p>`)}${installedNotesHTML()}${releaseHistoryHTML(true)}</div>
+      case "error": {
+        const unconfirmed = u.error?.code === "updateUnconfirmed";
+        const tried = (u.error?.tried || []).map(source => t("update.source." + source)).join(" · ");
+        const installedLine = installed ? `<p>${esc(t("update.installedVersion", { v: installed }))}</p>` : "";
+        const details = installedLine + `<p class="muted" style="font-size:12px">${esc(t("update.error.tried", { list: tried }))}</p>`;
+        return head(t("update.title")) + `<div class="dialog-body">${state(`<span class="state-badge err">${icon("cloud-off")}</span>`, t(unconfirmed ? "update.unconfirmedTitle" : "update.error.title"), t(unconfirmed ? "update.unconfirmedBody" : "update.error.body"), details)}${installedNotesHTML()}${releaseHistoryHTML(true)}</div>
           <div class="dialog-foot"><a class="btn btn-ghost" href="${REPO}/releases" target="_blank" rel="noopener noreferrer">${icon("external", "icon-sm")}${esc(t("update.manual"))}</a><button class="btn btn-primary" type="button" data-action="update-check">${icon("refresh", "icon-sm")}${esc(t("common.retry"))}</button></div>`;
+      }
       case "available": {
         const best = lineFor(info, "auto");
         const lines = LINE_IDS.filter(id => id !== "parts" || info.lines.some(l => l.id === id)).map(id => {
@@ -3611,6 +3770,7 @@
       case "set_battle_music": return t("arenaMusic.history") + (p.mode === "NATIVE" ? t("arenaMusic.game") : p.mode === "AUTO" ? t("arenaMusic.automatic") : p.mode === "LOCAL" ? t("arenaMusic.localMode") : (I18N.lang === "en" ? t("musicTrack." + p.track) : (window.PG_MUSIC_TRACKS || []).find(row => row.id === p.track)?.label || p.track));
       case 'hun_body_probe': return `${t("arenaMusic.summonHistory")} ×`+(p.count || 1);
       case "set_execution_camera": return t("action.set_execution_camera", { state: t(p.enabled ? "fun.on" : "fun.off") });
+      case "set_execution_appearance": return t("action.set_execution_appearance", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_executions": return t("action.set_companion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_passage": return t("action.set_companion_passage", { state: t(p.enabled ? "fun.on" : "fun.off") });
       case "set_companion_minion_executions": return t("action.set_companion_minion_executions", { state: t(p.enabled ? "fun.on" : "fun.off") });
@@ -4047,12 +4207,30 @@
     "stats-save": () => { closeDialog(); applyStats(undefined, ui.statDialogSet); },
     "stats-clear": () => { ui.statDrafts[ui.statDialogSet] = {}; for (const input of document.querySelectorAll(".dialog .stat-input")) input.value = ""; },
     "clock-hud": () => toggleClockHud(),
+    "arena-roster-open": el => openArenaRoster(el.dataset.team),
+    "arena-roster-team": el => {
+      if (!arenaRosterView || !["blue", "red"].includes(el.dataset.team)) return;
+      arenaRosterView.team = el.dataset.team;
+      drawArenaRoster(arenaRosterView);
+      $("#dialog .dialog-body").scrollTop = 0;
+    },
+    "arena-roster-remove": el => removeArenaRosterUnit(el.dataset.id),
+    "arena-roster-retry": () => loadArenaRoster(arenaRosterView),
     "director-cinema": () => run("toggle_cinema"),
     "director-hud": () => run("cycle_battle_hud"),
+    "attack-flash": el => {
+      const color = el.dataset.color;
+      if ((color === "red" || color === "blue") && S.attackFlash?.supported) {
+        return run("set_attack_flash", { busyKey: "attack-flash-" + color, payload: { color, enabled: !S.attackFlash[color] } });
+      }
+    },
     "match-report-open": () => openMatchReport(),
     "match-report-copy": () => copyMatchReport(),
     "match-report-save": () => saveMatchReport(),
     "execution-camera": () => toggleExecutionCamera(),
+    "execution-appearance": () => {
+      if (S.executionAppearance?.supported) return run("set_execution_appearance", { payload: { enabled: !S.executionAppearance.on } });
+    },
     "companion-executions": () => toggleCompanionExec(),
     "companion-passage": () => toggleCompanionPass(),
     "companion-minion-executions": () => toggleCompanionMinionExec(),
@@ -4457,6 +4635,7 @@
           if (p.has("match")) renderMatch();
           if (p.has("battle")) renderBattle();
           else if (p.has("clock")) renderClock();
+          if (p.has("arenaRoster") || (p.has("battle") && dlg?.kind === "arena-roster")) loadArenaRoster(arenaRosterView);
           if (p.has("view")) { renderView(); renderDockTabs(); }
           if (p.has("summonQueue")) renderSummonQueueSettings();
           if (p.has("grid") && !ui.capture) renderGrid();

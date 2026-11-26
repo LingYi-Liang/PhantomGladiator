@@ -1,5 +1,73 @@
 // Cumulative notes after each stable base. Each paragraph part is available from its first beta build.
 window.PG_PREVIEW_NOTES = {
+  "0.40.23": {
+    "title": {
+      "zh": "阵容管理、观战红蓝光与首领战修复",
+      "en": "Lineup management, attack flashes and boss fixes"
+    },
+    "added": [
+      [
+        {
+          "since": 1,
+          "zh": "「观战」可分别开启「补显示红光预警」和「补显示蓝光预警」。红蓝对打或随从打地图敌人时，开启后可以看到招式原有的对应闪光，设置自动保存。",
+          "en": "Spectate has separate red and blue attack flash switches. Enable them to see the original warning flashes in arena and companion fights. Your choices are saved."
+        }
+      ],
+      [
+        {
+          "since": 2,
+          "zh": "红蓝战场卡片新增「管理阵容」，点「+N」也能打开该队的名单。同名单位按召唤顺序编号，能查看存活状态和生命值。备战或战后可指定移除一只，它带出的配合单位也会一起回收。",
+          "en": "Use Manage lineup or the +N button on either team card to see the current roster. Copies of the same unit have individual numbers, with health and status shown for each. Before or after a fight, you can remove one unit and the helpers it summoned."
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "「观战」新增「旧版处决外观」，默认关闭。打开后部分红蓝处决沿用旧版借模，配合魂的外观替换时偶尔会露出借用模型。悬停可看影响范围。",
+          "en": "Spectate now includes Legacy execution appearance, off by default. Some Red vs Blue executions can use the old pose setup, which may show a borrowed model with a Hun outfit replacement. Hover for details."
+        }
+      ]
+    ],
+    "combat": [],
+    "fixes": [
+      [
+        {
+          "since": 1,
+          "zh": "GitHub 接口临时不可用时，助手会用 GitHub 正式发布页确认最新版本。检查失败时会在提示里直接写出本机安装的版本。",
+          "en": "When the GitHub API is temporarily unavailable, the assistant checks the official GitHub releases page. If the check still fails, the message shows the version installed on this PC."
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "修复烈焰上桩后，招式和飞剑仍可能锁着本体的问题。会改找同一组能交战的小狮子。确认最后一只卡在原版 20% 血线时，可接上原版狮头处决。对应 #48。",
+          "en": "Attacks and flying swords can switch from Flame on a pole to an available cub in her own wave. When the last cub is confirmed at its native 20% floor, the original lion head execution can proceed. Addresses #48."
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "七星剑阵整队确认阵亡后，清理胜方仍指向阵亡成员的仇恨和锁定，让胜方能按设置正常脱战回血。",
+          "en": "Once the entire Seven-Star Sword Formation is confirmed defeated, the winners clear lingering hostility and locks on the fallen so that normal out-of-combat healing can resume."
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "怪物互相处决时，默认先确认临时借用模型已隐藏，结束后再核对组件已回收，避免 Boss 显示魂的替换外观。",
+          "en": "NPC executions now verify that the temporary pose model is hidden before use and that it is removed afterwards, keeping a replacement Hun outfit from appearing on a boss."
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "修复召唤单位的强制慢走动作可能把「只能移动」写进玩家输入的问题。清场、胜负结算和观战期间也会检查动作归属，避免切回玩家后技能和互动失灵。",
+          "en": "Summoned NPCs can no longer apply the native walk-only input restriction to the local player. The action is still checked during cleanup, at the end of a fight, and while spectating."
+        }
+      ]
+    ],
+    "details": []
+  },
   "0.40.18": {
     "title": {
       "zh": "龙柱五战与擂台对战更新",

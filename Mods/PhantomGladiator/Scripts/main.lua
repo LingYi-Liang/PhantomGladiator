@@ -84,7 +84,7 @@ local function log(msg)
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
 if hookRegistry then hookRegistry.log=log end
-local BUILD = "v0.40.23"
+local BUILD = "v0.40.24"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -1557,6 +1557,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     untargetable=function(actor)return bossStages~=nil and bossStages:untargetable(actor)end,
     preferredTargets=function(actor,team,currentKey)return arenaSupport.lionWave:preferred(actor,team,currentKey)end,
+    phaseBlocksAim=function(actor,target)return arenaSupport.lionWave:blocksAim(actor,target)end,
     targetProtected=function(actor)return arenaSupport.combatContinuity and arenaSupport.combatContinuity:protected(actor)end,
     keepOpponent=function(actor,fresh)return arenaSupport.combatContinuity:keepOpponent(actor,fresh)end,
     engagedWith=function(actor,target)
@@ -1804,6 +1805,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
         return aggroRestored and guillotineRestored and polesRestored and grabRestored and phaseRestored and battleRestored
     end,
     onUnitsChanged=function(units)
+        if playerAim then playerAim:prepareWalk(units) end
         if arenaSupport.swordFormation then arenaSupport.swordFormation:roster(units) end
         if arenaSupport.entourage then arenaSupport.entourage:roster(units) end
         if arenaSupport.yubiArena then arenaSupport.yubiArena:roster(units) end
@@ -2468,7 +2470,7 @@ function arenaSupport:finalDeath(actor,wholeGroup)
         and onGround:tagCount(actor,'CharacterState.AbilityState.Troop.ReadyForResurrection')==0
 end
 combatLock=CombatLock.new({log=log,members=ArenaMembers,aiOf=GetAIComp,hatredOf=GetHatredComp,hp=GetHP,label=objectName,
-    finalDeath=function(actor)return arenaSupport:finalDeath(actor)end,
+    finalDeath=function(actor,wholeGroup)return arenaSupport:finalDeath(actor,wholeGroup)end,
     forgetTargets=function(actor,corpses,team)return arenaSupport.lockRelease:forgetDefeated(actor,corpses,team)end,
     guard=arenaSupport.aggroGuard,inGameThread=IsInGameThread,
     phaseBusy=function(actor)return arenaSupport:combatPhaseBusy(actor)end,
@@ -2602,8 +2604,9 @@ arenaSupport.yubiArena=require('companion_yubi').new({log=log,world=GetCurrentWo
     current=function(actor)return companionTargets:current(actor)end,location=GetLocation,ground=GroundZ,
     arenaOpponent=function(actor)return arena:aggroOpponent(actor)end,
     statics=GetGameplayStatics,clock=LiveSeconds,inGameThread=IsInGameThread})
+arenaSupport.attackFlash=require('attack_flash').new({path=Config.RuntimePath,log=log})
 playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGameplayStatics,world=function()return GetCurrentWorld() end,
-    hp=GetHP,inGameThread=IsInGameThread,
+    hp=GetHP,inGameThread=IsInGameThread,attackFlash=arenaSupport.attackFlash,readRelation=ReadRelation,
     prepareMembers=function(members)
         if not arenaSupport.frameContext or members~=arenaSupport.frameContext.targetRoster then companionTargets:sync(members) end
     end,
@@ -2618,6 +2621,7 @@ playerAim=require('player_aim').new({log=log,members=ArenaMembers,statics=GetGam
     abilityTargets=function()return StaticFindObject('/Script/PBZAbilityTargetRuntime.Default__PBZPlayerAbilityTargetLibrary')end,
     player=GetPlayerPawn,
     opponentOf=function(key)return arena:opponentOf(key)end,actorOf=function(key)return arena:actorOf(key)end,
+    phaseAimOpponent=function(key,target)return arena:phaseOpponent(key,target)end,
     paused=function()return arenaExecutions and arenaExecutions:status().active==true or false end,
     fighting=function()local s=ArenaStatus();return s.battle_active==true and s.blue_count>0 and s.red_count>0 end})
 arenaSupport.effectAim=require('effect_instance_aim').new({log=log,clock=LiveSeconds,world=GetCurrentWorld,
@@ -2733,7 +2737,9 @@ function arenaSupport.hunImmune(actor,kind)
     local profile=arenaSupport.hunBody and arenaSupport.hunBody:profile(actor)
     return profile and profile.survival and profile.survival[kind]=='immune' or false
 end
+arenaSupport.executionAppearance=Config.EnableArenaExecutions and require('execution_appearance').new({path=Config.RuntimePath}) or nil
 arenaExecutions=Config.EnableArenaExecutions and ArenaExecutions.new({log=log,members=ArenaMembers,now=GameSeconds,
+    legacyBorrowedAppearance=function()return arenaSupport.executionAppearance.on end,
     paused=function()return freeCamera:isFrozen()end,
     immune=arenaSupport.hunImmune,
     hunProfile=function(actor)return arenaSupport.hunBody:profile(actor)end,

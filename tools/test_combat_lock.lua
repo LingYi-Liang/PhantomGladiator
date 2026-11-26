@@ -261,6 +261,46 @@ do
     health[idle]=0;lock:tick()
     assert(#h.lines==lines,'a corpse no list held is not logged')
 end
+-- A finished sword formation can no longer revive its disciples. Let the other team leave combat
+-- once their owned corpse references are removed, while a live or reviving formation keeps its normal rules.
+do
+    local h=harness()
+    local winner,_,manager=h.unit('blue')
+    local leader=h.unit('red')
+    local disciple=h.unit('red')
+    local independent=h.unit('red')
+    local group={nativeFormation=true,retire=true}
+    h.members[2].formationGroup=group
+    h.members[3].formationGroup=group
+    local health={[winner]=100,[leader]=100,[disciple]=0,[independent]=0}
+    local hatred={[leader]=true,[disciple]=true,[independent]=true}
+    local targets={[disciple]=true}
+    local reviving=true
+    local lock=h.new({hp=function(actor)return health[actor]end,
+        finalDeath=function(actor,wholeGroup)
+            if actor==disciple then return wholeGroup==true and not reviving end
+            return actor==leader and health[actor]==0
+        end,
+        hates=function(owner,actor)return owner==manager and hatred[actor]==true end,
+        forgetTargets=function(actor,corpses)
+            for key in pairs(corpses)do
+                if key==tostring(disciple:GetAddress()) then targets[disciple]=nil end
+            end
+            return true
+        end})
+    manager.RemoveActorFromHatredList=function(_,actor)hatred[actor]=nil end
+    h.fighting=true;lock:tick()
+    assert(hatred[disciple] and targets[disciple],'a disciple that can still be revived is not forgotten')
+    h.fighting=false;h.now=0.5;lock:tick()
+    assert(hatred[disciple] and targets[disciple],'a non-fighting snapshot alone does not prove the formation ended')
+    health[leader]=0;h.now=1;lock:tick()
+    assert(hatred[disciple] and targets[disciple],'an in-progress resurrection still prevents settlement')
+    reviving=false;h.now=1.5;lock:tick()
+    assert(not hatred[leader] and not hatred[disciple] and not targets[disciple],
+        'a defeated formation must no longer hold the winner in combat through disciple references')
+    assert(hatred[independent],'group death evidence does not apply to untracked resurrection')
+    assert(h.call('exit',h.ai[winner])==nil,'before the original regen path, the winner may leave combat normally')
+end
 -- The list that keeps a corpse after the remove says so.
 do
     local h=harness()

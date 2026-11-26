@@ -247,6 +247,17 @@ function Wave.new(options)
         if paired and paired.team~=team and next(paired.cubs) then return paired.cubs end
         return byTeam[team=='red' and 'blue' or 'red']
     end
+    -- A live cub wave takes priority over its own on-pole boss. Limit this extra
+    -- check to arena attackers and to a lock on that exact boss instance.
+    function self:blocksAim(actor,target)
+        if not next(sources) then return false end
+        local key,wave=U.key(actor),sources[U.key(target) or false]
+        local unit=teams[key or false]
+        return wave~=nil and unit~=nil and unit.team~=wave.team and not sources[key] and not cubs[key] and not heads[key]
+            and next(wave.cubs)~=nil and U.key(options.world())==world and identity(target)==wave.name
+            and (options.tag(target,Wave.ON_POLE) or 0)>0
+    end
+
     function self:lastOwner(victim)
         local wave=cubs[U.key(victim)]
         if wave and alive(victim) and (options.tag(victim,Wave.LAST) or 0)>0 then return wave.actor end

@@ -1,5 +1,6 @@
 package.path='Mods/PhantomGladiator/Scripts/?.lua;'..package.path
 local Aim=arg[1] and assert(loadfile(arg[1]))() or require('player_aim')
+local Flash=require('attack_flash')
 local address=0
 local function object(name,fields)
     address=address+1;local a=address
@@ -25,9 +26,9 @@ local function harness()
     UnregisterHook=function(path,pre,post)h.unhooked[#h.unhooked+1]={path,pre,post};h.hooks[path]=nil end
     h.player=object('BP_RenewalPlayer_C')
     -- The game calling GetPlayerCharacter/GetPlayerPawn: the pre-hook's return value replaces the player.
-    function h.ask(name,context)
+    function h.ask(name,context,index)
         local hook=h.hooks[Aim.paths[name]]
-        local answer=hook and hook(object('Default__GameplayStatics'),context,0)
+        local answer=hook and hook(object('Default__GameplayStatics'),context,index or 0)
         if answer~=nil then return answer end
         return h.player
     end
@@ -51,7 +52,8 @@ local function harness()
             world=h.world and function()return h.world end,
             members=function()return h.members end,fighting=function()return h.fighting end,statics=function()return h.statics end,
             opponentOf=function(key)return h.targets[key] end,companionTargetOf=h.mapEnemy and function()return h.mapEnemy end,
-            hp=h.hp,inGameThread=function()return true end,
+            phaseAimOpponent=h.phaseAimOpponent,
+            hp=h.hp,inGameThread=function()return true end,attackFlash=h.attackFlash,readRelation=h.readRelation,
             formationPlayerLookup=h.formationPlayerLookup,formationCast=h.formationCast,
             abilityTargets=function()return h.abilityTargets end,player=function()return h.player end,
             actorOf=function(key)for _,m in ipairs(h.members)do if tostring(m.actor.GetAddress())==key then return m.actor end end end,
@@ -95,14 +97,70 @@ test('only the C4 warning action of a fighting unit gets an NPC instead of the p
     avatar=blue;h.paused=true;assert(h.ask('pawn',warning)==h.player)
 end)
 
-test('no fight: no hooks; a fight hooks both getters once and checks the answer',function()
-    local h=harness();local aim=h.new()
+test('arena and companion red and blue flashes are independently enabled for the native visual check',function()
+    local h=harness()
+    local files={}
+    local writable=true
+    local settings={path='fixture',read=function(path)return files[path]end,
+        write=function(path,text)if writable then files[path]=text;return true end return false end}
+    h.attackFlash=Flash.new(settings)
     local blue,red=h.unit('blue'),h.unit('red')
-    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local companion=h.unit('companion')
+    local enemy=object('BP_Monster_MapEnemy_C')
+    local npc=object('NPCBase',{GetFullName=function()return 'Class /Script/ProjectPBZ.PBZCharacter_NPC'end})
+    for _,actor in ipairs({red,enemy}) do
+        actor.GetClass=function()
+            return object('Class',{GetFullName=function()return 'BlueprintGeneratedClass /Test/NPC.NPC_C'end,
+                GetSuperStruct=function()return npc end})
+        end
+    end
+    h.fighting=true;h.targets[key(blue)]=red;h.mapEnemy=enemy
+    local towardPlayer=1
+    local towardTarget=2
+    h.readRelation=function(_,target)return target==h.player and towardPlayer or towardTarget end
+    local aim=h.new();aim:tick()
+    local avatar=blue
+    local function cue(name)
+        local path='/PBZVFXPack/VFX/BattleFX/Common/'..name..'.'..name
+        local system=object('NiagaraSystem',{GetFullName=function()return 'NiagaraSystem '..path end})
+        return object('GAAction_WeaponParticle_BlueRedEye_C',{GetAvatarActor=function()return avatar end,NiagaraEffect=system})
+    end
+    local redCue,blueCue=cue('NS_AttackAlert_Red_004'),cue('NS_AttackAlert_Blue_002')
+    assert(h.ask('pawn',redCue)==h.player and h.ask('pawn',blueCue)==h.player)
+    assert(h.attackFlash:set('red','ON').ok and h.ask('pawn',redCue)==red)
+    assert(h.ask('pawn',blueCue)==h.player and h.ask('character',redCue)==h.player and h.ask('pawn',redCue,1)==h.player)
+    assert(h.ask('pawn',cue('NS_Troop_Howl_001'))==h.player)
+    assert(h.attackFlash:set('blue','ON').ok and h.ask('pawn',blueCue)==red)
+    assert(h.attackFlash:set('red','OFF').ok and h.ask('pawn',redCue)==h.player)
+    assert(Flash.new(settings):status().blue and not Flash.new(settings):status().red)
+    writable=false
+    assert(not h.attackFlash:set('blue','OFF').ok and h.ask('pawn',blueCue)==red)
+    assert(not h.attackFlash:set('neutral','ON').ok and not h.attackFlash:set('blue','bad').ok)
+    towardPlayer=2;assert(h.ask('pawn',blueCue)==h.player)
+    towardPlayer=0;avatar=companion;assert(h.ask('pawn',blueCue)==enemy)
+    towardTarget=0;assert(h.ask('pawn',blueCue)==h.player)
+    towardTarget=2;avatar=object('BP_Monster_Unregistered_C');assert(h.ask('pawn',blueCue)==h.player)
+    avatar=h.player;assert(h.ask('pawn',blueCue)==h.player)
+    avatar=blue;h.fighting=false;aim:tick();assert(h.ask('pawn',blueCue)==h.player)
+    avatar=companion;enemy.alive=false;assert(h.ask('pawn',blueCue)==h.player)
+end)
+
+test('prepared teams arm only three walk guards, with no repeated native lookup; combat opens regular aim',function()
+    local h=harness();local aim=h.new()
     aim:tick()
     assert(next(h.hooks)==nil and aim:status().state=='idle')
+    local blue,red=h.unit('blue'),h.unit('red')
+    h.targets[key(blue)]=red;h.targets[key(red)]=blue
+    local originalFind,lookups=StaticFindObject,0
+    StaticFindObject=function(path)lookups=lookups+1;return originalFind(path)end
+    aim:tick()
+    assert(h.ids==3 and lookups==3 and aim:status().state=='idle')
+    assert(h.hooks[Aim.paths.character] and h.hooks[Aim.paths.walkInputAdd] and h.hooks[Aim.paths.walkInputRemove])
+    assert(not h.hooks[Aim.paths.pawn] and not h.hooks[Aim.paths.bullet])
+    for _=1,40 do aim:tick() end
+    assert(h.ids==3 and lookups==3,'preparing must not re-register or re-resolve the three guards')
     h.fighting=true;aim:tick();aim:tick()
-    assert(h.ids==8 and aim:status().state=='running','no flying-weapon hooks without a ZuoShang caster')
+    assert(h.ids==10 and aim:status().state=='running','no flying-weapon hooks without a ZuoShang caster')
     assert(h.all():find('自检（临时放行该单位的类）：以 BP_Monster_',1,true) and aim:status().redirected==0 and h.all():find('改写生效=true',1,true),h.all())
 end)
 
@@ -160,9 +218,10 @@ test('a unit in reserve, a unit without an opponent, and the end of the fight',f
     assert(h.ask('character',object('GA_C_C',{outer=red}))==h.player,'after the fight the player again at once')
     h.now=9;aim:tick();assert(#h.unhooked==0)
     h.now=16;aim:tick()
-    assert(#h.unhooked==8 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
-    h.fighting=true;aim:tick();assert(h.ids==16,'hooked again for the next fight')
-    aim:silence('test');assert(#h.unhooked==16)
+    assert(#h.unhooked==7 and aim:status().state=='idle' and h.all():find('摘除挂钩（战斗已结束）',1,true),h.all())
+    assert(h.hooks[Aim.paths.character] and h.hooks[Aim.paths.walkInputAdd],'the defeated roster can still use native walk actions')
+    h.fighting=true;aim:tick();assert(h.ids==17,'only combat hooks are reinstalled for the next fight')
+    aim:silence('test');assert(#h.unhooked==17)
 end)
 
 test('a skill of a fighting unit is not forced onto the player; the first call per class logs what the game would say',function()
@@ -525,6 +584,34 @@ test('native pair phases retain only their own player getters and target selecto
     busy=false
     assert(h.ask('character',blueSkill)==red and h.askForce(blueSkill)==false,'phase completion re-enables ordinary redirection')
 end)
+test('an old lock on the on-pole boss goes to its wave cub without changing other enemy locks',function()
+    FName=function(v)return v end
+    local h=harness()
+    local caster,boss,cub,unrelated=h.unit('blue'),h.unit('red'),h.unit('red'),h.unit('red')
+    for _,actor in ipairs({boss,cub,unrelated})do
+        actor.RootComponent=object('Mesh',{GetOwner=function()return actor end})
+    end
+    h.targets[key(caster)]=cub
+    h.phaseAimOpponent=function(id,old)if id==key(caster) and old==boss then return cub end end
+    h.fighting=true;h.new():tick()
+    local ability=object('GA_ZuoShang_CA_02_C',{GetAvatarActorFromActorInfo=function()return caster end})
+    local function target(owner)return {Component=owner.RootComponent} end
+    local function out(owner)
+        local socket=target(owner)
+        return {type=function()return 'RemoteUnrealParam' end,get=function()return socket end,
+            set=function(_,value)socket=value end}
+    end
+    local selection=out(boss)
+    h.hooks[Aim.paths.bullet](nil,caster,nil,ability,nil,nil,selection)
+    assert(selection:get().Component==cub.RootComponent)
+    local other=out(unrelated)
+    h.hooks[Aim.paths.bullet](nil,caster,nil,ability,nil,nil,other)
+    assert(other:get().Component==unrelated.RootComponent)
+    ability['Lock Target']=target(boss)
+    h.hooks[Aim.paths.lock](ability,nil,nil,out(boss))
+    assert(ability['Lock Target'].Component==cub.RootComponent)
+end)
+
 test('the optional actor-based phase guard uses only a live owned actor',function()
     local h=harness();local blue,red=h.unit('blue'),h.unit('red');h.targets[key(blue)]=red;h.targets[key(red)]=blue
     local asked
@@ -543,7 +630,7 @@ test('shutdown makes retained callbacks inert before invoking native unregistrat
         asked=asked+1;if callback(nil,skill)~=nil then redirected=redirected+1 end
         return original(...)
     end
-    aim:silence('fixture shutdown');assert(asked==8)
+    aim:silence('fixture shutdown');assert(asked==10)
     print('shutdown native callback redirects='..redirected)
     assert(redirected==0,'shutdown cannot redirect through a reentrant native callback')
     UnregisterHook=original
@@ -566,10 +653,10 @@ test('throwing unregistration has a retry deadline',function()
     h.targets[key(blue)]=red;h.targets[key(red)]=blue;h.fighting=true;aim:tick()
     local original=UnregisterHook;local attempts=0
     UnregisterHook=function()attempts=attempts+1;error('native retry fixture')end
-    h.fighting=false;aim:tick();h.now=16;aim:tick()
+    h.fighting=false;h.members={};aim:tick();h.now=16;aim:tick()
     for i=1,19 do h.now=16+i*0.05;aim:tick()end
     print('unregister throwing ticks=20 attempts='..attempts)
-    assert(attempts==8,'a native failure must not be retried every support tick')
+    assert(attempts==10,'a native failure must not be retried every support tick')
     UnregisterHook=original;aim:silence('fixture cleanup')
 end)
 test('failed unregistration is paced and its bookkeeping survives explicit false',function()
@@ -581,11 +668,11 @@ test('failed unregistration is paced and its bookkeeping survives explicit false
         if failure then return false end
         return original(...)
     end
-    h.fighting=false;aim:tick();h.now=16;aim:tick()
+    h.fighting=false;h.members={};aim:tick();h.now=16;aim:tick()
     for i=1,19 do h.now=16+i*0.05;aim:tick()end
     print('unregister failed ticks=20 attempts='..attempts)
-    assert(attempts==8,'failed hooks must stay tracked and be attempted only once within one second')
-    failure=false;h.now=17.1;aim:tick();assert(attempts==16 and aim:status().state=='idle')
+    assert(attempts==10,'failed hooks must stay tracked and be attempted only once within one second')
+    failure=false;h.now=17.1;aim:tick();assert(attempts==20 and aim:status().state=='idle')
     assert(next(h.hooks)==nil,'successful retry removes every retained native hook')
     UnregisterHook=original
 end)

@@ -54,6 +54,27 @@ class BridgeTests(unittest.TestCase):
                    (f"game_ready\t{str(ready).lower()}\n" if ready is not None else "")+
                    'function_keys_schema\t4\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n')
 
+    def test_arena_roster_and_remove_require_current_session(self):
+        status = (self.bridge.runtime / "status.tsv").read_text(encoding="utf-8")
+        self.write("status.tsv", status + "arena_roster_revision\t4\n")
+        self.write("arena-roster.tsv", f"PGAR1\ttest-old\tedit\t4\nA1\tblue\t{UNIT}\t1\talive\t10\n")
+        self.assertFalse(self.bridge.arena_roster()["ready"])
+        self.write("arena-roster.tsv", f"PGAR1\tsession-A\tview\t4\nA2\tblue\t{UNIT}\t2\tdown\t0\n")
+        roster = self.bridge.arena_roster()
+        self.assertTrue(roster["ready"])
+        self.assertFalse(roster["editable"])
+        self.assertEqual(roster["units"][0]["ordinal"], 2)
+        self.assertEqual(roster["units"][0]["hp"], 0)
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue({"action": "remove_arena_unit", "unit_id": "test-old|A2"})
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue({"action": "remove_arena_unit", "unit_id": UNIT})
+        command = self.bridge.enqueue({"action": "remove_arena_unit", "unit_id": "session-A|A2"})
+        fields = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).split("\t")
+        self.assertEqual(fields[1:3], ["remove_arena_unit", "session-A|A2"])
+        self.game("session-B")
+        self.assertFalse(self.bridge.arena_roster()["ready"])
+
     def test_companion_profiles_session_and_wire(self):
         value='active,5,1,1,game,1,auto_return,50,10'
         unit='C2-session-A'
@@ -523,6 +544,23 @@ class BridgeTests(unittest.TestCase):
             self.assertEqual(sorted(row["tip"]), ["de", "en", "es", "fr", "ja", "zh"], row["name"])
             self.assertTrue(all(row["tip"].values()), row["name"])
             self.assertIn(row["unit"], {"prob", "weight", "cm", "s", "count", "switch"}, row["name"])
+
+    def test_attack_flash_carries_color_and_explicit_state(self):
+        for color, enabled, token in (("red", True, "ON"), ("blue", False, "OFF")):
+            command = self.bridge.enqueue({"action": "set_attack_flash", "color": color, "enabled": enabled})
+            columns = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).rstrip("\n").split("\t")
+            self.assertEqual(columns[1:8], ["set_attack_flash", "", "blue", "1", color.upper(), token, ""])
+        for color, enabled in (("neutral", True), ("red", "ON"), ("BLUE", False), (None, True)):
+            with self.assertRaises(backend.ValidationError):
+                self.bridge.enqueue({"action": "set_attack_flash", "color": color, "enabled": enabled})
+
+    def test_execution_appearance_travels_as_on_or_off(self):
+        for enabled in (True, False):
+            command = self.bridge.enqueue({"action": "set_execution_appearance", "enabled": enabled})
+            cols = self.bridge._wire({"id": command["id"], "payload": json.dumps(command["payload"])}).split("\t")
+            self.assertEqual(cols[1:8], ["set_execution_appearance", "", "blue", "1", "", "ON" if enabled else "OFF", ""])
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.enqueue({"action": "set_execution_appearance", "enabled": "ON"})
 
     def test_clock_hud_travels_in_the_start_key_column(self):
         for enabled, token in ((True, "ON"), (False, "OFF")):

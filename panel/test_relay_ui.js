@@ -5,10 +5,11 @@ function section(a,b){return app.slice(app.indexOf(a),app.indexOf(b,app.indexOf(
 const box={innerHTML:''};let dialog='';
 const q={on:true,supported:true,settingsSupported:true,ready:true,mode:'WAVE',intervalMs:1750,blueSlots:3,redSlots:2,blueReserve:3,redReserve:2,relayStarted:false,generated:0};
 const c={S:{summonQueue:q,blue:0,red:0,down:{blue:0,red:0},immortal:{failures:0},clock:{state:'',seconds:0},fight:'idle',keys:{start:''}},
- ui:{busy:new Set(),roster:{blue:{},red:{}},lastCounts:{}},RT:{online:()=>true},t:(k,p)=>i18n.t(k,p),esc:v=>String(v??''),icon:()=>'',
+ ui:{busy:new Set(),roster:{blue:{},red:{}},lastCounts:{}},RT:{online:()=>true,ready:()=>true},t:(k,p)=>i18n.t(k,p),esc:v=>String(v??''),icon:()=>'',
  $:selector=>selector==='#dock-battle'?box:null,teamName:String,rosterHTML:()=>'',guardHTML:()=>'',fmtNum:String,
  gameBlocker:()=>'',fieldTotal:()=>0,summonsWaiting:()=>true,keyCap:()=>'',openDialog:(_,html)=>{dialog=html;}};
-vm.createContext(c);vm.runInContext(section('  function renderBattle()', '  function renderView()'),c);
+vm.createContext(c);vm.runInContext(section('  function rosterAvailable()', '  function rosterUnitId('),c);
+vm.runInContext(section('  function renderBattle()', '  function renderView()'),c);
 vm.runInContext(section('  function queueSettingsMessage(', '  function renderSummonQueueSettings()'),c);
 vm.runInContext(section('  function openQueueSettings()', '  async function saveQueueSettings()'),c);
 c.renderBattle();

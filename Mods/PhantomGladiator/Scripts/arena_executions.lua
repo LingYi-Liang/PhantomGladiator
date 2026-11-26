@@ -55,7 +55,11 @@ local MOBS='/PBZCombatAsset/ActorData/Mobs/'
 local GE_LOCK='/PBZCombatAsset/Prototypes/GameplayEffects/GE_LockHealth.GE_LockHealth_C'
 -- Bosses whose pair is started from their own skill, not listed in their config. start: the StartTime the skill
 -- passes; locks: the lock effects it removes, with unlock='start' when it removes them as the execution starts.
-local LAST_LION_CLASS=require('lion_challenge').CUB
+local Lion=require('lion_challenge')
+local LAST_LION_CLASS=Lion.CUB
+local LION_EXEC='GA_Hun_BEx_HouHouHou_01_C'
+local LION_VICTIM='GA_Hun_BEd_HouHouHou_01_C'
+local LION_FLOOR_FRACTION=0.20
 local PAIRS={
     BP_Monster_GuiChai_Red_P2={
         execution=MOBS..'075_GuiChai_Red_P2/Ability/GA_GuiChai_Red_P2_BEx_01.GA_GuiChai_Red_P2_BEx_01_C',
@@ -236,16 +240,16 @@ function Exec.new(options)
         end
         return true
     end
-    local function ruleAllows(actor,rule,role)
+    local function ruleAllows(actor,rule,role,knownLionFloor)
         if not rule then return true end
         if not tagsMatch(actor,rule[role..'_required'],true) or not tagsMatch(actor,rule[role..'_ignored'],false) then return false end
-        if role=='target' and #(rule.any_target or {})>0 then
+        if role=='target' and not knownLionFloor and #(rule.any_target or {})>0 then
             for _,t in ipairs(rule.any_target)do if tagsMatch(actor,{t},true)then return true end end
             return false
         end
         return true
     end
-    local function inspect(actor,checkConditions,locked)
+    local function inspect(actor,checkConditions,locked,knownLionFloor)
         local info={state='none',locks={}}
         local config=U.field(actor,'Actor Config')
         if not U.valid(config) then return info end
@@ -269,7 +273,10 @@ function Exec.new(options)
                 local eligible=true
                 if checkConditions and ok and text==wanted then
                     eligible=tagsMatch(actor,U.struct(entry,'TargetRequiredTags'),true) and tagsMatch(actor,U.struct(entry,'TargetIgnoredTags'),false)
-                    if not locked or CONTEXTUAL[wanted] then eligible=eligible and ruleAllows(actor,Rules[wanted],'target') end
+                    if knownLionFloor then
+                        eligible=eligible and wanted=='Execution.Type.Combat' and short(a)==LION_EXEC and short(b)==LION_VICTIM
+                    end
+                    if not locked or CONTEXTUAL[wanted] then eligible=eligible and ruleAllows(actor,Rules[wanted],'target',knownLionFloor) end
                     if CONTEXTUAL[wanted] then
                         local readType,hasType=call(U.field(actor,'Execution Component'),'HasExecutionType',{TagName=name(wanted)})
                         eligible=eligible and readType and U.unwrap(hasType)==true
@@ -331,6 +338,15 @@ function Exec.new(options)
         local floor=read(actor,'Health_Min')
         if not floor or floor<=0 or hp>floor+1+floor*0.01 then return false end
         return #unit.locks>0 or floor<=DEATH_LOCK*(read(actor,'Health_Max') or 0)+1
+    end
+    -- The LastOne wave permits its specific native pair at 20%. Its dynamic floor need not be in the
+    -- spawn config, and the native Weak tag may be absent at the boundary. Never widen generic locks.
+    local function lastLionFloor(actor,hp)
+        local floor,max=read(actor,'Health_Min'),read(actor,'Health_Max')
+        if type(floor)~='number' or not (floor>0 and floor<math.huge) or type(max)~='number'
+            or not (max>0 and max<math.huge) then return false,floor,max end
+        local tolerance=math.max(0.01,max*0.000001)
+        return math.abs(floor-max*LION_FLOOR_FRACTION)<=tolerance and math.abs(hp-floor)<=tolerance,floor,max
     end
     -- CharacterState.CanWeakExecute.* the player's execution prompt waits for, read with GetGameplayTagCount.
     local function executable(actor)
@@ -468,7 +484,56 @@ function Exec.new(options)
         end
         return string.format('重置布料=%d 重置模型物理=%d',cloth,meshes)
     end
-    local function borrowBody(executor,timing)
+    local function bodyGone(body)
+        if not U.valid(body.comp) then return true end
+        local ok,dying=call(body.comp,'IsBeingDestroyed')
+        return ok and U.unwrap(dying)==true
+    end
+
+    local function fullNameOf(object)
+        local ok,value=call(object,'GetFullName')
+        value=ok and U.unwrap(value)
+        return type(value)=='string' and value or nil
+    end
+
+    local function sameExecutor(body)
+        return body.executorKey~=nil and U.key(body.executor)==body.executorKey
+            and (not body.executorName or fullNameOf(body.executor)==body.executorName)
+    end
+
+    local function ownsComponent(body,part)
+        if not part.key or U.key(part.comp)~=part.key then return false end
+        local ok,owner=call(part.comp,'GetOwner')
+        return ok and U.key(U.unwrap(owner))==body.executorKey and body.executorKey~=nil
+            and (not part.fullName or fullNameOf(part.comp)==part.fullName)
+    end
+
+    local function hideBody(comp)
+        call(comp,'SetVisibility',false,false)
+        call(comp,'SetHiddenInGame',true,false)
+        local ok,visible=call(comp,'IsVisible')
+        local hidden=U.field(comp,'bHiddenInGame')
+        return (ok and U.unwrap(visible)==false) or hidden==true or hidden==1
+    end
+
+    local function disposeBody(body)
+        if bodyGone(body) then pendingBodies[body.key]=nil;return true end
+        if not sameExecutor(body) or not ownsComponent(body,body) then return false end
+        -- This is the temporary pose driver. When the game cannot hide it, drop its
+        -- render asset before retrying removal. No NPC mesh or shared asset is edited.
+        if not hideBody(body.comp) then call(body.comp,'SetSkeletalMeshAsset',nil) end
+        call(body.comp,'K2_DestroyComponent',body.comp)
+        local gone=bodyGone(body)
+        if gone then pendingBodies[body.key]=nil
+        else
+            body.destroyAttempts=(body.destroyAttempts or 0)+1
+            body.destroyRetry=body.destroyAttempts<3 and now()+0.75*body.destroyAttempts or nil
+            pendingBodies[body.key]=body
+        end
+        return gone
+    end
+
+    local function borrowBody(executor,timing,legacy)
         if not timing then return nil,'这对技能没有登记执行方动画' end
         local mesh=U.field(executor,'Mesh')
         if not U.valid(mesh) then return nil,'执行方没有 Mesh' end
@@ -490,13 +555,30 @@ function Exec.new(options)
         local okAdd,comp=call(executor,'AddComponentByClass',cls,true,IDENTITY,false)
         comp=okAdd and U.unwrap(comp) or nil
         if not U.valid(comp) then return nil,'加组件失败: '..tostring(comp) end
-        local body={comp=comp,followers={},executor=executor,main=mesh,key=U.key(comp)}
+        local body={comp=comp,followers={},executor=executor,executorKey=U.key(executor),executorName=fullNameOf(executor),
+            main=mesh,key=U.key(comp),fullName=fullNameOf(comp)}
+        if not ownsComponent(body,body) then return nil,'借用组件归属未确认' end
         local steps={}
         local function step(label,ok,err)steps[#steps+1]=label..'='..tostring(ok)..(ok and '' or '('..tostring(err)..')')end
+        if not legacy and not hideBody(comp) then
+            body.restored=true
+            disposeBody(body)
+            return nil,'不能确认借用组件已隐藏'
+        end
         step('挂到执行方模型',call(comp,'K2_AttachToComponent',mesh,name('None'),SNAP,SNAP,SNAP,false))
         step('换玩家模型',call(comp,'SetSkeletalMeshAsset',asset))
         step('隐藏时照样算骨骼',pcall(function()comp.VisibilityBasedAnimTickOption=TICK_REFRESH end))
-        step('隐藏',call(comp,'SetVisibility',false,false))
+        if legacy then
+            step('兼容旧版隐藏调用',call(comp,'SetVisibility',false,false))
+        else
+            local hidden=hideBody(comp)
+            step('隐藏读回',hidden)
+            if not hidden then
+                body.restored=true
+                disposeBody(body)
+                return nil,'借用组件配置后显隐未确认'
+            end
+        end
         step('播动画',call(comp,'PlayAnimation',montage,timing.loop==true))
         if (timing.clip_from or 0)~=0 then
             local set=call(comp,'SetPosition',timing.clip_from,false)
@@ -526,7 +608,8 @@ function Exec.new(options)
             local ok,err=call(part.comp,'SetLeaderPoseComponent',comp,true,wantTick)
             local leader=weak(U.field(part.comp,'LeaderPoseComponent'))
             local verified=ok and leader~=nil and U.key(leader)==U.key(comp)
-            body.followers[#body.followers+1]={comp=part.comp,leader=part.leader,cloth=part.cloth,verified=verified,tickPose=part.tickPose}
+            body.followers[#body.followers+1]={comp=part.comp,key=U.key(part.comp),fullName=fullNameOf(part.comp),
+                leader=part.leader,cloth=part.cloth,verified=verified,tickPose=part.tickPose}
             step('跟随['..short(part.comp)..(part.cloth and '（布料）' or '')..']',verified,
                 not ok and err or (leader==nil and '调用成功，读回不可读' or '读回不是借来的骨架'))
             if primary then
@@ -536,6 +619,9 @@ function Exec.new(options)
             end
         end
         body.copyFollowers=CopyPose.follow(partsOf(executor),mesh,comp,log)
+        for _,part in ipairs(body.copyFollowers) do
+            part.key,part.fullName=U.key(part.comp),fullNameOf(part.comp)
+        end
         if #body.copyFollowers>0 then say('独立CopyPose部件改接数='..#body.copyFollowers..'；执行方='..className(executor)) end
         local followed=0;for _,f in ipairs(body.followers)do if f.verified then followed=followed+1 end end
         local okPlaying,playing=call(comp,'IsPlaying')
@@ -546,31 +632,57 @@ function Exec.new(options)
     end
     local function returnBody(body)
         if not body then return '没有借身体' end
+        local gone=bodyGone(body)
+        if not sameExecutor(body) or (not gone and not ownsComponent(body,body)) then
+            pendingBodies[body.key]=nil
+            return '借用组件或执行方归属已变化'
+        end
+        if body.restored then return '移除借来的骨架='..tostring(disposeBody(body)) end
+        if not gone then hideBody(body.comp) end
         local back=0
         for _,f in ipairs(body.followers) do
-            local ok=call(f.comp,'SetLeaderPoseComponent',f.leader,true,f.tickPose==true)
-            local leader=weak(U.field(f.comp,'LeaderPoseComponent'))
-            local actualTick=tickPoseOf(f.comp)
-            local tickRestored=f.tickPose==nil or actualTick==f.tickPose
-            if U.valid(f.comp) and U.key(f.comp)==U.key(body.main) then
-                say('恢复主网格 TickPose：原值='..tostring(f.tickPose)..' 读回='..tostring(actualTick)..' 验证='..tostring(tickRestored))
+            if ownsComponent(body,f) then
+                local leaderKey=U.key(weak(U.field(f.comp,'LeaderPoseComponent')))
+                local originalKey=U.key(f.leader)
+                -- The engine may have cleared an already removed leader. Restore our snapshot
+                -- in that case, but keep a distinct leader that another system has assigned.
+                if not leaderKey or leaderKey==body.key or leaderKey==originalKey then
+                    local original=originalKey and f.leader or nil
+                    local ok=call(f.comp,'SetLeaderPoseComponent',original,true,f.tickPose==true)
+                    local leader=weak(U.field(f.comp,'LeaderPoseComponent'))
+                    local actualTick=tickPoseOf(f.comp)
+                    local tickRestored=f.tickPose==nil or actualTick==f.tickPose
+                    if U.key(f.comp)==U.key(body.main) then
+                        say('恢复主网格 TickPose：原值='..tostring(f.tickPose)..' 读回='..tostring(actualTick)..' 验证='..tostring(tickRestored))
+                    end
+                    if ok and tickRestored and U.key(leader)==originalKey then back=back+1 end
+                end
             end
-            if ok and tickRestored and ((f.leader==nil and leader==nil) or (f.leader and leader and U.key(leader)==U.key(f.leader))) then back=back+1 end
         end
         -- Anything still on the borrowed skeleton (the engine may hand a follower's followers to the new leader)
         -- goes back to the executor's Mesh before that skeleton is removed.
         local swept,parts=0,U.valid(body.executor) and partsOf(body.executor) or {}
         for _,part in ipairs(parts) do
-            if part.leader and U.key(part.leader)==U.key(body.comp) and U.valid(body.main) then
+            if not gone and part.leader and U.key(part.leader)==body.key and U.valid(body.main) then
                 if call(part.comp,'SetLeaderPoseComponent',body.main,true,false) then swept=swept+1 end
+            end
+        end
+        for _,part in ipairs(body.copyFollowers or {}) do
+            if not part.restored then
+                if not ownsComponent(body,part) then part.restored=true
+                else
+                    local ok,parent=call(part.comp,'GetAttachParent')
+                    local key=ok and U.key(U.unwrap(parent))
+                    if key and key~=body.key and key~=U.key(part.parent) then part.restored=true end
+                end
             end
         end
         if not CopyPose.restore(body.copyFollowers,log) then
             pendingBodies[body.key]=body
             return string.format('还原跟随=%d/%d；独立面部附着未恢复，保留借用骨架，等待停止/清场重试',back,#body.followers)
         end
-        pendingBodies[body.key]=nil
-        local destroyed=call(body.comp,'K2_DestroyComponent',body.comp)
+        body.restored=true
+        local destroyed=disposeBody(body)
         local settled=U.valid(body.executor) and settle(partsOf(body.executor)) or '执行方已失效'
         return string.format('还原跟随=%d/%d 补回=%d 移除借来的骨架=%s %s',back,#body.followers,swept,tostring(destroyed),settled)
     end
@@ -661,7 +773,7 @@ function Exec.new(options)
         end
         function pose:stop()
             if not body then return true end
-            if U.valid(body.comp) then returnBody(body) end
+            returnBody(body)
             if pendingBodies[body.key] then return false end
             body=nil
             return true
@@ -1287,7 +1399,7 @@ local function closeOneGrab(pose,why,restore)
     local function start(executor,boss,info,d,reason,adopted)
         if phaseBusy(executor) or phaseBusy(boss) then return false end
         local lionPickup
-        if short(info.pair.execution)=='GA_Hun_BEx_HouHouHou_01_C' then
+        if short(info.pair.execution)==LION_EXEC then
             local enabled
             if options.hunPoleHead then enabled=options.hunPoleHead(executor) end
             if enabled==false then return false end
@@ -1300,7 +1412,7 @@ local function closeOneGrab(pose,why,restore)
         self.started=self.started+1
         local hp,floor=read(boss,'Health'),read(boss,'Health_Min')
         local finishPermit
-        if not info.fieldLionHead and (info.mob or info.boss and reason=='卡在锁血线') then
+        if not info.requireLionPickup and (info.mob or info.boss and reason=='卡在锁血线') then
             local named,identity=call(boss,'GetFullName')
             local team=finisherTeam(boss)
             if team and named and type(identity)=='string' and type(hp)=='number' and type(floor)=='number' then
@@ -1319,10 +1431,17 @@ local function closeOneGrab(pose,why,restore)
         say(string.format('开始（%s）目标=%s HP=%s 底线=%s 执行方=%s 距离=%.1fm 技能对=%s / %s 来源=%s；%s',reason,className(boss),fmt(hp),fmt(floor),
             className(executor),(d or 0)/100,short(info.pair.execution),short(info.pair.executed),info.pair.source,turned))
         local wantPlayback=info.timing.dynamic or (adopted and not info.timing.mash and info.timing.montage~=nil)
-        local body,why
+        local body,why,legacy
+        if type(options.legacyBorrowedAppearance)=='function' then
+            local ok,enabled=pcall(options.legacyBorrowedAppearance)
+            if ok and enabled==true then
+                local side,other=finisherTeam(executor),finisherTeam(boss)
+                legacy=(side=='blue' and other=='red') or (side=='red' and other=='blue')
+            end
+        end
         local direct=not wantPlayback and directBody(executor,info.timing) or nil
         if direct then say('同骨架，直接用本体（不借身体，不算失败）：'..direct)
-        elseif not wantPlayback then body,why=borrowBody(executor,info.timing) end
+        elseif not wantPlayback then body,why=borrowBody(executor,info.timing,legacy) end
         poseProbe:begin(executor,boss,body and body.comp or nil)
         if why then say('借身体没成，执行方原地站着：'..why) end
         local executorBefore=direct and montageOf(executor) or nil
@@ -1370,7 +1489,7 @@ local function closeOneGrab(pose,why,restore)
         if mash then length=mash.next+PRESSES*GAP+info.timing.stages.finale.length+TAIL end
         active={executor=executor,boss=boss,info=info,body=body,t0=now(),length=length,before=before,mash=mash,yaw=yaw,
             finishPermit=finishPermit,unitAtStart=unit,previousState=previousState,
-            dynamic=wantPlayback,adopted=adopted~=nil,lionPickup=lionPickup,
+            dynamic=wantPlayback,adopted=adopted~=nil,lionPickup=lionPickup,legacyBorrow=legacy,
             own=abilityOn(executor,short(info.pair.execution)),theirs=abilityOn(boss,short(info.pair.executed)),
             montage=after~=before and after or nil,gone=nil,samples=0,paused=paused,byLock=reason=='卡在锁血线',
             direct=direct~=nil,executorBefore=executorBefore}
@@ -1405,7 +1524,7 @@ local function closeOneGrab(pose,why,restore)
                         end
                     end
                     if not run.body then
-                        local b,problem=borrowBody(executor,def);run.body=b
+                        local b,problem=borrowBody(executor,def,run.legacyBorrow);run.body=b
                         if problem then return false,problem end
                         showCamera(run,def,adopted and adopted.continuing)
                     else
@@ -1493,6 +1612,8 @@ local function closeOneGrab(pose,why,restore)
             if unit and not run.adopted then unit.state=run.info.hunPair and run.previousState or 'ready';unit.since=nil;unit.waited=nil;unit.again=now()+AGAIN end
             if run.adopted then kill='原生BOSS处决结束，保留后续阶段 HP='..fmt(hp)
             else kill=string.format('BOSS（%s）处决完还站着，不强制判死，%d 秒后可再被处决 HP=%s',run.info.rank,AGAIN,fmt(hp)) end
+        elseif run.info.requireLionPickup and (hp==nil or hp>0) then
+            kill='狮头处决保留原生结算；HP读回='..fmt(hp)
         elseif (hp==nil or hp>0) and (run.info.mob or run.info.boss and run.byLock) then
             local permit,unit=run.finishPermit,run.unitAtStart
             kill='处决动画结束；强制收尾条件未确认'
@@ -1533,7 +1654,7 @@ local function closeOneGrab(pose,why,restore)
                 -- Its own mesh did not take the clip: this executor borrows a body from now on, this battle included.
                 directFailed[U.key(run.executor) or '']=true
                 run.direct=false
-                local b,problem=borrowBody(run.executor,run.info.timing)
+                local b,problem=borrowBody(run.executor,run.info.timing,run.legacyBorrow)
                 run.body=b
                 local placed='未借到'
                 if b then
@@ -1675,6 +1796,16 @@ local function closeOneGrab(pose,why,restore)
         available=function(executor)return self.enabled and next(pendingBodies)==nil
             and (not executor or not active or U.key(active.executor)==U.key(executor))end,data=animationData,adopt=adoptNative})
 
+    local function noteLionWait(target,unit,lastLion,why,hp,floor,max,nativeTag)
+        if not lastLion or lastLion=='field' or unit.lastLionWait==why or (unit.lastLionLines or 0)>=4 then return end
+        unit.lastLionWait=why;unit.lastLionLines=(unit.lastLionLines or 0)+1
+        local mesh=U.field(target,'Mesh')
+        local visibleRead,visible=call(mesh,'IsVisible')
+        say(string.format('最后一只小狮子等待：%s；HP=%s/%s 底线=%s 原生可处决标签=%s Actor隐藏=%s Mesh隐藏=%s Mesh可见=%s',
+            why,fmt(hp),fmt(max),fmt(floor),tostring(nativeTag),fmt(U.field(target,'bHidden')),
+            fmt(U.field(mesh,'bHiddenInGame')),fmt(visibleRead and U.unwrap(visible))))
+    end
+
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     -- only: as opponent()'s, the executors this attempt may take (a companion Hun's own attempts take Hun bodies only).
     local function tryExecute(target,unit,t,team,only,lastLion)
@@ -1683,17 +1814,29 @@ local function closeOneGrab(pose,why,restore)
         if options.onPole and options.onPole(target) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
-        local locked=onLock(target,unit,hp)
-        if locked then unit.since=unit.since or t else unit.since=nil end
-        local reason=locked and t-unit.since>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
+        if lastLion and not tagsMatch(target,{Lion.LAST},true) then return false end
+        local locked=not lastLion and onLock(target,unit,hp)
+        local knownLionFloor,floor,max
+        if lastLion then knownLionFloor,floor,max=lastLionFloor(target,hp) end
+        if locked or knownLionFloor then unit.since=unit.since or t else unit.since=nil end
+        local reason=locked and t-unit.since>=HOLD and '卡在锁血线'
+            or knownLionFloor and t-unit.since>=HOLD and '最后一只小狮子原版20%锁血'
+        local nativeTag
+        if (lastLion or not reason) and not unit.lockOnly then nativeTag=executable(target) end
+        reason=reason or nativeTag
         if not reason and not unit.lockOnly then
             for _,tag in ipairs({'CharacterState.CanRiderExecute','CharacterState.Stand.Break','CharacterState.CanWeakExecute'})do
                 if tagsMatch(target,{tag},true)then reason=tag;break end
             end
         end
-        if not reason then return false end
-        if inNativeExecution(target) or locked and hasTroopProtection(target) then unit.since=nil;return false end
-        local selected=inspect(target,true,locked)
+        if not reason then
+            if lastLion and not knownLionFloor and type(max)=='number' and max>0 and hp<=max*LION_FLOOR_FRACTION+1 then
+                noteLionWait(target,unit,lastLion,'未读回原版处决窗口或20%底线',hp,floor,max,nativeTag)
+            end
+            return false
+        end
+        if inNativeExecution(target) or (locked or knownLionFloor) and hasTroopProtection(target) then unit.since=nil;return false end
+        local selected=inspect(target,true,locked,knownLionFloor)
         if selected.state=='story' then
             unit.state='story';unit.storyWhy=selected.storyWhy
             say('处决会改剧情，不用它：'..className(target)..' '..short(selected.pair.execution)..' '..tostring(selected.storyWhy))
@@ -1701,19 +1844,55 @@ local function closeOneGrab(pose,why,restore)
         end
         local executor,d,denied
         if lastLion then
-            if selected.state~='ready' or short(selected.pair.execution)~='GA_Hun_BEx_HouHouHou_01_C' then return false end
+            if selected.state~='ready' or short(selected.pair.execution)~=LION_EXEC or short(selected.pair.executed)~=LION_VICTIM then
+                noteLionWait(target,unit,lastLion,'原生技能对或角色状态未确认',hp,floor,max,nativeTag)
+                return false
+            end
             selected.requireLionPickup=true
             selected.fieldLionHead=lastLion=='field'
-            local previous=only
-            only=function(actor)
-                if previous and not previous(actor) then return false end
-                if options.hunPoleHead and options.hunPoleHead(actor)==false then return false end
-                if selected.fieldLionHead then return options.fieldLionTarget(actor,target)==true end
-                return U.key(options.assignedOpponent(actor))==U.key(target)
+            local function mayTakeHead(actor)
+                return (not only or only(actor)) and (not options.hunPoleHead or options.hunPoleHead(actor)~=false)
+                    and not inNativeExecution(actor)
             end
+            local function pick(eligible)
+                return opponent(target,team,REACH,false,selected.pair.type,selected.mob,eligible)
+            end
+            if selected.fieldLionHead then
+                executor,d=pick(function(actor)
+                    return mayTakeHead(actor) and options.fieldLionTarget(actor,target)==true
+                end)
+            else
+                local targetKey,ownerKey=U.key(target),U.key(lastLion)
+                local function currentOpponent(actor)
+                    return options.assignedOpponent and U.key(options.assignedOpponent(actor))
+                end
+                executor,d=pick(function(actor)
+                    return mayTakeHead(actor) and currentOpponent(actor)==targetKey
+                end)
+                if not executor then
+                    -- A missed retarget must not strand this wave. Only an unassigned enemy or one
+                    -- still assigned to its own on-pole boss may borrow the verified cub's opportunity.
+                    executor,d=pick(function(actor)
+                        if not mayTakeHead(actor) then return false end
+                        local assigned=currentOpponent(actor)
+                        if assigned and assigned~=ownerKey then return false end
+                        local readRelation,relation=call(U.field(actor,'Faction Component'),'GetFactionRelation',target)
+                        return readRelation and tonumber(U.unwrap(relation))==2
+                    end)
+                end
+            end
+            if not executor then
+                noteLionWait(target,unit,lastLion,'附近没有符合条件的已分配或已确认敌对执行者',hp,floor,max,nativeTag)
+                return false
+            end
+            local started=start(executor,target,selected,d,reason)~=false
+            if not started then noteLionWait(target,unit,lastLion,'狮头接取或原生处决未确认',hp,floor,max,nativeTag) end
+            return started
         end
         if selected.state=='ready' then
-            local reach=locked and not selected.fieldLionHead and LOCK_REACH or selected.pair.reach or REACH
+            -- A generic Weak tag must never claim a lion head without its wave's ticket.
+            if short(selected.pair.execution)==LION_EXEC then return false end
+            local reach=locked and LOCK_REACH or selected.pair.reach or REACH
             executor,d,denied=opponent(target,team,reach,locked,selected.pair.type,selected.mob,only)
         end
         if executor then return start(executor,target,selected,d,reason)~=false end
@@ -1960,6 +2139,19 @@ local function closeOneGrab(pose,why,restore)
             if not restored then self.message='血滴子控制恢复待重试';return end
             say('血滴子控制恢复重试读回=true；'..detail)
         end
+        for key,body in pairs(pendingBodies) do
+            if not sameExecutor(body) then pendingBodies[key]=nil
+            elseif bodyGone(body) then
+                if body.restored then pendingBodies[key]=nil
+                elseif not body.goneRetried then
+                    body.goneRetried=true
+                    say('借用骨架失效后恢复附着：'..returnBody(body))
+                end
+            elseif not ownsComponent(body,body) then pendingBodies[key]=nil
+            elseif body.restored and body.destroyRetry and now()>=body.destroyRetry then
+                say('重试移除借用骨架，读回='..tostring(disposeBody(body)))
+            end
+        end
         if not self.enabled then return end
         if next(grabPoses) then
             if active then watch() end
@@ -1967,9 +2159,8 @@ local function closeOneGrab(pose,why,restore)
         end
         chain:auditExisting()
         opportunities:tick(members,(foeSwitch or foeHun) and #foes>0 and foes or nil)
-        for key,body in pairs(pendingBodies) do if not U.valid(body.comp) then pendingBodies[key]=nil end end
-        if next(pendingBodies) then self.message='面部附着恢复待重试，请停止/清场';return end
         if active then watch();return end
+        if next(pendingBodies) then self.message='借用骨架清理待确认，请停止/清场';return end
         local t=now()
         for _,unit in ipairs(finishing or {})do
             local r=unit.finalDeath
@@ -2000,9 +2191,12 @@ local function closeOneGrab(pose,why,restore)
         local lastCubs,ordered
         if options.lastLionOwner then
             for _,m in ipairs(members)do
-                if m.summoner and m.class_path==LAST_LION_CLASS and options.lastLionOwner(m.actor) then
+                local ownerKey=m.class_path==LAST_LION_CLASS and not m.reserve and not m.stand and not m.aid
+                    and not m.untargetable and U.key(m.summoner)
+                local owner=ownerKey and options.lastLionOwner(m.actor)
+                if ownerKey and ownerKey==U.key(owner) then
                     lastCubs=lastCubs or {};ordered=ordered or {}
-                    lastCubs[m]=true;ordered[#ordered+1]=m
+                    lastCubs[m]=owner;ordered[#ordered+1]=m
                 end
             end
             if ordered then

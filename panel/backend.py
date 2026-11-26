@@ -39,10 +39,10 @@ DEFAULT_RUNTIME = Path(r"C:\Program Files (x86)\Steam\steamapps\common\PBZ\platf
 ACTIONS = {"spawn", "queue_spawn", "set_summon_queue", "configure_summon_queue", "cancel_summon_queue", "set_unit_rule", "toggle_track", "track_pick", "track_next", "set_camera_track", "set_ai_params", "set_boss_combos", "set_offcombat_regen", "set_battle_music", "select_unit", "start", "stop", "clear_neutral", "recall_companions", "toggle_time_stop", "set_free_camera", "refresh_catalog", "configure_keys", "configure_unit_key", "toggle_spectator", "toggle_stat_match", "toggle_camera", "exit_camera", "cycle_team", "set_spawn_difficulty", "dismiss_companions", "set_fun_feature", "set_team_immortal", "set_clock_hud", "set_execution_camera", "set_companion_executions", "set_stat_mode", "set_companion_stats", "set_spawn_level", "repair_save"}
 # Teams a unit can be summoned to; companion units follow the player (companion.lua).
 TEAMS = ("blue", "red", "neutral", "companion")
-ACTIONS.update(('manage_companion','summon_mu_companion','hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
+ACTIONS.update(('manage_companion','remove_arena_unit','summon_mu_companion','hun_body_probe','set_weather','eyes_player','eyes_npc','teleport','teleport_back','configure_teleport_key','set_companion_passage','set_companion_minion_executions'))
 ACTIONS.update(('toggle_selfie', 'selfie_pose', 'selfie_shot', 'selfie_next', 'toggle_photo', 'photo_panel'))
 DIRECTOR_BINDING_NAMES = ("toggle_cinema", "cycle_battle_hud")
-ACTIONS.update(DIRECTOR_BINDING_NAMES)
+ACTIONS.update((*DIRECTOR_BINDING_NAMES, "set_attack_flash", "set_execution_appearance"))
 MAX_WATCH_COMMANDS = 100
 MAX_COMMAND_ID = 9223372036854775807
 MAX_JSON_INTEGER = 9007199254740991
@@ -242,7 +242,7 @@ MAX_POOL_MEMBERS = 256
 POOL_ID = re.compile(r"pool-[a-z0-9]{1,32}")
 POOL_CLASS = re.compile(r"/[A-Za-z0-9_/.\-]+\.[A-Za-z0-9_\-]+_C")
 MAX_INBOX_BYTES = 2048
-READY_ACTIONS = {"manage_companion", "summon_mu_companion", "eyes_player", "eyes_npc", "set_weather", "teleport", "teleport_back", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
+READY_ACTIONS = {"manage_companion", "remove_arena_unit", "summon_mu_companion", "eyes_player", "eyes_npc", "set_weather", "teleport", "teleport_back", "spawn", "queue_spawn", "hun_body_probe", "start", "toggle_spectator"}
 # A summon, start or no-aggro switch waits this long for the game to stand in a map, then fails: the queue is
 # first in first out, and before v0.38.1 one such wait held back every command behind it, the app's unit selection
 # too (a player's summon key kept giving the unit selected long before).
@@ -497,7 +497,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv", "match-report.json", "match-report.json.bak"}:
+        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "arena-roster.tsv", "arena-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv", "match-report.json", "match-report.json.bak"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -986,6 +986,40 @@ class Bridge:
             break
         return result
 
+    def arena_roster(self):
+        game = self.game_status()
+        result = {"ready": False, "editable": False, "session": game["game_session"], "revision": 0, "units": []}
+        revision = game.get("values", {}).get("arena_roster_revision", "")
+        if not game["ready"] or not re.fullmatch(r"[1-9][0-9]{0,11}", revision):
+            return result
+        for name in ("arena-roster.tsv", "arena-roster.tsv.bak"):
+            text = bounded_read(self._path(name), 2 * 1024 * 1024)
+            if not text or not text.endswith("\n"):
+                continue
+            rows = list(tsv_rows(text))
+            if not rows or len(rows[0]) != 4:
+                continue
+            schema, session, mode, serial = rows[0]
+            if (schema, session, serial) != ("PGAR1", game["game_session"], revision) or mode not in ("edit", "view"):
+                continue
+            units, seen = [], set()
+            try:
+                for row in rows[1:]:
+                    ident, team, path, ordinal, state, hp = row
+                    if (not re.fullmatch(r"A[1-9][0-9]{0,11}", ident) or ident in seen or team not in ("red", "blue")
+                        or not path.startswith("/") or len(path) > 512 or not re.fullmatch(r"[1-9][0-9]{0,11}", ordinal)
+                        or state not in ("alive", "down", "unknown")):
+                        raise ValueError("invalid arena roster row")
+                    hp = float(hp) if hp else None
+                    if hp is not None and (not math.isfinite(hp) or hp < 0):
+                        raise ValueError("invalid arena roster HP")
+                    seen.add(ident)
+                    units.append(dict(id=ident, team=team, path=path, ordinal=int(ordinal), state=state, hp=hp))
+            except ValueError:
+                continue
+            return dict(result, ready=True, editable=mode=="edit", revision=int(revision), units=units)
+        return result
+
     def game_status(self):
         try:
             text = bounded_read(self._path("status.tsv"), 65536)
@@ -1042,6 +1076,12 @@ class Bridge:
             if count > unit.get("max_count", MAX_SPAWN_COUNT):
                 raise ValidationError("该单位处于单只测试阶段，数量必须为 1")
             payload.update(unit_id=unit_id, team=team, count=count)
+        elif action == 'remove_arena_unit':
+            allowed.add('unit_id')
+            token = clean_field(request.get('unit_id'), 'unit_id', 180)
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}\|A[1-9][0-9]{0,11}', token):
+                raise ValidationError('invalid arena instance')
+            payload['unit_id'] = token
         elif action == 'manage_companion':
             allowed.add('unit_id')
             token = clean_field(request.get('unit_id'), 'unit_id', 400)
@@ -1125,6 +1165,14 @@ class Bridge:
             if type(enabled) is not bool:
                 raise ValidationError('enabled must be true or false')
             payload.update(feature=feature, enabled=enabled)
+        elif action == 'set_attack_flash':
+            allowed |= {'color', 'enabled'}
+            color, enabled = request.get('color'), request.get('enabled')
+            if color not in ('red', 'blue'):
+                raise ValidationError('color must be red or blue')
+            if type(enabled) is not bool:
+                raise ValidationError('enabled must be true or false')
+            payload.update(color=color, enabled=enabled)
         elif action == 'set_team_immortal':
             allowed |= {'team', 'enabled'}
             team, enabled = request.get('team'), request.get('enabled')
@@ -1263,7 +1311,7 @@ class Bridge:
             if self.game_status().get('values', {}).get('summon_queue_settings_schema') != '1':
                 raise ValidationError('请更新并重载支持接力的游戏内Mod')
             payload.update(mode=mode, interval_ms=interval, blue_slots=blue, red_slots=red)
-        elif action in ('set_clock_hud', 'set_execution_camera', 'set_companion_executions', 'set_companion_passage', 'set_companion_minion_executions', 'set_summon_queue', 'set_offcombat_regen'):
+        elif action in ('set_clock_hud', 'set_execution_camera', 'set_execution_appearance', 'set_companion_executions', 'set_companion_passage', 'set_companion_minion_executions', 'set_summon_queue', 'set_offcombat_regen'):
             allowed.add('enabled')
             enabled = request.get('enabled')
             if type(enabled) is not bool:
@@ -1356,6 +1404,8 @@ class Bridge:
                 raise ValidationError("未建立当前游戏会话；目录可浏览，指令未提交，请游戏连接后重新请求")
             payload = self._validate(request)
             action = payload["action"]
+            if action == "remove_arena_unit" and payload["unit_id"].split("|", 1)[0] != game["game_session"]:
+                raise ValidationError("阵容已换局，请重新读取名单")
             epoch = self._summon_epoch(game)
             if action == "spawn" and epoch:
                 raise ValidationError("排队召唤已开启，请使用 queue_spawn")
@@ -1423,7 +1473,9 @@ class Bridge:
             bindings={'spawn':payload['level_mode'],'start':'' if payload.get('level') is None else str(payload['level'])}
         elif payload['action']=='set_free_camera':
             bindings={'spawn':str(payload['speed']),'start':str(payload['turn']),'stop':str(payload['smooth'])}
-        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_companion_executions','set_companion_passage','set_companion_minion_executions','set_summon_queue','set_offcombat_regen'):
+        elif payload['action'] == 'set_attack_flash':
+            bindings={'spawn':payload['color'].upper(),'start':'ON' if payload['enabled'] else 'OFF'}
+        elif payload['action'] in ('set_team_immortal','set_clock_hud','set_execution_camera','set_execution_appearance','set_companion_executions','set_companion_passage','set_companion_minion_executions','set_summon_queue','set_offcombat_regen'):
             bindings={'start':'ON' if payload['enabled'] else 'OFF'}
         elif payload['action']=='configure_summon_queue':
             bindings={'spawn':payload['mode'],'start':str(payload['interval_ms']),'stop':str(payload['blue_slots']),'refresh_catalog':str(payload['red_slots'])}
@@ -2144,6 +2196,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.server.bridge.stat_settings()
             elif path == "/api/companion-manager":
                 result = self.server.bridge.companion_manager()
+            elif path == "/api/arena-roster":
+                result = self.server.bridge.arena_roster()
             elif path == "/api/companion-stats":
                 result = self.server.bridge.stat_settings("companion-stats-settings.tsv")
             elif path == "/api/ai-params":
