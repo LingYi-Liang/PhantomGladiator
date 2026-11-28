@@ -836,7 +836,6 @@ data.chains["AIM_SlitheringSword_LightAttack"]={
     actions={
     },
     combos={
-        {tag="Ability.Action.Hun.Light.SlitheringSword.DA",req={"CharacterState.Space.Ground","Ability.Action.Hun.Light.SlitheringSword.DA","CharacterState.WeaponUpgrade.SlitheringSword.EnableDA","CharacterState.AbilityState.Stance.HoldingStanceKey"},ign={}},
         {tag="Ability.Action.Hun.Light.AA",req={"CharacterState.Space.Ground","Ability.Action.Hun.Heavy.SlitheringSword.DB1"},ign={"CharacterState.AbilityState.Stance.HoldingStanceKey"}},
         {tag="Ability.Action.Hun.Light.AA",req={"CharacterState.Space.Ground","Ability.Action.Hun.Heavy.SlitheringSword.DB2"},ign={"CharacterState.AbilityState.Stance.HoldingStanceKey"}},
         {tag="Ability.Action.Hun.Light.AA",req={"CharacterState.Space.Ground","Ability.Action.Hun.Heavy.SlitheringSword.DB3"},ign={"CharacterState.AbilityState.Stance.HoldingStanceKey"}},

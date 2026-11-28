@@ -173,7 +173,7 @@ function Wave.new(options)
         for _,track in pairs(fieldTracks)do
             for key,cub in pairs(track.wave.cubs)do
                 if not seen[key] and self:canFieldTarget(track.actor,cub) then
-                    seen[key]=true;out[#out+1]={actor=cub,key=key}
+                    seen[key]=true;out[#out+1]={actor=cub,key=key,owner=track.wave.actor}
                 end
             end
         end

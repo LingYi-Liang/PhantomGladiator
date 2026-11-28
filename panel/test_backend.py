@@ -54,6 +54,25 @@ class BridgeTests(unittest.TestCase):
                    (f"game_ready\t{str(ready).lower()}\n" if ready is not None else "")+
                    'function_keys_schema\t4\nfunction_keys_epoch\tfixture-keys\nfunction_keys_revision\t0\n')
 
+    def test_squad_preference_can_be_saved_offline_without_touching_the_party(self):
+        initial = self.bridge.companion_manager()["squad"]
+        self.assertEqual(initial, {"enabled": False, "revision": "0"})
+        self.write("companion-squad.tsv", "game-owned snapshot")
+        on = self.bridge.save_squad_preference({"enabled": True, "revision": "0"})
+        self.assertTrue(on["enabled"])
+        self.assertEqual(self.bridge.companion_manager()["squad"], on)
+        self.assertEqual(self.bridge.save_squad_preference({"enabled": True, "revision": "0"}), on)
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.save_squad_preference({"enabled": False, "revision": "0"})
+        off = self.bridge.save_squad_preference({"enabled": False, "revision": on["revision"]})
+        self.assertFalse(off["enabled"])
+        self.assertNotEqual(off["revision"], on["revision"])
+        with self.assertRaises(backend.ValidationError):
+            self.bridge.save_squad_preference({"enabled": 1, "revision": off["revision"]})
+        self.assertEqual((self.bridge.runtime / "companion-squad.tsv").read_text(), "game-owned snapshot")
+        self.write("companion-squad-settings.tsv", "broken")
+        self.assertIsNone(self.bridge.companion_manager()["squad"])
+
     def test_arena_roster_and_remove_require_current_session(self):
         status = (self.bridge.runtime / "status.tsv").read_text(encoding="utf-8")
         self.write("status.tsv", status + "arena_roster_revision\t4\n")
@@ -1797,6 +1816,19 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(raw), {"cleared": 2, "interrupted": 0, "files_left": []})  # refresh_catalog and the ten keys
         self.assertEqual(self.request("POST", "/api/queue/clear", '{"all":1}', write_headers)[0], 400)
         self.assertEqual(self.request("POST", "/api/queue/clear", "{}", {"Content-Type": "application/json"})[0], 403)
+
+    def test_restore_squad_round_trip_while_game_is_offline(self):
+        token = json.loads(self.request("GET", "/api/status")[2])["csrf_token"]
+        headers = {"Content-Type": "application/json", "Origin": self.server.origin, "X-CSRF-Token": token}
+        initial = json.loads(self.request("GET", "/api/companion-manager")[2])
+        self.assertFalse(initial["ready"])
+        body = json.dumps({"enabled": True, "revision": initial["squad"]["revision"]})
+        status, _, result = self.request("POST", "/api/companion-squad", body, headers)
+        self.assertEqual(status, 200)
+        saved = json.loads(result)
+        self.assertTrue(saved["enabled"])
+        self.assertEqual(json.loads(self.request("GET", "/api/companion-manager")[2])["squad"], saved)
+        self.assertEqual(self.request("POST", "/api/companion-squad", '{"enabled":"yes"}', headers)[0], 400)
 
     def test_monster_pools_can_be_saved_and_reopened_without_running_game(self):
         data = json.loads(self.request("GET", "/api/status")[2])

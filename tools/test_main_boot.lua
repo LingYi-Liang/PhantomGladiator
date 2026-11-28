@@ -4,6 +4,8 @@ local scripts="Mods/PhantomGladiator/Scripts/"
 package.path=scripts.."?.lua;"..package.path
 local cfg=assert(loadfile(scripts.."config.lua"))()
 local actorMode=arg[2]=='actor'
+local lockProbe=arg[4]=='lock-probe'
+if lockProbe then cfg.EnableSummonLockProbe=true end
 if actorMode then cfg.KnownMonsterClasses={'/Test/BP_SequenceActor.BP_SequenceActor_C'} end
 cfg.RuntimePath=root
 cfg.CatalogPath=root.."/known-classes.tsv"
@@ -164,7 +166,15 @@ StoryGuard.new=function(options)
     made.tick=function(self)guardTicks=guardTicks+1;return tick(self)end
     return made
 end
+local mountsModule=require('mounts')
+local makeMounts=mountsModule.new
+function mountsModule.new(options)
+    assert((options.player~=nil)==lockProbe,'Jing Ye diagnostics must follow the explicit config flag')
+    return makeMounts(options)
+end
 assert(loadfile(scripts.."main.lua"))()
+mountsModule.new=makeMounts
+assert((package.loaded.leidang_lock_probe~=nil)==lockProbe,'Lei Dang diagnostics must follow the explicit config flag')
 assert(keepOptions and keepOptions.members and keepOptions.location and keepOptions.camera and keepOptions.ground and keepOptions.ground.park,'stands are kept on the ground')
 assert(next(keys)==nil,'fresh installation must not register fixed or developer shortcuts')
 assert(#loops==1,"boot should only install bounded panel polling")
@@ -191,7 +201,7 @@ assert(type(cameraResult)=='table' and cameraResult.ok==false and #queue==before
     'camera ACK must reflect the synchronous attempt, not a second queued callback')
 inGame=false
 local output=table.concat(logs,"\n")
-assert(output:find(arg[3] or 'v0.40.24',1,true),"new build must load")
+assert(output:find(arg[3] or 'v0.40.25',1,true),"new build must load")
 if actorMode then
     assert(#genericCalls==2 and genericCalls[2]=='finish','generic Actor must use separate deferred/finalize calls')
     assert(output:find('通用Actor初始化完成',1,true),'generic Actor must not run PBZ ActivateAI')

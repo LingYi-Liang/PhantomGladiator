@@ -150,6 +150,16 @@ function Party.new(o)
         local r=owners[U.key(actor)]
         if r and not r.retiring and here(r) and same(U.field(actor,'MobGroup'),r.group) then return r end
     end
+    function self:placeholderOf(actor)
+        local r=groupOf(actor)
+        if not r then return nil end
+        for _,row in ipairs(r.rows)do
+            if same(actor,row.actor) and row.binding and not row.unbound
+                and owned(actor,row.name,r) and owned(row.helper,row.helperName,r) then
+                return row.helper
+            end
+        end
+    end
     local function refreshRoster()
         if rosterRead==revision then return end
         fieldActors,sides={},{}

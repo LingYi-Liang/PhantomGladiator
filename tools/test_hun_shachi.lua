@@ -186,6 +186,23 @@ check('zero ammo does not equip unreachable followups and native free ranged ope
     h.tags={['CharacterState.Space.Ground']=1,['CharacterState.Accessory.RangedWeapon']=1}
     assert(h:tick(0) and h.casts==1 and h.attrs.SpiritShadow==0,'native zero-cost ranged opener should reach the ASC')
 end)
+check('Nuo Mask discounts Summon openers and keeps Magic at its native cost',function()
+    local function cast(config,balance,mask)
+        local item
+        for _,row in ipairs(Data.items) do
+            if row.normal:find(config,1,true) then item=row;break end
+        end
+        local h=fixture(assert(item),false)
+        h.r.loadout.attributes={SpiritShadow=balance,SpiritShadow_Max=4}
+        h.tags={['CharacterState.Space.Ground']=1,['CharacterState.Accessory.MagicWeapon']=mask and 1 or 0}
+        h.ctx.opening=true
+        return h:tick(0) and h.casts==1
+    end
+    assert(not cast('XueSeLingDang',1,false),'bell normally costs two')
+    assert(cast('XueSeLingDang',1,true),'one spark pays for the bell with the mask')
+    assert(not cast('XuKongHuaShan',1,true),'the fan must still cost two with the mask')
+    assert(cast('XuKongHuaShan',2,true),'two sparks pay for the fan')
+end)
 check('free skill setting refunds its own cast and instant cast',function()
     for _,instant in ipairs({false,true}) do
         local h=fixture();h.r.loadout.resources.consume_skill_resources=false;h.instant=instant

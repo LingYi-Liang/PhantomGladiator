@@ -61,7 +61,7 @@ field:sync(roster,false)
 assert(field:canFieldTarget(friend,weakCub) and not field:canFieldTarget(otherFriend,weakCub))
 assert(not field:ticket(friend,unrelated),'a same-class unordered cub cannot be accepted')
 local last=field:fieldLastCubs()
-assert(#last==1 and last[1].actor==weakCub)
+assert(#last==1 and last[1].actor==weakCub and last[1].owner==source)
 target[friend]=weakCub
 field:sync(roster,false)
 local fieldProof=assert(field:ticket(friend,weakCub))

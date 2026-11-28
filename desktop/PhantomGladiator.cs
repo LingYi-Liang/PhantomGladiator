@@ -334,7 +334,10 @@ namespace PhantomGladiator
             list.Add(item("config", configOk, configOk ? "build " + build.VerifiedGameBuild : "", false));
             var installed = InstalledModBuild(g);
             var modOk = installed == build.ModBuild && ModListed(g);
-            list.Add(item("mod", modOk, installed.Length > 0 ? installed : "", false));
+            var mod = item("mod", modOk, installed, false);
+            mod["present"] = Directory.Exists(Path.Combine(g.ModDir, "Scripts"))
+                || File.Exists(Path.Combine(g.ModDir, "enabled.txt")) || HasRegistration(g);
+            list.Add(mod);
             return list;
         }
 
@@ -431,6 +434,171 @@ namespace PhantomGladiator
                     try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
             progress("mod", 1);
+        }
+
+        sealed class RegistrationEdit
+        {
+            public string Path, Staged, Backup;
+            public byte[] Before, After;
+        }
+
+        // Directory.Move does not traverse a tree, but its source and destination
+        // parents must both be real directories in the selected installation.
+        static bool RegularPath(string path, bool directory)
+        {
+            FileAttributes attributes;
+            try { attributes = File.GetAttributes(path); }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
+            if ((attributes & FileAttributes.ReparsePoint) != 0 || ((attributes & FileAttributes.Directory) != 0) != directory)
+                throw new HostError("uninstallPath", "无法确认卸载路径是实体文件或目录：" + path);
+            return true;
+        }
+
+        static byte[] RemoveTextRegistration(byte[] data)
+        {
+            // For UTF-8 or legacy single-byte encodings, round-trip every non-ASCII
+            // byte instead of re-encoding other mods' lines or newlines.
+            var encoding = Encoding.GetEncoding(28591);
+            var prefix = 0;
+            if (data.Length >= 2 && data[0] == 0xff && data[1] == 0xfe) { encoding = Encoding.Unicode; prefix = 2; }
+            else if (data.Length >= 2 && data[0] == 0xfe && data[1] == 0xff) { encoding = Encoding.BigEndianUnicode; prefix = 2; }
+            else if (data.Length >= 3 && data[0] == 0xef && data[1] == 0xbb && data[2] == 0xbf) prefix = 3;
+            var content = encoding.GetString(data, prefix, data.Length - prefix);
+            var updated = Regex.Replace(content, @"^[ \t]*PhantomGladiator[ \t]*:[^\r\n]*(?:\r?\n|$)", "",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return content == updated ? null : data.Take(prefix).Concat(encoding.GetBytes(updated)).ToArray();
+        }
+
+        static byte[] RemoveJsonRegistration(byte[] data)
+        {
+            var json = new JavaScriptSerializer();
+            object[] rows;
+            try { rows = json.DeserializeObject(new UTF8Encoding(false, true).GetString(data).TrimStart('\ufeff')) as object[]; }
+            catch (ArgumentException) { return null; }
+            catch (InvalidOperationException) { return null; }
+            if (rows == null) return null;
+            var kept = rows.Where(row =>
+            {
+                var values = row as Dictionary<string, object>;
+                object name;
+                return values == null || !values.TryGetValue("mod_name", out name)
+                    || !string.Equals(name as string, "PhantomGladiator", StringComparison.OrdinalIgnoreCase);
+            }).ToArray();
+            return rows.Length == kept.Length ? null : new UTF8Encoding(false).GetBytes(json.Serialize(kept) + "\n");
+        }
+
+        static void PlanRegistration(List<RegistrationEdit> edits, string path, Func<byte[], byte[]> remove)
+        {
+            if (!RegularPath(path, false)) return;
+            var before = File.ReadAllBytes(path);
+            var after = remove(before);
+            if (after != null) edits.Add(new RegistrationEdit { Path = path, Before = before, After = after });
+        }
+
+        static bool HasRegistration(GameInfo g)
+        {
+            var mods = Path.Combine(g.Ue4ssDir, "Mods");
+            var edits = new List<RegistrationEdit>();
+            try
+            {
+                PlanRegistration(edits, Path.Combine(mods, "mods.txt"), RemoveTextRegistration);
+                PlanRegistration(edits, Path.Combine(mods, "mods.json"), RemoveJsonRegistration);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (HostError) { }
+            return edits.Count > 0;
+        }
+
+        // The Runtime directory is also the player's data store. Keep it in place,
+        // so a normal Install reconnects the player's existing data and keybinds.
+        public static string Uninstall(GameInfo g)
+        {
+            lock (InstallGate) return UninstallCore(g);
+        }
+
+        static string UninstallCore(GameInfo g)
+        {
+            if (g == null) throw new HostError("notGame", "");
+            if (GameLocator.Running(g)) throw new HostError("gameRunning", "请先关闭游戏再卸载模组。");
+            var mods = Path.Combine(g.Ue4ssDir, "Mods");
+            var platform = Path.GetDirectoryName(g.SteamDir);
+            foreach (var parent in new[] { g.Root, platform, g.SteamDir, g.Ue4ssDir, mods })
+                if (!RegularPath(parent, true)) return "";
+            RegularPath(g.ModDir, true);
+            var scripts = Path.Combine(g.ModDir, "Scripts");
+            var enabled = Path.Combine(g.ModDir, "enabled.txt");
+            var hasScripts = RegularPath(scripts, true);
+            var hasEnabled = RegularPath(enabled, false);
+            var edits = new List<RegistrationEdit>();
+            PlanRegistration(edits, Path.Combine(mods, "mods.txt"), RemoveTextRegistration);
+            PlanRegistration(edits, Path.Combine(mods, "mods.json"), RemoveJsonRegistration);
+            if (!hasScripts && !hasEnabled && edits.Count == 0) return "";
+
+            var backups = Path.Combine(g.SteamDir, "PhantomGladiator-backups");
+            RegularPath(backups, true);
+            var backup = Path.Combine(backups, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(backup);
+            foreach (var edit in edits)
+            {
+                edit.Staged = Path.Combine(backup, Path.GetFileName(edit.Path) + ".new");
+                edit.Backup = Path.Combine(backup, Path.GetFileName(edit.Path) + ".before");
+                File.WriteAllBytes(edit.Staged, edit.After);
+            }
+
+            var savedScripts = Path.Combine(backup, "Scripts");
+            var savedEnabled = Path.Combine(backup, "enabled.txt");
+            var movedScripts = false;
+            var movedEnabled = false;
+            try
+            {
+                if (GameLocator.Running(g)) throw new HostError("gameRunning", "请先关闭游戏再卸载模组。");
+                if (hasScripts && RegularPath(scripts, true)) { Directory.Move(scripts, savedScripts); movedScripts = true; }
+                if (hasEnabled && RegularPath(enabled, false)) { File.Move(enabled, savedEnabled); movedEnabled = true; }
+                foreach (var edit in edits)
+                {
+                    if (!RegularPath(edit.Path, false) || !File.ReadAllBytes(edit.Path).SequenceEqual(edit.Before))
+                        throw new IOException("卸载期间载入列表已变更，请重试。");
+                    File.Replace(edit.Staged, edit.Path, edit.Backup);
+                    if (!File.ReadAllBytes(edit.Path).SequenceEqual(edit.After))
+                        throw new IOException("载入记录卸载读回失败。");
+                }
+                if ((movedScripts && (!RegularPath(savedScripts, true) || RegularPath(scripts, true)))
+                    || (movedEnabled && (!RegularPath(savedEnabled, false) || RegularPath(enabled, false))))
+                    throw new IOException("模组卸载读回失败。");
+                return backup;
+            }
+            catch (Exception error)
+            {
+                var failures = new List<Exception>();
+                Action<Action> rollback = restore =>
+                {
+                    try { restore(); } catch (Exception e) { failures.Add(e); }
+                };
+                foreach (var edit in edits.AsEnumerable().Reverse())
+                {
+                    rollback(() =>
+                    {
+                        if (!RegularPath(edit.Backup, false)) return;
+                        if (!RegularPath(edit.Path, false))
+                        {
+                            File.Move(edit.Backup, edit.Path);
+                            return;
+                        }
+                        var current = File.ReadAllBytes(edit.Path);
+                        if (current.SequenceEqual(edit.Before)) return;
+                        if (!current.SequenceEqual(edit.After))
+                            throw new IOException("载入列表有外部改动：" + edit.Path);
+                        File.Replace(edit.Backup, edit.Path, null);
+                    });
+                }
+                if (movedEnabled) rollback(() => File.Move(savedEnabled, enabled));
+                if (movedScripts) rollback(() => Directory.Move(savedScripts, scripts));
+                if (failures.Count > 0)
+                    throw new IOException("卸载未完成，已保留备份：" + backup, new AggregateException(new[] { error }.Concat(failures)));
+                throw;
+            }
         }
 
         static void InstallLoaderAndConfig(GameInfo g, Action<string, double> progress)
@@ -1338,7 +1506,7 @@ namespace PhantomGladiator
         readonly System.Windows.Forms.Timer gameTimer = new System.Windows.Forms.Timer { Interval = 3000 };
         readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
         GameInfo game;
-        bool gameRunning;
+        bool gameRunning, gameFilesBusy;
         string lang = "zh";
 
         public MainForm()
@@ -1411,7 +1579,7 @@ namespace PhantomGladiator
 
         string RuntimeDir()
         {
-            if (Installer.ModInstalled(game)) return game.RuntimeDir;
+            if (game != null && (Installer.ModInstalled(game) || Directory.Exists(game.RuntimeDir))) return game.RuntimeDir;
             // Before the mod is in the game folder the page still needs a backend to load from.
             var fallback = Paths.In("Runtime");
             Directory.CreateDirectory(fallback);
@@ -1494,6 +1662,7 @@ namespace PhantomGladiator
 
         async Task<object> InstallAndRestart(UpdateClient client)
         {
+            if (gameFilesBusy) throw new HostError("gameFilesBusy", "另一个模组文件操作正在进行。");
             if (gameRunning || (game!=null && GameLocator.Running(game)))
                 throw new HostError("gameRunning","请先关闭游戏再更新。");
             var runtime=backend.Runtime;
@@ -1534,6 +1703,7 @@ namespace PhantomGladiator
                         return dialog.ShowDialog(this)==DialogResult.OK ? dialog.FileName : null;
                 case "setGamePath":
                 {
+                    if (gameFilesBusy) throw new HostError("gameFilesBusy", "另一个模组文件操作正在进行。");
                     var g = GameLocator.FromPath(p.ContainsKey("path") ? p["path"] as string : "");
                     if (g == null) throw new HostError("notGame", "");
                     var restart = game == null || !string.Equals(g.Root, game.Root, StringComparison.OrdinalIgnoreCase);
@@ -1548,12 +1718,34 @@ namespace PhantomGladiator
                 case "install":
                 {
                     if (game == null) throw new HostError("notGame", "");
+                    if (gameFilesBusy || updateTransfer) throw new HostError("gameFilesBusy", "另一个模组文件操作正在进行。");
                     var g = game;
-                    await Task.Run(() => Installer.Install(g, (step, ratio) => Progress("install", new Dictionary<string, object> { { "step", step }, { "ratio", ratio } })));
-                    if (backend.Runtime != RuntimeDir()) await StartBackend();
-                    return null;
+                    gameFilesBusy = true;
+                    try
+                    {
+                        await Task.Run(() => Installer.Install(g, (step, ratio) => Progress("install", new Dictionary<string, object> { { "step", step }, { "ratio", ratio } })));
+                        if (backend.Runtime != RuntimeDir()) await StartBackend();
+                        return null;
+                    }
+                    finally { gameFilesBusy = false; }
+                }
+                case "uninstall":
+                {
+                    if (gameFilesBusy || updateTransfer) throw new HostError("gameFilesBusy", "另一个模组文件操作正在进行。");
+                    var g = game;
+                    object path;
+                    if (g == null || !p.TryGetValue("path", out path) || !string.Equals(path as string, g.Root, StringComparison.OrdinalIgnoreCase))
+                        throw new HostError("uninstallGameChanged", "游戏目录已变更，请重新打开卸载窗口。");
+                    gameFilesBusy = true;
+                    try
+                    {
+                        var backup = await Task.Run(() => Installer.Uninstall(g));
+                        return new Dictionary<string, object> { { "backup", backup } };
+                    }
+                    finally { gameFilesBusy = false; }
                 }
                 case "launchGame":
+                    if (gameFilesBusy) throw new HostError("gameFilesBusy", "另一个模组文件操作正在进行。");
                     if (game == null) throw new HostError("notGame", "");
                     if (game.AppId.Length > 0) OpenExternal("steam://rungameid/" + game.AppId);
                     else Process.Start(new ProcessStartInfo(Path.Combine(game.SteamDir, "PBZ.exe")) { WorkingDirectory = game.SteamDir });

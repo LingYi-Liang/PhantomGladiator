@@ -213,7 +213,7 @@ function Report.new(options)
             end
         end
         if not next(report.units) then return false end
-        report.damageFormula={verifiedGameBuild=26367565,
+        report.damageFormula={verifiedGameBuild=26936481,
             npcPhysicalBase='target.Health_Max.current * attacker.Attack_Lv1.current / target.Health_Max_Lv1.current',
             npcShachiBase='target.Health_Max.current * attacker.ShachiAttack_Lv1.current / target.Health_Max_Lv1.current',
             npcPhysicalRatio='npcPhysicalBase / target.Health_Max.current',

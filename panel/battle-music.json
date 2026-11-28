@@ -31,10 +31,58 @@
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay/Mus_GamePlay-Boss_Big_P2.Mus_GamePlay-Boss_Big_P2"
     },
     {
-      "id": "DOCTOR",
-      "label": "失心医者／神医",
-      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
-      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-Doctor.Mus_GamePlay_ZhengDaoDaYing-Doctor"
+      "id": "HEART_LAKE",
+      "label": "心湖",
+      "event": "/Game/Wwise/Events/Mus/Mus_Plot/Mus_Theme_MuXiaoKui.Mus_Theme_MuXiaoKui",
+      "state": "/Game/Wwise/States/Mus/Mus_Plot_State/Mus_Plot_State-Mus_Plot_State_01.Mus_Plot_State-Mus_Plot_State_01"
+    },
+    {
+      "id": "PROLOGUE_DUEL",
+      "label": "序章对决",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-Duel_Engage.Mus_GamePlay_Prologue-Duel_Engage"
+    },
+    {
+      "id": "PROLOGUE_DUEL_01",
+      "label": "序章对决 · 第一段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-Duel_Engage_01.Mus_GamePlay_Prologue-Duel_Engage_01"
+    },
+    {
+      "id": "PROLOGUE_DUEL_02",
+      "label": "序章对决 · 第二段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-Duel_Engage_02.Mus_GamePlay_Prologue-Duel_Engage_02"
+    },
+    {
+      "id": "YOUNG_PRACTICE_01",
+      "label": "少年练剑 · 第一段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-YoungPractice_Engage_01.Mus_GamePlay_Prologue-YoungPractice_Engage_01"
+    },
+    {
+      "id": "YOUNG_PRACTICE_02",
+      "label": "少年练剑 · 第二段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-YoungPractice_Engage_02.Mus_GamePlay_Prologue-YoungPractice_Engage_02"
+    },
+    {
+      "id": "WAGON_CHASE_02",
+      "label": "马车追逐 · 第二段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-WagonChase02_Engage.Mus_GamePlay_Prologue-WagonChase02_Engage"
+    },
+    {
+      "id": "WAGON_CHASE_04",
+      "label": "马车追逐 · 第四段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-WagonChase04_Engage.Mus_GamePlay_Prologue-WagonChase04_Engage"
+    },
+    {
+      "id": "WAGON_CHASE_06",
+      "label": "马车追逐 · 第六段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_Prologue.Mus_GamePlay_Prologue",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_Prologue/Mus_GamePlay_Prologue-WagonChase06_Engage.Mus_GamePlay_Prologue-WagonChase06_Engage"
     },
     {
       "id": "MOYUAN_P0",
@@ -61,6 +109,288 @@
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-PengMeng_Engage.Mus_GamePlay_XiGu-PengMeng_Engage"
     },
     {
+      "id": "GHOST_BRIDE",
+      "label": "新娘阿花",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-GhostBride_Engage.Mus_GamePlay_XiGu-GhostBride_Engage"
+    },
+    {
+      "id": "HOOKMAN_P1",
+      "label": "追命 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-GouZhe_Engage.Mus_GamePlay_XiGu-GouZhe_Engage"
+    },
+    {
+      "id": "HOOKMAN_P2",
+      "label": "追命 · 六绝凶镰",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-GouZhe_P2_Engage.Mus_GamePlay_XiGu-GouZhe_P2_Engage"
+    },
+    {
+      "id": "PUPPET_SCAVENGER",
+      "label": "活人偶清道夫",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-QingDaoFu.Mus_GamePlay_XiGu-QingDaoFu"
+    },
+    {
+      "id": "XIGU_ELITE",
+      "label": "溪谷精英战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-EliteMonster_Engage.Mus_GamePlay_XiGu-EliteMonster_Engage"
+    },
+    {
+      "id": "XIGU_MONSTER",
+      "label": "溪谷遭遇战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-Monster_Engage.Mus_GamePlay_XiGu-Monster_Engage"
+    },
+    {
+      "id": "XIGU_UNDERGROUND",
+      "label": "地窟交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-UndergroundCave_Engage.Mus_GamePlay_XiGu-UndergroundCave_Engage"
+    },
+    {
+      "id": "XIGU_DESERTED_VILLAGE",
+      "label": "荒村 · 交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-DesertedVillage_Engage.Mus_GamePlay_XiGu-DesertedVillage_Engage"
+    },
+    {
+      "id": "XIGU_DESERTED_VILLAGE_NORMAL",
+      "label": "荒村 · 普通交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-DesertedVillage_EngageNormal.Mus_GamePlay_XiGu-DesertedVillage_EngageNormal"
+    },
+    {
+      "id": "XIGU_BOTTOM",
+      "label": "溪谷谷底战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-Bottom_Engage.Mus_GamePlay_XiGu-Bottom_Engage"
+    },
+    {
+      "id": "XIGU_BOTTOM1",
+      "label": "溪谷下层 · 第一段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-Bottom1_Engage.Mus_GamePlay_XiGu-Bottom1_Engage"
+    },
+    {
+      "id": "XIGU_BOTTOM1_NORMAL",
+      "label": "溪谷下层 · 普通交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-Bottom1_EngageNormal.Mus_GamePlay_XiGu-Bottom1_EngageNormal"
+    },
+    {
+      "id": "XIGU_BOTTOM2",
+      "label": "溪谷下层 · 第二段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-Bottom2_Engage.Mus_GamePlay_XiGu-Bottom2_Engage"
+    },
+    {
+      "id": "XIGU_VILLAGE_DEAD",
+      "label": "溪谷死村交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiGu.Mus_GamePlay_XiGu",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiGu/Mus_GamePlay_XiGu-VillageDead_Engage.Mus_GamePlay_XiGu-VillageDead_Engage"
+    },
+    {
+      "id": "HUA_QIANXIAO",
+      "label": "剑痴花千笑",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-DrunkSword.Mus_GamePlay_FuJiZhiLin-DrunkSword"
+    },
+    {
+      "id": "JINGYE_TIEKUANG",
+      "label": "荆野与铁狂",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Jingye_TieKuang.Mus_GamePlay_FuJiZhiLin-Jingye_TieKuang"
+    },
+    {
+      "id": "YUCONG_P1",
+      "label": "混沌魔偶玉琮 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-HunDun_P1.Mus_GamePlay_FuJiZhiLin-HunDun_P1"
+    },
+    {
+      "id": "YUCONG_P2",
+      "label": "混沌魔偶玉琮 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-HunDun_P2.Mus_GamePlay_FuJiZhiLin-HunDun_P2"
+    },
+    {
+      "id": "YUCONG_P3",
+      "label": "混沌魔偶玉琮 · 三阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-HunDun_P3.Mus_GamePlay_FuJiZhiLin-HunDun_P3"
+    },
+    {
+      "id": "BAI_CHILIAN_P1",
+      "label": "白赤练 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-SnakebattleP1.Mus_GamePlay_FuJiZhiLin-SnakebattleP1"
+    },
+    {
+      "id": "BAI_CHILIAN_P2",
+      "label": "白赤练 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-SnakebattleP2.Mus_GamePlay_FuJiZhiLin-SnakebattleP2"
+    },
+    {
+      "id": "YUYAO_TIEGUI",
+      "label": "玉妖与铁鬼",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-YuYaoTieGui_Engage.Mus_GamePlay_FuJiZhiLin-YuYaoTieGui_Engage"
+    },
+    {
+      "id": "BANYAN_HEART",
+      "label": "榕树之心",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-BanyanTreeBoss.Mus_GamePlay_FuJiZhiLin-BanyanTreeBoss"
+    },
+    {
+      "id": "FOREST_ICE",
+      "label": "森林风雪交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Ice_Engage.Mus_GamePlay_FuJiZhiLin-Ice_Engage"
+    },
+    {
+      "id": "FOREST_LOWER_TRAIL",
+      "label": "林道 · 低地交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Forest1_2_Engage.Mus_GamePlay_FuJiZhiLin-Forest1_2_Engage"
+    },
+    {
+      "id": "FOREST_TRAIL_A1",
+      "label": "林道 · 第一段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Forest1_A1_Engage.Mus_GamePlay_FuJiZhiLin-Forest1_A1_Engage"
+    },
+    {
+      "id": "FOREST_TRAIL_A2",
+      "label": "林道 · 第二段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Forest1_A2_Engage.Mus_GamePlay_FuJiZhiLin-Forest1_A2_Engage"
+    },
+    {
+      "id": "FOREST_DEEP",
+      "label": "森林深处交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-Forest2_Engage.Mus_GamePlay_FuJiZhiLin-Forest2_Engage"
+    },
+    {
+      "id": "MIRROR_WOODS_DEEP",
+      "label": "镜林深处交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-MirrorWoodsDeep_Engage.Mus_GamePlay_FuJiZhiLin-MirrorWoodsDeep_Engage"
+    },
+    {
+      "id": "FOREST_VILLAGE_DEAD",
+      "label": "林间死村交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_FuJiZhiLin.Mus_GamePlay_FuJiZhiLin",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_FuJiZhiLin/Mus_GamePlay_FuJiZhiLin-VillageDead_Engage.Mus_GamePlay_FuJiZhiLin-VillageDead_Engage"
+    },
+    {
+      "id": "ZHUOBI",
+      "label": "守门人拙壁",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-ZhuoBi.Mus_GamePlay_LuJiaCun-ZhuoBi"
+    },
+    {
+      "id": "DANGHUI",
+      "label": "操偶师荡秽",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-DangHui.Mus_GamePlay_LuJiaCun-DangHui"
+    },
+    {
+      "id": "YUZAN",
+      "label": "乐师偶玉瓒",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-Yuzan.Mus_GamePlay_LuJiaCun-Yuzan"
+    },
+    {
+      "id": "MIEFA_LUJIA",
+      "label": "灭法之法 · 陆家村",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-MieFaBoss_Engage.Mus_GamePlay_LuJiaCun-MieFaBoss_Engage"
+    },
+    {
+      "id": "MUXIAOKUI_P1",
+      "label": "沐小葵 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-MuXiaoKui_P1.Mus_GamePlay_LuJiaCun-MuXiaoKui_P1"
+    },
+    {
+      "id": "MUXIAOKUI_P2",
+      "label": "沐小葵 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-MuXiaoKui_P2.Mus_GamePlay_LuJiaCun-MuXiaoKui_P2"
+    },
+    {
+      "id": "MUXIAOKUI_P3",
+      "label": "沐小葵 · 三阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-MuXiaoKui_P3.Mus_GamePlay_LuJiaCun-MuXiaoKui_P3"
+    },
+    {
+      "id": "LU_DANIANGQIN",
+      "label": "陆家村 · 巨人战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-DaNiangQin.Mus_GamePlay_LuJiaCun-DaNiangQin"
+    },
+    {
+      "id": "LU_VILLAGE",
+      "label": "陆家村交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-Village_Engage.Mus_GamePlay_LuJiaCun-Village_Engage"
+    },
+    {
+      "id": "LU_VILLAGE_1",
+      "label": "陆家村 · 第一段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-VillagePt1_Engage.Mus_GamePlay_LuJiaCun-VillagePt1_Engage"
+    },
+    {
+      "id": "LU_VILLAGE_2",
+      "label": "陆家村 · 第二段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-VillagePt2_Engage.Mus_GamePlay_LuJiaCun-VillagePt2_Engage"
+    },
+    {
+      "id": "LU_PUPPET_CAVE",
+      "label": "人偶洞窟交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-PuppetCave_Engage.Mus_GamePlay_LuJiaCun-PuppetCave_Engage"
+    },
+    {
+      "id": "LU_PUPPET_CAVE_2",
+      "label": "人偶洞窟 · 深处交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-PuppetCave2_Engage.Mus_GamePlay_LuJiaCun-PuppetCave2_Engage"
+    },
+    {
+      "id": "LU_THIEVES_CAVE",
+      "label": "盗匪洞窟交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-ThievesCave_Engage.Mus_GamePlay_LuJiaCun-ThievesCave_Engage"
+    },
+    {
+      "id": "LU_LAMENT_01",
+      "label": "陆家村哀歌 · 第一段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-Lament_01_Engage.Mus_GamePlay_LuJiaCun-Lament_01_Engage"
+    },
+    {
+      "id": "LU_LAMENT_02",
+      "label": "陆家村哀歌 · 第二段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-Lament_02_Engage.Mus_GamePlay_LuJiaCun-Lament_02_Engage"
+    },
+    {
+      "id": "LU_ELITE",
+      "label": "陆家村精英战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_LuJiaCun.Mus_GamePlay_LuJiaCun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_LuJiaCun/Mus_GamePlay_LuJiaCun-EliteMonster_Engage.Mus_GamePlay_LuJiaCun-EliteMonster_Engage"
+    },
+    {
       "id": "GUWANYUE",
       "label": "骨婉约",
       "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
@@ -79,10 +409,196 @@
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-HuoLiuXing_P2.Mus_GamePlay_PangZhen-HuoLiuXing_P2"
     },
     {
+      "id": "DOCTOR_PANGZHEN",
+      "label": "失心医者／神医 · 庞镇",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-Doctor.Mus_GamePlay_PangZhen-Doctor"
+    },
+    {
+      "id": "WUSHI_P1",
+      "label": "舞狮尊主 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-WuShi_P1.Mus_GamePlay_PangZhen-WuShi_P1"
+    },
+    {
+      "id": "WUSHI_P2",
+      "label": "舞狮尊主烈焰 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-WuShi_P2.Mus_GamePlay_PangZhen-WuShi_P2"
+    },
+    {
+      "id": "CHANGHONG_P1",
+      "label": "长鸿 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-ChangHong_P1.Mus_GamePlay_PangZhen-ChangHong_P1"
+    },
+    {
+      "id": "CHANGHONG_P2",
+      "label": "长鸿 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-ChangHong_P2.Mus_GamePlay_PangZhen-ChangHong_P2"
+    },
+    {
+      "id": "WUXUAN",
+      "label": "堕落将军武轩",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-WuXuan_Engage.Mus_GamePlay_PangZhen-WuXuan_Engage"
+    },
+    {
+      "id": "YOU_LONG",
+      "label": "水行帮主游龙",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-YouLongBang_Engage.Mus_GamePlay_PangZhen-YouLongBang_Engage"
+    },
+    {
+      "id": "DUYAN",
+      "label": "独眼弓客",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-DuYan_Engage.Mus_GamePlay_PangZhen-DuYan_Engage"
+    },
+    {
+      "id": "YAN_QIANSUI",
+      "label": "琴女烟千岁",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-YanQianSui_Engage.Mus_GamePlay_PangZhen-YanQianSui_Engage"
+    },
+    {
+      "id": "FENGXUE_DAOKE",
+      "label": "风雪刀客",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-FengXueDaoKe_Engage.Mus_GamePlay_PangZhen-FengXueDaoKe_Engage"
+    },
+    {
+      "id": "RED_SWORD_FORMATION",
+      "label": "红衣剑阵",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-XueJianke_Engage.Mus_GamePlay_PangZhen-XueJianke_Engage"
+    },
+    {
+      "id": "XIAOXUE_REPRISE",
+      "label": "人偶交战 · 小雪主题",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-XiaoXueReuese_Engage.Mus_GamePlay_PangZhen-XiaoXueReuese_Engage"
+    },
+    {
+      "id": "PANGZHEN_ICE",
+      "label": "庞镇风雪交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-Ice_Engage.Mus_GamePlay_PangZhen-Ice_Engage"
+    },
+    {
+      "id": "PANGZHEN_GUICHAI_ELITE",
+      "label": "庞镇鬼差精英战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-GuiChaiElite_Engage.Mus_GamePlay_PangZhen-GuiChaiElite_Engage"
+    },
+    {
+      "id": "PANGZHEN_BACKSTREET",
+      "label": "后街交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-BackStreet_Engage.Mus_GamePlay_PangZhen-BackStreet_Engage"
+    },
+    {
+      "id": "PANGZHEN_BACKSTREET_2",
+      "label": "后街 · 第二段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-BackStreet2_Engage.Mus_GamePlay_PangZhen-BackStreet2_Engage"
+    },
+    {
+      "id": "PANGZHEN_TOWN",
+      "label": "死镇交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-TownOfDeath_Engage.Mus_GamePlay_PangZhen-TownOfDeath_Engage"
+    },
+    {
+      "id": "PANGZHEN_END",
+      "label": "庞镇末段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-PangZhenEnd_Engage.Mus_GamePlay_PangZhen-PangZhenEnd_Engage"
+    },
+    {
+      "id": "PANGZHEN_BOTTOM",
+      "label": "庞镇下层交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-Bottom2_Engage.Mus_GamePlay_PangZhen-Bottom2_Engage"
+    },
+    {
+      "id": "PANGZHEN_BOTTOM_ALT",
+      "label": "庞镇下层 · 交战变奏",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-Bottom2NoDadi_Engage.Mus_GamePlay_PangZhen-Bottom2NoDadi_Engage"
+    },
+    {
+      "id": "PANGZHEN_BOTTOM_NO_SHAKU",
+      "label": "庞镇下层 · 无尺八",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_PangZhen.Mus_GamePlay_PangZhen",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_PangZhen/Mus_GamePlay_PangZhen-Bottom2_NoShaku_Engage.Mus_GamePlay_PangZhen-Bottom2_NoShaku_Engage"
+    },
+    {
+      "id": "DOCTOR",
+      "label": "失心医者／神医",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-Doctor.Mus_GamePlay_ZhengDaoDaYing-Doctor"
+    },
+    {
       "id": "WULENGSHUANG",
       "label": "乌冷霜",
       "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-WuLengShuang.Mus_GamePlay_ZhengDaoDaYing-WuLengShuang"
+    },
+    {
+      "id": "XIAOXUE",
+      "label": "吞噬尸体的小雪",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-XiaoXue_Engage.Mus_GamePlay_ZhengDaoDaYing-XiaoXue_Engage"
+    },
+    {
+      "id": "WANJUN",
+      "label": "巨锤客万钧",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-WanJun.Mus_GamePlay_ZhengDaoDaYing-WanJun"
+    },
+    {
+      "id": "RED_SWORDSWOMAN",
+      "label": "红衣女剑客",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-NvJianKe.Mus_GamePlay_ZhengDaoDaYing-NvJianKe"
+    },
+    {
+      "id": "JIANOU_P1",
+      "label": "剑偶 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-JianOu_P1.Mus_GamePlay_ZhengDaoDaYing-JianOu_P1"
+    },
+    {
+      "id": "JIANOU_P2",
+      "label": "剑偶 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-JianOu_P2.Mus_GamePlay_ZhengDaoDaYing-JianOu_P2"
+    },
+    {
+      "id": "JIANOU_P3",
+      "label": "剑偶 · 三阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-JianOu_P3.Mus_GamePlay_ZhengDaoDaYing-JianOu_P3"
+    },
+    {
+      "id": "YUBI",
+      "label": "剑偶玉璧",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-YuBi.Mus_GamePlay_ZhengDaoDaYing-YuBi"
+    },
+    {
+      "id": "CAMP_INSIDE_BATTLE",
+      "label": "正道大营 · 营内交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-CampInside_Engage.Mus_GamePlay_ZhengDaoDaYing-CampInside_Engage"
+    },
+    {
+      "id": "CAMP_DEFENSE",
+      "label": "正道大营 · 营地防御战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_ZhengDaoDaYing.Mus_GamePlay_ZhengDaoDaYing",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_ZhengDaoDaYing/Mus_GamePlay_ZhengDaoDaYing-CampDefense_Engage.Mus_GamePlay_ZhengDaoDaYing-CampDefense_Engage"
     },
     {
       "id": "YUDING",
@@ -101,6 +617,36 @@
       "label": "雷当 · 二阶段",
       "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-LeiDang_P2.Mus_GamePlay_XiMengShanZhuang-LeiDang_P2"
+    },
+    {
+      "id": "MANOR_TRAINING_GROUND",
+      "label": "戏梦山庄演武场",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-YanWuChang_Engage.Mus_GamePlay_XiMengShanZhuang-YanWuChang_Engage"
+    },
+    {
+      "id": "MANOR_GUICHAI_ELITE",
+      "label": "山庄鬼差精英战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-GuiChaiElite_Engage.Mus_GamePlay_XiMengShanZhuang-GuiChaiElite_Engage"
+    },
+    {
+      "id": "MANOR_ELITE",
+      "label": "戏梦山庄精英战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-XM_Elite_Engage.Mus_GamePlay_XiMengShanZhuang-XM_Elite_Engage"
+    },
+    {
+      "id": "MANOR_SKIRMISH_1",
+      "label": "戏梦山庄 · 第一段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-XM_Part1_Engage.Mus_GamePlay_XiMengShanZhuang-XM_Part1_Engage"
+    },
+    {
+      "id": "MANOR_SKIRMISH_2",
+      "label": "戏梦山庄 · 第二段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_XiMengShanZhuang.Mus_GamePlay_XiMengShanZhuang",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_XiMengShanZhuang/Mus_GamePlay_XiMengShanZhuang-XM_Part2_Engage.Mus_GamePlay_XiMengShanZhuang-XM_Part2_Engage"
     },
     {
       "id": "LENGTU_P1",
@@ -131,6 +677,36 @@
       "label": "终章左殇 · 二阶段",
       "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
       "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-ZuoShang_P2.Mus_GamePlay_DuanHun-ZuoShang_P2"
+    },
+    {
+      "id": "CRUSHER_SAW_P1",
+      "label": "力者和锯者 · 一阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-LiJu_P1.Mus_GamePlay_DuanHun-LiJu_P1"
+    },
+    {
+      "id": "CRUSHER_SAW_P2",
+      "label": "力者和锯者 · 二阶段",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-LiJu_P2.Mus_GamePlay_DuanHun-LiJu_P2"
+    },
+    {
+      "id": "SOULREND_SKIRMISH_1",
+      "label": "断魂山 · 第一段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-DH_Part1_Engage.Mus_GamePlay_DuanHun-DH_Part1_Engage"
+    },
+    {
+      "id": "SOULREND_SKIRMISH_2",
+      "label": "断魂山 · 第二段交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-DH_Part2_Engage.Mus_GamePlay_DuanHun-DH_Part2_Engage"
+    },
+    {
+      "id": "SOULREND_ICE_CAVE",
+      "label": "断魂山冰窟交战",
+      "event": "/Game/Wwise/Events/Mus/Mus_GamePlay/Mus_GamePlay_DuanHun.Mus_GamePlay_DuanHun",
+      "state": "/Game/Wwise/States/Mus/Mus_GamePlay_DuanHun/Mus_GamePlay_DuanHun-IceCave_Engage.Mus_GamePlay_DuanHun-IceCave_Engage"
     }
   ],
   "units": {

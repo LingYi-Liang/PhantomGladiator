@@ -14,7 +14,10 @@ lua.append('},units={')
 lua.extend('[' + quote(unit) + ']=' + quote(track) + ',' for unit, track in sorted(data['units'].items()))
 lua.append('}}')
 (ROOT / 'Mods/PhantomGladiator/Scripts/battle_music_catalog.lua').write_text('\n'.join(lua) + '\n', encoding='utf-8', newline='\n')
-ui = [{key: row[key] for key in ('id', 'label')} for row in data['tracks']]
+ui = [
+    {'id': row['id'], 'label': row['label'], 'group': row['event'].rsplit('/', 1)[-1].split('.', 1)[0]}
+    for row in data['tracks']
+]
 (ROOT / 'panel/prototype/battle-music.js').write_text('"use strict";\nwindow.PG_MUSIC_TRACKS = ' + json.dumps(ui, ensure_ascii=False) + ';\n', encoding='utf-8', newline='\n')
 print('Music metadata:', len(tracks), 'tracks;', len(data['units']), 'unit defaults')
 source=(ROOT/'panel/prototype/units.js').read_text(encoding='utf-8').split('window.PG_UNITS =',1)[1].strip().removesuffix(';')

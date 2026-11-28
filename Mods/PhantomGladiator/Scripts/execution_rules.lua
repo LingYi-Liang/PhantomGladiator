@@ -1,10 +1,10 @@
--- Derived from GlobalConfig_Mechanic Execution channel; combat-only scope, current game build 26367565.
+-- Derived from GlobalConfig_Mechanic Execution channel; combat-only scope, game build 26936481.
 return {
     ["Execution.Type.Combat"]={
         executor_required={"CharacterState.Space.Ground"},
         executor_ignored={"CharacterState.Dead"},
         target_required={"CharacterState.Space.Ground"},
-        target_ignored={"CharacterState.Immortal.Generic","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","Driver.Driving","CharacterState.CanNotBeExecuted","CharacterState.Hitreact.State.Landing","CharacterState.Dead","CharacterState.Stand.Invulnerable","CharacterState.Unselectable"},
+        target_ignored={"CharacterState.Immortal.Generic","CharacterState.Hitreact.State.LaunchingBack","CharacterState.Hitreact.State.Lying","Driver.Driving","CharacterState.CanNotBeExecuted","CharacterState.Hitreact.State.Landing","CharacterState.Dead","CharacterState.Stand.Invulnerable","CharacterState.Unselectable","CharacterType.JiangJun"},
         any_target={"CharacterState.CanWeakExecute.LowHealth","CharacterState.CanWeakExecute.Weak"},
     },
     ["Execution.Type.Custom.HorseCartCombat"]={

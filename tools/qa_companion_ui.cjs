@@ -12,7 +12,16 @@ try{for(const lang of ['zh','en']){
  const dock=p.locator('[data-action="cm-open"]');await dock.click();
  const dialog=p.locator('#dialog');await p.waitForFunction(()=>!document.querySelector('[data-cm="behavior"]').disabled);
  assert.equal(await p.locator('#dock-companion [data-action="companion-passage"]').count(),0);
+ const squad=dialog.getByRole('switch',{name:lang==='zh'?'恢复上次随从队伍':'Restore last companion squad'});
+ assert.equal(await squad.getAttribute('aria-checked'),'false');
+ await dialog.locator('[data-cm="distance"]').fill('11');
+ await squad.click();await p.waitForFunction(()=>document.querySelector('[data-action="cm-squad"]')?.getAttribute('aria-checked')==='true');
+ assert.equal(await dialog.locator('[data-cm="distance"]').inputValue(),'11');
+ await p.evaluate(()=>window.PGRuntime.setGame('offline'));await p.waitForFunction(()=>!document.querySelector('[data-action="cm-squad"]')?.disabled);
+ await squad.click();await p.waitForFunction(()=>document.querySelector('[data-action="cm-squad"]')?.getAttribute('aria-checked')==='false');
+ await p.evaluate(()=>window.PGRuntime.setGame('ready'));
  await dialog.locator('#cm-scope').selectOption('mu');await dialog.locator('[data-tab="form"]').click();
+ assert.equal(await squad.count(),0);
  await dialog.locator('[data-cm="threshold"]').fill('42');await p.evaluate(()=>window.PGRuntime.setGame('ready'));
  assert.equal(await dialog.locator('[data-cm="threshold"]').inputValue(),'42');
  await dialog.locator('[data-tab="follow"]').click();await dialog.locator('[data-tab="form"]').click();

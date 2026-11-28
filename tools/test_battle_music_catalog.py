@@ -7,6 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 data = json.loads((ROOT / 'panel/battle-music.json').read_text(encoding='utf-8'))
 tracks = {row['id']: row for row in data['tracks']}
 assert len(tracks) == len(data['tracks']) and len(tracks) >= 10
+assert len({(row['event'], row['state']) for row in tracks.values()}) == len(tracks)
 for key, row in tracks.items():
     assert re.fullmatch(r'[A-Z][A-Z0-9_]{0,31}', key)
     assert row['event'].startswith('/Game/Wwise/Events/Mus/') and row['state'].startswith('/Game/Wwise/States/Mus/')
@@ -22,5 +23,8 @@ units = {json.loads(a): json.loads(b) for a, b in re.findall(r'\[' + string + r'
 assert units == data['units'] and all(value in tracks for value in units.values())
 js = (ROOT / 'panel/prototype/battle-music.js').read_text(encoding='utf-8')
 ui = json.loads(re.search(r'window\.PG_MUSIC_TRACKS = (\[.*\]);', js).group(1))
-assert ui == [{key: row[key] for key in ('id', 'label')} for row in data['tracks']]
+assert ui == [
+    {'id': row['id'], 'label': row['label'], 'group': row['event'].rsplit('/', 1)[-1].split('.', 1)[0]}
+    for row in data['tracks']
+]
 print('battle_music_catalog: PASS (', len(tracks), 'tracks and', len(units), 'unit defaults agree)')

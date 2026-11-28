@@ -42,6 +42,8 @@ Config.EnableNPCGrabs = true
 Config.EnableGrabStudy = false
 -- Logs what each monster grab did to the unit it hit (grab_probe.lua). Read only.
 Config.EnableGrabProbe = true
+-- 深入排查荆野和独臂虎的锁定时读取详细候选数据。常规诊断仍记录目标登记结果。
+Config.EnableSummonLockProbe = false
 -- 召唤后只读记录召唤单位和参照地图怪的数值来源（等级曲线、难度系数），每只约14行日志；调查数值时再开。
 Config.EnableStatFormulaProbe = false
 -- 召唤的第一只蓝/红方单位把223项属性逐项写入测试值、隔0.5秒读回再恢复，每项一行日志，约15秒；核对自定义数值时再开。

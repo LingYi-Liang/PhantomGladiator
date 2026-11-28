@@ -1,5 +1,249 @@
 // Cumulative notes after each stable base. Each paragraph part is available from its first beta build.
 window.PG_PREVIEW_NOTES = {
+  "0.40.24": {
+    "title": {
+      "zh": "随从队伍恢复与 11 月 28 日补丁适配",
+      "en": "Restore your companion squad and November 28 patch support"
+    },
+    "added": [
+      [
+        {
+          "since": 10,
+          "zh": "「随从设置 → 全部随从默认 → 跟随与战斗」新增「恢复上次随从队伍」，默认关闭。开启后记住直接召唤的角色、数量和沐小葵的双阶段模式。重进游戏或换图后分批补齐，魂使用当前保存的方案。主动遣散会清空记录。",
+          "en": "In Companion settings → All companion defaults → Follow and combat, turn on Restore last companion squad. It remembers direct summons, counts and dual-form Mu Xiaokui. The party returns gradually on restart or map change. Hun uses the current saved loadout. Dismiss all clears the party.",
+          "legacy": {
+            "zh": "可选进图恢复上次随从队伍。",
+            "en": "Optional squad restore."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "适配 Steam 1.0304629（构建 26936481）。「最近一场对局」已核对普通 NPC 基础伤害、等级与周目曲线，旧报告保留原值。附近没有地图敌人时，「当前地点等级」按新版刷怪点坐标取值。",
+          "en": "Updated for Steam 1.0304629 (26936481). NPC base damage, level and cycle curves were verified. Past reports keep their values. Current-area level uses the new spawn positions when no enemy is nearby.",
+          "legacy": {
+            "zh": "适配游戏 26936481，核对伤害公式与刷怪点。",
+            "en": "Game build 26936481."
+          }
+        }
+      ],
+      [
+        {
+          "since": 10,
+          "zh": "梅谷湖遗迹撤掉 6 个基础 23 级刷怪点。以下为地图坐标（X、Y、Z，米）。冰爆客从 10 个减至 7 个，撤掉（−1749.2, −172.9, 15.8）、（−1786.5, −191.1, 15.4）、（−1809.9, −153.9, 15.9）。冰雪琴女从 5 个减至 3 个，撤掉（−1748.3, −99.5, 15.5）、（−1796.3, −158.6, 15.9）。哇哇哇从 2 个减至 1 个，撤掉（−1705.6, −172.1, 19.9）。",
+          "en": "Meigu Lake Ruins lost six base-level 23 spawns. Coordinates are in metres (X, Y, Z). Ice Powderkeg, 10 to 7, (−1749.2, −172.9, 15.8), (−1786.5, −191.1, 15.4), (−1809.9, −153.9, 15.9). Frost Zither Maiden, 5 to 3, (−1748.3, −99.5, 15.5), (−1796.3, −158.6, 15.9). Wah-wah, 2 to 1, (−1705.6, −172.1, 19.9).",
+          "legacy": {
+            "zh": "遗迹少3冰爆客、2冰雪琴女、1哇哇哇。",
+            "en": "Ruins: 3 Ice Powderkegs, 2 Maidens, 1 Wah-wah."
+          }
+        }
+      ],
+      [
+        {
+          "since": 10,
+          "zh": "正道大营撤掉 1 个基础 19 级暴徒刷怪点，从 6 个减至 5 个，坐标（266.1, 830.8, 88.3）米。这四类敌人仍可在助手中手动召唤。",
+          "en": "Mandate Encampment lost one base-level 19 Brute spawn, from 6 to 5, at (266.1, 830.8, 88.3) metres. All four units can still be summoned manually.",
+          "legacy": {
+            "zh": "正道大营少1个19级暴徒点。",
+            "en": "Camp: one fewer level-19 Brute."
+          }
+        }
+      ],
+      [
+        {
+          "since": 1,
+          "zh": "关闭游戏后，可在「设置 → 游戏」一键卸载斗蛐蛐。旧脚本会备份，存档、快捷键、模组数据和共用的 UE4SS 都会保留。需要恢复时，点「一键安装」即可。",
+          "en": "Close the game and use Settings → Game to uninstall Phantom Gladiator. The assistant backs up the old scripts and keeps saves, shortcuts, mod data and the shared UE4SS loader. Use Install to bring the mod back.",
+          "legacy": {
+            "zh": "设置里可一键卸载、重新安装。",
+            "en": "Uninstall in Settings."
+          }
+        }
+      ],
+      [
+        {
+          "since": 3,
+          "zh": "「设置 → 战斗音乐 → 手动指定曲目」新增《心湖》。开战后直接播放游戏自带的沐小葵主题曲，无需导入音频。",
+          "en": "Heart Lake is available under Settings → Battle music → Choose track manually. It plays Mu Xiaokui's theme from the game when the fight starts, with no audio import needed.",
+          "legacy": {
+            "zh": "手动选曲加入《心湖》。",
+            "en": "Added Heart Lake."
+          }
+        }
+      ],
+      [
+        {
+          "since": 4,
+          "zh": "手动选曲新增 95 项原版配乐，共 118 项，按地图分组。包括沐小葵三个战斗阶段、舞狮尊主、玉璧、剑偶、长鸿、玉妖铁鬼及各地图的交战曲。选曲后开战即可播放。",
+          "en": "The manual catalog has 118 original tracks grouped by area, including 95 new additions. Choose from Mu Xiaokui's three combat phases, the Lion Dance Grandmaster, Yubi, the Sword Puppet, Chang Hong, Jade Dancer and Iron Fiend, and map battle music.",
+          "legacy": {
+            "zh": "按地图选曲，共 118 首。",
+            "en": "118 native tracks."
+          }
+        }
+      ],
+      [
+        {
+          "since": 6,
+          "zh": "新增独臂虎锁定诊断，可记录候选、锁点和无仇恨状态，便于对比同一只独臂虎开关前后的表现。",
+          "en": "Added lock-on diagnostics for Lei Dang, One-Armed Tiger, with candidate, lock point, and no-aggro data for comparing the same summoned unit.",
+          "legacy": {
+            "zh": "新增独臂虎锁定诊断。",
+            "en": "Tiger lock diagnostics."
+          }
+        }
+      ]
+    ],
+    "combat": [
+      [
+        {
+          "since": 9,
+          "zh": "召唤 Boss 会沿用新版原版 AI。独臂雷当「狮吼功」的选招距离参数从 9 米调为 7 米，两招新增应对牵制的标记。玩家锁定距离和大招落点分别由锁定系统和技能决定。",
+          "en": "One-Armed Tiger's Lion Roar AI threshold is now 7 m, down from 9. Two moves gained anti-poke tags. Lock-on range and leap targeting are handled separately.",
+          "legacy": {
+            "zh": "独臂雷当狮吼选招距离 9→7 米。",
+            "en": "Lion Roar AI: 7 m."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "魂装备百相傩面时，现在会按召唤类影之武装减 1 点暗源来选招。例如血色铃铛原需 2 点，剩 1 点也能尝试出招。虚空华扇等奇门类按原价判断。手动开启的「不消耗技能资源」仍按该设置生效。",
+          "en": "Hun now budgets one fewer Remnant Spark for Summon-type Phantom Edges with the Nuo Mask. The Blood Bell can cast with one spark instead of two. Magic weapons such as the Void Fan require their full cost. The explicit free-skill setting still applies.",
+          "legacy": {
+            "zh": "百相傩面只给召唤类减 1 点暗源。",
+            "en": "Nuo Mask: cheaper summons."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "魂的灵蛇软剑普攻已同步新连段，移除了原版已从轻攻击接续表撤下的一招。玩家操作「剑花如盾」时，按新版游戏规则长按处决键。",
+          "en": "Hun's Soft Snake Sword uses the updated light-attack chain. The clone no longer requests the follow-up removed from that chain. When playing as Hun, hold the execution button for the sword's defensive stance move.",
+          "legacy": {
+            "zh": "灵蛇软剑普攻已按新连段选招。",
+            "en": "Soft Snake Sword chain."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "魂使用原版武器和饰品时会采用补丁后的效果。泥头车的「力荡四方」单次命中，舞扇的增伤只作用于对应位移招式，25 级拙壁盾的杀气恢复及长形黑伤「炽杀」的削韧也沿用官方修正。用同一套配置重打，伤害和硬直表现可能与旧录像不同。",
+          "en": "With Hun's gear, the cart's spin hits once and the Fan buffs its qualifying movement attack. Level-25 shield recovery and long-blade stagger follow the patch.",
+          "legacy": {
+            "zh": "泥头车、舞扇、拙壁盾和炽杀采用原版修正。",
+            "en": "Native gear fixes."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "魔渊、梦华和部分左殇等共 21 个原版角色配置的冰冻积累抗性从 0 调到 1。用游戏数值召唤时会读到新值。抗冰饰品现在作用于冰冻积累，冰冻时长仍可单独查看。",
+          "en": "Native frost buildup resistance rose from 0 to 1 in 21 configurations, including Demon Abyss, Menghua and some Zuo Shang forms. Game-stat summons inherit it. Ice accessories now affect buildup. Duration is separate.",
+          "legacy": {
+            "zh": "21 个角色配置的冰冻积累抗性 0→1。",
+            "en": "21 frost adjustments."
+          }
+        }
+      ]
+    ],
+    "fixes": [
+      [
+        {
+          "since": 2,
+          "zh": "修复红蓝擂台里最后一只小舞狮在自定义数值下锁血后无法处决的问题。达到所属烈焰施加的原版血线时，可接取狮头的专用处决。随从挑战地图烈焰时也用这条血线。",
+          "en": "Fixed the final lion cub getting stuck at its health floor with custom arena stats. The lion-head execution now recognizes the floor applied by its own Flame. Companions challenging Flame on the map use the same floor.",
+          "legacy": {
+            "zh": "最后一只小舞狮可按原版血线处决。",
+            "en": "Final lion cub finisher."
+          }
+        }
+      ],
+      [
+        {
+          "since": 5,
+          "zh": "红蓝对战中，玉鼎致死投的受招动作结束后，会为仍存活的目标回收本次投技留下的慢动作。修复存活弟子长时间慢动作、对局卡住的问题。",
+          "en": "After Yu Ding's lethal grab, surviving arena targets are checked for lingering slow motion from that grab. This fixes the fight stalling when the last disciple stays alive in slow motion.",
+          "legacy": {
+            "zh": "玉鼎投技后回收残留慢动作。",
+            "en": "Fixed grab slow motion."
+          }
+        }
+      ],
+      [
+        {
+          "since": 5,
+          "zh": "修正「AI 行为」中闪避近战攻击距离的单位提示，移除错误的 0～0 区间。",
+          "en": "Fixed the melee dodge distance hint in AI behavior, which incorrectly displayed a range of 0 to 0.",
+          "legacy": {
+            "zh": "修正 AI 近战闪避距离提示。",
+            "en": "Fixed dodge range hint."
+          }
+        }
+      ],
+      [
+        {
+          "since": 7,
+          "zh": "补齐了召唤后漏掉的锁定目标登记。独臂虎、荆野骑手、冷荼、其他骑兵以及带原班配合的剑阵、剑偶和面具小队能进入原版锁定名单。独臂虎的大招沿用原来的落点。",
+          "en": "Fixed missing lock-on registration for Lei Dang, One-Armed Tiger, Jing Ye and other riders, Leng Tu, and members of the native sword formations and mask squad. Lei Dang's leap keeps its original landing point.",
+          "legacy": {
+            "zh": "补齐独臂虎、荆野等召唤物的锁定登记。",
+            "en": "Fixed summon lock-on."
+          }
+        }
+      ],
+      [
+        {
+          "since": 8,
+          "zh": "清场、单独移除和遣散会先取消单位尚未完成的锁定登记。荆野和独臂虎的详细锁定诊断改为按需开启，普通诊断保留目标登记结果。批量召唤共用一次名单读回，减少同一帧的重复查询。",
+          "en": "Clearing, removing, or dismissing a unit cancels its pending lock-on registration first. Detailed lock-on diagnostics for Jing Ye and Lei Dang are opt-in. Standard diagnostics still report registration results. Batch summons share a registry snapshot to reduce repeated queries.",
+          "legacy": {
+            "zh": "清场撤销待登记，批量召唤共用一次读回。",
+            "en": "Cancel pending registrations."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "擂台和随从的自动处决已适配将军类目标。拙壁等将军出现专用破防窗口时才接将军处决，残血和锁血都不会让魂用普通武器处决抢过这个窗口。",
+          "en": "Arena units and companions now respect the general-specific finisher opening. Generals such as Zhuobi must enter their break window. Low HP and health floors no longer let Hun's ordinary weapon finisher bypass that requirement.",
+          "legacy": {
+            "zh": "将军破防后走专用处决。",
+            "en": "General break finishers."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "独臂雷当的按需锁定诊断已适配新版首次锁定查询。独臂虎、荆野骑手等空刷怪点单位仍按召唤和清场登记、撤销。原版设置里的鼠标切换灵敏度设为 0 会关掉鼠标换目标，锁定键仍可用。",
+          "en": "Lei Dang's opt-in diagnostic now reads candidates for initial lock-on using the updated game interface. Spawnerless summons, including One-Armed Tiger and Jing Ye's rider, are registered and removed with the summon. Setting the game's mouse sensitivity for switching targets to zero disables mouse switching. The lock-on button remains available.",
+          "legacy": {
+            "zh": "锁定诊断适配首次选敌。",
+            "en": "Updated lock-on diagnostics."
+          }
+        }
+      ],
+      [
+        {
+          "since": 9,
+          "zh": "官方优化了自动锁定、部分 Boss 停招和场景卡顿。助手摄影、双人自拍和电影运镜使用各自的镜头控制。新构建已做离线检查，游戏内锁定手感、处决衔接、镜头切回和帧率仍待实机复核。",
+          "en": "The game patch adjusts auto lock-on, boss stalls and stutters. Mod photo, selfie and cinematic modes use independent controls. Targeting, finishers, camera handoff and frame times await in-game testing.",
+          "legacy": {
+            "zh": "新补丁下的运镜、处决与帧率待实机复核。",
+            "en": "Live testing pending."
+          }
+        }
+      ]
+    ],
+    "details": []
+  },
   "0.40.23": {
     "title": {
       "zh": "阵容管理、观战红蓝光与首领战修复",
@@ -40,8 +284,8 @@ window.PG_PREVIEW_NOTES = {
       [
         {
           "since": 3,
-          "zh": "修复烈焰上桩后，招式和飞剑仍可能锁着本体的问题。会改找同一组能交战的小狮子。确认最后一只卡在原版 20% 血线时，可接上原版狮头处决。对应 #48。",
-          "en": "Attacks and flying swords can switch from Flame on a pole to an available cub in her own wave. When the last cub is confirmed at its native 20% floor, the original lion head execution can proceed. Addresses #48."
+          "zh": "修复烈焰上桩后，招式和飞剑仍可能锁着本体的问题。会改找同一组能交战的小狮子。~~确认最后一只卡在原版 20% 血线时，可接上原版狮头处决。~~对应 #48。",
+          "en": "Attacks and flying swords can switch from Flame on a pole to an available cub in her own wave. ~~When the last cub is confirmed at its native 20% floor, the original lion head execution can proceed.~~ Addresses #48."
         }
       ],
       [

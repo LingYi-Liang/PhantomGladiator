@@ -326,41 +326,50 @@ do
         h.run(exec,2);assert(exec:status().started==0)
         exec:stop('regression')
     end)
-    regression('a verified map last cub reaches its specific native execution outside the arena',function()
-        local h=harness()
-        local lion=pair('Execution.Type.Combat','GA_Hun_BEx_HouHouHou_01_C','GA_Hun_BEd_HouHouHou_01_C')
-        local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',100,0,{rank='Elite',pairs={lion}})
-        local mate=h.enemy({X=300,Y=0,Z=0})
-        local stranger=h.enemy({X=100,Y=0,Z=0})
-        h.members={{actor=mate,team='companion'},{actor=stranger,team='companion'}}
-        h.tags[cub]={['CharacterState.CanWeakExecute.Weak']=1,['CharacterType.HouHouHou.LastOne']=1}
-        h.fighting=false
-        local may=false
-        local pickups=0
-        local exec=h.new({
-            fieldLastCubs=function()return {{actor=cub,key=tostring(cub:GetAddress())}} end,
-            fieldLionTarget=function(a,v)return may and a==mate and v==cub end,
-            lionPickup=function(a,v)assert(a==mate and v==cub);pickups=pickups+1;return true end,
-            lionPickupEnded=function()end,
-        })
-        h.run(exec,1);assert(exec:status().started==0)
-        may=true
-        h.run(exec,1);assert(exec:status().started==1 and pickups==1)
-        exec:stop('arena only',true)
-        assert(exec:status().active)
-        exec:stop('full cleanup')
+    regression('a verified map last cub uses the native window or its own boss floor',function()
+        for _,atFloor in ipairs({false,true})do
+            local h=harness()
+            local lion=pair('Execution.Type.Combat','GA_Hun_BEx_HouHouHou_01_C','GA_Hun_BEd_HouHouHou_01_C')
+            local owner=h.boss('BP_Monster_LionDancer_P2',14614,0)
+            local floor=atFloor and 198.98164367676 or 0
+            local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',atFloor and floor or 100,floor,{rank='Elite',pairs={lion}})
+            h.attrs[owner].Health_Max=19898.1640625
+            h.attrs[cub].Health_Max=500
+            local mate=h.enemy({X=300,Y=0,Z=0})
+            local stranger=h.enemy({X=100,Y=0,Z=0})
+            h.members={{actor=mate,team='companion'},{actor=stranger,team='companion'}}
+            h.tags[cub]={['CharacterType.HouHouHou.LastOne']=1}
+            if not atFloor then h.tags[cub]['CharacterState.CanWeakExecute.Weak']=1 end
+            h.fighting=false
+            local may=false
+            local pickups=0
+            local exec=h.new({
+                fieldLastCubs=function()return {{actor=cub,key=tostring(cub:GetAddress()),owner=owner}} end,
+                fieldLionTarget=function(a,v)return may and a==mate and v==cub end,
+                lionPickup=function(a,v)assert(a==mate and v==cub);pickups=pickups+1;return true end,
+                lionPickupEnded=function()end,
+            })
+            h.run(exec,1);assert(exec:status().started==0)
+            may=true
+            h.run(exec,2);assert(exec:status().started==1 and pickups==1)
+            exec:stop('arena only',true)
+            assert(exec:status().active)
+            exec:stop('full cleanup')
+        end
     end)
-    regression('a tagged last cub on its native 20% floor requests only the native lion-head pair',function()
+    regression('the final arena cub uses the floor of its own summoner',function()
         local function arenaCase(opts)
             local h=harness()
             local lion=pair('Execution.Type.Combat','GA_Hun_BEx_HouHouHou_01_C','GA_Hun_BEd_HouHouHou_01_C')
             lion.TargetRequiredTags={'CharacterType.HouHouHou.LastOne'}
             local owner=h.boss('BP_Monster_LionDancer_P2',4000,0)
-            local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',opts.hp or 6807,opts.floor or 6807,{rank='Mob',pairs={lion},locks={}})
+            local hp,floor=opts.hp or 6807,opts.floor or 6807
+            local cub=h.boss('BP_Monster_DaTouWaWa_HouHouHou',hp,floor,{rank='Mob',pairs={lion},locks={}})
             local close=h.enemy({X=100,Y=0,Z=0})
             local assigned=h.enemy({X=300,Y=0,Z=0})
             local unrelated=h.enemy({X=50,Y=0,Z=0})
-            h.attrs[cub].Health_Max=34035
+            h.attrs[owner].Health_Max=opts.ownerMax or 680700
+            h.attrs[cub].Health_Max=opts.max or 34035
             h.tags[cub]={['CharacterType.HouHouHou.LastOne']=opts.missingTag and 0 or 1}
             if opts.blocked then h.tags[cub]['CharacterState.Stand.Invulnerable']=1 end
             if opts.noGround then h.tags[close]={['CharacterState.Space.Ground']=0} end
@@ -372,7 +381,9 @@ do
             h.members={{actor=unrelated,team='blue'},{actor=close,team='blue'},{actor=assigned,team='blue'},
                 {actor=owner,team='red'},{actor=cub,team='red',class_path=require('lion_challenge').CUB,summoner=owner}}
             local chosen,completion
+            local held=opts.held==true
             local exec=h.new({
+                nativeExecution=function(a)return held and a==cub end,
                 lastLionOwner=function(a)if a==cub then return opts.wrongWave and unrelated or owner end end,
                 assignedOpponent=function(a)
                     if a==close then return owner end
@@ -384,17 +395,28 @@ do
                 end,
                 lionPickupEnded=function(_,done) completion=done end,
             })
+            if held then
+                h.run(exec,2)
+                assert(exec:status().started==0,'an ongoing grab still owns the target')
+                held=false
+            end
             h.run(exec,2)
             local status=exec:status()
             if opts.noTicket then assert(chosen==close and status.started==0 and #h.calls==0);return end
             if opts.expectNone then assert(not chosen and status.started==0);return end
-            assert(chosen==(opts.preferAssigned and assigned or close) and status.started==1)
+            assert(chosen==(opts.preferAssigned and assigned or close) and status.started==1,
+                string.format('HP=%s floor=%s summoner max=%s\n%s',hp,floor,h.attrs[owner].Health_Max,h.all()))
             h.run(exec,8)
-            assert(h.attrs[cub].Health==6807 and h.attrs[cub].Health_Min==6807 and completion~=true,
+            assert(h.attrs[cub].Health==hp and h.attrs[cub].Health_Min==floor and completion~=true,
                 'a refused native death cannot spend the authentic cub or claim a head')
         end
         arenaCase({})
         arenaCase({preferAssigned=true})
+        local reportedFloor=198.98164367676
+        arenaCase({hp=reportedFloor,floor=reportedFloor,max=500,ownerMax=19898.1640625,preferAssigned=true})
+        arenaCase({hp=reportedFloor,floor=reportedFloor,max=500,ownerMax=19898.1640625,held=true})
+        arenaCase({hp=100,floor=100,max=500,ownerMax=19898.1640625,expectNone=true})
+        arenaCase({hp=248,floor=reportedFloor,max=500,ownerMax=19898.1640625,expectNone=true})
         arenaCase({noTicket=true})
         arenaCase({missingTag=true,expectNone=true})
         arenaCase({wrongWave=true,weak=true,expectNone=true})
@@ -835,6 +857,23 @@ do
     h.tags[general]={['CharacterState.CanWeakExecute.Weak']=1,['CharacterState.Stand.Break']=1}
     h.run(exec,0.5)
     assert(exec:status().started==1 and h.has('play GA_Hun_BEx_Common_ZhuoBi_C + GA_Hun_BEd_Common_ZhuoBi_C on BP_Monster_JiangJun_ZhuoBi_0 at 0.0'),h.all())
+end
+
+-- Patch 1.0304629 excludes generals from ordinary Combat, including at a death floor.
+do
+    for _,floor in ipairs({0,10}) do
+        local h=harness()
+        local special=pair('Execution.Type.Custom.JiangJun','GA_Hun_BEx_Common_ZhuoBi_C','GA_Hun_BEd_Common_ZhuoBi_C')
+        local general=h.boss('BP_Monster_JiangJun_ZhuoBi',floor==0 and 30 or floor,floor,{pairs={MOYUAN,special}})
+        h.tags[general]={['CharacterType.JiangJun']=1,['CharacterState.CanWeakExecute.LowHealth']=1}
+        h.members={{actor=general,team='red'},{actor=h.enemy({X=100,Y=0,Z=0}),team='blue'}}
+        local exec=h.new()
+        h.run(exec,3)
+        assert(exec:status().started==0,'ordinary finisher hit a general before its break window: '..h.all())
+        h.tags[general]['CharacterState.Stand.Break']=1
+        h.run(exec,1)
+        assert(exec:status().started==1 and h.has('play GA_Hun_BEx_Common_ZhuoBi_C + GA_Hun_BEd_Common_ZhuoBi_C on BP_Monster_JiangJun_ZhuoBi_0 at 0.0'),h.all())
+    end
 end
 
 -- A locked boss with nobody within 20 m waits, said once; then anyone, even an animal (no borrowed body), executes it.
@@ -1901,6 +1940,11 @@ do
         known(h,HUN_PAIRS,object('MaleThug_Skeleton'))
         return h,h.new({companions=function()return false end,isHun=function(actor)return actor==hun end}),foe,hun
     end
+    local guarded,guardExec,general=conditionCase('Elite')
+    guarded.tags[general]['CharacterType.JiangJun.ZhuoBi']=1
+    guarded.run(guardExec,2)
+    assert(guardExec:status().started==0,'a companion weapon finisher bypassed the general channel')
+    guardExec:stop('regression')
     local h,exec,foe,hun=conditionCase('Elite')
     h.run(exec,0.5)
     assert(exec:status().started==1 and exec:executing(hun),h.all())

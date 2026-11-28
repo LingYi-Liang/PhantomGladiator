@@ -1001,7 +1001,7 @@
         num("distance",cmText("跟随距离（米）","Follow distance (m)"),2,25)+
         input("unstuck",cmText("自动脱困传送","Automatic rescue teleport"),[["1","开启","On"],["0","关闭","Off"]])+
         input("targetable",cmText("敌人可以选中这名随从","Enemies can target this companion"),[["1","按游戏规则","Game rules"],["2","无阵营召唤敌人优先选中","Preferred by summoned no-team enemies"],["0","阻止新仇恨","Prevent new aggro"]]);
-      if (global) body+='<div id="cm-global-combat">'+companionPassRow()+companionExecRow()+companionMinionExecRow()+'</div>';
+      if (global) body+='<div id="cm-global-combat">'+companionSquadRow()+companionPassRow()+companionExecRow()+companionMinionExecRow()+'</div>';
       if (unit) body+='<div class="solo-actions">'+cmButton("wait",cmText("原地待命","Hold position"),available)+cmButton("follow",cmText("恢复跟随","Resume following"),available)+cmButton("recall",cmText("召回这名随从","Recall this companion"),available)+
         (unit.phase!=="0"?cmButton("pose",cmText("播放 / 取消合影动作","Play / cancel photo pose"),available):"")+'</div>';
     } else if (cm.tab==="recovery") {
@@ -1093,7 +1093,7 @@
     restoreTyping();
     if (dlg?.kind==="companion-manager" && cm) {
       cmPoll();
-      for (const [id,html] of [["cm-global-combat",()=>companionPassRow()+companionExecRow()+companionMinionExecRow()],["cm-immortal",()=>guardHTML("companion")]]) {
+      for (const [id,html] of [["cm-global-combat",()=>companionSquadRow()+companionPassRow()+companionExecRow()+companionMinionExecRow()],["cm-immortal",()=>guardHTML("companion")]]) {
         const part=document.getElementById(id); if (!part) continue;
         const scratch=document.createElement("div");scratch.innerHTML=html();
         const fresh=scratch.querySelectorAll("button"),active=part.querySelectorAll("button");
@@ -1136,6 +1136,41 @@
         </div>`;
   }
   // Whether the player walks through companions (set_companion_passage, companion_passage.lua); off, they block as in the game.
+  function companionSquadRow() {
+    const pref=cm?.data?.squad, busy=!!cm?.squadSaving, on=!!pref?.enabled;
+    const label=cmText("恢复上次随从队伍","Restore last companion squad");
+    const live=RT.online() && S.companionSquad?.revision===pref?.revision ? S.companionSquad : null;
+    let desc=cmText("记住亲手召唤的角色和数量。重进游戏或换图后分批召回，遣散全部会清空记录。","Remember the companions you summon and how many of each. They return gradually after restarting or changing maps. Dismiss all clears the party.");
+    if (on && live) {
+      const state=live.state, n=fmtNum(live.total);
+      if (state==="restoring") desc=cmText("正在分批恢复 "+n+" 名随从。","Restoring your squad of "+n+" companions.");
+      else if (state==="partial" || state==="uncertain") desc=cmText("部分随从未能确认，本图已停止补召。队伍保留到下次进图。","Some companions could not be confirmed. The saved squad will be tried again on the next map.");
+      else if (state==="save_error" || state==="read_error") desc=cmText("队伍文件读写未确认，已暂停自动恢复。","Automatic restoration is paused because the squad file could not be verified.");
+      else if (state==="remembered") desc=cmText("已记住 "+n+" 名随从。","Remembered "+n+" companions. ")+desc;
+    } else if (cm?.data && !pref) desc=cmText("无法读取队伍恢复设置","Squad restoration settings could not be read.");
+    else if (on && RT.online() && !S.companionSquad) desc=cmText("设置已保存，更新游戏端模组后生效。","Preference saved. Update the in-game mod to use it.");
+    return `<div class="control-row${on?" is-on":""}"><span class="control-icon">${icon("users")}</span><div class="control-main"><div class="control-title">${esc(label)}</div><div class="control-desc">${esc(desc)}</div></div>
+      <button class="switch" type="button" role="switch" aria-checked="${on}" aria-busy="${busy}" data-action="cm-squad" aria-label="${esc(label)}" ${pref && RT.saveCompanionSquad && !busy ? "" : "disabled"}></button></div>`;
+  }
+  async function cmToggleSquad() {
+    const view=cm, pref=view?.data?.squad;
+    if (!pref || view.squadSaving || !RT.saveCompanionSquad) return;
+    view.squadSaving=true;renderCompanion();
+    try {
+      const saved=await RT.saveCompanionSquad({enabled:!pref.enabled,revision:pref.revision});
+      if (cm!==view) return;
+      view.data.squad=saved;
+      cmMessage(saved.enabled?cmText("已保存，将在游戏地图就绪后恢复队伍","Saved. Your squad will return when the map is ready."):cmText("已关闭自动恢复","Automatic squad restoration is off."));
+    } catch {
+      if (cm===view) cmMessage(cmText("保存结果未确认，正在重新读取","Save result unconfirmed. Reloading the preference."));
+    } finally {
+      if (cm===view) {
+        await cmLoad(view);
+        view.squadSaving=false;
+        if (cm===view) renderCompanion();
+      }
+    }
+  }
   function companionPassRow() {
     const h = S.companionPass || { supported: false, on: false }, busy = ui.busy.has("set_companion_passage"), shown = h.on && h.supported;
     const desc = !h.supported && RT.online() ? t("fun.old") : t(h.on ? "companion.pass.on" : "companion.pass.desc");
@@ -1317,7 +1352,7 @@
     ...STAT_DAMAGE.map(family => ({ key: family, family, fields: STAT_PREFIXES.map(p => p + "_" + family) })),
     { key: "status", fields: ["Infliction_Max", "StatusInflictionDecrementRate", ...["Ignite", "Poison", "Frost", "Thunder", "Electrified", "Bleed", "BloodBurst", "Water"].map(x => x + "_Accumulation")] },
     ...STAT_BUILDUP.flatMap(family => [{ key: family, family, fields: STAT_PREFIXES.map(p => buildupField(p, family)) },
-      // Since game build 26367565 frost resistance lives here: the character table's value moved off Resistance_FrostAccumulation.
+      // Frost buildup and frost duration are separate native attributes.
       ...(family === "Frost" ? [{ key: "FrostDuration", family: "FrostDuration", fields: STAT_PREFIXES.slice(3).map(p => p + "_FrostDuration") }] : [])]),
     { key: "ultimate", fields: ["UltimateCharge", "UltimateCharge_Max", "UltimateChargeCount", "UltimateChargeCount_Max", "UltimateChargeAdditiveRate", "UltimateChargeGainRateMultiplier", "SpiritShadow", "SpiritShadow_Max", "Awakening", "Awakening_Max"] },
     { key: "execution", fields: ["ExecutionExecutorNormalHealthThreshold", "ExecutionExecutorBreakHealthThreshold", "ExecutionTargetNormalHealthThreshold", "ExecutionTargetBreakHealthThreshold"] },
@@ -1477,7 +1512,10 @@
   };
   const aiLabel = p => p.label[I18N.lang] || p.label.en || p.label.zh;
   const aiTip = p => p.tip[I18N.lang] || p.tip.en || p.tip.zh;
-  const aiUnit = p => t("ai.unit." + p.unit, { range: p.range });
+  function aiUnit(p) {
+    if (p.unit === "cm" && p.range == null) return t("ai.unit.cmScale");
+    return t("ai.unit." + p.unit, { range: p.range });
+  }
   async function loadAiValues() {
     ui.aiLoaded = true;
     try { ui.aiValues = (await RT.aiParams()).values || {}; } catch { ui.aiValues = ui.aiValues || {}; }
@@ -2643,12 +2681,61 @@
   function compState(ok) { return ok ? `<span class="state-icon state-ok">${icon("check")}</span>` : `<span class="state-icon state-missing">${icon("alert")}</span>`; }
   // The mod is installed but is not the build this app ships (after an app update).
   const modOutdated = () => !!S.components?.some(c => c.id === "mod" && !c.ok && c.detail);
-  function componentsHTML() {
-    const comps = (S.components || [{ id: "game", ok: true, detail: "build 26367565" }, { id: "loader", ok: S.installed, detail: "UE4SS 3.0.1" }, { id: "mod", ok: S.installed, detail: "v" + S.modVersion }]).map(c => [c.id, c.ok, c.detail, c.warn]);
+  function componentsHTML(showUninstall = false) {
+    const removable = showUninstall && RT.setup?.uninstall && S.components?.some(c => c.id === "mod" && c.present);
+    const uninstallBusy = !!uninstallView?.pending;
+    const comps = (S.components || [{ id: "game", ok: !!gamePath(), detail: gamePath() ? "Steam" : "" }, { id: "loader", ok: S.installed, detail: "UE4SS 3.0.1" }, { id: "mod", ok: S.installed, detail: "v" + S.modVersion }]).map(c => [c.id, c.ok, c.detail, c.warn]);
     const missing = comps.some(c => !c[1]);
     return `<div class="comp-list">${comps.map(([id, ok, detail, warn]) => `<div class="comp">${compState(ok)}<span class="comp-name">${esc(t("comp." + id))}<small>${esc(detail)}</small></span>${warn ? `<span class="chip chip-amber">${esc(t("comp.untested"))}</span>` : ""}<span class="${ok ? "muted" : ""}" style="font-size:12.5px">${esc(t(ok ? "comp.ok" : id === "mod" && detail ? "comp.outdated" : "comp.missing"))}</span></div>`).join("")}</div>
       ${ui.installing ? `<div style="margin-top:10px"><div class="progress"><i style="width:${Math.round(ui.installing.ratio * 100)}%"></i></div><div class="progress-meta"><span>${esc(t("comp.installing", { step: t("comp." + ui.installing.step) }))}</span><span>${Math.round(ui.installing.ratio * 100)}%</span></div></div>`
-        : missing ? `<div class="callout-actions"><button class="btn btn-primary btn-sm" type="button" data-action="install-components">${icon("download", "icon-sm")}${esc(t("comp.install"))}</button></div>` : ""}`;
+        : (missing || removable) ? `<div class="callout-actions">
+          ${missing ? `<button class="btn btn-primary btn-sm" type="button" data-action="install-components" ${uninstallBusy ? "disabled" : ""}>${icon("download", "icon-sm")}${esc(t("comp.install"))}</button>` : ""}
+          ${removable ? `<button class="btn btn-danger btn-sm" type="button" data-action="uninstall-components" ${uninstallBusy ? "disabled" : ""}>${icon("trash", "icon-sm")}${esc(t("comp.uninstall"))}</button>` : ""}
+        </div>` : ""}`;
+  }
+
+  let uninstallView = null;
+  function uninstallHTML(view) {
+    const closeLabel = view.pending ? "common.close" : view.result ? "common.done" : "common.cancel";
+    const close = `<button class="btn btn-secondary" type="button" data-action="dialog-close" data-autofocus>${esc(t(closeLabel))}</button>`;
+    const backup = view.result?.backup;
+    const stopped = S.gameRunning ? `<p class="inline-error">${esc(t("comp.uninstall.closeGame"))}</p>` : "";
+    return `<div class="dialog-head"><h2 id="dlg-title">${esc(t(view.result ? "comp.uninstall.done" : "comp.uninstall"))}</h2></div>
+      <div class="dialog-body">
+        <p>${esc(t(view.result ? "comp.uninstall.doneBody" : "comp.uninstall.body"))}</p>
+        ${view.result
+          ? (backup ? `<p class="muted">${esc(t("comp.uninstall.backup"))}</p><div class="path-field"><span title="${esc(backup)}">${esc(backup)}</span></div>` : "")
+          : `<div class="path-field">${icon("folder", "icon-sm")}<span title="${esc(view.path)}">${esc(view.path)}</span></div>
+            ${stopped}${view.error ? `<p class="inline-error" role="status">${esc(view.error)}</p>` : ""}`}
+      </div>
+      <div class="dialog-foot">${close}
+        ${view.result ? "" : `<button class="btn btn-danger-solid" type="button" data-action="uninstall-confirm" ${view.pending || S.gameRunning ? "disabled" : ""}>${esc(t(view.pending ? "comp.uninstall.busy" : "comp.uninstall"))}</button>`}
+      </div>`;
+  }
+
+  function openUninstall() {
+    if (!S.gamePath || ui.installing || uninstallView?.pending || !RT.setup?.uninstall) return;
+    uninstallView = { path: S.gamePath, pending: false, result: null, error: "" };
+    openDialog("uninstall", uninstallHTML(uninstallView), "dialog-sm");
+  }
+
+  async function confirmUninstall() {
+    const view = uninstallView;
+    if (dlg?.kind !== "uninstall" || !view || view.pending || view.result || S.gameRunning) return;
+    view.pending = true;
+    view.error = "";
+    setDialog(uninstallHTML(view));
+    try {
+      view.result = await RT.setup.uninstall(view.path);
+      if (dlg?.kind !== "uninstall") toast({ kind: "success", title: t("comp.uninstall.done") });
+    } catch (error) {
+      view.error = reasonText(error.code, error.detail);
+      if (dlg?.kind !== "uninstall") toast({ kind: "error", title: t("comp.uninstall.failed"), body: view.error });
+    } finally {
+      view.pending = false;
+      if (ui.page === "settings") renderPage();
+      if (dlg?.kind === "uninstall" && uninstallView === view) setDialog(uninstallHTML(view));
+    }
   }
   // ---------- Fun features (fun_features.lua) ----------
   // Player-only switches; the mod saves them, so they show the game's answer and wait for it to connect.
@@ -3343,9 +3430,20 @@
     return `<section class="card"><div class="card-head"><h2 class="card-title">${t("arenaMusic.music")}</h2></div><div class="card-body">
       <p class="muted">${t("arenaMusic.musicHint")}</p>
       <div class="music-controls"><label>${t("arenaMusic.mode")}<select class="select" id="battle-music-mode" ${usable ? "" : "disabled"}>${[["NATIVE",t("arenaMusic.native")],["AUTO",t("arenaMusic.auto")],["TRACK",t("arenaMusic.track")],["LOCAL",`${t("arenaMusic.local")} BOSS`]].map(([id, name]) => `<option value="${id}" ${draft.mode === id ? "selected" : ""}>${name}</option>`).join("")}</select></label>
-      <label>${t("arenaMusic.trackLabel")}<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${(window.PG_MUSIC_TRACKS || []).map(row => `<option value="${esc(row.id)}" ${draft.track === row.id ? "selected" : ""}>${esc(musicName(row))}</option>`).join("")}</select></label>
+      <label>${t("arenaMusic.trackLabel")}<select class="select" id="battle-music-track" ${usable && draft.mode === "TRACK" ? "" : "disabled"}>${musicTrackOptions(draft.track)}</select></label>
       <button class="btn btn-secondary" type="button" id="battle-music-save" data-action="battle-music-save" ${usable ? "" : "disabled"}>${t("arenaMusic.saveMusic")}</button></div>
       <p id="battle-music-status" class="muted" aria-live="polite"></p>${window.PGLocalAudio?.html() || ""}</div></section>`;
+  }
+  function musicTrackOptions(selectedTrack) {
+    const groups = new Map();
+    for (const row of window.PG_MUSIC_TRACKS || []) {
+      if (!groups.has(row.group)) groups.set(row.group, []);
+      groups.get(row.group).push(`<option value="${esc(row.id)}" ${selectedTrack === row.id ? "selected" : ""}>${esc(musicName(row))}</option>`);
+    }
+    return Array.from(groups, ([group, options]) => {
+      const items = options.join("");
+      return group ? `<optgroup label="${esc(t("musicGroup." + group))}">${items}</optgroup>` : items;
+    }).join("");
   }
   function musicName(row) {
     return I18N.lang === "en" ? t("musicTrack." + row.id) : row.label;
@@ -3393,7 +3491,7 @@
             <button class="btn btn-secondary btn-sm" type="button" data-action="detect-game" ${ui.detecting ? "disabled" : ""}>${ui.detecting ? '<span class="spinner"></span>' : icon("search", "icon-sm")}${esc(t("settings.game.detect"))}</button>
             <button class="btn btn-ghost btn-sm" type="button" data-action="change-path">${esc(t("settings.game.change"))}</button></div>
           <div class="field-label" style="margin-top:16px">${esc(t("settings.game.components"))}</div>
-          ${componentsHTML()}
+          ${componentsHTML(true)}
         </div></section>
       <section class="card"><div class="card-head"><h2 class="card-title">${esc(t("settings.repair"))}</h2>
           <button class="btn btn-secondary btn-sm" type="button" data-action="repair-save" ${ui.busy.has("repair_save") || !RT.online() ? "disabled" : ""}>${ui.busy.has("repair_save") ? '<span class="spinner"></span>' : icon("check", "icon-sm")}${esc(t("settings.repair.btn"))}</button></div>
@@ -3989,7 +4087,7 @@
     }
   }
   async function installComponents() {
-    if (ui.installing) return;
+    if (ui.installing || uninstallView?.pending) return;
     ui.installing = { step: "loader", ratio: 0 };
     const refresh = () => { if (ui.onboarding) renderOnboarding(); if (ui.page === "settings") renderPage(); };
     refresh();
@@ -4168,6 +4266,7 @@
       redraw();
       return job;
     },
+    "cm-squad": cmToggleSquad,
     "recall-companions": () => run("recall_companions", { ok: j => {
       const m = /^已召回 (\d+)\/(\d+)/.exec(j.message || "");
       return m ? t("toast.companion.recalled", { n: Number(m[1]) }) : t("toast.companion.recallNone");
@@ -4299,6 +4398,8 @@
       toast({ kind: "success", title: t("toast.pathSaved") });
     },
     "install-components": () => installComponents(),
+    "uninstall-components": () => openUninstall(),
+    "uninstall-confirm": () => confirmUninstall(),
     scan: () => confirmScan(),
     "scan-confirm": async () => { closeDialog(); await run("refresh_catalog", { busyKey: "scan" }); if (ui.page === "settings") renderPage(); },
     "open-folder": async () => {
@@ -4651,6 +4752,7 @@
         else if (ui.page === "fun" && p.has("fun")) renderPage();
         if (dlg?.kind === "update" && p.has("update")) setDialog(updateHTML());
         if (dlg?.kind === "beta" && p.has("update")) renderBetaDialog(ui.manualBeta);
+        if (dlg?.kind === "uninstall" && uninstallView && p.has("update")) setDialog(uninstallHTML(uninstallView));
         break;
       }
     }

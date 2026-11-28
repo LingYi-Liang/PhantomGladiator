@@ -174,8 +174,14 @@ end
 local a,blue=party(false,'blue',1000);local b,red=party(true,'red',3000)
 -- Shipped UE4SS exposes the soft FFields but does not list either kind in PropertyTypes.
 PropertyTypes.SoftObjectProperty=nil;PropertyTypes.SoftClassProperty=nil
+assert(manage:placeholderOf(blue[1].actor)==nil,'unprepared actors have no owned placeholder')
 assert(manage:prepare(a,blue,world,'blue'));assert(manage:ready(a,blue))
 assert(manage:prepare(b,red,world,'red'));assert(manage:ready(b,red))
+for _,rows in ipairs({blue,red})do
+    for _,row in ipairs(rows)do
+        assert(manage:placeholderOf(row.actor)==row.actor.Spawner,'expose only that member’s placeholder')
+    end
+end
 assert(manage:activated(a));assert(manage:activated(b))
 local main,aj=blue[1].actor,red[1].actor
 assert(main.MobGroup~=aj.MobGroup and main.MobGroup.MobDomain~=aj.MobGroup.MobDomain)

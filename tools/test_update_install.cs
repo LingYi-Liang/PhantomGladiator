@@ -26,6 +26,25 @@ namespace PhantomGladiator
 
         static int Main(string[] args)
         {
+            if (args.Length == 1 && args[0] == "--hold-fixture")
+            {
+                System.Threading.Thread.Sleep(30000);
+                return 0;
+            }
+            if (args.Length == 1 && (args[0] == "--uninstall-components" || args[0] == "--uninstall-components-locked"))
+            {
+                Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+                try
+                {
+                    var game = new GameInfo { Root = Path.Combine(Paths.AppDir, "test-game") };
+                    var held = args[0].EndsWith("-locked");
+                    using (var file = held ? File.Open(Path.Combine(game.Ue4ssDir, "Mods", "mods.json"), FileMode.Open, FileAccess.Read, FileShare.Read) : null)
+                        Console.WriteLine(Installer.Uninstall(game));
+                    return 0;
+                }
+                catch (HostError e) { Console.Error.WriteLine(e.Code + ": " + e.Message); return 1; }
+                catch (Exception e) { Console.Error.WriteLine(e.Message); return 1; }
+            }
             if (args.Length == 1 && args[0] == "--install-components")
             {
                 try

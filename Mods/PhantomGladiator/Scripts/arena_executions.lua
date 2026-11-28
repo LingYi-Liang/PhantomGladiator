@@ -59,7 +59,7 @@ local Lion=require('lion_challenge')
 local LAST_LION_CLASS=Lion.CUB
 local LION_EXEC='GA_Hun_BEx_HouHouHou_01_C'
 local LION_VICTIM='GA_Hun_BEd_HouHouHou_01_C'
-local LION_FLOOR_FRACTION=0.20
+local LION_FLOOR_FRACTION=0.01
 local PAIRS={
     BP_Monster_GuiChai_Red_P2={
         execution=MOBS..'075_GuiChai_Red_P2/Ability/GA_GuiChai_Red_P2_BEx_01.GA_GuiChai_Red_P2_BEx_01_C',
@@ -73,6 +73,7 @@ local PAIRS={
         executed='/PBZCombatAsset/ActorData/Players/Hun/Abilities/Common/ExE/GA_Hun_BDEd_Common_AttackBladeMan_01.GA_Hun_BDEd_Common_AttackBladeMan_01_C'},
 }
 local TYPES={'Execution.Type.Custom.HorseCartCombat','Execution.Type.CombatRider','Execution.Type.Combat','Execution.Type.Custom.JiangJun'}
+local GENERALS={'CharacterType.JiangJun'}
 local CONTEXTUAL={['Execution.Type.CombatRider']=true,['Execution.Type.Custom.HorseCartCombat']=true}
 -- The player could execute it now (GA_CommonUtilitiesPassive).
 local EXECUTABLE={'CharacterState.CanWeakExecute.Weak','CharacterState.CanWeakExecute.LowHealth'}
@@ -276,7 +277,12 @@ function Exec.new(options)
                     if knownLionFloor then
                         eligible=eligible and wanted=='Execution.Type.Combat' and short(a)==LION_EXEC and short(b)==LION_VICTIM
                     end
-                    if not locked or CONTEXTUAL[wanted] then eligible=eligible and ruleAllows(actor,Rules[wanted],'target',knownLionFloor) end
+                    if locked and wanted=='Execution.Type.Combat' then
+                        -- A death floor can supply the opening, but cannot change a general's execution channel.
+                        eligible=eligible and tagsMatch(actor,GENERALS,false)
+                    else
+                        eligible=eligible and ruleAllows(actor,Rules[wanted],'target',knownLionFloor)
+                    end
                     if CONTEXTUAL[wanted] then
                         local readType,hasType=call(U.field(actor,'Execution Component'),'HasExecutionType',{TagName=name(wanted)})
                         eligible=eligible and readType and U.unwrap(hasType)==true
@@ -339,14 +345,17 @@ function Exec.new(options)
         if not floor or floor<=0 or hp>floor+1+floor*0.01 then return false end
         return #unit.locks>0 or floor<=DEATH_LOCK*(read(actor,'Health_Max') or 0)+1
     end
-    -- The LastOne wave permits its specific native pair at 20%. Its dynamic floor need not be in the
-    -- spawn config, and the native Weak tag may be absent at the boundary. Never widen generic locks.
-    local function lastLionFloor(actor,hp)
-        local floor,max=read(actor,'Health_Min'),read(actor,'Health_Max')
-        if type(floor)~='number' or not (floor>0 and floor<math.huge) or type(max)~='number'
-            or not (max>0 and max<math.huge) then return false,floor,max end
-        local tolerance=math.max(0.01,max*0.000001)
-        return math.abs(floor-max*LION_FLOOR_FRACTION)<=tolerance and math.abs(hp-floor)<=tolerance,floor,max
+    -- The verified wave applies GE_LockHealthButCanExecuted, which captures 1% of the
+    -- summoner's Health_Max. The separate native Weak tag uses 20% of the cub's own health.
+    local function lastLionFloor(actor,hp,owner)
+        local floor=read(actor,'Health_Min')
+        if type(floor)~='number' or not (floor>0 and floor<math.huge) then return false,floor end
+        local tolerance=math.max(0.01,floor*0.000001)
+        if not (math.abs(hp-floor)<=tolerance) then return false,floor end
+        local ownerMax=U.valid(owner) and read(owner,'Health_Max')
+        if type(ownerMax)~='number' or not (ownerMax>0 and ownerMax<math.huge) then return false,floor,nil,true end
+        local expected=ownerMax*LION_FLOOR_FRACTION
+        return math.abs(floor-expected)<=tolerance,floor,expected,true
     end
     -- CharacterState.CanWeakExecute.* the player's execution prompt waits for, read with GetGameplayTagCount.
     local function executable(actor)
@@ -1796,33 +1805,33 @@ local function closeOneGrab(pose,why,restore)
         available=function(executor)return self.enabled and next(pendingBodies)==nil
             and (not executor or not active or U.key(active.executor)==U.key(executor))end,data=animationData,adopt=adoptNative})
 
-    local function noteLionWait(target,unit,lastLion,why,hp,floor,max,nativeTag)
-        if not lastLion or lastLion=='field' or unit.lastLionWait==why or (unit.lastLionLines or 0)>=4 then return end
+    local function noteLionWait(target,unit,fieldLion,why,hp,floor,expected,nativeTag)
+        if fieldLion or unit.lastLionWait==why or (unit.lastLionLines or 0)>=4 then return end
         unit.lastLionWait=why;unit.lastLionLines=(unit.lastLionLines or 0)+1
         local mesh=U.field(target,'Mesh')
         local visibleRead,visible=call(mesh,'IsVisible')
-        say(string.format('最后一只小狮子等待：%s；HP=%s/%s 底线=%s 原生可处决标签=%s Actor隐藏=%s Mesh隐藏=%s Mesh可见=%s',
-            why,fmt(hp),fmt(max),fmt(floor),tostring(nativeTag),fmt(U.field(target,'bHidden')),
+        say(string.format('最后一只小狮子等待：%s；HP=%s/%s 底线=%s 所属烈焰原生底线=%s 原生可处决标签=%s Actor隐藏=%s Mesh隐藏=%s Mesh可见=%s',
+            why,fmt(hp),fmt(read(target,'Health_Max')),fmt(floor),fmt(expected),tostring(nativeTag),fmt(U.field(target,'bHidden')),
             fmt(U.field(mesh,'bHiddenInGame')),fmt(visibleRead and U.unwrap(visible))))
     end
 
     -- Starts an execution of the target if it can be executed now and someone is there to do it; true once it has.
     -- only: as opponent()'s, the executors this attempt may take (a companion Hun's own attempts take Hun bodies only).
-    local function tryExecute(target,unit,t,team,only,lastLion)
+    local function tryExecute(target,unit,t,team,only,lionOwner,fieldLion)
         if options.immune and options.immune(target,'execution') then return false end
         if phaseBusy(target) then return false end
         if options.onPole and options.onPole(target) then return false end
         local hp=read(target,'Health')
         if not hp or hp<=0 then return false end
-        if lastLion and not tagsMatch(target,{Lion.LAST},true) then return false end
-        local locked=not lastLion and onLock(target,unit,hp)
-        local knownLionFloor,floor,max
-        if lastLion then knownLionFloor,floor,max=lastLionFloor(target,hp) end
+        if lionOwner and not tagsMatch(target,{Lion.LAST},true) then return false end
+        local locked=not lionOwner and onLock(target,unit,hp)
+        local knownLionFloor,floor,expected,atFloor
+        if lionOwner then knownLionFloor,floor,expected,atFloor=lastLionFloor(target,hp,lionOwner) end
         if locked or knownLionFloor then unit.since=unit.since or t else unit.since=nil end
         local reason=locked and t-unit.since>=HOLD and '卡在锁血线'
-            or knownLionFloor and t-unit.since>=HOLD and '最后一只小狮子原版20%锁血'
+            or knownLionFloor and t-unit.since>=HOLD and '最后一只小狮子原版锁血'
         local nativeTag
-        if (lastLion or not reason) and not unit.lockOnly then nativeTag=executable(target) end
+        if (lionOwner or not reason) and not unit.lockOnly then nativeTag=executable(target) end
         reason=reason or nativeTag
         if not reason and not unit.lockOnly then
             for _,tag in ipairs({'CharacterState.CanRiderExecute','CharacterState.Stand.Break','CharacterState.CanWeakExecute'})do
@@ -1830,8 +1839,8 @@ local function closeOneGrab(pose,why,restore)
             end
         end
         if not reason then
-            if lastLion and not knownLionFloor and type(max)=='number' and max>0 and hp<=max*LION_FLOOR_FRACTION+1 then
-                noteLionWait(target,unit,lastLion,'未读回原版处决窗口或20%底线',hp,floor,max,nativeTag)
+            if lionOwner and atFloor and not knownLionFloor then
+                noteLionWait(target,unit,fieldLion,'未读回原版处决窗口或所属烈焰的底线',hp,floor,expected,nativeTag)
             end
             return false
         end
@@ -1843,13 +1852,13 @@ local function closeOneGrab(pose,why,restore)
             return false
         end
         local executor,d,denied
-        if lastLion then
+        if lionOwner then
             if selected.state~='ready' or short(selected.pair.execution)~=LION_EXEC or short(selected.pair.executed)~=LION_VICTIM then
-                noteLionWait(target,unit,lastLion,'原生技能对或角色状态未确认',hp,floor,max,nativeTag)
+                noteLionWait(target,unit,fieldLion,'原生技能对或角色状态未确认',hp,floor,expected,nativeTag)
                 return false
             end
             selected.requireLionPickup=true
-            selected.fieldLionHead=lastLion=='field'
+            selected.fieldLionHead=fieldLion==true
             local function mayTakeHead(actor)
                 return (not only or only(actor)) and (not options.hunPoleHead or options.hunPoleHead(actor)~=false)
                     and not inNativeExecution(actor)
@@ -1862,7 +1871,7 @@ local function closeOneGrab(pose,why,restore)
                     return mayTakeHead(actor) and options.fieldLionTarget(actor,target)==true
                 end)
             else
-                local targetKey,ownerKey=U.key(target),U.key(lastLion)
+                local targetKey,ownerKey=U.key(target),U.key(lionOwner)
                 local function currentOpponent(actor)
                     return options.assignedOpponent and U.key(options.assignedOpponent(actor))
                 end
@@ -1882,11 +1891,11 @@ local function closeOneGrab(pose,why,restore)
                 end
             end
             if not executor then
-                noteLionWait(target,unit,lastLion,'附近没有符合条件的已分配或已确认敌对执行者',hp,floor,max,nativeTag)
+                noteLionWait(target,unit,fieldLion,'附近没有符合条件的已分配或已确认敌对执行者',hp,floor,expected,nativeTag)
                 return false
             end
             local started=start(executor,target,selected,d,reason)~=false
-            if not started then noteLionWait(target,unit,lastLion,'狮头接取或原生处决未确认',hp,floor,max,nativeTag) end
+            if not started then noteLionWait(target,unit,fieldLion,'狮头接取或原生处决未确认',hp,floor,expected,nativeTag) end
             return started
         end
         if selected.state=='ready' then
@@ -1897,7 +1906,7 @@ local function closeOneGrab(pose,why,restore)
         end
         if executor then return start(executor,target,selected,d,reason)~=false end
         -- A denied finisher cannot leave a minion immortal at its final death floor.
-        if not lastLion and denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
+        if not lionOwner and denied and selected.mob and locked and t-(unit.since or t)>=HOLD and t>=(unit.policyRetry or 0)then
             local floor,max=read(target,'Health_Min'),read(target,'Health_Max')
             if floor and max and floor<=DEATH_LOCK*max+1 and hp<=floor+1 then
                 unit.policyRetry=t+1
@@ -1991,7 +2000,7 @@ local function closeOneGrab(pose,why,restore)
         if locked then unit.hunSince=unit.hunSince or t else unit.hunSince=nil end
         local reason=locked and t-unit.hunSince>=HOLD and '卡在锁血线' or (not unit.lockOnly and executable(target))
         if not reason and not unit.lockOnly and tagsMatch(target,{'CharacterState.Stand.Break'},true) then reason='CharacterState.Stand.Break' end
-        if not reason then return false end
+        if not reason or not tagsMatch(target,GENERALS,false) then return false end
         if inNativeExecution(target) or locked and hasTroopProtection(target) then unit.hunSince=nil;return false end
         local executor,d=opponent(target,team,locked and LOCK_REACH or REACH,false,'Execution.Type.Combat',unit.mob,only)
         if not executor then return false end
@@ -2176,11 +2185,11 @@ local function closeOneGrab(pose,why,restore)
         -- The last cub's paired execution advances this phase. Do not spend it on a generic companion finisher.
         for _,cub in ipairs(fieldCubs)do
             local target=cub.actor
-            if not theirExecutorIsPlayer(target) then
+            if U.valid(cub.owner) and not theirExecutorIsPlayer(target) then
                 local unit=units[cub.key]
                 if not unit then unit=inspect(target);unit.foe=true;units[cub.key]=unit end
                 if unit.state=='ready' and not unit.finalDeath and not (unit.again and t<unit.again)
-                    and tryExecute(target,unit,t,nil,nil,'field') then return end
+                    and tryExecute(target,unit,t,nil,nil,cub.owner,true) then return end
             end
         end
         if options.fighting and(policyFight==false or policyFight==nil and not options.fighting())then

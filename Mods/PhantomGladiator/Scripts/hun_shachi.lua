@@ -458,7 +458,7 @@ function Shachi.new(o)
         local cost=move.cost
         local kind=Data.kinds[choice.path]
         if kind=='Ranged' and hasTag('CharacterState.Accessory.RangedWeapon') then cost=0
-        elseif kind=='Magic' and hasTag('CharacterState.Accessory.MagicWeapon') then cost=math.max(0,cost-1)
+        elseif kind=='Summon' and hasTag('CharacterState.Accessory.MagicWeapon') then cost=math.max(0,cost-1)
         elseif kind=='Strength' and hasTag('CharacterState.Accessory.PowerWeapon') then cost=cost+1 end
         if available+0.001<cost or (move.ongoing>0 and available<=0) then return false end
         for _,needed in ipairs(move.needs)do

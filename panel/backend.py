@@ -497,7 +497,7 @@ class Bridge:
 
     def _path(self, name):
         # All caller-supplied unit IDs stay inside TSV fields, never file paths.
-        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "arena-roster.tsv", "arena-roster.tsv.bak", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv", "match-report.json", "match-report.json.bak"}:
+        if name not in {"companion-roster.tsv", "companion-roster.tsv.bak", "arena-roster.tsv", "arena-roster.tsv.bak", "companion-squad-settings.tsv", "teleport-keybinds-state.tsv", "hun-profile.json", "hun-queued-loadout.tsv", "command-journal.tsv", "codex-icons.tsv", "home-levels.tsv", "stat-custom-request.tsv", "stat-match-settings.tsv", "companion-stats-request.tsv", "companion-stats-settings.tsv", "ai-params-request.tsv", "ai-params-settings.tsv", "catalog.tsv", "catalog.tsv.partial", "codex.tsv", "codex-locations.tsv", "status.tsv", "inbox.tsv", "inbox.session.tsv", "ack.tsv", "inventory-report.json", "unit-evidence.json", "native-table-catalog.tsv", "decrypted-directory.tsv", "decrypted-directory-report.json", "unit-keybinds.tsv", "unit-keybinds-state.tsv", "function-keybinds.tsv", "function-keybinds.tsv.bak", "function-keybinds-state.tsv", "keybinds.tsv", "monster-pools.tsv", "monster-pools-state.tsv", "match-report.json", "match-report.json.bak"}:
             raise ValidationError("unknown runtime file")
         path = self.runtime / name
         if path.resolve().parent != self.runtime:
@@ -962,9 +962,38 @@ class Bridge:
             self.catalog_summary_cache = (key, now, copy.deepcopy(summary), contents)
         return summary
 
+    def squad_preference(self):
+        text = bounded_read(self._path("companion-squad-settings.tsv"), 96)
+        if text is None:
+            return {"enabled": False, "revision": "0"}
+        match = re.fullmatch(r"PGCR1\t([01])\t([0-9a-f]{24})\n", text)
+        if not match:
+            raise ValidationError("invalid companion squad preference")
+        return {"enabled": match[1] == "1", "revision": match[2]}
+
+    def save_squad_preference(self, request):
+        if (not isinstance(request, dict) or set(request) != {"enabled", "revision"}
+                or type(request["enabled"]) is not bool or not isinstance(request["revision"], str)
+                or not re.fullmatch(r"0|[0-9a-f]{24}", request["revision"])):
+            raise ValidationError("invalid companion squad preference")
+        with self.lock:
+            previous = self.squad_preference()
+            if previous["enabled"] == request["enabled"]:
+                return previous
+            if previous["revision"] != request["revision"]:
+                raise ValidationError("companion squad preference has changed")
+            generation = secrets.token_hex(12)
+            atomic_text(self._path("companion-squad-settings.tsv"),
+                        f"PGCR1\t{int(request['enabled'])}\t{generation}\n")
+            return self.squad_preference()
+
     def companion_manager(self):
         game = self.game_status()
         result = {"ready": False, "session": None, "revision": 0, "profiles": {}, "units": []}
+        try:
+            result["squad"] = self.squad_preference()
+        except (OSError, ValueError):
+            result["squad"] = None
         for name in ("companion-roster.tsv", "companion-roster.tsv.bak"):
             text = bounded_read(self._path(name), 2 * 1024 * 1024)
             if not text:
@@ -2241,7 +2270,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._trusted(write=True):
             return
         path = urlsplit(self.path).path
-        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools", "/api/local-audio", "/api/hun-profile"}:
+        if path not in {"/api/command", "/api/keybinds", "/api/queue/clear", "/api/monster-pools", "/api/local-audio", "/api/hun-profile", "/api/companion-squad"}:
             self._reply(404, {"error": "unknown API"}); return
         try:
             if self.headers.get("Transfer-Encoding") or len(self.headers.get_all("Content-Length", [])) != 1:
@@ -2255,6 +2284,8 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.settimeout(5)
             text=self.rfile.read(length).decode('utf-8')
             request = _hun_module.decode(text)if path=='/api/hun-profile'else json.loads(text)
+            if path == '/api/companion-squad':
+                self._reply(200, self.server.bridge.save_squad_preference(request)); return
             if path=='/api/hun-profile':
                 if self.server.bridge.hun_profiles is None:raise ValidationError('魂方案路径不可用：'+self.server.bridge.hun_profile_error)
                 if isinstance(request,dict)and set(request)=={'revision','import_text'}:

@@ -129,6 +129,11 @@ function Mounts.new(options)
         return {ok=linked}
     end
 
+    function self:placeholderOf(rider)
+        local record=self.records[U.key(rider)]
+        if record and Mounts.isOurs(record.spawner) then return record.spawner end
+    end
+
     -- Stacked summons and map spawners can share the same position.
     local function scriptMount(record)
         local scripts=options.scripts and options.scripts(record.rider)

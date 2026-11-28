@@ -617,6 +617,31 @@ function Arena.new(options)
         local unit=key and unit_by_key(key)
         return unit and unit.actor or nil
     end
+    -- Only verified principal summons are eligible. A phase change keeps its original recipe.
+    function instance:companionSquad()
+        local checked,player=invoke('getPlayer')
+        if not checked or live(player)~=true then return nil end
+        local got,world=invoke('getWorld',player)
+        local key=got and live(world)==true and actor_key(world)
+        if not key then return nil end
+        local result={}
+        for _,unit in ipairs(units) do
+            if unit.squadPath then
+                local gone=removed(unit.actor)
+                if gone==nil then return nil end
+                if not gone then
+                    local present=unit.squadWorld==key
+                    if options.inCompanionWorld and not present then
+                        local checked,same=invoke('inCompanionWorld',unit.actor,world)
+                        if not checked then return nil end
+                        present=same==true
+                    end
+                    if present then result[#result+1]={path=unit.squadPath,dual=unit.companionSpec~=nil} end
+                end
+            end
+        end
+        return result
+    end
     function instance:ownsDirectCompanion(actor)
         local key=actor_key(actor);local unit=unit_by_key(key)
         return unit~=nil and unit.team=='companion' and not unit.summoner and removed(unit.actor)==false
@@ -1170,6 +1195,14 @@ function Arena.new(options)
             local refusal   -- why a unit was not started (spawnClass outcome not_started), said in the reply
             local cleanupRequired=false
             local staged
+            local principal,confirmed,squadWorld
+            local function confirmCompanion()
+                if team=='companion' and principal and not principal.squadPath then
+                    squadWorld=squadWorld or actor_key(world)
+                    principal.squadWorld,principal.squadPath=squadWorld,entry.path
+                    confirmed=(confirmed or 0)+1
+                end
+            end
             local function finish_one(actor,transform,parent)
                 if not options.finishSpawn then return true end
                 local called,done,why=invoke('finishSpawn',actor,transform,world,parent)
@@ -1186,6 +1219,7 @@ function Arena.new(options)
                 if type(warning)=='string' and warning~='' then spawnWarning=warning end
                 log('召唤读回 actor='..actor_name(actor)..' HP='..health(actor)..' activate='..tostring(ok and active)
                     ..' detail='..tostring(ok and (detail or 'unknown') or detail or active))
+                return ok and active==true
             end
             local function formation_step(name,group)
                 local called,ok,why=invoke(name,group,staged,world,team)
@@ -1234,7 +1268,7 @@ function Arena.new(options)
                         if got and type(name)=='string' and name~='' then units[#units].formationName=name end
                         group.deadSince=nil
                     end
-                    if not escort then units[#units].formation=formation end
+                    if not escort then unit.formation=formation;principal=unit end
                     if escort then escorted=escorted+1 else spawned = spawned + 1 end
                     if group and group.nativeFormation then
                         staged[#staged+1]={actor=actor,path=unitPath,transform=transform,parent=escort and escort.parent}
@@ -1249,7 +1283,7 @@ function Arena.new(options)
                         return actor,false
                     end
                     local finished=finish_one(actor,transform,escort and escort.parent)
-                    if finished then activate_one(actor,unitPath,escort~=nil,spec) end
+                    if finished and activate_one(actor,unitPath,escort~=nil,spec) and not escort then confirmCompanion() end
                     if cleanupRequired and team=='companion' and options.companionChildren and require('companion_profile').phase(unitPath) then
                         if retire(actor,world,unitPath==require('companion_profile').second) then
                             spawned=spawned-1;prune();cleanupRequired=false
@@ -1338,7 +1372,12 @@ function Arena.new(options)
                     if cleanupRequired or (options.formationActivated and not formation_step('formationActivated',group)) then
                         rollback_group(group);break
                     end
+                    confirmCompanion()
                 end
+            end
+            if confirmed and options.onCompanionSummoned then
+                local saved,why=invoke('onCompanionSummoned',entry.path,dual==true,confirmed)
+                if not saved then log('记录随从队伍失败：'..tostring(why)) end
             end
             if relaySide and spawned>0 and not relay.anchor then
                 relay.anchor={location=vector(location),forward=vector(forward)}

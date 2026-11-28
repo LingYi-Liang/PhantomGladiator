@@ -26,6 +26,7 @@ local function trial(cause)
         a.alive=false;destroyed[a]=true
     end
     assert(f.arena:spawn(P.first,'companion',1,true,true).ok)
+    assert(#f.arena:companionSquad()==1 and f.arena:companionSquad()[1].dual)
     local original=f.arena:members()[1];assert(original.dual and original.class_path==P.first)
     local child={name='stand',alive=true};children[original.actor]={child}
     local result=f.arena:replaceCompanion(original,2,'manual',{})

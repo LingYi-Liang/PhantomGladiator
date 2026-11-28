@@ -28,6 +28,7 @@ vm.runInContext(section("  function aboutHTML()", "  // ---------- Update flow")
   section("  const versionParts", "  // The lines") +
   section("  function updateHTML()", "  // Asks for the older version") +
   section("  function helpMenuHTML()", "  function shortcutsDialog()"), context);
+vm.runInContext(section("  function compState(", "  // ---------- Fun features"), context);
 for (const lang of ["zh", "en", "ja", "fr", "de", "es"]) {
   i18n.set(lang);
   for (const key of ["update.unconfirmedTitle", "update.unconfirmedBody", "update.stableTitle", "update.stableBody", "update.stableDownload", "update.notesUnavailable"]) {
@@ -114,6 +115,31 @@ for (const lang of ["zh", "en"]) {
   context.S.expectedBuild = "v0.40.18-beta-6";
 }
 (async () => {
+  context.S.components = [{ id: "game", ok: true }, { id: "mod", ok: false, present: true, detail: "v0.40.24" }];
+  context.S.gamePath = "C:/Test Game";
+  context.RT.setup = { uninstall: async selected => { context.selectedUninstallPath = selected; return { backup: "C:/Backups/old-scripts" }; } };
+  context.openDialog = (kind, html) => { context.dlg = { kind }; context.gameDialog = html; };
+  context.setDialog = html => { context.gameDialog = html; };
+  context.toast = () => {};
+  for (const lang of ["zh", "en"]) {
+    i18n.set(lang);
+    assert(context.componentsHTML(true).includes('data-action="uninstall-components"'));
+    assert(!context.componentsHTML().includes('data-action="uninstall-components"'), "onboarding stays focused on installation");
+    context.S.gameRunning = true;
+    context.openUninstall();
+    assert(context.gameDialog.includes(i18n.t("comp.uninstall.closeGame")));
+    assert(/data-action="uninstall-confirm" disabled/.test(context.gameDialog));
+    await context.confirmUninstall();
+    assert.equal(context.selectedUninstallPath, undefined);
+    context.S.gameRunning = false;
+    const uninstall = context.confirmUninstall();
+    assert(context.gameDialog.includes(i18n.t("comp.uninstall.busy")) && context.gameDialog.includes(i18n.t("common.close")));
+    await uninstall;
+    assert.equal(context.selectedUninstallPath, context.S.gamePath);
+    assert(context.gameDialog.includes("C:/Backups/old-scripts") && context.gameDialog.includes(i18n.t("comp.uninstall.done")));
+    delete context.selectedUninstallPath;
+  }
+  context.dlg = null;
   context.ui.update = { phase: "idle" };
   await context.checkUpdate();
   assert.equal(context.ui.update.error.code, "updateUnconfirmed");
@@ -121,5 +147,5 @@ for (const lang of ["zh", "en"]) {
   await context.checkUpdate({ silent: true });
   assert.equal(context.options.silent, true);
   assert.equal(context.ui.update.phase, "idle", "unconfirmed automatic checks do not interrupt the player");
-  console.log("update_hardening: PASS (six-language uncertainty, stable promotion, unavailable notes and manual/automatic checks)");
+  console.log("update_hardening: PASS (six-language uncertainty, stable promotion, unavailable notes and manual/automatic checks and uninstall confirmation)");
 })().catch(error => { console.error(error); process.exitCode = 1; });

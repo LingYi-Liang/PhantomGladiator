@@ -18,6 +18,7 @@ function Session.new(options)
         if number and number>=0 and number<1000000000 and number%1==0 then generation=number+1 end
         pcall(function() ModRef:SetSharedVariable("PhantomGladiator.session_generation.v1",string.format("%.0f",generation)) end)
     end
+    local processToken=token
     token=token.."-mod"..string.format("%.0f",generation)
     local function valid(obj)
         if obj==nil then return false end
@@ -31,7 +32,9 @@ function Session.new(options)
         if not okWorld or not valid(world) then return result end
         local okAddress,address=pcall(function() return world:GetAddress() end)
         if not okAddress or (type(address)~="number" and type(address)~="string") then return result end
-        result.game_session=token.."-"..tostring(address):gsub("[^%w]","")
+        local worldId=tostring(address):gsub("[^%w]","")
+        result.game_session=token.."-"..worldId
+        result.game_world=processToken.."-"..worldId
         local okPlayer,player=pcall(options.getPlayer)
         if not okPlayer or not valid(player) then return result end
         local okDestroy,destroying=pcall(options.isDestroying,player)

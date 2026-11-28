@@ -106,6 +106,15 @@ local function harness(saved,withSpectator,withCodex)
     env._G=env
     env.require=function(name)
         if name=='panel_bridge'then return Bridge end
+        if name=='companion_squad' then
+            local module=assert(loadfile('Mods/PhantomGladiator/Scripts/companion_squad.lua','t',env))()
+            return {new=function(o)
+                o.clock=function()return h.squadTime or 100 end
+                o.read=function(file)return h.files[file]end
+                o.write=function(file,data)h.files[file]=data;return true end
+                return module.new(o)
+            end}
+        end
         if name=='xbox_keys' then return assert(loadfile('Mods/PhantomGladiator/Scripts/xbox_keys.lua','t',env))() end
         if name=='hun_body' then return {path='/Game/FixtureHun.FixtureHun_C'} end
         if name=='hun_loadout' then return assert(loadfile('Mods/PhantomGladiator/Scripts/hun_loadout.lua','t',env))() end
@@ -178,6 +187,29 @@ test("an accepted ordinary summon key is cancelled when its game session changes
     assert(h.runtime.summonPending==nil,'cancelled requests must release the shared summon slot')
     h:tick();h.keys.F9();h:drain()
     assert(count(h,'spawn')==1,'a separate key press in the new world still works')
+end)
+
+test("restore uses each companion's original summon route and leaves arena selection alone",function()
+    local h=harness();local called={};local gen=string.rep('a',24)
+    local ordinary='/Game/Unit.Unit_C';local profile={kit=true,revision=12}
+    local mu=h.env.require('companion_profile').first
+    h.files['memory/companion-squad-settings.tsv']='PGCR1\t1\t'..gen..'\n'
+    h.files['memory/companion-squad.tsv']='PGCS1\t'..gen..'\tprevious\nunit\t1\t'..ordinary..'\ndual\t1\t'..mu..'\nunit\t1\t/Game/FixtureHun.FixtureHun_C\n'
+    local function success(tag)called[#called+1]=tag;return {ok=true,spawned_count=1} end
+    local arena={companionSquad=function()return {}end,spawn=function(_,path,team,n,preserve)
+        assert(path==ordinary and team=='companion' and n==1 and preserve==true);return success('ordinary')
+    end,clearCompanions=function()return {ok=true,message='done'}end}
+    local support={discover=function()end,companionManager={spawn=function()return success('dual')end},
+        hunBody={spawn=function(_,a,team,n,rev,saved)
+            assert(a==arena and team=='companion' and n==1 and rev=='12' and saved==profile);return success('hun')
+        end}}
+    local r=h.new({arena=arena,support=support,hunLoadout=function()return profile end,
+        session={status=function()return {game_session='cmd-world',game_ready=true,game_world='world'}end}})
+    h:run(function()
+        for t=100,110 do h.squadTime=t;r.squad:tick() end
+        assert(table.concat(called,',')=='ordinary,dual,hun' and r.squad.total==3)
+        assert(r.handlers.dismiss_companions().ok and r.squad.total==0)
+    end)
 end)
 
 test("stop cancels an ordinary summon already waiting for its game-thread callback",function()

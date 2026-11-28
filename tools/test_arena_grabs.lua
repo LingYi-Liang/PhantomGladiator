@@ -322,4 +322,95 @@ test('Yu Ding chooses the native nonlethal branch only against living protected 
     h.grabs=h:new();assert(h.grabs:sync(h.members,true,true))
     for _,event in ipairs(h.events)do if event.path:find(jadeRoot,1,true) then assert(event.NonPlayerGE==h.original) end end
 end)
+local function jadeSlowFixture()
+    local h=harness()
+    local jadeRoot=ROOT..'YuDing_00/'
+    local jadePath=jadeRoot..'BP_Monster_FemaleVessel_YuDing.BP_Monster_FemaleVessel_YuDing_C'
+    local disciplePath=ROOT..'035_HuaShan/BP_Monster_HuaShan_White.BP_Monster_HuaShan_White_C'
+    local handlesField='Handles_3_877B29EB47E2D6E588FC0C9DF344F29B'
+    local paths=require('jade_grab_guard').paths
+    local function typed(object,path)
+        local cls=h:object(path,nil,'BlueprintGeneratedClass')
+        object.GetClass=function()return cls end
+        local world=h.world
+        object.GetOuter=function()return world end
+        return object
+    end
+    h.world=h:object('/Map')
+    h.player=typed(h:object('/Map/Player'),'/Game/PlayerClass')
+    h.hooks,h.stops,h.gameTime,h.slowHandle={},{},10,103
+    h.blue.hp=31387.6484375
+    typed(h.red,jadePath);h.members[2].class_path=jadePath
+    typed(h.blue,disciplePath);h.members[1].class_path=disciplePath
+    function h.blue:StopSlomo(id,handle)
+        assert(self:IsValid() and id=='Ability')
+        h.stops[#h.stops+1]=handle
+        if h.slowHandle==handle then h.slowHandle=nil;self.CustomTimeDilation=1 end
+    end
+    local sys=h:object('/Script/Engine.Default__KismetSystemLibrary',{GetGameTimeInSeconds=function(_,world)
+        assert(world==h.world);return h.gameTime
+    end})
+    h.options.staticFind=function(path)return path==sys.path and sys or h:object(path)end
+    h.options.registerHook=function(path,cb)h.hooks[path]=cb;return 31,32 end
+    h.options.unregisterHook=function(path)h.hooks[path]=nil;return true end
+    h.options.inGameThread=function()return true end
+    h.options.world=function()return h.world end
+    h.options.player=function()return h.player end
+    h.options.fname=function(s)return s end
+    local receiver=typed(h:object('receiver',{bIsActive=true,GetAvatarActorFromActorInfo=function()return h.blue end,
+        ['Execution Info']={Executor=h.red,Target=h.blue,IsTarget=true}}),
+        jadeRoot..'Ability/Abilities/Grab/GA_YuDing_GEd_01.GA_YuDing_GEd_01_C')
+    h.receiver=receiver
+    h.action=typed(h:object('slow',{Multiplier=0.01,['Slomo ID']='Ability',
+        GetAbility=function()return receiver end,
+        Handles={ForEach=function(_,visit)visit(h.blue,{[handlesField]={103}})end}}),paths[3]:match('^(.*):'))
+    h.grabs=h:new()
+    function h:start()
+        self.blue.CustomTimeDilation=0.0099999904632568
+        assert(self.grabs:sync(self.members,true,true))
+        assert(self.hooks[paths[3]],'Jade and a summoned white disciple need the native slomo hook')
+        self.hooks[paths[3]](self.action,0,6.94317626953125,13.956823348999023)
+    end
+    return h
+end
+test('Yu Ding releases her exact terminal slow from the surviving disciple in #52',function()
+    local h=jadeSlowFixture()
+    h:start()
+    h.gameTime=16
+    assert(h.grabs:sync(h.members,true) and #h.stops==0,'keep the authored slow during the hit')
+    h.action.alive=false;h.receiver.alive=false
+    h.gameTime=18
+    assert(h.grabs:sync(h.members,true))
+    assert(#h.stops==1 and h.stops[1]==103 and h.blue.CustomTimeDilation==1 and h.blue.hp==31387.6484375)
+    assert(h.grabs:sync(h.members,true) and #h.stops==1,'own cleanup is not repeated')
+end)
+test('Jade slow stays native on a slain victim and is released when the disciple revives',function()
+    local h=jadeSlowFixture()
+    h.blue.hp=0
+    h:start()
+    h.gameTime=18;assert(h.grabs:sync(h.members,true))
+    assert(#h.stops==0 and h.blue.CustomTimeDilation<0.02,'keep the slain victim finale')
+    h.blue.hp=31387.6484375
+    assert(h.grabs:sync(h.members,true))
+    assert(#h.stops==1 and h.stops[1]==103 and h.blue.CustomTimeDilation==1)
+end)
+test('Jade slow recovery respects later handles, player ownership, and the old world',function()
+    local h=jadeSlowFixture()
+    h:start()
+    h.slowHandle=205;h.blue.CustomTimeDilation=0.0099999904632568
+    h.gameTime=18;assert(h.grabs:sync(h.members,true))
+    assert(#h.stops==1 and h.stops[1]==103 and h.slowHandle==205 and h.blue.CustomTimeDilation<0.02)
+    local taken=jadeSlowFixture();taken:start();taken.blue.IsPlayerControlled=function()return true end
+    taken.gameTime=18;assert(taken.grabs:sync(taken.members,true));assert(#taken.stops==0)
+    local changed=jadeSlowFixture();changed:start();changed.world=changed:object('/Map2')
+    changed.gameTime=18;assert(changed.grabs:sync(changed.members,true));assert(#changed.stops==0)
+    local clear=jadeSlowFixture();clear:start()
+    assert(clear.grabs:restore() and #clear.stops==1 and clear.blue.CustomTimeDilation==1)
+    local unknown=jadeSlowFixture()
+    unknown.action.Handles.ForEach=function(_,visit)
+        visit(unknown.blue,{Handles_3_877B29EB47E2D6E588FC0C9DF344F29B={0}})
+    end
+    unknown:start();unknown.gameTime=18;assert(unknown.grabs:sync(unknown.members,true))
+    assert(#unknown.stops==0,'the wildcard handle is never used for recovery')
+end)
 print('arena_grabs: PASS ('..count..' scope, native observation and restoration regressions)')

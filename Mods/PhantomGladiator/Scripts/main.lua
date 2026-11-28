@@ -84,7 +84,7 @@ local function log(msg)
     elseif not runLogWarning then runLogWarning=true;print(MOD..' 独立运行日志写入未确认；UE4SS日志仍保留\n') end
 end
 if hookRegistry then hookRegistry.log=log end
-local BUILD = "v0.40.24"
+local BUILD = "v0.40.25"
 SpawnPolicy.loadTrials(Config.RuntimePath..'/spawn-trials.tsv',log)
 SpawnPolicy.enableAllCatalog()
 log('[SpawnPolicy] 用户开启全部目录尝试召唤；总量不设上限；运行时检查Actor继承和对象有效性')
@@ -680,6 +680,13 @@ local function FinishSpawnViaAILib(pawn,t,world,leader,replacing)
     end
     if not summonActorLive(pawn) then return false,"出生后对象进入销毁或状态不可读" end
     if onGround then onGround:settle(pawn,placedOnGround) end
+    if route=='npc' and summonActorLive(pawn) then
+        local placeholder=mounts and mounts:placeholderOf(pawn)
+        if not placeholder and arenaSupport.swordFormation then
+            placeholder=arenaSupport.swordFormation:placeholderOf(pawn)
+        end
+        if placeholder then arenaSupport.summonTargetRegistration:enqueue(pawn,placeholder,world) end
+    end
     return summonActorLive(pawn),nil
 end
 
@@ -1518,6 +1525,7 @@ function arenaSupport:combatPhaseBusy(actor)
         (self.swordFormation and self.swordFormation:supportingActor(actor)) or false
 end
 arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=objectName,now=GameSeconds,
+    onCompanionSummoned=function(...)if panelRuntime and panelRuntime.squad then panelRuntime.squad:added(...) end end,
     phaseBusy=function(actor)return arenaSupport:combatPhaseBusy(actor)end,
     actorKey=function(actor) checked(actor);return actor:GetAddress() end,
     hp=function(actor) if spawnRoutes[actor]=='actor' then return nil end;return GetHP(actor) end,
@@ -1781,6 +1789,7 @@ arena=ArenaController.new({catalog=npcCatalog,log=log,valid=engineValid,name=obj
     end,
     destroy=function(actor)
         checked(actor)
+        arenaSupport.summonTargetRegistration:cancel(actor)
         if arenaSupport.yubiArena then arenaSupport.yubiArena:releaseActor(actor) end
         if arenaSupport.menghuaPhase and not arenaSupport.menghuaPhase:releaseActor(actor) then error('梦华阶段帮手回收未确认') end
         if arenaSupport.lionNPC and not arenaSupport.lionNPC:releaseActor(actor) then error('下桩清理未读回') end
@@ -1978,7 +1987,8 @@ arenaSupport.matchReport=require('match_report').new({path=Config.RuntimePath,bu
     difficultyOf=function(actor)return spawnDifficulty and spawnDifficulty:levelOf(actor)end,
     storyLinkOf=function(actor)return arenaSupport.menghuaPhase:storyLink(actor)end})
 -- Riders: an empty spawner of the mod's where they are summoned, their mount found and cleared with them (mounts.lua).
-mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,player=GetPlayerPawn,
+mounts=Config.SummonRiderMounts and Mounts.new({log=log,location=GetLocation,isDestroying=actorIsDestroying,
+    player=Config.EnableSummonLockProbe==true and GetPlayerPawn or nil,
     findClass=function(path)return StaticFindObject(path)end,statics=GetGameplayStatics,
     findAll=function(name)return FindAllOf(name)end,hp=GetHP,attack=ForceAttack,world=GetCurrentWorld,
     companionOpponent=function(actor)return arenaSupport:skillOpponent(actor,'companion')end,
@@ -2247,6 +2257,9 @@ function arenaSupport:worldSubsystem(name)
         end
     end
 end
+arenaSupport.summonTargetRegistration=require('summon_target_registration').new({
+    world=GetCurrentWorld,hp=GetHP,isDestroying=actorIsDestroying,inGameThread=IsInGameThread,log=log,
+    subsystem=function()return arenaSupport:worldSubsystem('TargetingWorldSubsystem')end})
 -- A summoned phase-one 雷当 must not write the story's 雷当-killed tag, and a save that already has it does not keep phase one's spawner on (story_guard.lua).
 arenaSupport.storyGuard=require('story_guard').new({log=log,members=ArenaMembers,clock=LiveSeconds,label=objectName,
     tagCount=function(actor,tag)return onGround:tagCount(actor,tag)end,
@@ -2366,13 +2379,14 @@ function arenaSupport.hunNativeTarget(actor,privateOnly)
         return target
     end
 end
+function arenaSupport.gamePaused()
+    local lib,world=GetGameplayStatics(),GetCurrentWorld()
+    if not safeValid(lib) or not safeValid(world) then return false end
+    local ok,value=pcall(function()return UEObserve.unwrap(lib:IsGamePaused(world))end)
+    return ok and value==true
+end
 arenaSupport.hunBody=require('hun_body').new({log=log,probe=Config.EnableHunBodyProbe==true,world=GetCurrentWorld,player=GetPlayerPawn,hp=GetHP,aiOf=GetAIComp,loadout=arenaSupport.hunLoadout,
-    paused=function()
-        local lib,world=GetGameplayStatics(),GetCurrentWorld()
-        if not safeValid(lib) or not safeValid(world) then return false end
-        local ok,value=pcall(function()return UEObserve.unwrap(lib:IsGamePaused(world))end)
-        return ok and value==true
-    end,
+    paused=arenaSupport.gamePaused,
     requireProfile=true,nativeTarget=arenaSupport.hunNativeTarget,
     target=function(actor,team)
         if team=='blue' or team=='red' then return arena:opponentOf(UEObserve.key(actor)) end
@@ -2733,6 +2747,17 @@ arenaSupport.grabProbe=Config.EnableGrabProbe and require('grab_probe').new({log
         local player=GetPlayerPawn()
         return safeValid(player) and safeValid(actor) and player:GetAddress()==actor:GetAddress()
     end}) or nil
+-- Sample native lock candidates only when detailed diagnostics are requested.
+if Config.EnableSummonLockProbe==true then
+    arenaSupport.leiDangLockProbe=require('leidang_lock_probe').new({log=log,clock=os.clock,
+        world=GetCurrentWorld,player=GetPlayerPawn,relation=ReadRelation,inGameThread=IsInGameThread,
+        spectator=function()return spectator:status()end,freeCam=function()return freeCamera:isActive()end,
+        utils=function()return StaticFindObject('/Script/SGameCombatSystem.Default__TargetingUtils')end,
+        camera=function()
+            local pc=GetRealPlayerController()
+            return UEObserve.field(pc,'PlayerCameraManager')
+        end})
+end
 function arenaSupport.hunImmune(actor,kind)
     local profile=arenaSupport.hunBody and arenaSupport.hunBody:profile(actor)
     return profile and profile.survival and profile.survival[kind]=='immune' or false
@@ -2902,7 +2927,8 @@ local supportMeter=require('perf_meter').new({label='支持循环',log=log,slow=
 -- These modules observe or present the fight. Failure of one must not starve combat or cleanup.
 -- Combat/control steps keep their original fail-fast order and frame-context restoration.
 local observers={grabStudy=true,fieldProbe=true,companionHit=true,attackScan=true,codexArt=true,codexIcons=true,
-    battleMusic=true,grabProbe=true,fightWatch=true,bossHUD=true,clockHUD=true,companionBars=true,selfie=true}
+    battleMusic=true,grabProbe=true,leiDangLockProbe=true,fightWatch=true,bossHUD=true,clockHUD=true,companionBars=true,selfie=true,
+    summonTargetRegistration=true}
 local observerFailures={}
 local function supportSteps(self)
     self.hudSamples={}
@@ -2969,6 +2995,8 @@ local function supportSteps(self)
         if not self.musicNext or now>=self.musicNext then self.musicNext=now+0.25;self.battleMusic:tick(tickMembers,tickStatus)end
     end)
     if self.grabProbe then step('grabProbe',function()self.grabProbe:tick()end) end
+    step('summonTargetRegistration',function()self.summonTargetRegistration:tick()end)
+    if self.leiDangLockProbe then step('leiDangLockProbe',function()self.leiDangLockProbe:sync(tickMembers)end) end
     step('summonLinks',function()self:discover(not tickStatus.battle_active)end)
     step('stands',function()self.stands:tick()end)
     step('standKeep',function()self.standKeep:tick()end)

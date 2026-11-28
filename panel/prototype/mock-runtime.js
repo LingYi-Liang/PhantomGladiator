@@ -634,12 +634,12 @@ const MockRuntime = (() => {
   const setup = {
     async detectGame() {
       await wait(1500);
-      return { path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PBZ", store: "Steam", build: "26367565" };
+      return { path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\PBZ", store: "Steam", build: "26936481" };
     },
     async components() {
       await wait(700);
       return [
-        { id: "game", ok: true, detail: "build 26367565" },
+        { id: "game", ok: true, detail: "build 26936481" },
         { id: "loader", ok: s.installed, detail: "UE4SS 3.0.1" },
         { id: "mod", ok: s.installed, detail: "v" + s.appVersion },
       ];
@@ -704,7 +704,16 @@ const MockRuntime = (() => {
       { world: "PBZ_Duanhun_WP", name: "断魂山", en: "Mount Soulrend", places: [{ code: "TDEMO000003", kind: "boss", name: "龙体左殇", en: "Zuo Shang (Dragon Form)", level: 25 }] }] }; } },
     async aiParams() { await wait(150); return { values: { ...(s.aiParamValues || {}) } }; },
     async statSettings() { await wait(150); return { mode: s.statMatch.mode, values: { ...s.statMatch.values } }; },
-    async companionManager() { return JSON.parse(JSON.stringify({...cmPreview, ready:ready()})); },
+    async companionManager() {
+      const squad = JSON.parse(localStorage.getItem("pg.preview.squad") || '{"enabled":false,"revision":"0"}');
+      return JSON.parse(JSON.stringify({...cmPreview, squad, ready:ready()}));
+    },
+    async saveCompanionSquad({enabled}) {
+      const squad={enabled,revision:String(Date.now())};
+      localStorage.setItem("pg.preview.squad",JSON.stringify(squad));
+      s.companionSquad={revision:squad.revision,total:enabled?s.companion:0,state:enabled?"remembered":"off"};
+      return squad;
+    },
     async companionStats() { await wait(150); return { mode: s.companionStats.mode, values: { ...s.companionStats.values } }; },
     set(patch) { Object.assign(s, patch); emit({ type: "demo" }); },
   };

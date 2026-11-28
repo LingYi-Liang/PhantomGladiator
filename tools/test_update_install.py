@@ -169,6 +169,105 @@ def main():
             assert not list(mod.glob(".pg-install-*")), case
             print(f"PASS components {case}: read back scripts and Runtime")
 
+        def uninstall_fixture(case):
+            installed, data = setup("uninstall-" + case)
+            steam = installed / "test-game" / "platform" / "steam"
+            mods = steam / "ue4ss" / "Mods"
+            mod = mods / "PhantomGladiator"
+            live = mod / "Scripts"
+            live.mkdir(parents=True)
+            assert work.resolve() in live.resolve().parents
+            (live / "main.lua").write_bytes(b'local BUILD = "v0.40.23"')
+            (live / "config.lua").write_bytes(b"personal options")
+            (mod / "enabled.txt").touch()
+            protected = {mod / "Runtime" / "function-keybinds.tsv": b"personal shortcuts",
+                         mod / "Runtime" / "hun-profile.json": b"personal profile",
+                         mod / "keep.txt": b"personal mod file",
+                         mods / "OtherMod" / "Scripts" / "main.lua": b"some other mod",
+                         mods / "shared" / "UEHelpers.lua": b"shared helper",
+                         steam / "ue4ss" / "UE4SS.dll": b"existing loader",
+                         steam / "ue4ss" / "MemberVariableLayout.ini": b"existing game layout",
+                         steam / "dwmapi.dll": b"existing proxy",
+                         data / "settings.json": b"desktop settings"}
+            for path, body in protected.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(body)
+            txt, js = mods / "mods.txt", mods / "mods.json"
+            old_txt = b"\xef\xbb\xbfothermod : 1\r\n; preserve \xdb\r\n  PhantomGladiator : 1\r\nphantomgladiator : 0\r\n"
+            old_json = [{"mod_name": "OtherMod", "mod_enabled": True, "extra": [1, 2]},
+                        {"mod_name": "PhantomGladiator", "mod_enabled": True}]
+            txt.write_bytes(old_txt)
+            js.write_text(json.dumps(old_json), encoding="utf-8")
+            app = installed / "PhantomGladiator.exe"
+            env = dict(os.environ, PG_DATA_DIR=str(data))
+
+            def call(mode):
+                return subprocess.run([str(app), mode], env=env, capture_output=True, timeout=20)
+            if case == "linked":
+                elsewhere = installed / "outside-mod"
+                live.rename(elsewhere)
+                literal = lambda path: "'" + str(path).replace("'", "''") + "'"
+                subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                f"New-Item -ItemType Junction -Path {literal(live)} -Target {literal(elsewhere)} -ErrorAction Stop | Out-Null"],
+                               check=True, capture_output=True)
+                result = call("--uninstall-components")
+                assert result.returncode and b"uninstallPath" in result.stderr, result.stderr
+                assert (elsewhere / "main.lua").is_file() and txt.read_bytes() == old_txt
+                assert not (steam / "PhantomGladiator-backups").exists()
+                live.rmdir()
+                print("PASS uninstall refuses a linked Scripts folder before touching its target or loader entries")
+                return
+            if case == "locked":
+                result = call("--uninstall-components-locked")
+                assert result.returncode, result.stdout
+                assert live.is_dir() and (mod / "enabled.txt").exists(), result.stderr
+                assert txt.read_bytes() == old_txt and json.loads(js.read_text()) == old_json
+                print("PASS uninstall rollback restores scripts, enabled marker and first registry after the second is locked")
+            elif case == "running":
+                mock_game = steam / "PBZ.exe"
+                shutil.copy2(exe, mock_game)
+                process = subprocess.Popen([str(mock_game), "--hold-fixture"], env=env, creationflags=subprocess.CREATE_NO_WINDOW)
+                try:
+                    result = call("--uninstall-components")
+                    assert result.returncode and b"gameRunning" in result.stderr, result.stderr
+                    assert live.is_dir() and txt.read_bytes() == old_txt and (mod / "enabled.txt").exists()
+                    assert not (steam / "PhantomGladiator-backups").exists()
+                    print("PASS uninstall refuses to change files while a process from the chosen game directory is running")
+                finally:
+                    process.terminate()
+                    process.wait(timeout=5)
+            result = call("--uninstall-components")
+            assert result.returncode == 0, result.stderr
+            backup = pathlib.Path(result.stdout.decode("utf-8").strip())
+            assert backup.parent == steam / "PhantomGladiator-backups"
+            assert not live.exists() and not (mod / "enabled.txt").exists()
+            assert (backup / "Scripts" / "config.lua").read_bytes() == b"personal options"
+            assert (backup / "enabled.txt").is_file() and (backup / "mods.txt.before").read_bytes() == old_txt
+            assert txt.read_bytes() == b"\xef\xbb\xbfothermod : 1\r\n; preserve \xdb\r\n"
+            assert json.loads(js.read_text()) == old_json[:1]
+            assert all(path.read_bytes() == body for path, body in protected.items())
+            result = call("--uninstall-components")
+            assert result.returncode == 0 and not result.stdout.strip(), result.stderr
+            if case == "legacy":
+                payload = installed / "app" / "payload"
+                (payload / "seed").mkdir(parents=True)
+                (payload / "gameconfig").mkdir()
+                shipped = payload / "mod" / "PhantomGladiator" / "Scripts"
+                shipped.mkdir(parents=True)
+                (shipped / "main.lua").write_text('local BUILD = "v0.40.25"', encoding="utf-8")
+                (shipped / "config.lua").write_text('Config.RuntimePath = "unused"\n', encoding="utf-8")
+                result = call("--install-components")
+                assert result.returncode == 0, result.stderr
+                assert 'v0.40.25' in (live / "main.lua").read_text(encoding="utf-8")
+                assert all(path.read_bytes() == body for path, body in protected.items())
+                result = call("--uninstall-components")
+                assert result.returncode == 0 and pathlib.Path(result.stdout.decode("utf-8").strip()) != backup
+                assert (backup / "Scripts" / "config.lua").read_bytes() == b"personal options"
+                print("PASS legacy uninstall, repeat uninstall and reinstall preserve unrelated files and old data")
+
+        for case in ("legacy", "locked", "running", "linked"):
+            uninstall_fixture(case)
+
         def run_app(installed, data, back="", line=""):
             report = work / "report.txt"
             report.unlink(missing_ok=True)

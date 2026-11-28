@@ -32,6 +32,23 @@ function Runtime.new(options)
         session=function()return options.session and options.session:status() end,
         spawn=function(path,team,count,profile)return self:summon(path,team,count,profile)end})
     self.poolQueue.enabled=true
+    if options.arena.companionSquad and options.session then
+        self.squad=require('companion_squad').new({
+            path=options.path,log=self.log,
+            session=function()return self.catalogSession or self:sessionStatus()end,
+            members=function()return options.arena:companionSquad()end,
+            busy=function()
+                local teleport=options.support and options.support.teleport
+                return self.summonPending or #self.poolQueue.jobs>0 or #self.summonQueue.jobs>0
+                    or (teleport and teleport:relocating()) or (options.camera and options.camera:status().active)
+                    or (options.support and options.support.gamePaused and options.support.gamePaused())
+            end,
+            spawn=function(path,dual)
+                if path==require('hun_body').path then return self:requestHun('companion',1) end
+                if dual then return options.support.companionManager:spawn() end
+                return options.arena:spawn(path,'companion',1,true)
+            end})
+    end
     self.router=options.router or KeyRouter.new({log=self.log})
     local function unitOwner(vk,mask)
         local unit=options.unitKeys and options.unitKeys:owner(vk,mask)
@@ -376,7 +393,10 @@ function Runtime.new(options)
         end,
         dismiss_companions=function()
             if options.support then options.support:discover() end
-            return options.arena:clearCompanions()
+            local saved=not self.squad or self.squad:dismiss()
+            local result=options.arena:clearCompanions()
+            if not saved then result.ok=false;result.message=result.message..'；队伍记录清空待确认' end
+            return result
         end,
         -- The app's 修复存档 (save_repair.lua): arms the repairs of what earlier versions did to saves, and reports.
         repair_save=function()
@@ -528,6 +548,12 @@ function Runtime.new(options)
         self.catalogSession=session
         self.poolKeys:refresh(session.game_session)
         out.monster_pool_keys_schema=1
+        if self.squad then
+            out.companion_squad_revision=self.squad.preferenceRevision or '0'
+            out.companion_squad_enabled=self.squad.enabled
+            out.companion_squad_total=self.squad.total
+            out.companion_squad_state=self.squad.state
+        end
         local queue=self.summonQueue
         if queue.enabled then queue:sync(session) end
         self.poolQueue:sync(session)
@@ -1153,7 +1179,10 @@ function Runtime:start()
         if self.healthTicks%4==0 and self.options.arena.sampleHealth then self.options.arena:sampleHealth() end
         if self.healthTicks%2==0 and self.options.support then self.options.support:tick() end
     end
-    local function bridgeTick()self.bridge:tick()end
+    local function bridgeTick()
+        self.bridge:tick()
+        if self.squad then self.squad:tick() end
+    end
     -- A whole pump slower than 15 ms is logged (at most 60 times per Lua lifetime) to find stutter; every minute a summary
     -- of all pumps keeps coming after that (perf_meter.lua). Pumps run every 250 ms: a gap of 400 ms is a stalled game thread.
     local slowPumps=0

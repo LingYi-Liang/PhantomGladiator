@@ -27,6 +27,8 @@ async function check() {
   i18n.set("zh");
   context.aiDialog();
   assert.equal(ui.aiDraft["立回-近距离闪避权重"], "0", "opening an old manual save must not change it");
+  const dodgeDistanceRow = () => html.split("</label>").find(row => row.includes('data-field="闪避敌人近战攻击的距离"'));
+  assert(dodgeDistanceRow().includes("厘米，100 = 1 米</small>"), "an unknown distance range shows only its unit");
   context.choose({dataset: {}});
   const all = {...ui.aiDraft};
   for (const key of ["近距离进攻概率", "中距离进攻概率", "远距离进攻概率", "重新规划-进攻欲望"]) assert.equal(all[key], "1", key);
@@ -49,6 +51,7 @@ async function check() {
   assert(html.includes(">全部拉满</button>"));
   i18n.set("en"); context.aiDialog();
   assert(html.includes(">Max everything</button>"));
+  assert(dodgeDistanceRow().includes("Centimeters, 100 = 1 m</small>"));
 
   ui.aiDraft = {"近距离进攻概率": "0.25"};
   context.choose({dataset: {group: "movement"}});

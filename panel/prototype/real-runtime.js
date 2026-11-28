@@ -106,6 +106,7 @@ const RealRuntime = (() => {
     statMatch: { enabled: false, mode: "game", modeSupported: false, baseline: null, matched: 0, failures: 0, reset: false, customCount: 0, customized: 0, rejected: [], rejectedCount: 0, values: {} },
     // companion_stats_*: the companions' own set; game | custom (stat_match.lua). All the values come from /api/companion-stats.
     companionManagerRevision: null,
+    companionSquad: null,
     arenaRosterRevision: null,
     arenaRosterSession: null,
     companionStats: { supported: false, mode: "game", customCount: 0, customized: 0, failures: 0, rejected: [], rejectedCount: 0, values: {} },
@@ -499,6 +500,7 @@ const RealRuntime = (() => {
       s.companionMinionExec = { supported: yes("companion_minion_executions_supported"), on: yes("companion_minion_executions") };
       // companion_passage*: whether the player walks through companions (companion_passage.lua).
       s.companionManagerRevision = v.companion_manager_revision == null ? null : num("companion_manager_revision");
+      s.companionSquad = v.companion_squad_state ? { state: v.companion_squad_state, total: num("companion_squad_total"), revision: v.companion_squad_revision } : null;
       s.companionPass = { supported: yes("companion_passage_supported"), on: yes("companion_passage") };
       Object.assign(s.companionStats, { supported: yes("companion_stats_supported"), mode: v.companion_stats_mode === "custom" ? "custom" : "game", customCount: num("companion_stats_count"),
         customized: num("companion_stats_customized"), failures: num("companion_stats_failures"), rejectedCount: num("companion_stats_rejected"),
@@ -618,7 +620,7 @@ const RealRuntime = (() => {
       solo: [s.game, s.neutral, s.down.neutral, s.spectator, s.spectatorPhase, s.freeCam],
       companionManager: [s.companionManagerRevision],
       arenaRoster: [s.game, s.arenaRosterSession, s.arenaRosterRevision],
-      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, s.companionPass.on, s.companionMinionExec.on, { ...s.companionStats, values: undefined }],
+      companion: [s.game, s.companion, s.down.companion, s.companionFailures, s.immortal.supported, s.immortal.companion, s.companionExec.supported, s.companionExec.on, s.companionPass.on, s.companionMinionExec.on, s.companionSquad, { ...s.companionStats, values: undefined }],
       match: [s.game, { ...s.statMatch, values: undefined }],
       diff: [s.game, s.difficulty, s.level.supported, s.level.mode, s.level.custom, s.level.cycle],
       fun: [s.game, s.fun, s.weather, s.weatherKeysSupported, WEATHER_KEYS.map(k => s.keys[k])],
@@ -841,6 +843,14 @@ const RealRuntime = (() => {
       try { await host("install"); } finally { stop(); }
       await setup.components();
     },
+    async uninstall(path) {
+      const result = await host("uninstall", { path });
+      s.installed = false;
+      if (s.components) {
+        s.components = s.components.map(c => c.id === "mod" ? { ...c, ok: false, present: false, detail: "" } : c);
+      }
+      return result;
+    },
   };
 
   const update = {
@@ -922,6 +932,7 @@ const RealRuntime = (() => {
       return data;
     },
     // The companions' own set, from its own file.
+    saveCompanionSquad: request => submitCommand('/api/companion-squad', request),
     async companionManager() {
       const { response, data } = await readJSON("/api/companion-manager");
       if (!response.ok) throw fail("rejected");

@@ -40,7 +40,7 @@ DEPS = {
                        "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.1-full_build.7z (LICENSE)"),
 }
 UE4SS_IN_PACKAGE = "PhantomGladiator-0.37.5/app/payload/ue4ss/"
-VERIFIED_GAME_BUILD = "26367565"
+VERIFIED_GAME_BUILD = "26936481"
 REPO = "LingYi-Liang/PhantomGladiator"
 NEXUS_PAGE = "https://www.nexusmods.com/phantombladezero/mods/363"
 # The legacy feed offers only the one-time migration to 0.40.10.
@@ -166,7 +166,7 @@ https://github.com/{repo}
 - 只支持 Steam 版《影之刃零》build {game_build}，其他版本未经测试。
 - 第一次运行时 Windows 可能提示“已保护你的电脑”，点“更多信息 → 仍要运行”。本程序没有购买代码签名证书。
 - 需要 Windows 10/11 自带的 Microsoft Edge WebView2 运行库；缺少时程序会给出微软官方下载链接。
-- 卸载：在助手里不需要做任何事，直接删除这个文件夹即可；游戏里的组件可在游戏目录 platform\\steam\\ue4ss 中删除。
+- 如需卸载游戏内模组，关闭游戏后在助手的「设置 → 游戏」点「一键卸载斗蛐蛐」。旧脚本会备份，共用的 UE4SS、其他模组和存档会保留。只想移除助手时，关闭助手后删除这个解压目录即可。
 - 本程序与游戏开发商无关。使用模组的风险由使用者自行承担。
 
 【第三方组件】
@@ -178,7 +178,8 @@ FFmpeg 8.1.1（GPLv3，独立本地音频转换组件，许可和源码入口见
 ---------------------------------------------------------------
 Phantom Gladiator — NPC battles for Phantom Blade Zero  v{version}
 Unzip the whole folder, run PhantomGladiator.exe, and follow the first-run guide.
-Steam build {game_build} only. Delete the folder to uninstall.
+Steam build {game_build} only.
+Close the game and use Settings → Game → Uninstall Phantom Gladiator to remove the in-game mod. This backs up its scripts and keeps saves, other mods and the shared UE4SS loader. To remove only the assistant, close it and delete this extracted folder.
 """
 # The Nexus Mods build checks and downloads nothing, so its readme says where new versions come from.
 README_NEXUS = """【更新】

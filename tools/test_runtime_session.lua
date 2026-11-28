@@ -58,15 +58,18 @@ assert(position.valid_player < position.player_destroying and position.valid_pla
 assert(session:status().game_session == first.game_session, "same world address must retain session")
 local Reloaded = dofile(file)
 local reloadedSession = Reloaded.new(f.options)
+assert(type(first.game_world)=='string' and reloadedSession:status().game_world==first.game_world)
 assert(reloadedSession:status().game_session ~= first.game_session, "hot reload loses actor ownership, so queued control commands must become stale")
 assert(#writes == 3 and type(shared["PhantomGladiator.session.v1"]) == "string"
     and shared["PhantomGladiator.session_generation.v1"] == "2")
 f.world.address = 98765
+assert(session:status().game_world~=first.game_world)
 assert(session:status().game_session ~= first.game_session, "world change must change session")
 f.world.address = 12345
 assert(session:status().game_session == first.game_session)
 process()
 local newProcess = Reloaded.new(f.options)
+assert(newProcess:status().game_world~=first.game_world)
 assert(newProcess:status().game_session ~= first.game_session, "new ModRef/process must generate a distinct token")
 
 for _, oldValue in ipairs({ {}, 123, "bad token with spaces", "unsafe\nvalue" }) do

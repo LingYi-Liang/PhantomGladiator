@@ -6,7 +6,7 @@ never game binaries, meshes or decoded ability implementations.
 import argparse,hashlib,json,pathlib
 
 def build(source):
-    if source.get('build')!='26367565':raise ValueError('inventory build is not supported')
+    if source.get('build') not in ('26367565', '26936481'):raise ValueError('inventory build is not supported')
     items=[]
     for row in source['items']:
         kind=row['kind'];key=kind+'|'+row['table']+'|'+row['row']
@@ -29,7 +29,7 @@ def build(source):
     assert len([r for r in items if r['kind']=='main_weapon'])==33
     assert len([r for r in items if r['kind']=='shadow_armament'])==28
     assert len([r for r in items if r['kind']=='accessory'])==73
-    return {'schema':1,'build':'26367565','items':items}
+    return {'schema':1,'build':source['build'],'items':items}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('inventory',type=pathlib.Path);parser.add_argument('--out',type=pathlib.Path,default=pathlib.Path(__file__).resolve().parents[1]/'panel/hun-catalog.json')
